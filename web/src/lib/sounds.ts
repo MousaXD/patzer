@@ -453,7 +453,7 @@ function playNow(kind: SoundKind) {
       noiseClick(b, t + 0.008, { duration: 0.04, gain: 0.18, cutoff: 1200, highpass: 350, wet: 0.5 });
       break;
     case 'check': {
-      if (soundSet === 'soft') {
+      if (audioTheme === 'soft') {
         // Two short rising marimba notes (E5 → A5).
         marimba(b, t,         { freq: 659, duration: 0.28, gain: 0.2 });
         marimba(b, t + 0.085, { freq: 880, duration: 0.35, gain: 0.2 });
@@ -490,7 +490,7 @@ function playNow(kind: SoundKind) {
       break;
     }
     case 'game_end': {
-      if (soundSet === 'soft') {
+      if (audioTheme === 'soft') {
         // The classic G5 → E5 → C5 cadence on marimba, with a faint bell
         // layered underneath so it still sounds like Patzer, just softer.
         const notes: [number, number, number][] = [[784, 0, 0.5], [659, 0.16, 0.6], [523, 0.34, 1.1]];
