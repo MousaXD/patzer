@@ -86,7 +86,7 @@ function NavigationItem({
             <span aria-hidden="true" className="absolute -left-2 h-7 w-[3px] rounded-r-full bg-green-500" />
           )}
           <Icon aria-hidden="true" className={cn('shrink-0', mobile ? 'h-[19px] w-[19px]' : 'h-[20px] w-[20px]')} />
-          <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full truncate text-center leading-tight')}>{label}</span>
+          <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
         </>
       )}
     </NavLink>

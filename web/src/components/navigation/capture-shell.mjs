@@ -55,6 +55,10 @@ async function openWithFixture(page, viewport) {
   await page.goto(origin, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-app-shell]').waitFor({ timeout: 20000 });
   await page.locator('[data-navigation-rail]').waitFor({ state: 'attached' });
+  // Allow the home cards' Framer Motion entrance transitions and local fonts
+  // to settle before judging contrast, layout or capturing screenshots.
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(1100);
   await checkNoHorizontalOverflow(page, viewport.width + 'x' + viewport.height);
 }
 

@@ -222,7 +222,7 @@ describe('Patzer navigation rail', () => {
     const translated = 'Spieler und ausführliche Langbezeichnungen für die Navigation';
     const link = screen.getByRole('link', { name: translated });
     expect(link.getAttribute('title')).toBe(translated);
-    expect(link.querySelector('span:last-child')?.className).toContain('truncate');
+    expect(link.querySelector('span:last-child')?.className).toContain('line-clamp-2');
     expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
   });
 
