@@ -14,10 +14,10 @@
 | Baseline main | `31b6e55f0762d23f9cad738b05174815acd37ed1` (https://github.com/MousaXD/patzer/commit/31b6e55f0762d23f9cad738b05174815acd37ed1) |
 | Integration SHA | `31b6e55f0762d23f9cad738b05174815acd37ed1` when inspected on 2026-11-08. **This is identical to `main`**, so it does not yet contain the required frontend overhaul. The earlier HTTP 404 preceded creation of this branch. |
 | Agent 01–06 branches | Absent from the initial search. Agent 04 PR #2 and Agent 06 PR #1 appeared later while the audit was underway. Specialist code is not yet integrated. |
-| QA branch | **Created and pushed** at `agent-07/frontend-qa-certification`. Latest verified QA commit: `17f5d5c2fe28555745f4b4fbf48e906ebf7dc093`. Four QA-only files; baseline parent `31b6e55f0762d23f9cad738b05174815acd37ed1`. |
+| QA branch | **Created and pushed** at `agent-07/frontend-qa-certification`. QA browser harness fixes pushed at `60ad47bfd5befce87fb0411a9205840e67aafaf1`; this report update follows as a QA-only commit. Four QA-only files; baseline parent `31b6e55f0762d23f9cad738b05174815acd37ed1`. |
 | QA pull request | **Draft PR #3:** https://github.com/MousaXD/patzer/pull/3, targeting `feat/patzer-frontend-overhaul`. Do not merge until Agent 00 coordinates integration. |
-| GitHub Actions run URLs | Latest QA-branch runs: https://github.com/MousaXD/patzer/actions/runs/42503774198 (PR) and https://github.com/MousaXD/patzer/actions/runs/42503769434 (push), previously queued at SHA `fa64f7e733f9e3d98bedcad2aa73fb4e8f9004ae`. Newer QA commits require fresh checks; **no passed integrated candidate run**. |
-| Test execution | **Not executed.** The local runtime cannot access `github.com` for cloning. GitHub write access is now restored and the QA suite is pushed, but no specialist-integrated SHA has been tested. The Node QA harness passed JavaScript syntax validation only (`node --check`). |
+| GitHub Actions run URLs | Completed browser run on QA commit `3569feff33185987f308bddc15f0e49ff462d964`: https://github.com/MousaXD/patzer/actions/runs/42503920012 (PR) and https://github.com/MousaXD/patzer/actions/runs/42503914164 (push), both **failed**. Updated QA harness SHA `60ad47bfd5befce87fb0411a9205840e67aafaf1` queued: https://github.com/MousaXD/patzer/actions/runs/42509538957 and https://github.com/MousaXD/patzer/actions/runs/42509533617. No passing integrated candidate run. |
+| Test execution | **Executed on unmodified baseline in GitHub-hosted Chromium.** Run #42503920012 completed with **15 PASS, 11 FAIL**. Typecheck, unit and build steps passed; independent browser step failed; artifact upload succeeded. Failures reflect missing overhaul functionality and some identified QA harness race/selector issues. These results do **not** test the integrated overhaul; updated harness commit requires rerun. |
 
 **Evidence standard:** Source inspection describes the existing `main` baseline and new QA expectations. None of the baseline observations below is an observed regression of the unpushed overhaul. Screenshots, CI passes, Stockfish results, audio quality, and accessibility cannot be certified by reading source alone.
 
@@ -59,12 +59,12 @@ Statuses here are **NOT TESTED / BLOCKED**, not fabricated pass/fail results for
 
 | Viewport | Light | Dark | Inputs/coverage |
 | --- | --- | --- | --- |
-| 1920×1080 desktop | **Not run** | **Not run** | Screenshot, board visible/square, overflow, layout |
-| 1440×900 desktop | **Not run** | **Not run** | Screenshot, board proportions, keyboard review, badge, auth routes |
-| 1366×768 desktop | **Not run** | **Not run** | Screenshot, overflow, cramped navigation |
-| 768×1024 tablet | **Not run** | **Not run** | Screenshot, responsive stacking |
-| 390×844 mobile | **Not run** | **Not run** | Screenshot, overflow, separate real touch variation |
-| 1366×768, dark OS, fresh profile | **Not run** | N/A | Must remain light unless dark explicitly chosen |
+| 1920×1080 desktop | **PASS (baseline only)** | **PASS (baseline only)** | Screenshot, board visible/square, overflow, layout |
+| 1440×900 desktop | **PASS (baseline only)** | **PASS (baseline only)** | Screenshot, board proportions, keyboard review, badge, auth routes |
+| 1366×768 desktop | **PASS (baseline only)** | **PASS (baseline only)** | Screenshot, overflow, cramped navigation |
+| 768×1024 tablet | **PASS (baseline only)** | **PASS (baseline only)** | Screenshot, responsive stacking |
+| 390×844 mobile | **PASS (baseline only)** | **PASS (baseline only)** | Screenshot, overflow, separate real touch variation |
+| 1366×768, dark OS, fresh profile | **FAIL (baseline default)** | N/A | Must remain light unless dark explicitly chosen |
 
 Real-browser QA cases: new-user theme default; 13 authenticated routes; computed styles/fonts; keyboard nav; accessible names and focus; no decorative emoji in chrome; original badge geometry and flipped orientation; legal alternative move and saved-game immutability; castling; en passant; queen promotion; touch move; saved sound/theme preference; **real** Stockfish classification of a known tactical error **and a legal exploratory variation**, including illegal-move rejection.
 
@@ -78,8 +78,8 @@ Before approval, independently exercise positive and negative cases for Game Rev
 
 ## CI and runtime evidence limitations
 
-- **Actual GitHub Actions job logs: not yet inspected for a completed run.** QA-branch push created https://github.com/MousaXD/patzer/actions/runs/42503453539; this is not an integrated-candidate certification. Inspect logs once a run has completed.
-- **Actual browser screenshots: not captured.** The QA script will capture them in CI; this is not the same as approved pixel-diff references.
+- **Actual GitHub Actions job logs inspected.** https://github.com/MousaXD/patzer/actions/runs/42503920012 (independent QA 15 PASS / 11 FAIL); https://github.com/MousaXD/patzer/actions/runs/42503878359 (Agent 02, two failing navigation tests); https://github.com/MousaXD/patzer/actions/runs/42504080677 (Agent 05, one failing sound test); https://github.com/MousaXD/patzer/actions/runs/42503349323 (Agent 06 individual branch, four jobs passing). None is the final integrated candidate. Inspect logs once a run has completed.
+- **Browser screenshots captured and uploaded, not manually reviewed.** QA run #42503920012 uploaded ten responsive light/dark screenshots and results artifact: https://github.com/MousaXD/patzer/actions/runs/42503920012/artifacts/13626738953. The harness's viewport/layout checks passed on the *baseline*; visual matching to the owner's reference remains unverified.
 - **Real audio listening: not performed.** A human should judge timbre, clipping and perceived responsiveness on desktop and mobile; this cannot be inferred from waveforms alone.
 - **Cross-browser testing: not performed.** The initial automation targets Chromium; add Firefox/WebKit passes where supported before claiming cross-browser certification.
 - **Security:** preserve CSP, CSRF header, authentication, session scope and admin permission checks. The new UI must not expose unauthenticated data or let variations overwrite stored game records.
@@ -92,3 +92,31 @@ Before approval, independently exercise positive and negative cases for Game Rev
 4. Agent 07 re-inspects the six specialist code diffs, attends to browser screenshots/audio perception, and signs off only when all ten release gates are evidenced.
 
 **Current independent recommendation: NO-GO, because integration still points to the unmodified baseline and complete certification has not run.** This status should be re-evaluated when code and CI evidence exist. Only Agent 00 can decide the final merge.
+
+## GitHub Actions follow-up — 2026-11-08 (Agent 07 continuation)
+
+All outcomes below are from **actual GitHub Actions logs**; never extrapolate them to the still-unintegrated `feat/patzer-frontend-overhaul` SHA `31b6e55f0762d23f9cad738b05174815acd37ed1`.
+
+### Latest QA branch browser execution
+
+- Independent QA run [#42503920012](https://github.com/MousaXD/patzer/actions/runs/42503920012), QA SHA `3569feff33185987f308bddc15f0e49ff462d964`: **15 PASS / 11 FAIL**, build/typecheck/unit passed, browser step failed, screenshot+JSON artifact uploaded.
+- The ten responsive screenshot/overflow/board-square cases passed on the *old* baseline, not the redesign. Local font loading, OS-dark default-light theme, interaction variations, several keyboard/badge cases, and the new API endpoint failed or remained blocked.
+- Actual run errors: `POST /api/analyze/variation-move` HTTP 404 (Agent 06 PR #1 not integrated); dark-OS preference selected dark (Agent 01 required change absent); no bundled loaded font (Agent 01 required change absent); review-board `Bc4`, castle, en passant, promotion and touch move unsupported on baseline (Agent 03/04 required integration absent).
+- **Harness validity corrections** (Agent 07 only): route smoke previously declared `/lab` blank immediately after `domcontentloaded`, before auth hydration; now waits up to 5 seconds and still fails if the page does not render. Board-flip lookup wrongly expected an accessible name `Flip board` when the visible button is `Flip`; corrected to its real accessible name. Keyboard navigation now waits for the expected initial ply counter and polls browser history location, keeping the same first/previous/next/last acceptance checks. These corrections were pushed in QA-only commits `ac160193f325f9551d6bbe04cb732e534fbac1be` and `60ad47bfd5befce87fb0411a9205840e67aafaf1`. **They have not yet produced a completed verified result at time of report update.**
+- Do not interpret prior 11 failures as 11 independently confirmed product regressions. The original branch is intentionally pre-overhaul and two failures were test-harness assumptions.
+
+### Specialist branch review and exact-head restrictions
+
+| Workstream | PR / head | Observed evidence | Gate / owner |
+| --- | --- | --- | --- |
+| 01 Theme | No reviewed PR in current list | New-user dark-OS baseline behavior violates white-default spec | BLOCKED — Agent 01 |
+| 02 Navigation | [PR #5](https://github.com/MousaXD/patzer/pull/5) / `9b4dedc6345c214e0677f34af883e903e62f2a5d` | [Run #42503878359](https://github.com/MousaXD/patzer/actions/runs/42503878359) failed two tests: desktop resize leaves mobile drawer `<aside>` present; version/changelog control missing by accessible name `Patzer v7.19.0` | FAIL on specialist branch — Agent 02 to resolve or demonstrate test error |
+| 03 Workspace | No reviewed PR in current list | Reference redesign not available for exact-SHA screenshot comparison | BLOCKED — Agent 03 |
+| 04 Variations | [PR #2](https://github.com/MousaXD/patzer/pull/2) / `5703434bb287b91020f192957ebe4310ee185c19` | Code provides `analysisMode`, legal move handling, branch hook/state and tests. `GameAnalyzer.tsx` is not changed in this PR (owned by Agent 03). Thus successful end-user variation flow depends on later integration; no exact-head integration browser evidence. | BLOCKED — Agents 03/04 |
+| 05 Audio | [PR #4](https://github.com/MousaXD/patzer/pull/4) / `521da6ecc280ae59d7895eeb6301f53c2448afbd` | [Run #42504080677](https://github.com/MousaXD/patzer/actions/runs/42504080677) (earlier workflow head `4f914a223ccee4da1aaa50ed9ce47a4ef83abc64`) failed `web/src/lib/sounds.test.ts:99` on Node 20/22: expected synthesizer 659 Hz missing; Docker and real-browser PvP/regression jobs passed. Run does **not** certify later PR head. | FAIL on tested earlier head — Agent 05 must resolve and rerun latest exact head |
+| 06 Move quality | [PR #1](https://github.com/MousaXD/patzer/pull/1) / `0d7c58e9c720ef5898fa4eefb79644addeafd4fb` | [Run #42503349323](https://github.com/MousaXD/patzer/actions/runs/42503349323): all four CI jobs passed, including real browser regression. **PR base is `main`, not integration**; do not merge to main prematurely. | Individual head CI PASS only; Agent 00 must route into integration |
+| 07 Independent QA | [PR #3](https://github.com/MousaXD/patzer/pull/3) / current harness `60ad47bfd5befce87fb0411a9205840e67aafaf1` before report update | Old baseline run failed as expected; [updated PR run #42509538957](https://github.com/MousaXD/patzer/actions/runs/42509538957) and [push run #42509533617](https://github.com/MousaXD/patzer/actions/runs/42509533617) were queued when checked. | QA release BLOCKED; Agent 07 to inspect completed updated logs |
+
+### Release gate decision
+
+The ten release gates above remain **BLOCKED**, not passed. Gate 10 additionally has observed specialist CI failures; the relevant technical owners must fix or explain them. The latest integrated product's SHA is still the baseline; any future integration update invalidates all earlier release-candidate conclusions until CI and browser QA execute against that exact integration SHA. Independent listening review for sound quality and manual screenshot comparison remain mandatory. **Recommendation remains NO-GO.**
