@@ -226,6 +226,39 @@ try {
     assert.deepEqual(evidence.unnamed,[],'unlabelled controls');
     assert.deepEqual(evidence.system,[],'generic system fonts');
   });
+  await test('Navigation and actions have no decorative emoji',async()=>{
+    await pageReady(page,main.id,5);
+    const labels=await page.evaluate(()=>[...document.querySelectorAll('nav a, nav button, main button')]
+      .filter(el=>/\p{Extended_Pictographic}/u.test(el.textContent||''))
+      .map(el=>(el.textContent||'').trim().slice(0,80)));
+    assert.deepEqual(labels,[],'emoji substituted for designed navigation/actions');
+  });
+  await test('Visible interactive controls have accessible names and focus styles',async()=>{
+    await pageReady(page,main.id,5);
+    const missing=await page.evaluate(()=>[...document.querySelectorAll('button,a[href],input,select,textarea')]
+      .filter(el=>{
+        const r=el.getBoundingClientRect();
+        if(!r.width||!r.height||getComputedStyle(el).visibility==='hidden')return false;
+        if(el.getAttribute('aria-hidden')==='true')return false;
+        const name=el.getAttribute('aria-label')||el.getAttribute('title')||el.textContent?.trim()
+          ||(el.id&&document.querySelector('label[for="'+el.id+'"]')?.textContent?.trim())
+          ||el.closest('label')?.textContent?.trim();
+        return !name;
+      }).map(el=>el.outerHTML.slice(0,120)));
+    assert.deepEqual(missing.slice(0,20),[],'unnamed visible controls');
+    await page.keyboard.press('Tab');
+    const focus=await page.evaluate(()=>{
+      const el=document.activeElement;
+      if(!el||el===document.body)return null;
+      const st=getComputedStyle(el);
+      return {name:el.tagName,outline:st.outlineStyle,shadow:st.boxShadow,border:st.borderWidth};
+    });
+    assert.ok(focus&&(
+      (focus.outline&&focus.outline!=='none') ||
+      (focus.shadow&&focus.shadow!=='none') ||
+      (focus.border&&focus.border!=='0px')
+    ),'no discernible focus styling');
+  });
   await test('Keyboard first/previous/next/last follows selected ply',async()=>{
     await pageReady(page,main.id,2);
     await page.locator('body').click({position:{x:3,y:3}});
