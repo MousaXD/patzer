@@ -85,7 +85,21 @@ describe('Natural sound theme', () => {
   it('keeps legacy Soft and Board profile selections when theme is not explicit', async () => {
     const a = await import('./sounds');
     a.setSoundSet('soft'); expect(a.getAudioTheme()).toBe('soft');
-    a.setMoveSoundSet('board'); expect(a.getAudioTheme()).toBe('board');
+    a.setMoveSoundSet('board'); expect(a.getAudioTheme()).toBe('board-soft');
+  });
+
+  it('preserves recorded Board moves with Soft checks from the old two-setting profile', async () => {
+    const a = await import('./sounds');
+    a.setSoundSet('soft'); a.setMoveSoundSet('board');
+    expect(a.getAudioTheme()).toBe('board-soft');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.playSound('move');
+    expect(recorded).toEqual([expect.stringMatching(/board-move\\.wav$/)]);
+    expect(synthesized).toEqual([]);
+    a.playSound('check');
+    expect(synthesized).toContain(659);
+    expect(synthesized).not.toContain(1175);
+    expect(await a.previewAudio('board-soft', 'move')).toBe(true);
   });
 
   it('allows explicit original Classic and Soft synthesizers', async () => {
