@@ -390,6 +390,12 @@ export function unlockAudio() {
 
 export function playSound(kind: SoundKind) {
   if (!enabled) return;
+  // A board's click handler may run before App's bubbling window unlock handler.
+  // Only unlock directly when the browser confirms an active user gesture.
+  const activation = typeof navigator !== 'undefined'
+    ? (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation
+    : undefined;
+  if (!audioAuthorized && activation?.isActive) unlockAudio();
   const b = ensureBus();
   if (!b) return;
   if (audioTheme === 'natural') {
