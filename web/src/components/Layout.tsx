@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { LogOut, Home, Swords, BookOpen, Settings as SettingsIcon, Users, Server, Menu, X, BarChart3, Target, Search, Keyboard, BookMarked, ListChecks, Microscope, ChevronDown, GraduationCap } from 'lucide-react';
+import {
+  BarChart3, BookMarked, BookOpen, ChevronDown, GraduationCap, Home, Keyboard,
+  ListChecks, LogOut, Menu, Microscope, Search, Server, Settings as SettingsIcon,
+  Swords, Target, UserRound, Users, X, type LucideIcon,
+} from 'lucide-react';
 import { api } from '../api';
 import UpdateNotice from './UpdateNotice';
 import { useAuth } from '../state/auth';
@@ -12,366 +16,419 @@ import { LogoMark, LogoLockup } from './Logo';
 import { LANGUAGES, normalizeLanguage } from '../lib/languages';
 import { endSession } from '../lib/logout';
 
-// v4.0.0 Layout — chess.com-style horizontal top bar.
-// Replaces the v3 narrow left rail. The dark sage navbar (`bg-chesscom-900`)
-// gives the app the same chrome as chess.com itself; primary nav pills carry
-// gold underlines on the active route (matches chess.com's premium accent).
-// v6: command palette trigger + shortcuts trigger live in the right cluster.
-
 interface LayoutProps {
   onOpenPalette?: () => void;
   onOpenShortcuts?: () => void;
+}
+
+type Destination = {
+  to: string;
+  icon: LucideIcon;
+  key: string;
+  fallback: string;
+};
+
+// Keep routing in App.tsx authoritative. These links preserve every existing
+// destination, including nested review/player routes and both admin screens.
+const PRIMARY_DESTINATIONS: readonly Destination[] = [
+  { to: '/', icon: Home, key: 'app.home', fallback: 'Home' },
+  { to: '/play', icon: Swords, key: 'home.playTitle', fallback: 'Play' },
+  { to: '/review', icon: BookOpen, key: 'home.reviewTitle', fallback: 'Review' },
+  { to: '/insights', icon: BarChart3, key: 'insights.title', fallback: 'Insights' },
+  { to: '/train', icon: Target, key: 'train.nav', fallback: 'Training' },
+  { to: '/learn', icon: GraduationCap, key: 'learn.nav', fallback: 'Learning' },
+  { to: '/openings', icon: BookMarked, key: 'openings.nav', fallback: 'Openings' },
+  { to: '/plan', icon: ListChecks, key: 'plan.nav', fallback: 'Plans' },
+  { to: '/players', icon: Users, key: 'players.nav', fallback: 'Players' },
+  { to: '/lab', icon: Microscope, key: 'lab.nav', fallback: 'Lab' },
+];
+
+const ADMIN_DESTINATIONS: readonly Destination[] = [
+  { to: '/admin/users', icon: Users, key: 'admin.users', fallback: 'Users' },
+  { to: '/admin/system', icon: Server, key: 'admin.system', fallback: 'System' },
+];
+
+function isDestinationActive(pathname: string, to: string): boolean {
+  return pathname === to || (to !== '/' && pathname.startsWith(to + '/'));
+}
+
+function NavigationItem({
+  item, label, mobile = false, onNavigate,
+}: {
+  item: Destination;
+  label: string;
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <NavLink
+      to={item.to}
+      end={item.to === '/'}
+      onClick={onNavigate}
+      aria-label={mobile ? undefined : label}
+      title={mobile ? undefined : label}
+      className={({ isActive }) => cn(
+        'group relative flex shrink-0 items-center rounded-xl font-medium transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2',
+        'dark:focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none',
+        mobile
+          ? 'min-h-11 w-full gap-3 px-3 py-2.5 text-sm'
+          : 'mx-auto min-h-[53px] w-[64px] flex-col justify-center gap-1 px-1.5 py-1.5 text-[10px]',
+        isActive
+          ? 'bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-100'
+          : 'text-chesscom-600 hover:bg-chesscom-100 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white',
+      )}
+    >
+      {({ isActive }) => (
+        <>
+          {!mobile && isActive && (
+            <span aria-hidden="true" className="absolute -left-2 h-7 w-[3px] rounded-r-full bg-green-500" />
+          )}
+          <Icon aria-hidden="true" className={cn('shrink-0', mobile ? 'h-[19px] w-[19px]' : 'h-[20px] w-[20px]')} />
+          <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function LanguageSelector({ value, label, onChange, mobile = false }: {
+  value: string;
+  label: string;
+  onChange: (value: string) => void;
+  mobile?: boolean;
+}) {
+  return (
+    <div className={cn('relative min-w-0', mobile ? 'w-full' : 'w-[108px] shrink-0')}>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(
+          'h-9 w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-100',
+        )}
+      >
+        {LANGUAGES.map((language) => (
+          <option value={language.code} key={language.code}>{language.native}</option>
+        ))}
+      </select>
+      <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-chesscom-500" />
+    </div>
+  );
 }
 
 export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) {
   const { t, i18n } = useTranslation();
   const uiLang = normalizeLanguage(i18n.language);
   const { user, refresh } = useAuth();
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const location = useLocation();
-  const [navOpen, setNavOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
-  const [version, setVersion] = useState<string>('');
+  const [version, setVersion] = useState('');
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+
+  const primaryLabel = t('navigation.primary', { defaultValue: 'Primary navigation' });
+  const mobileLabel = t('navigation.mobile', { defaultValue: 'Mobile navigation' });
+  const adminLabel = t('common.admin', { defaultValue: 'Admin' });
+  const closeMenuLabel = t('navigation.close', { defaultValue: 'Close menu' });
+  const openMenuLabel = t('navigation.open', { defaultValue: 'Open menu' });
+  const languageLabel = t('navigation.language', { defaultValue: 'Language' });
+  const isAnalysis = isDestinationActive(location.pathname, '/review') && location.pathname !== '/review';
+  const activeItem = [...PRIMARY_DESTINATIONS, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
+    .find((item) => isDestinationActive(location.pathname, item.to));
+  const pageTitle = activeItem ? t(activeItem.key, { defaultValue: activeItem.fallback }) : t('app.name');
 
   useEffect(() => {
     api.get<{ version: string }>('/api/meta')
-      .then((d) => setVersion(d.version))
+      .then((response) => setVersion(response.version))
       .catch(() => setVersion(''));
   }, []);
 
-  // Auto-close mobile drawer and the admin menu on route change
+  // Navigation never leaves a stale drawer over the newly selected route.
+  useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+
+  // A drawer opened on mobile must release focus when the viewport becomes
+  // desktop-sized. Otherwise a CSS-hidden dialog could keep trapping Tab.
   useEffect(() => {
-    setNavOpen(false);
-    setAdminOpen(false);
-  }, [location.pathname]);
+    if (typeof window.matchMedia !== 'function') return;
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const onChange = (event: MediaQueryListEvent) => {
+      if (event.matches) setDrawerOpen(false);
+    };
+    desktop.addEventListener('change', onChange);
+    return () => desktop.removeEventListener('change', onChange);
+  }, []);
+
+  // The mobile drawer behaves as a modal: Escape closes, Tab stays inside,
+  // and closing returns keyboard focus to the menu trigger.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    drawer.querySelector<HTMLButtonElement>('[data-close-menu]')?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDrawerOpen(false);
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      menuTriggerRef.current?.focus();
+    };
+  }, [drawerOpen]);
 
   async function logout() {
     if (await endSession()) return;
     await refresh();
-    nav('/login');
+    navigate('/login');
   }
 
-  // Nine destinations plus an Admin menu don't fit on a laptop with labels
-  // showing. A breakpoint can't decide this: an admin carries two more items
-  // than a regular profile, and Bulgarian labels are noticeably wider than
-  // English ones, so any fixed width is wrong for somebody. Measure instead —
-  // if the pills would overflow, drop to icons with tooltips, which keeps
-  // every destination one click away rather than hiding some of them.
-  const navRef = useRef<HTMLElement | null>(null);
-  const fullNavWidth = useRef(0);
-  const [compactNav, setCompactNav] = useState(false);
-  useEffect(() => {
-    const nav = navRef.current;
-    if (!nav) return;
-    const check = () => {
-      const available = nav.clientWidth;
-      // dataset, not the closure: the observer can fire mid-update.
-      const isCompact = nav.dataset.compact === '1';
-      if (!isCompact) {
-        // Labels are showing, so this is the width they actually need.
-        fullNavWidth.current = nav.scrollWidth;
-        if (nav.scrollWidth > available + 1) setCompactNav(true);
-      } else if (fullNavWidth.current && available > fullNavWidth.current + 24) {
-        // 24px of hysteresis so a window sitting exactly on the boundary
-        // doesn't flip back and forth.
-        setCompactNav(false);
-      }
-    };
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(nav);
-    return () => ro.disconnect();
-  }, [compactNav, user?.role, i18n.language]);
-  const navLabelClass = compactNav ? 'hidden' : 'inline';
-
-  function NavPill({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) {
-    return (
-      <NavLink
-        to={to}
-        end
-        title={label}
-        className={({ isActive }) =>
-          cn(
-            'relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors 2xl:px-3',
-            isActive
-              ? 'text-white'
-              : 'text-chesscom-300 hover:bg-chesscom-800 hover:text-white',
-            isActive && 'after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-gold-500',
-          )
-        }
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className={navLabelClass}>{label}</span>
-      </NavLink>
-    );
-  }
-
-  function MobileNavItem({ to, icon: Icon, label }: { to: string; icon: React.ElementType; label: string }) {
-    return (
-      <NavLink
-        to={to}
-        end
-        className={({ isActive }) =>
-          cn(
-            'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-            isActive
-              ? 'bg-gold-500 text-chesscom-900'
-              : 'text-chesscom-200 hover:bg-chesscom-800 hover:text-white',
-          )
-        }
-      >
-        <Icon className="h-4 w-4" />
-        <span>{label}</span>
-      </NavLink>
-    );
-  }
+  const searchLabel = t('palette.open', { defaultValue: 'Open command palette' });
+  const shortcutsLabel = t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' });
+  const profileLabel = t('common.settings', { defaultValue: 'Settings' });
+  const logoutLabel = t('common.logout', { defaultValue: 'Log out' });
 
   return (
-    <div className="flex min-h-screen flex-col bg-panel dark:bg-chesscom-950">
-      <UpdateNotice />
-      {/* Top bar — dark sage, horizontal nav. */}
-      <header className="sticky top-0 z-30 bg-chesscom-900 text-white shadow-soft">
-        <div className="mx-auto flex h-14 max-w-[1920px] items-center gap-2 px-3 sm:px-6">
-          <NavLink to="/" className="flex shrink-0 items-center gap-2">
-            <LogoMark size={28} />
-            <span className="hidden text-base font-bold tracking-tight sm:inline">{t('app.name')}</span>
-          </NavLink>
-
-          {/* Desktop nav */}
-          <nav ref={navRef} data-compact={compactNav ? '1' : '0'} className="ml-4 hidden min-w-0 flex-1 items-center gap-0.5 md:flex">
-            <NavPill to="/" icon={Home} label={t('app.home')} />
-            <NavPill to="/play" icon={Swords} label={t('home.playTitle')} />
-            <NavPill to="/review" icon={BookOpen} label={t('home.reviewTitle')} />
-            <NavPill to="/insights" icon={BarChart3} label={t('insights.title', { defaultValue: 'Insights' })} />
-            <NavPill to="/train" icon={Target} label={t('train.nav', { defaultValue: 'Train' })} />
-            <NavPill to="/learn" icon={GraduationCap} label={t('learn.nav')} />
-            <NavPill to="/openings" icon={BookMarked} label={t('openings.nav', { defaultValue: 'Openings' })} />
-            <NavPill to="/plan" icon={ListChecks} label={t('plan.nav', { defaultValue: 'Plan' })} />
-            <NavPill to="/players" icon={Users} label={t('players.nav', { defaultValue: 'Players' })} />
-            <NavPill to="/lab" icon={Microscope} label={t('lab.nav', { defaultValue: 'Lab' })} />
-            {user?.role === 'admin' && (
-              <>
-                <span className="mx-2 h-5 w-px bg-chesscom-700" />
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setAdminOpen((open) => !open)}
-                    title={t('common.admin', { defaultValue: 'Admin' })}
-                    aria-expanded={adminOpen}
-                    aria-haspopup="menu"
-                    className={cn(
-                      'relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                      adminOpen
-                        ? 'bg-chesscom-800 text-white'
-                        : 'text-chesscom-300 hover:bg-chesscom-800 hover:text-white',
-                    )}
-                  >
-                    <Users className="h-4 w-4 shrink-0" />
-                    <span className={navLabelClass}>{t('common.admin', { defaultValue: 'Admin' })}</span>
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                  {adminOpen && (
-                    <div
-                      role="menu"
-                      className="absolute left-0 top-full mt-1 min-w-44 rounded-lg border border-chesscom-700 bg-chesscom-900 p-1 shadow-lg"
-                    >
-                      <NavLink
-                        to="/admin/users"
-                        role="menuitem"
-                        onClick={() => setAdminOpen(false)}
-                        className={({ isActive }) => cn(
-                          'flex items-center gap-2 rounded-md px-3 py-2 text-sm',
-                          isActive
-                            ? 'bg-chesscom-800 text-white'
-                            : 'text-chesscom-200 hover:bg-chesscom-800 hover:text-white',
-                        )}
-                      >
-                        <Users className="h-4 w-4" />
-                        <span>{t('admin.users')}</span>
-                      </NavLink>
-                      <NavLink
-                        to="/admin/system"
-                        role="menuitem"
-                        onClick={() => setAdminOpen(false)}
-                        className={({ isActive }) => cn(
-                          'flex items-center gap-2 rounded-md px-3 py-2 text-sm',
-                          isActive
-                            ? 'bg-chesscom-800 text-white'
-                            : 'text-chesscom-200 hover:bg-chesscom-800 hover:text-white',
-                        )}
-                      >
-                        <Server className="h-4 w-4" />
-                        <span>{t('admin.system')}</span>
-                      </NavLink>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </nav>
-
-          <div className="flex flex-1 items-center justify-end gap-2 md:flex-none">
-            {/* Command palette quick-trigger — visible cue for ⌘K. */}
-            {onOpenPalette && (
-              <button
-                onClick={onOpenPalette}
-                className="hidden shrink-0 items-center gap-2 rounded-md border border-chesscom-700 bg-chesscom-800/70 px-2.5 py-1.5 text-xs text-chesscom-300 hover:bg-chesscom-800 hover:text-white sm:inline-flex"
-                title={t('palette.open')}
-              >
-                <Search className="h-3.5 w-3.5" />
-                <span className="hidden min-[1800px]:inline">{t('palette.search', { defaultValue: 'Search' })}</span>
-                <kbd className="hidden rounded border border-chesscom-700 px-1 font-mono text-[11px] text-chesscom-300 min-[1800px]:inline">⌘K</kbd>
-              </button>
-            )}
-            {onOpenShortcuts && (
-              <button
-                onClick={onOpenShortcuts}
-                className="hidden shrink-0 rounded-md p-2 text-chesscom-300 hover:bg-chesscom-800 hover:text-white min-[1800px]:inline-flex"
-                title={t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}
-              >
-                <Keyboard className="h-4 w-4" />
-              </button>
-            )}
-            {/* Language toggle — only on genuinely wide screens (2xl). Below
-                that the nav plus the user cluster already fill the bar, and
-                this was the first thing to hang off the right edge on a
-                laptop. Nothing becomes unreachable: the switch is in
-                Settings, in the command palette (⌘K → "Switch to …") and in
-                the mobile drawer. */}
-            <div className="hidden shrink-0 rounded-lg border border-chesscom-700 bg-chesscom-800 p-0.5 text-xs min-[1800px]:flex">
-              {LANGUAGES.map((l) => (
-                <button
-                  key={l.code}
-                  onClick={() => i18n.changeLanguage(l.code)}
-                  className={cn('rounded-md px-2 py-1 transition-colors', uiLang === l.code ? 'bg-gold-500 text-chesscom-900' : 'text-chesscom-300 hover:text-white')}
-                >{l.short}</button>
+    <div className="flex min-h-dvh min-w-0 bg-white text-chesscom-900 dark:bg-chesscom-950 dark:text-chesscom-100" data-app-shell>
+      <a href="#patzer-main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-chesscom-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:focus:bg-chesscom-900 dark:focus:text-white">
+        {t('navigation.skip', { defaultValue: 'Skip to main content' })}
+      </a>
+      {/* Width is stable: no collapsed/expanded rail resizing the chessboard. */}
+      <aside
+        className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col border-r border-chesscom-200 bg-white dark:border-chesscom-700 dark:bg-chesscom-900 md:flex"
+        aria-label={primaryLabel}
+        data-navigation-rail
+      >
+        <NavLink
+          to="/"
+          className="flex h-[68px] shrink-0 items-center justify-center border-b border-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold-500 dark:border-chesscom-800"
+          aria-label={t('app.name')}
+          title={t('app.name')}
+        >
+          <LogoMark size={33} />
+        </NavLink>
+        <nav aria-label={primaryLabel} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-2 py-2" data-primary-navigation>
+          {PRIMARY_DESTINATIONS.map((item) => (
+            <NavigationItem key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })} />
+          ))}
+          {user?.role === 'admin' && (
+            <div className="mt-2 space-y-0.5 border-t border-chesscom-200 pt-2 dark:border-chesscom-700" aria-label={adminLabel}>
+              <span className="sr-only">{adminLabel}</span>
+              {ADMIN_DESTINATIONS.map((item) => (
+                <NavigationItem key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })} />
               ))}
             </div>
-
-            {/* User chip */}
-            <NavLink
-              to="/settings"
-              className="hidden shrink-0 items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-chesscom-800 sm:flex"
-              title={`${user?.profile.display_name ?? ''} @${user?.username ?? ''}`}
-            >
-              <span className="text-lg leading-none">{user?.profile.avatar_emoji ?? '♟'}</span>
-              <div className="hidden max-w-[10rem] text-right text-xs leading-tight xl:block">
-                <div className="truncate font-medium">{user?.profile.display_name}</div>
-                <div className="truncate text-[11px] text-chesscom-400">@{user?.username}</div>
-              </div>
-            </NavLink>
-
-            <NavLink
-              to="/settings"
-              className="hidden shrink-0 rounded-md p-2 text-chesscom-300 hover:bg-chesscom-800 hover:text-white xl:inline-flex"
-              title={t('common.settings')}
-            >
-              <SettingsIcon className="h-4 w-4" />
-            </NavLink>
-
-            <button
-              onClick={logout}
-              className="hidden shrink-0 items-center gap-1.5 rounded-md border border-chesscom-700 bg-chesscom-800/50 px-2.5 py-1.5 text-sm text-chesscom-200 hover:border-bad/60 hover:bg-bad/15 hover:text-white sm:inline-flex"
-              title={t('common.logout')}
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden xl:inline">{t('common.logout')}</span>
-            </button>
-
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setNavOpen(true)}
-              className="rounded-lg p-2 text-chesscom-200 hover:bg-chesscom-800 md:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-          </div>
+          )}
+        </nav>
+        <div className="shrink-0 border-t border-chesscom-200 px-2 py-2 dark:border-chesscom-700">
+          <NavigationItem
+            item={{ to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' }}
+            label={profileLabel}
+          />
         </div>
-      </header>
+      </aside>
 
-      {/* Mobile drawer */}
-      {navOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setNavOpen(false)} />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-y-auto bg-chesscom-900 p-4 text-white md:hidden">
-            <div className="mb-3 flex items-center justify-between">
-              <LogoLockup size={24} />
-              <button onClick={() => setNavOpen(false)} className="rounded-lg p-1.5 text-chesscom-300 hover:bg-chesscom-800">
-                <X className="h-5 w-5" />
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col" data-workspace={isAnalysis ? 'analysis' : 'default'}>
+        <UpdateNotice />
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-chesscom-200 bg-white/95 px-3 shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:px-5" data-workspace-header>
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <NavLink to="/" className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 md:hidden" aria-label={t('app.name')}>
+              <LogoMark size={27} />
+            </NavLink>
+            <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>
+          </div>
+          {onOpenPalette && (
+            <button
+              type="button"
+              onClick={onOpenPalette}
+              className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:px-3"
+              aria-label={searchLabel}
+              title={searchLabel}
+            >
+              <Search aria-hidden="true" className="h-[17px] w-[17px]" />
+              <span className="hidden text-xs font-medium lg:inline">{t('palette.search', { defaultValue: 'Search' })}</span>
+              <kbd className="hidden rounded border border-chesscom-200 px-1.5 py-0.5 text-[10px] dark:border-chesscom-600 xl:inline">Ctrl K</kbd>
+            </button>
+          )}
+          {onOpenShortcuts && (
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              aria-label={shortcutsLabel}
+              title={shortcutsLabel}
+              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex"
+            >
+              <Keyboard aria-hidden="true" className="h-[18px] w-[18px]" />
+            </button>
+          )}
+          <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} /></div>
+          <NavLink
+            to="/settings"
+            className="hidden h-9 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex"
+            aria-label={profileLabel}
+            title={profileLabel}
+          >
+            <UserRound aria-hidden="true" className="h-[19px] w-[19px] shrink-0" />
+            <span className="hidden min-w-0 truncate font-semibold xl:inline">{user?.profile.display_name ?? user?.username}</span>
+          </NavLink>
+          <button
+            type="button"
+            onClick={() => { void logout(); }}
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex"
+            title={logoutLabel}
+            aria-label={logoutLabel}
+          >
+            <LogOut aria-hidden="true" className="h-[18px] w-[18px]" />
+          </button>
+          <button
+            type="button"
+            ref={menuTriggerRef}
+            onClick={() => setDrawerOpen(true)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 md:hidden"
+            aria-label={openMenuLabel}
+            aria-expanded={drawerOpen}
+            aria-controls="patzer-mobile-drawer"
+          >
+            <Menu aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </header>
+
+        {/* No global max-width on the analysis route. This is Agent 03's
+            predictable full-width, min-w-0 flex workspace contract. */}
+        <main id="patzer-main" tabIndex={-1} className="flex min-h-0 min-w-0 w-full flex-1 flex-col" data-shell-main>
+          <div className={cn(
+            'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
+            isAnalysis ? 'max-w-none' : 'max-w-[1440px]',
+          )} data-workspace-content>
+            <Outlet />
+          </div>
+        </main>
+
+        <footer className="shrink-0 border-t border-chesscom-200 bg-white px-3 py-2 text-xs text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-300">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {version && (
+              <button
+                type="button"
+                onClick={() => setShowChangelog(true)}
+                className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 hover:text-chesscom-900 dark:hover:text-white"
+                title={t('common.viewChangelog')}
+              >
+                Patzer v{version}
+              </button>
+            )}
+            {version && <span aria-hidden="true">·</span>}
+            <GitHubStar />
+          </div>
+        </footer>
+      </div>
+
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/55"
+            onClick={() => setDrawerOpen(false)}
+            aria-label={closeMenuLabel}
+            tabIndex={-1}
+          />
+          <aside
+            ref={drawerRef}
+            id="patzer-mobile-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={mobileLabel}
+            className="absolute inset-y-0 right-0 flex h-full w-[min(340px,90vw)] flex-col overflow-y-auto border-l border-chesscom-200 bg-white p-4 text-chesscom-900 shadow-2xl dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-100"
+          >
+            <div className="mb-3 flex shrink-0 items-center justify-between gap-3 border-b border-chesscom-200 pb-3 dark:border-chesscom-700">
+              <LogoLockup size={27} />
+              <button
+                type="button"
+                data-close-menu
+                onClick={() => setDrawerOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+                aria-label={closeMenuLabel}
+              >
+                <X aria-hidden="true" className="h-5 w-5" />
               </button>
             </div>
             {user && (
               <NavLink
                 to="/settings"
-                className="mb-3 flex items-center gap-2 rounded-lg bg-chesscom-800/60 px-3 py-2 hover:bg-chesscom-800"
+                onClick={() => setDrawerOpen(false)}
+                className="mb-3 flex min-w-0 items-center gap-3 rounded-xl bg-chesscom-50 px-3 py-3 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:bg-chesscom-800 dark:hover:bg-chesscom-700"
               >
-                <span className="text-xl leading-none">{user.profile.avatar_emoji ?? '♟'}</span>
-                <div className="min-w-0 flex-1 leading-tight">
-                  <div className="truncate text-sm font-medium">{user.profile.display_name}</div>
-                  <div className="truncate text-xs text-chesscom-400">@{user.username}</div>
-                </div>
+                <UserRound aria-hidden="true" className="h-6 w-6 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{user.profile.display_name}</span>
+                  <span className="block truncate text-xs text-chesscom-500 dark:text-chesscom-300">@{user.username}</span>
+                </span>
               </NavLink>
             )}
-            <nav className="space-y-1">
-              <MobileNavItem to="/" icon={Home} label={t('app.home')} />
-              <MobileNavItem to="/play" icon={Swords} label={t('home.playTitle')} />
-              <MobileNavItem to="/review" icon={BookOpen} label={t('home.reviewTitle')} />
-              <MobileNavItem to="/insights" icon={BarChart3} label={t('insights.title', { defaultValue: 'Insights' })} />
-              <MobileNavItem to="/train" icon={Target} label={t('train.nav', { defaultValue: 'Train' })} />
-              <MobileNavItem to="/learn" icon={GraduationCap} label={t('learn.nav')} />
-              <MobileNavItem to="/openings" icon={BookMarked} label={t('openings.nav', { defaultValue: 'Openings' })} />
-              <MobileNavItem to="/plan" icon={ListChecks} label={t('plan.nav', { defaultValue: 'Plan' })} />
-              <MobileNavItem to="/players" icon={Users} label={t('players.nav', { defaultValue: 'Players' })} />
-              <MobileNavItem to="/lab" icon={Microscope} label={t('lab.nav', { defaultValue: 'Lab' })} />
-              <MobileNavItem to="/settings" icon={SettingsIcon} label={t('common.settings')} />
+            <nav aria-label={mobileLabel} className="space-y-1">
+              {PRIMARY_DESTINATIONS.map((item) => (
+                <NavigationItem
+                  key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })}
+                  mobile onNavigate={() => setDrawerOpen(false)}
+                />
+              ))}
+              <NavigationItem
+                item={{ to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' }}
+                label={profileLabel} mobile onNavigate={() => setDrawerOpen(false)}
+              />
               {user?.role === 'admin' && (
-                <>
-                  <div className="px-3 pt-4 pb-1 text-[11px] uppercase tracking-wide text-chesscom-400">{t('common.admin')}</div>
-                  <MobileNavItem to="/admin/users" icon={Users} label={t('admin.users')} />
-                  <MobileNavItem to="/admin/system" icon={Server} label={t('admin.system')} />
-                </>
+                <div className="mt-3 space-y-1 border-t border-chesscom-200 pt-3 dark:border-chesscom-700">
+                  <p className="px-3 pb-1 text-xs font-semibold text-chesscom-500 dark:text-chesscom-300">{adminLabel}</p>
+                  {ADMIN_DESTINATIONS.map((item) => (
+                    <NavigationItem
+                      key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })}
+                      mobile onNavigate={() => setDrawerOpen(false)}
+                    />
+                  ))}
+                </div>
               )}
             </nav>
-            <div className="mt-auto space-y-2 pt-6">
-              <div className="flex gap-1">
-                {LANGUAGES.map((l) => (
-                  <button key={l.code} onClick={() => i18n.changeLanguage(l.code)} className={cn('flex-1 rounded-lg px-2 py-1 text-xs', uiLang === l.code ? 'bg-gold-500 text-chesscom-900' : 'bg-chesscom-800 text-chesscom-200')}>{l.short}</button>
-                ))}
-              </div>
-              <button onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-chesscom-200 hover:bg-chesscom-800">
-                <LogOut className="h-4 w-4" />
-                {t('common.logout')}
+            <div className="mt-auto space-y-3 border-t border-chesscom-200 pt-4 dark:border-chesscom-700">
+              <LanguageSelector mobile value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} />
+              {onOpenShortcuts && (
+                <button
+                  type="button"
+                  onClick={() => { setDrawerOpen(false); onOpenShortcuts(); }}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+                >
+                  <Keyboard aria-hidden="true" className="h-5 w-5" />{shortcutsLabel}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { setDrawerOpen(false); void logout(); }}
+                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+              >
+                <LogOut aria-hidden="true" className="h-5 w-5" />{logoutLabel}
               </button>
             </div>
           </aside>
-        </>
+        </div>
       )}
-
-      {/* Main content */}
-      <main className="flex-1">
-        <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
-          <Outlet />
-        </div>
-      </main>
-
-      {/* Footer with version chip and the one place the repo is advertised. */}
-      <footer className="border-t border-chesscom-200 bg-white px-3 py-2 text-xs text-chesscom-400 dark:border-chesscom-800 dark:bg-chesscom-900">
-        <div className="flex items-center justify-center gap-2">
-          {version && (
-            <button
-              onClick={() => setShowChangelog(true)}
-              className="hover:text-chesscom-700 dark:hover:text-chesscom-200"
-              title={t('common.viewChangelog')}
-            >
-              Patzer v{version}
-            </button>
-          )}
-          {version && <span aria-hidden="true">·</span>}
-          <GitHubStar />
-        </div>
-      </footer>
-
       {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </div>
   );
