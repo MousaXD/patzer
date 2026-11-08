@@ -4,6 +4,7 @@ import { Chess } from 'chess.js';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { createAnalysisEngine } from '../chess/engine.js';
+import { scoreVariationMove, VariationScoringError } from '../chess/variationScoring.js';
 import {
   classifyByWpDrop, refineClassification, normalizeEval, cpToWinPct,
   cpLossForPly, cpLossForAcpl, moveAccuracy, estimateElo, estimateGamePerformance, BOOK_PLIES,
@@ -38,6 +39,14 @@ const positionSchema = z.object({
   depth: z.number().int().min(8).max(22).default(16),
   lines: z.number().int().min(1).max(5).default(3),
 });
+
+// Read-only variation scoring: no game_id, PGN writes, or stored analysis.
+const variationSchema = z.object({
+  fen_before: z.string().min(10).max(128),
+  move_uci: z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/),
+  depth: z.number().int().min(8).max(22).default(16),
+  ply: z.number().int().min(1).max(1024).optional(),
+}).strict();
 
 export interface AnalysisRow {
   depth: number;
@@ -207,6 +216,32 @@ router.post('/position', async (c) => {
     return c.json(result);
   } catch (err) {
     return c.json({ error: 'engine_error', detail: err instanceof Error ? err.message : String(err) }, 500);
+  } finally {
+    positionInflight.delete(user.id);
+  }
+});
+
+// Ad-hoc score for a new exploratory variation. Shares the authenticated
+// position-evaluation concurrency budget; no persistence or PGN mutation.
+router.post('/variation-move', async (c) => {
+  const user = c.get('user');
+  const body = await c.req.json().catch(() => null);
+  const parsed = variationSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
+  if (positionInflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
+
+  const work = scoreVariationMove(parsed.data, createAnalysisEngine);
+  positionInflight.set(user.id, work);
+  try {
+    return c.json({ quality: await work });
+  } catch (error) {
+    if (error instanceof VariationScoringError) {
+      const status = error.code === 'engine_timeout' ? 504
+        : error.code === 'engine_error' ? 503 : 400;
+      return c.json({ error: error.code }, status);
+    }
+    // Never expose local binary paths or process error messages to the client.
+    return c.json({ error: 'engine_error' }, 503);
   } finally {
     positionInflight.delete(user.id);
   }

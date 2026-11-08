@@ -26,6 +26,7 @@ import Players from './pages/Players';
 import PlayerProfile from './pages/PlayerProfile';
 import AdminUsers from './pages/admin/Users';
 import AdminSystem from './pages/admin/System';
+import McpConnection from './pages/admin/McpConnection';
 import IncomingChallengeModal from './components/IncomingChallengeModal';
 import CommandPalette from './components/CommandPalette';
 import ShortcutsModal from './components/ShortcutsModal';
@@ -121,21 +122,33 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [user, nav]);
 
-  // Apply site theme (light / dark / auto) — toggles `dark` class on <html>
+  // Reconcile the saved profile with the pre-paint bootstrap. The explicit
+  // legacy "auto" setting continues to follow OS changes.
   useEffect(() => {
-    const theme = user?.profile?.site_theme ?? 'auto';
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    if (loading) return;
+    const saved = user?.profile?.site_theme;
+    const choice = saved === 'light' || saved === 'dark' || saved === 'auto' ? saved : 'light';
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
-      const wantDark = theme === 'dark' || (theme === 'auto' && mql.matches);
-      document.documentElement.classList.toggle('dark', wantDark);
+      const dark = choice === 'dark' || (choice === 'auto' && query.matches);
+      document.documentElement.classList.toggle('dark', dark);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      document.documentElement.style.backgroundColor = dark ? '#171a1c' : '#ffffff';
+      document.querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', dark ? '#171a1c' : '#ffffff');
     };
+    try {
+      if (user) window.localStorage.setItem('patzer-site-theme', choice);
+      else window.localStorage.removeItem('patzer-site-theme');
+    } catch { /* storage may be unavailable */ }
     apply();
-    if (theme === 'auto') {
-      mql.addEventListener('change', apply);
-      return () => mql.removeEventListener('change', apply);
+    if (choice === 'auto') {
+      query.addEventListener('change', apply);
+      return () => query.removeEventListener('change', apply);
     }
     return undefined;
-  }, [user?.profile?.site_theme]);
+  }, [loading, user?.id, user?.profile?.site_theme]);
 
   if (loading) {
     return (
@@ -196,6 +209,7 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           {user.role === 'admin' && <Route path="/admin/users" element={<AdminUsers />} />}
           {user.role === 'admin' && <Route path="/admin/system" element={<AdminSystem />} />}
+          {user.role === 'admin' && <Route path="/admin/mcp" element={<McpConnection />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

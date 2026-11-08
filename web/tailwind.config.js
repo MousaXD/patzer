@@ -10,6 +10,29 @@ export default {
         // callsite still renders in the right family (gradual purge — the
         // tokens point to neutral greys instead of slate-blue, which is what
         // was clashing with chess.com chrome before).
+        ui: {
+          bg: 'var(--ui-bg)',
+          surface: 'var(--ui-surface)',
+          raised: 'var(--ui-surface-raised)',
+          muted: 'var(--ui-surface-muted)',
+          hover: 'var(--ui-surface-hover)',
+          pressed: 'var(--ui-surface-pressed)',
+          foreground: 'var(--ui-foreground)',
+          subtle: 'var(--ui-foreground-subtle)',
+          mutedText: 'var(--ui-foreground-muted)',
+          border: 'var(--ui-border)',
+          strong: 'var(--ui-border-strong)',
+          primary: 'var(--ui-primary)',
+          'primary-hover': 'var(--ui-primary-hover)',
+          'on-primary': 'var(--ui-on-primary)',
+          focus: 'var(--ui-focus)',
+          danger: 'var(--ui-danger)',
+          'danger-surface': 'var(--ui-danger-surface)',
+          success: 'var(--ui-success)',
+          warning: 'var(--ui-warning)',
+          info: 'var(--ui-info)',
+          overlay: 'var(--ui-overlay)',
+        },
         chesscom: {
           50:  '#f7f6f5',
           100: '#ebe9e7',
@@ -41,7 +64,7 @@ export default {
           600: '#e6a700',
           700: '#a8780a',
         },
-        panel: '#f1f1f0',
+        panel: 'var(--ui-bg)',
         hi:    '#e0c34a',
 
         // Legacy palette — redirected to chesscom-equivalent values so any
@@ -68,12 +91,19 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"Inter"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
-        mono: ['"Roboto Mono"', 'ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'],
+        sans: ['Patzer Sans'],
+        mono: ['Patzer Mono'],
       },
       // Chess.com-style shadows — pure black alpha base reads warmer over the
       // sage/cream chrome than the slate-blue base v4 used.
+      borderRadius: {
+        'ui-sm': 'var(--ui-radius-sm)',
+        'ui-md': 'var(--ui-radius-md)',
+        'ui-lg': 'var(--ui-radius-lg)',
+      },
       boxShadow: {
+        'ui-soft': 'var(--ui-shadow-soft)',
+        'ui-popover': 'var(--ui-shadow-popover)',
         soft: '0 1px 2px rgba(0,0,0,0.04), 0 2px 8px -2px rgba(0,0,0,0.06)',
         lift: '0 2px 4px rgba(0,0,0,0.06), 0 12px 24px -8px rgba(0,0,0,0.16)',
         board: '0 4px 16px rgba(0,0,0,0.18)',

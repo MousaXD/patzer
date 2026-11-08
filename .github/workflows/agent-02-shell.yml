@@ -1,0 +1,48 @@
+name: Agent 02 - Navigation Shell
+
+on:
+  push:
+    branches: [agent-02/shell-navigation]
+  pull_request:
+    branches: [feat/patzer-frontend-overhaul]
+    paths:
+      - 'web/src/components/Layout.tsx'
+      - 'web/src/components/navigation/**'
+      - '.github/workflows/agent-02-shell.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Typecheck, tests, build and browser screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test all workspaces
+        run: npm test
+      - name: Build web
+        run: npm run build -w web
+      - name: Install isolated Playwright and Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1.56.1
+          ln -sfn "$RUNNER_TEMP/pw/node_modules/playwright" node_modules/playwright
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Browser responsiveness and screenshots
+        run: node web/src/components/navigation/capture-shell.mjs
+      - name: Upload shell screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-02-shell-screenshots
+          path: artifacts/agent-02/*.png
+          if-no-files-found: warn
