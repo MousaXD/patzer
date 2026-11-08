@@ -182,7 +182,7 @@ try {
       // domcontentloaded may predate React hydration and authentication refresh.
       // Wait for meaningful content rather than falsely flagging a normal loading transition.
       await page.waitForFunction(() => (document.querySelector('#root')?.textContent?.trim().length ?? 0) > 0,
-        { timeout: 5000 });
+        undefined, { timeout: 5000 });
       assert.ok((await page.locator('#root').innerText()).trim().length>0,'blank '+path);
     }
     assert.deepEqual(browserErrors.slice(prior),[],'uncaught route errors');
