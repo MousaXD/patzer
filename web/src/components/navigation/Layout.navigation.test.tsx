@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -177,7 +177,9 @@ describe('Patzer navigation rail', () => {
       mount();
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
       expect(screen.getByRole('dialog', { name: 'Mobile navigation' })).toBeTruthy();
-      for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
+      act(() => {
+        for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent);
+      });
       expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
     } finally {
       vi.unstubAllGlobals();
@@ -207,10 +209,11 @@ describe('Patzer navigation rail', () => {
     fireEvent.change(language, { target: { value: 'de' } });
     expect(harness.changeLanguage).toHaveBeenCalledWith('de');
     expect(screen.getAllByRole('link', { name: 'Settings' })[0].getAttribute('href')).toBe('/settings');
+    // Check the footer before logout redirects outside this isolated router.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Patzer v7.19.0' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await waitFor(() => expect(harness.endSession).toHaveBeenCalledTimes(1));
     expect(harness.refresh).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Patzer v7.19.0' })).toBeTruthy());
   });
 
   it('retains full translated names as accessible labels without expanding the rail', () => {
