@@ -1,0 +1,57 @@
+name: Frontend Overhaul QA
+
+# Independent additive certification. Existing main CI remains unchanged.
+on:
+  push:
+    branches:
+      - agent-07/frontend-qa-certification
+      - feat/patzer-frontend-overhaul
+  pull_request:
+    branches:
+      - main
+      - feat/patzer-frontend-overhaul
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-frontend-browser-qa:
+    name: Independent browser QA (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Exact source revision
+        run: git rev-parse HEAD
+      - name: Install project dependencies
+        run: npm ci
+      - name: Existing typecheck
+        run: npm run typecheck
+      - name: Existing unit tests
+        run: npm test
+      - name: Existing build
+        run: npm run build
+      - name: Prepare real Stockfish
+        run: npm run setup
+      - name: Install isolated Playwright and Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright
+          ln -sfn "$RUNNER_TEMP/pw/node_modules/playwright" node_modules/playwright
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Run independent real-browser certification
+        run: node qa/agent07/frontend-overhaul-smoke.mjs
+        env:
+          PATZER_QA_ARTIFACTS: qa-artifacts/frontend-overhaul
+      - name: Upload browser evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-overhaul-qa-${{ github.run_id }}
+          path: qa-artifacts/frontend-overhaul/
+          if-no-files-found: warn
+          retention-days: 14
