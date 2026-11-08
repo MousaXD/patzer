@@ -27,7 +27,7 @@ export default function Review() {
       const params = new URLSearchParams({ limit: '100' });
       if (bookmarkedOnly) params.set('bookmarked', '1');
       if (q.trim()) params.set('q', q.trim());
-      return api.get<{ games: GameRow[] }>(`/api/games?${params.toString()}`);
+      return api.get<{ games: GameRow[]; total: number }>(`/api/games?${params.toString()}`);
     },
   });
 
@@ -129,7 +129,7 @@ export default function Review() {
           {bookmarkedOnly ? t('review.starredFilterOn', { defaultValue: 'Starred only' }) : t('review.starredFilterOff', { defaultValue: 'All games' })}
         </button>
         <span className="text-xs text-chesscom-400">
-          {counts.total} {t('review.games', { defaultValue: 'games' })}{counts.starred > 0 && ` · ${counts.starred} ★`}
+          {data?.total ?? counts.total} {t('review.games', { defaultValue: 'games' })}{data && data.total > counts.total && ` · showing latest ${counts.total}`}{counts.starred > 0 && ` · ${counts.starred} ★ shown`}
         </span>
       </div>
 

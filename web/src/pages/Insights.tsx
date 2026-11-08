@@ -25,6 +25,7 @@ type Achievement = {
 type Color = 'white' | 'black';
 interface OpeningRow { eco: string; name: string; color: Color; played: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }
 interface InsightsV2 {
+  games_total: number;
   games_analyzed: number;
   activity_heatmap: { day: string; games: number; wins: number }[];
   rating_trajectory: Record<string, { t: string; r: number }[]>;
@@ -67,7 +68,7 @@ export default function Insights() {
   }, [location.hash, achievementsData]);
 
   if (isLoading) return <Skeleton />;
-  if (!data || data.games_analyzed === 0) {
+  if (!data || data.games_total === 0) {
     return (
       <div className="card flex flex-col items-center gap-2 p-10 text-center">
         <BarChart3 className="h-8 w-8 text-chesscom-400" />
@@ -82,7 +83,15 @@ export default function Insights() {
     <div className="space-y-6">
       <header>
         <h1 className="page-h1">{t('insights.title', { defaultValue: 'Insights' })}</h1>
-        <p className="page-sub">{t('insights.subv2', { defaultValue: 'Patterns across your last {{n}} analyzed games.', n: data.games_analyzed })}</p>
+        <p className="page-sub">{t('insights.historyCoverage', {
+          defaultValue: '{{total}} saved games · {{analyzed}} analyzed',
+          total: data.games_total, analyzed: data.games_analyzed,
+        })}</p>
+        <p className="mt-1 text-xs text-chesscom-500 dark:text-chesscom-400">
+          {t('insights.statisticsCoverage', {
+            defaultValue: 'Results include your full game history. Openings include games with ECO tags; accuracy and move-quality statistics use analyzed games only.',
+          })}
+        </p>
       </header>
 
       {/* Achievements */}
@@ -90,11 +99,17 @@ export default function Insights() {
 
       {/* Phase accuracy + Time-class breakdown side-by-side */}
       <div className="grid gap-4 md:grid-cols-2">
-        <PhaseAccuracyCard data={data.phase_accuracy} />
+        {data.games_analyzed ? <PhaseAccuracyCard data={data.phase_accuracy} /> : (
+          <div className="card flex flex-col justify-center gap-2 p-4">
+            <h2 className="text-sm font-semibold">Accuracy requires game analysis</h2>
+            <p className="text-xs text-chesscom-500">Your results are already counted below. Analyze a game to unlock move-level accuracy and mistakes.</p>
+            <Link to="/review" className="btn-secondary w-fit text-xs">Review games</Link>
+          </div>
+        )}
         <TimeClassCard data={data.time_class_stats} />
       </div>
 
-      {data.move_quality && <MoveQualityCard data={data.move_quality} />}
+      {data.games_analyzed > 0 && data.move_quality && <MoveQualityCard data={data.move_quality} />}
 
       {/* Activity heatmap */}
       <ActivityHeatmap data={data.activity_heatmap} />
@@ -102,12 +117,12 @@ export default function Insights() {
       {/* Rating trajectory + accuracy trend */}
       <div className="grid gap-4 md:grid-cols-2">
         <RatingTrajectoryCard data={data.rating_trajectory} />
-        <AccuracyTrendCard data={data.accuracy_trend} />
+        {data.games_analyzed > 0 && <AccuracyTrendCard data={data.accuracy_trend} />}
       </div>
 
       {/* Mistake taxonomy + Opening repertoire */}
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-        <MistakeTaxonomyCard data={data.mistake_taxonomy} />
+        {data.games_analyzed > 0 && <MistakeTaxonomyCard data={data.mistake_taxonomy} />}
         <OpeningRepertoireCard data={data.opening_repertoire} />
       </div>
     </div>
