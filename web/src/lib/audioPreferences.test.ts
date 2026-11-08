@@ -17,6 +17,13 @@ describe('device-local audio preferences', () => {
     expect(readAudioPreferences()).toEqual({ theme: 'soft', volume: 0.35 });
     expect(isAudioThemeExplicit()).toBe(true);
   });
+  it('preserves the combined legacy Board plus Soft theme across reloads', () => {
+    expect(isAudioTheme('board-soft')).toBe(true);
+    writeAudioPreferences({ theme: 'board-soft' });
+    expect(readAudioPreferences().theme).toBe('board-soft');
+    expect(isAudioThemeExplicit()).toBe(true);
+  });
+
   it('volume alone does not override inherited old profile settings', () => {
     writeAudioPreferences({ volume: 0.5 });
     expect(isAudioThemeExplicit()).toBe(false);
