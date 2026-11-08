@@ -1,5 +1,5 @@
 /** Device-local chess audio configuration. No server schema changes. */
-export type AudioTheme = 'natural' | 'board' | 'classic' | 'soft';
+export type AudioTheme = 'natural' | 'board' | 'board-soft' | 'classic' | 'soft';
 export interface AudioPreferences { theme: AudioTheme; volume: number }
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = { theme: 'natural', volume: 0.65 };
 const KEY = 'patzer.audio.v1';
@@ -10,7 +10,7 @@ function storage(): Storage | undefined {
 }
 
 export function isAudioTheme(value: unknown): value is AudioTheme {
-  return value === 'natural' || value === 'board' || value === 'classic' || value === 'soft';
+  return value === 'natural' || value === 'board' || value === 'board-soft' || value === 'classic' || value === 'soft';
 }
 
 export function normalizeVolume(value: unknown): number {
