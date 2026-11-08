@@ -1,0 +1,47 @@
+name: Patzer design system certification
+
+on:
+  pull_request:
+    branches: [main, feat/patzer-frontend-overhaul]
+    paths:
+      - 'web/**'
+      - 'docs/design-system.md'
+      - '.github/workflows/design-system.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  design-system:
+    name: Semantic CSS, fonts, controls and Chromium themes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Static design-system contract
+        run: node --test web/tests/design-system.contract.test.mjs
+      - name: TypeScript and production Vite build
+        run: npm run build -w web
+      - name: Install isolated Playwright and Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright
+          ln -sfn "$RUNNER_TEMP/pw/node_modules/playwright" node_modules/playwright
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start built web preview
+        run: |
+          npm run preview -w web -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/patzer-preview.log" 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/patzer-preview.log"
+          exit 1
+      - name: Browser computed-style certification
+        run: node web/tests/design-system.browser.mjs
