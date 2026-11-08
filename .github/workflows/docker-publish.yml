@@ -1,9 +1,11 @@
 name: Publish to Docker Hub
 
-# Builds and pushes the runtime image to Docker Hub on every push to main, so
-# the ardi deployment (which tracks `sikamikaniko123/patzer:latest` via
-# Watchtower) auto-redeploys. Tag pushes still publish multi-arch to GHCR via
-# release.yml — this workflow is the continuous "latest" channel.
+# Optional deployment for fork maintainers. The upstream project used this
+# workflow to publish to its own Docker Hub namespace on every main push.
+# A GitHub fork must not publish to that namespace by default or fail on
+# missing secrets. Explicit opt-in requires PATZER_DOCKER_PUBLISH=true,
+# PATZER_DOCKER_IMAGE=<your own Docker Hub image>, and credentials below.
+# The normal CI workflow independently builds and boots the Docker image.
 
 on:
   push:
@@ -16,6 +18,7 @@ concurrency:
 
 jobs:
   publish:
+    if: ${{ vars.PATZER_DOCKER_PUBLISH == 'true' && vars.PATZER_DOCKER_IMAGE != '' }}
     runs-on: ubuntu-latest
     name: Build + push (Docker Hub)
     steps:
@@ -31,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: docker.io/sikamikaniko123/patzer
+          images: ${{ vars.PATZER_DOCKER_IMAGE }}
           tags: |
             type=raw,value=latest
             type=sha,format=short
@@ -44,8 +47,8 @@ jobs:
         with:
           context: .
           push: true
-          # ardi (the deployment target) is linux/amd64. Single-arch keeps the
-          # every-push build fast; release.yml handles multi-arch on tags.
+          # Explicit opt-in builds linux/amd64. release.yml handles
+          # separate multi-architecture GHCR publishing on tags.
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
