@@ -47,7 +47,9 @@ const BRILLIANT_LIST = 10;
 
 router.get('/', (c) => {
   const me = c.get('user');
-  const limit = Math.min(Number(c.req.query('limit') ?? 200), 500);
+
+  const gamesTotal = db.prepare('SELECT count(*) AS total FROM games WHERE user_id = ?')
+    .get(me.id) as { total: number };
 
   // Activity heatmap — last 365 days. Aggregated server-side so the wire
   // payload is at most ~365 rows even on heavy users.
@@ -108,8 +110,9 @@ router.get('/', (c) => {
     };
   }
 
-  // Pull the most recent analyzed games for taxonomy + opening repertoire.
-  // SCORING_VERSION gate so old analyses don't bleed v5 numbers in.
+  // Every current-version analysis contributes to overall mistake taxonomy,
+  // phase accuracy and move quality. Stream rows to bound Node memory: the
+  // previous LIMIT 200/500 silently excluded older analyzed games.
   const rows = db.prepare(`
     SELECT a.game_id, g.user_color, g.end_time, g.result, g.time_class,
            g.eco, g.opening_name, a.moves_json, a.phase_split_json, g.white, g.black,
@@ -117,8 +120,8 @@ router.get('/', (c) => {
     FROM analyses a JOIN games g ON g.id = a.game_id
     WHERE g.user_id = ? AND a.scoring_version >= ? AND g.start_fen IS NULL
     ORDER BY g.end_time DESC, g.id DESC
-    LIMIT ?
-  `).all(me.id, SCORING_VERSION, limit) as AnalysisRow[];
+  `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
+  let analyzedCount = 0;
 
   // Taxonomy buckets — every bucket counts user-side moves only.
   const tax = {
@@ -131,9 +134,28 @@ router.get('/', (c) => {
     promising_to_losing: 0,
   };
 
-  // Opening repertoire — keyed by `${color}|${eco}`.
-  interface OpEntry { eco: string; name: string; color: Color; played: number; wins: number; draws: number; losses: number; acc_sum: number; acc_n: number }
-  const ops = new Map<string, OpEntry>();
+  // Opening repertoire counts ALL games with an ECO, including imported
+  // Chess.com games that have not been individually analyzed by Stockfish.
+  // Only the accuracy average requires a current-version analysis.
+  const openingRows = db.prepare(`
+    SELECT g.eco, COALESCE(MIN(NULLIF(g.opening_name, '')), g.eco) AS name,
+           g.user_color AS color, COUNT(*) AS played,
+           SUM(CASE WHEN g.result='win' THEN 1 ELSE 0 END) AS wins,
+           SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
+           SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
+           AVG(CASE WHEN a.scoring_version >= ? AND g.user_color='white' THEN a.accuracy_white
+                    WHEN a.scoring_version >= ? AND g.user_color='black' THEN a.accuracy_black
+                    ELSE NULL END) AS avg_accuracy
+    FROM games g LEFT JOIN analyses a ON a.game_id = g.id
+    WHERE g.user_id = ? AND g.start_fen IS NULL
+      AND g.eco IS NOT NULL AND g.user_color IN ('white', 'black')
+    GROUP BY g.eco, g.user_color
+    ORDER BY played DESC, g.eco ASC
+    LIMIT 10
+  `).all(SCORING_VERSION, SCORING_VERSION, me.id) as {
+    eco: string; name: string; color: Color; played: number;
+    wins: number; draws: number; losses: number; avg_accuracy: number | null;
+  }[];
 
   // Phase accuracy avg over the user's side
   const phaseAcc: Record<GamePhase, { sum: number; n: number }> = {
@@ -149,6 +171,7 @@ router.get('/', (c) => {
   const accTrend: { t: string; acc: number; result: string | null }[] = [];
 
   for (const r of rows) {
+    analyzedCount++;
     const userColor: Color = r.user_color ?? 'white';
     const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
     const split = r.phase_split_json ? (JSON.parse(r.phase_split_json) as PhaseSplit) : null;
@@ -166,23 +189,8 @@ router.get('/', (c) => {
       phaseAcc.endgame.sum += acc; phaseAcc.endgame.n++;
     }
 
-    if (r.accuracy_user != null && r.end_time) {
+    if (r.accuracy_user != null && r.end_time && accTrend.length < 50) {
       accTrend.push({ t: r.end_time, acc: r.accuracy_user, result: r.result });
-    }
-
-    // Opening repertoire
-    if (r.eco) {
-      const key = `${userColor}|${r.eco}`;
-      let e = ops.get(key);
-      if (!e) {
-        e = { eco: r.eco, name: r.opening_name ?? r.eco, color: userColor, played: 0, wins: 0, draws: 0, losses: 0, acc_sum: 0, acc_n: 0 };
-        ops.set(key, e);
-      }
-      e.played++;
-      if (r.result === 'win') e.wins++;
-      else if (r.result === 'draw') e.draws++;
-      else if (r.result === 'loss') e.losses++;
-      if (r.accuracy_user != null) { e.acc_sum += r.accuracy_user; e.acc_n++; }
     }
 
     // Per-move taxonomy
@@ -224,18 +232,15 @@ router.get('/', (c) => {
     void userBlundersThisGame;
   }
 
-  // Top openings: sort by `played` desc, keep top 10
-  const opening_repertoire = Array.from(ops.values())
-    .sort((a, b) => b.played - a.played)
-    .slice(0, 10)
-    .map((e) => ({
-      eco: e.eco, name: e.name, color: e.color, played: e.played,
-      wins: e.wins, draws: e.draws, losses: e.losses,
-      avg_accuracy: e.acc_n > 0 ? Math.round((e.acc_sum / e.acc_n) * 10) / 10 : null,
-    }));
+  const opening_repertoire = openingRows.map((e) => ({
+    eco: e.eco, name: e.name, color: e.color, played: e.played,
+    wins: e.wins, draws: e.draws, losses: e.losses,
+    avg_accuracy: e.avg_accuracy != null ? Math.round(e.avg_accuracy * 10) / 10 : null,
+  }));
 
   return c.json({
-    games_analyzed: rows.length,
+    games_total: gamesTotal.total,
+    games_analyzed: analyzedCount,
     activity_heatmap: heatmap,
     rating_trajectory: trajectory,
     time_class_stats,

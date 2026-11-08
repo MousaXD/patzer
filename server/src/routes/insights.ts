@@ -21,18 +21,12 @@ interface PhaseAcc { count: number; pos: number }
 
 router.get('/', (c) => {
   const me = c.get('user');
-  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
   const rows = db.prepare(`
     SELECT a.game_id, g.user_color, a.moves_json, a.phase_split_json
     FROM analyses a JOIN games g ON g.id = a.game_id
     WHERE g.user_id = ? AND a.scoring_version >= ?
     ORDER BY g.end_time DESC, g.id DESC
-    LIMIT ?
-  `).all(me.id, SCORING_VERSION, limit) as AnalysisRow[];
-
-  if (rows.length === 0) {
-    return c.json({ games_analyzed: 0, weak_spots: [], phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 } });
-  }
+  `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
 
   // Aggregate per (phase, classification, user-side only)
   const phaseStats: Record<GamePhase, Record<Classification, number>> = {
@@ -46,7 +40,9 @@ router.get('/', (c) => {
   let hungPiecesCount = 0;
   let timePressureBlunders = 0;
 
+  let analyzedCount = 0;
   for (const r of rows) {
+    analyzedCount++;
     const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
     const split = r.phase_split_json ? (JSON.parse(r.phase_split_json) as PhaseSplit) : null;
     const userColor = r.user_color ?? 'white';
@@ -129,7 +125,7 @@ router.get('/', (c) => {
   weak.sort((a, b) => b.count - a.count);
 
   return c.json({
-    games_analyzed: rows.length,
+    games_analyzed: analyzedCount,
     weak_spots: weak.slice(0, 4),
     phase_accuracy: {
       opening: phaseAcc.opening.count ? Math.round((phaseAcc.opening.pos / phaseAcc.opening.count) * 10) / 10 : 0,

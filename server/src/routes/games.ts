@@ -27,6 +27,10 @@ router.get('/', (c) => {
     const like = `%${q}%`;
     params.push(like, like, like, like);
   }
+  // Limit only the displayed page, not the collection count or Insights.
+  // Review can show the latest 100 while reporting how many were truly saved.
+  const total = db.prepare(`SELECT count(*) AS n FROM games g WHERE ${filters.join(' AND ')}`)
+    .get(...params) as { n: number };
   const rows = db.prepare(`
     SELECT g.id, g.source, g.external_id, g.white, g.black, g.result, g.time_control, g.time_class,
            g.eco, g.opening_name, g.end_time, g.user_color, g.rated,
@@ -42,7 +46,7 @@ router.get('/', (c) => {
     ORDER BY g.end_time DESC NULLS LAST, g.id DESC
     LIMIT ?
   `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, ...params, limit);
-  return c.json({ games: rows });
+  return c.json({ games: rows, total: total.n });
 });
 
 // Games you can walk back into: the bot game you left mid-move, and any PvP
