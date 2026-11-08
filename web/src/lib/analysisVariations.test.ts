@@ -93,6 +93,37 @@ describe('local analysis variations', () => {
     expect(getAnalysisVariationView(state, history).playedVariationMoves.map((m) => m.san)).toEqual(['c5']);
   });
 
+  it('redo restores the original variation after undo crosses to saved game', () => {
+    let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
+    state = submitAnalysisVariationMove(state, history, 'c7c5');
+    const fen = getAnalysisVariationView(state, history).currentFen;
+    state = stepAnalysisBackward(state, history);
+    state = stepAnalysisBackward(state, history);
+    expect(state.activeVariationId).toBeNull();
+    state = stepAnalysisForward(state, history);
+    expect(state.activeVariationId).toBe('v1');
+    expect(state.variationCursor).toBe(0);
+    state = stepAnalysisForward(state, history);
+    expect(getAnalysisVariationView(state, history).currentFen).toBe(fen);
+  });
+
+  it('redo restores the nested child after undo crosses to parent', () => {
+    let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
+    state = submitAnalysisVariationMove(state, history, 'c7c5');
+    state = submitAnalysisVariationMove(state, history, 'g1f3');
+    state = stepAnalysisBackward(state, history);
+    state = submitAnalysisVariationMove(state, history, 'd2d4');
+    const fen = getAnalysisVariationView(state, history).currentFen;
+    state = stepAnalysisBackward(state, history);
+    state = stepAnalysisBackward(state, history);
+    expect(state.activeVariationId).toBe('v1');
+    expect(state.variationCursor).toBe(1);
+    state = stepAnalysisForward(state, history);
+    expect(state.activeVariationId).toBe('v2');
+    state = stepAnalysisForward(state, history);
+    expect(getAnalysisVariationView(state, history).currentFen).toBe(fen);
+  });
+
   it('creates independent alternatives from the same original ply', () => {
     let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
     state = submitAnalysisVariationMove(state, history, 'c7c5');

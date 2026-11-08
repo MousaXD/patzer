@@ -35,6 +35,8 @@ export interface AnalysisVariationState {
   variationCursor: number;
   variations: AnalysisVariation[];
   nextVariationId: number;
+  /** Last branch exited by undo, so redo can return to it rather than mainline. */
+  redoVariationId: string | null;
   error: string | null;
 }
 
@@ -62,6 +64,7 @@ export function initialAnalysisVariationState(initialPly = 0): AnalysisVariation
     variationCursor: 0,
     variations: [],
     nextVariationId: 1,
+    redoVariationId: null,
     error: null,
   };
 }
@@ -166,6 +169,7 @@ export function submitAnalysisVariationMove(
   const view = getAnalysisVariationView(state, positions);
   const move = legalAnalysisMove(view.currentFen, uci);
   if (!move) return { ...state, error: 'Illegal move for the displayed position' };
+  state = { ...state, redoVariationId: null };
 
   const branch = currentBranch(state);
   if (!branch) {
@@ -225,7 +229,7 @@ export function selectOriginalAnalysisPly(
   positions: readonly OriginalGamePosition[],
   ply: number,
 ): AnalysisVariationState {
-  return { ...state, originalPly: clampPly(ply, positions), activeVariationId: null, variationCursor: 0, error: null };
+  return { ...state, originalPly: clampPly(ply, positions), activeVariationId: null, variationCursor: 0, redoVariationId: null, error: null };
 }
 
 export function selectAnalysisVariation(
@@ -240,6 +244,7 @@ export function selectAnalysisVariation(
     activeVariationId: id,
     variationCursor: cursor === undefined ? branch.moves.length
       : Math.min(Math.max(0, Math.trunc(Number.isFinite(cursor) ? cursor : 0)), branch.moves.length),
+    redoVariationId: null,
     error: null,
   };
 }
@@ -251,25 +256,43 @@ export function restoreOriginalAnalysisGame(state: AnalysisVariationState): Anal
     originalPly: branch?.basePly ?? state.originalPly,
     activeVariationId: null,
     variationCursor: 0,
+    redoVariationId: null,
     error: null,
   };
 }
 
 export function stepAnalysisBackward(state: AnalysisVariationState, positions: readonly OriginalGamePosition[]): AnalysisVariationState {
   const branch = currentBranch(state);
-  if (!branch) return { ...state, originalPly: clampPly(state.originalPly - 1, positions), error: null };
-  if (state.variationCursor > 0) return { ...state, variationCursor: state.variationCursor - 1, error: null };
+  if (!branch) return {
+    ...state, originalPly: clampPly(state.originalPly - 1, positions), redoVariationId: null, error: null,
+  };
+  if (state.variationCursor > 0) return {
+    ...state, variationCursor: state.variationCursor - 1, redoVariationId: null, error: null,
+  };
+  // Retain which branch Undo just left, so Redo restores that exact continuation.
   if (branch.parentId) return {
     ...state,
     activeVariationId: branch.parentId,
     variationCursor: branch.parentCursor ?? 0,
+    redoVariationId: branch.id,
     error: null,
   };
-  return restoreOriginalAnalysisGame(state);
+  return { ...restoreOriginalAnalysisGame(state), redoVariationId: branch.id };
 }
 
 export function stepAnalysisForward(state: AnalysisVariationState, positions: readonly OriginalGamePosition[]): AnalysisVariationState {
   const branch = currentBranch(state);
-  if (!branch) return { ...state, originalPly: clampPly(state.originalPly + 1, positions), error: null };
-  return { ...state, variationCursor: Math.min(branch.moves.length, state.variationCursor + 1), error: null };
+  const redoChild = state.variations.find((v) => v.id === state.redoVariationId);
+  if (redoChild && (branch
+    ? redoChild.parentId === branch.id && redoChild.parentCursor === state.variationCursor
+    : redoChild.parentId === null && redoChild.basePly === clampPly(state.originalPly, positions))) {
+    return { ...state, activeVariationId: redoChild.id, variationCursor: 0, redoVariationId: null, error: null };
+  }
+  if (!branch) return {
+    ...state, originalPly: clampPly(state.originalPly + 1, positions), redoVariationId: null, error: null,
+  };
+  return {
+    ...state, variationCursor: Math.min(branch.moves.length, state.variationCursor + 1),
+    redoVariationId: null, error: null,
+  };
 }
