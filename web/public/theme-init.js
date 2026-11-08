@@ -10,6 +10,8 @@
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  // Protect even the initial canvas before Vite CSS arrives.
+  document.documentElement.style.backgroundColor = dark ? '#171a1c' : '#ffffff';
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? '#171a1c' : '#ffffff');
 })();
