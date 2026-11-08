@@ -2,9 +2,10 @@ name: Frontend Overhaul QA
 
 # Independent additive certification. Existing main CI remains unchanged.
 on:
+  # QA-branch changes are checked through draft PR #3; do not also run a
+  # duplicate push workflow for every QA-only commit.
   push:
     branches:
-      - agent-07/frontend-qa-certification
       - feat/patzer-frontend-overhaul
   pull_request:
     branches:
