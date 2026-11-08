@@ -38,6 +38,20 @@ describe('Admin → ChatGPT / MCP', () => {
     expect(screen.queryByText('sk-proj-secret-forbidden')).toBeNull();
   });
 
+  it('lets an admin replace a stale Patzer password without reentering an OpenAI key', async () => {
+    render(<McpConnection />);
+    await screen.findByText('Tunnel connected');
+    fireEvent.click(screen.getByText('Update Patzer password'));
+    const field = screen.getByPlaceholderText('Your Patzer password') as HTMLInputElement;
+    fireEvent.change(field, {target: {value: 'new-private-password-123'}});
+    fireEvent.click(screen.getByText('Update & reconnect'));
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/mcp/setup', {
+      tunnelId: savedStatus.tunnelId,
+      patzerPassword: 'new-private-password-123',
+      autoStart: true,
+    }));
+  });
+
   it('can reconfigure using saved credentials, without prompting for the key', async () => {
     render(<McpConnection />);
     await screen.findByText('Tunnel connected');

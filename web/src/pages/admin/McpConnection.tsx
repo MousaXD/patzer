@@ -22,6 +22,7 @@ export default function McpConnection() {
   const [tunnelId, setTunnelId] = useState('');
   const [runtimeKey, setRuntimeKey] = useState('');
   const [password, setPassword] = useState('');
+  const [editingPatzerPassword, setEditingPatzerPassword] = useState(false);
   const [autoStart, setAutoStart] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -62,13 +63,13 @@ export default function McpConnection() {
         ...(password ? { patzerPassword: password } : {}),
         autoStart,
       });
-      setRuntimeKey(''); setPassword(''); setStatus(result);
+      setRuntimeKey(''); setPassword(''); setEditingPatzerPassword(false); setStatus(result);
     }, 'Saved securely. Tunnel service started; status will update automatically.');
   }
 
   const running = status?.serviceState === 'active';
   const live = !!status?.connected;
-  const canSave = !!status?.available && !!status.tunnelClientInstalled && /^tunnel_[0-9a-f]{32}$/.test(tunnelId.trim()) && (status.runtimeKeySaved || runtimeKey.trim().length >= 12) && (status.localMcpCredentialsSaved || password.length >= 10);
+  const canSave = !!status?.available && !!status.tunnelClientInstalled && /^tunnel_[0-9a-f]{32}$/.test(tunnelId.trim()) && (status.runtimeKeySaved || runtimeKey.trim().length >= 12) && ((status.localMcpCredentialsSaved && !editingPatzerPassword) || password.length >= 10);
   const phase = !status?.configured ? 1 : !live ? 2 : 3;
 
   return <div className="mx-auto max-w-4xl space-y-6 pb-24">
@@ -115,23 +116,30 @@ export default function McpConnection() {
     </div>
 
     {!status?.available && status && <div className="rounded-lg border border-amber-500/40 p-4 text-sm text-amber-700 dark:text-amber-400">For security, connection setup is supported only when Patzer runs on <code>127.0.0.1</code>. Set <code>HOST=127.0.0.1</code> and restart Patzer before using this page.</div>}
+    {status && !status.tunnelClientInstalled && <div className="rounded-lg border border-amber-500/40 p-4 text-sm text-amber-700 dark:text-amber-400">The local OpenAI tunnel client has not been installed. Download the Linux release from <a className="underline" href="https://github.com/openai/tunnel-client/releases/latest" target="_blank" rel="noreferrer">OpenAI's tunnel-client releases</a>, install <code>tunnel-client</code> to <code>~/.local/bin/</code>, then refresh. Installation cannot be performed remotely by this page.</div>}
     <section className="card p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2"><KeyRound className="text-amber-500" size={20} /><h2 className="text-lg font-semibold">One-time connection wizard</h2></div>
       <div className="space-y-5">
         <div>
-          <label className="label mb-1 block">1. Secure MCP tunnel ID</label>
-          <input className={field} spellCheck={false} autoComplete="off" value={tunnelId} onChange={(e) => setTunnelId(e.target.value)} placeholder="tunnel_..." />
+          <label htmlFor="mcp-tunnel-id" className="label mb-1 block">1. Secure MCP tunnel ID</label>
+          <input id="mcp-tunnel-id" className={field} spellCheck={false} autoComplete="off" value={tunnelId} onChange={(e) => setTunnelId(e.target.value)} placeholder="tunnel_..." />
           <p className="mt-1 text-xs text-ink-500">Create a tunnel in <a className="underline" href="https://platform.openai.com/settings/organization/tunnels" target="_blank" rel="noreferrer">OpenAI Platform <ArrowUpRight size={12} className="inline" /></a>. Reuse your existing ID if already connected.</p>
         </div>
         <div>
-          <label className="label mb-1 block">2. OpenAI Platform runtime API key {status?.runtimeKeySaved && <span className="text-emerald-600">— already saved; leave blank to keep it</span>}</label>
-          <input className={field} type="password" autoComplete="new-password" spellCheck={false} value={runtimeKey} onChange={(e) => setRuntimeKey(e.target.value)} placeholder={status?.runtimeKeySaved ? 'Saved securely (unchanged)' : 'Paste your runtime key here once'} />
+          <label htmlFor="mcp-runtime-key" className="label mb-1 block">2. OpenAI Platform runtime API key {status?.runtimeKeySaved && <span className="text-emerald-600">— already saved; leave blank to keep it</span>}</label>
+          <input id="mcp-runtime-key" className={field} type="password" autoComplete="new-password" spellCheck={false} value={runtimeKey} onChange={(e) => setRuntimeKey(e.target.value)} placeholder={status?.runtimeKeySaved ? 'Saved securely (unchanged)' : 'Paste your runtime key here once'} />
           <p className="mt-1 text-xs text-ink-500">Create a key with Tunnels Read + Use at <a className="underline" href="https://platform.openai.com/settings/organization/api-keys" target="_blank" rel="noreferrer">OpenAI Platform API keys <ArrowUpRight size={12} className="inline" /></a>. This is not your ChatGPT login.</p>
         </div>
-        {!status?.localMcpCredentialsSaved && <div>
-          <label className="label mb-1 block">3. Your Patzer login password</label>
-          <input className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your Patzer password" />
-          <p className="mt-1 text-xs text-ink-500">Only required if the local MCP bridge was never connected. Your password is saved privately on this computer.</p>
+        {status?.localMcpCredentialsSaved && <div className="flex items-center justify-between gap-3 rounded-lg bg-ink-100 p-3 text-sm dark:bg-ink-800">
+          <span>3. Patzer login: saved locally</span>
+          <button type="button" className={btn} onClick={() => { setEditingPatzerPassword((v) => !v); setPassword(''); }}>
+            {editingPatzerPassword ? 'Cancel change' : 'Update Patzer password'}
+          </button>
+        </div>}
+        {(!status?.localMcpCredentialsSaved || editingPatzerPassword) && <div>
+          <label htmlFor="mcp-patzer-password" className="label mb-1 block">3. Your Patzer login password</label>
+          <input id="mcp-patzer-password" className={field} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your Patzer password" />
+          <p className="mt-1 text-xs text-ink-500">Enter your current Patzer password only for first-time setup or after changing your account password. It is checked and stored privately on this computer.</p>
         </div>}
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-ink-200 p-3 dark:border-ink-700">
           <input className="mt-1" type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} />

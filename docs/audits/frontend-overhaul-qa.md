@@ -1,5 +1,7 @@
 # Patzer Frontend Overhaul — Independent QA Certification
 
+> **Integration update (2026-11-08):** The original NO-GO finding below documents the *pre-integration baseline*, not the current merged candidate. Specialist branches and the missing Game Review consumer have now been integrated; the local end-to-end QA harness passes 27/27 cases. See [the integration and verification report](FRONTEND_OVERHAUL_INTEGRATION_2026-11-08.md). GitHub exact-head checks and human screenshot/audio review remain separate gates.
+
 **Reviewer:** Agent 07 (independent QA; no production-code ownership)  
 **Audit date:** 2026-11-08  
 **Repository:** https://github.com/MousaXD/patzer  
