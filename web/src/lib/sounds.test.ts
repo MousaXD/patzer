@@ -1,190 +1,156 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// A minimal Web Audio stand-in that records the start frequency of every
-// oscillator, which is enough to tell the bell sounds from the marimba ones,
-// and which recording (by URL) every decoded-sample source plays.
-const started: number[] = [];
-const samples: string[] = [];
-
-class FakeParam {
+const synthesized: number[] = [];
+const recorded: string[] = [];
+const stopped: number[] = [];
+class Param {
   value = 0;
   setValueAtTime(v: number) { this.value = v; return this; }
   exponentialRampToValueAtTime() { return this; }
+  setTargetAtTime(v: number) { this.value = v; return this; }
+  cancelScheduledValues() { return this; }
 }
-class FakeNode {
-  gain = new FakeParam();
-  frequency = new FakeParam();
-  threshold = new FakeParam(); knee = new FakeParam(); ratio = new FakeParam();
-  attack = new FakeParam(); release = new FakeParam();
-  playbackRate = new FakeParam();
+class Node {
+  gain = new Param(); frequency = new Param(); playbackRate = new Param();
+  threshold = new Param(); knee = new Param(); ratio = new Param();
+  attack = new Param(); release = new Param();
   type = ''; buffer: unknown = null;
-  connect<T>(n: T) { return n; }
-  start() { started.push(this.frequency.value); }
-  stop() {}
+  onended: (() => void) | null = null;
+  connect<T>(node: T) { return node; }
+  start() { synthesized.push(this.frequency.value); }
+  stop() { stopped.push(1); this.onended?.(); }
 }
-class FakeContext {
-  sampleRate = 8000; currentTime = 0; state = 'running'; destination = new FakeNode();
-  createGain() { return new FakeNode(); }
-  createOscillator() { return new FakeNode(); }
-  createBiquadFilter() { return new FakeNode(); }
+class Context {
+  sampleRate = 8000; currentTime = 0; state = 'running'; destination = new Node();
+  createGain() { return new Node(); }
+  createOscillator() { return new Node(); }
+  createBiquadFilter() { return new Node(); }
   createBufferSource() {
-    const n = new FakeNode();
-    n.start = () => { const tag = (n.buffer as { tag?: string } | null)?.tag; if (tag) samples.push(tag); };
+    const n = new Node();
+    n.start = () => { const tag = (n.buffer as { tag?: string } | null)?.tag; if (tag) recorded.push(tag); };
     return n;
   }
-  createDynamicsCompressor() { return new FakeNode(); }
-  createConvolver() { return new FakeNode(); }
-  createBuffer(_c: number, len: number) { return { getChannelData: () => new Float32Array(len) }; }
+  createDynamicsCompressor() { return new Node(); }
+  createConvolver() { return new Node(); }
+  createBuffer(_channels: number, length: number) { return { getChannelData: () => new Float32Array(length) }; }
+  decodeAudioData(bytes: unknown): Promise<AudioBuffer> { return Promise.resolve({ tag: String(bytes) } as unknown as AudioBuffer); }
   resume() { return Promise.resolve(); }
-  // The fake fetch below hands back the URL as the "bytes", so each decoded
-  // buffer remembers which file it came from.
-  decodeAudioData(data: unknown) { return Promise.resolve({ tag: String(data) }); }
 }
-const fetchOk = vi.fn(async (url: string) => ({ ok: true, status: 200, arrayBuffer: async () => url }));
+const fetchOk = vi.fn(async (url: string) => ({
+  ok: true, status: 200, arrayBuffer: async () => url,
+}));
 
-describe('sound sets', () => {
-  beforeEach(() => {
-    started.length = 0;
-    samples.length = 0;
-    vi.resetModules();
-    vi.stubGlobal('AudioContext', FakeContext);
-    fetchOk.mockClear();
-    vi.stubGlobal('fetch', fetchOk);
-  });
-
-  it('classic check is the original two-tone bell', async () => {
-    const { playSound } = await import('./sounds');
-    playSound('check');
-    expect(started).toContain(1175);
-    expect(started).toContain(880);
-  });
-
-  it('soft check is two marimba notes, no bell', async () => {
-    const { playSound, setSoundSet } = await import('./sounds');
-    setSoundSet('soft');
-    playSound('check');
-    expect(started).toContain(659);
-    expect(started).toContain(880);
-    expect(started).not.toContain(1175);
-  });
-
-  it('soft game end keeps the classic G5 → E5 → C5 cadence', async () => {
-    const { playSound, setSoundSet } = await import('./sounds');
-    setSoundSet('soft');
-    playSound('game_end');
-    for (const f of [784, 659, 523]) expect(started).toContain(f);
-  });
-
-  it('an unknown set falls back to classic', async () => {
-    const { playSound, setSoundSet } = await import('./sounds');
-    setSoundSet('loud' as never);
-    playSound('check');
-    expect(started).toContain(1175);
-  });
-
-  it('move and capture sound the same in both sets', async () => {
-    const { playSound, setSoundSet } = await import('./sounds');
-    playSound('move'); playSound('capture');
-    const classic = [...started];
-    started.length = 0;
-    setSoundSet('soft');
-    playSound('move'); playSound('capture');
-    expect(started).toEqual(classic);
-  });
+beforeEach(() => {
+  synthesized.length = 0; recorded.length = 0; stopped.length = 0;
+  window.localStorage.clear();
+  vi.unstubAllGlobals();
+  vi.resetModules();
+  vi.stubGlobal('AudioContext', Context);
+  vi.stubGlobal('fetch', fetchOk);
+  fetchOk.mockClear();
 });
 
-describe('board move sounds', () => {
-  beforeEach(() => {
-    started.length = 0;
-    samples.length = 0;
-    vi.resetModules();
-    vi.stubGlobal('AudioContext', FakeContext);
-    fetchOk.mockClear();
-    vi.stubGlobal('fetch', fetchOk);
+describe('Natural sound theme', () => {
+  it('does not play or queue audio before interaction authorization', async () => {
+    const a = await import('./sounds');
+    a.playSound('move');
+    expect(recorded).toEqual([]);
+    expect(synthesized).toEqual([]);
+    a.unlockAudio();
+    await a.moveSoundsReady();
+    expect(recorded).toEqual([]);
+    a.playSound('move');
+    expect(recorded).toEqual([expect.stringMatching(/board-move\.wav$/)]);
+    expect(synthesized).toEqual([]);
   });
 
-  it('classic stays the default and never downloads the recordings', async () => {
-    const { playSound } = await import('./sounds');
-    playSound('move'); playSound('capture'); playSound('castle');
-    expect(started).toContain(280);
-    expect(samples).toEqual([]);
-    expect(fetchOk).not.toHaveBeenCalled();
+  it('defaults to locally bundled natural clicks for moves and other events', async () => {
+    const a = await import('./sounds');
+    a.setSoundSet('classic'); a.setMoveSoundSet('classic');
+    expect(a.getAudioTheme()).toBe('natural');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.playSound('move');
+    expect(recorded).toEqual([expect.stringMatching(/board-move\.wav$/)]);
+    expect(synthesized).toEqual([]);
+    recorded.length = 0;
+    expect(await a.previewAudio('natural', 'check')).toBe(true);
+    expect(recorded).toHaveLength(2);
+    recorded.length = 0;
+    expect(await a.previewAudio('natural', 'castle')).toBe(true);
+    expect(recorded).toHaveLength(2);
+    expect(synthesized).toEqual([]);
   });
 
-  it('board plays the recordings for move, capture and castle (king + rook)', async () => {
-    const { playSound, setMoveSoundSet, moveSoundsReady } = await import('./sounds');
-    setMoveSoundSet('board');
-    await moveSoundsReady();
-    playSound('move'); playSound('capture'); playSound('castle');
-    expect(samples).toEqual([
-      expect.stringMatching(/board-move\.wav$/),
-      expect.stringMatching(/board-capture\.wav$/),
-      expect.stringMatching(/board-move\.wav$/),
-      expect.stringMatching(/board-move\.wav$/),
-    ]);
-    // no synthesized knock underneath
-    for (const f of [280, 165, 240]) expect(started).not.toContain(f);
+  it('keeps legacy Soft and Board profile selections when theme is not explicit', async () => {
+    const a = await import('./sounds');
+    a.setSoundSet('soft'); expect(a.getAudioTheme()).toBe('soft');
+    a.setMoveSoundSet('board'); expect(a.getAudioTheme()).toBe('board');
   });
 
-  it('check, promotion and game end keep their own sounds', async () => {
-    const { playSound, setMoveSoundSet, moveSoundsReady } = await import('./sounds');
-    setMoveSoundSet('board');
-    await moveSoundsReady();
-    playSound('check'); playSound('promotion'); playSound('game_end');
-    expect(samples).toEqual([]);
-    expect(started).toContain(1175);
+  it('allows explicit original Classic and Soft synthesizers', async () => {
+    const a = await import('./sounds');
+    a.unlockAudio();
+    a.setAudioTheme('classic');
+    a.playSound('move'); expect(synthesized).toContain(280);
+    synthesized.length = 0;
+    a.setAudioTheme('soft');
+    a.playSound('check');
+    expect(synthesized).toContain(659);
+    expect(synthesized).not.toContain(1175);
   });
 
-  it('downloads the recordings as soon as board is chosen, before any sound', async () => {
-    const { setMoveSoundSet } = await import('./sounds');
-    setMoveSoundSet('board');
-    expect(fetchOk).toHaveBeenCalledTimes(2);
+  it('previews without changing selected device theme', async () => {
+    const a = await import('./sounds');
+    a.setAudioTheme('soft');
+    expect(await a.previewAudio('natural', 'move')).toBe(true);
+    expect(a.getAudioTheme()).toBe('soft');
+    expect(recorded).toHaveLength(1);
+    expect(synthesized).toEqual([]);
   });
 
-  it('the first move right after a page load waits for the recordings', async () => {
-    // A puzzle's opening move plays by itself, before anything else made a sound.
-    const { playSound, setMoveSoundSet } = await import('./sounds');
-    setMoveSoundSet('board');
-    playSound('move');
-    expect(samples).toEqual([]);
-    await vi.waitFor(() => expect(samples).toEqual([expect.stringMatching(/board-move\.wav$/)]));
-    expect(started).not.toContain(280);
+  it('uses the remaining recording if only one fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: !url.includes('capture'), status: 404, arrayBuffer: async () => url,
+    })));
+    const a = await import('./sounds');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.playSound('capture');
+    expect(recorded).toEqual([expect.stringMatching(/board-move\.wav$/)]);
+    expect(synthesized).toEqual([]);
   });
 
-  it('falls back to the synthesized knock if the recordings take too long', async () => {
-    vi.useFakeTimers();
-    try {
-      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
-      const { playSound, setMoveSoundSet } = await import('./sounds');
-      setMoveSoundSet('board');
-      playSound('move');
-      expect(started).not.toContain(280);
-      await vi.advanceTimersByTimeAsync(400);
-      expect(started).toContain(280);
-      expect(samples).toEqual([]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('falls back to the synthesized knock if the recordings cannot be loaded', async () => {
+  it('does not substitute the disliked synthesis if both samples are missing', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404, arrayBuffer: async () => '' })));
-    const { playSound, setMoveSoundSet, moveSoundsReady } = await import('./sounds');
-    setMoveSoundSet('board');
-    await moveSoundsReady();
-    playSound('move');
-    expect(started).toContain(280);
-    expect(samples).toEqual([]);
+    const a = await import('./sounds');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.playSound('capture');
+    expect(a.getAudioLoadState()).toBe('failed');
+    expect(recorded).toEqual([]);
+    expect(synthesized).toEqual([]);
+    expect(await a.previewAudio('natural')).toBe(false);
   });
 
-  it('switching back to classic uses the synthesized knock again', async () => {
-    const { playSound, setMoveSoundSet, moveSoundsReady } = await import('./sounds');
-    setMoveSoundSet('board');
-    await moveSoundsReady();
-    setMoveSoundSet('classic');
-    playSound('move');
-    expect(started).toContain(280);
-    expect(samples).toEqual([]);
+  it('respects mute and immediately stops an active recorded source', async () => {
+    const a = await import('./sounds');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.playSound('move');
+    a.setSoundEnabled(false);
+    expect(stopped.length).toBeGreaterThan(0);
+    a.playSound('check');
+    expect(await a.previewAudio('natural')).toBe(false);
+    expect(recorded).toHaveLength(1);
+  });
+
+  it('persists and clamps volume and limits double sound from rapid navigation', async () => {
+    const a = await import('./sounds');
+    a.unlockAudio(); await a.moveSoundsReady();
+    a.setAudioVolume(0.25);
+    expect(a.getAudioVolume()).toBe(0.25);
+    a.playSound('move'); a.playSound('capture');
+    expect(recorded).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem('patzer.audio.v1')!)).toMatchObject({ volume: 0.25 });
+    a.setAudioVolume(2);
+    expect(a.getAudioVolume()).toBe(1);
   });
 });
