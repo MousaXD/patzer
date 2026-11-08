@@ -94,7 +94,7 @@ describe('Natural sound theme', () => {
     expect(a.getAudioTheme()).toBe('board-soft');
     a.unlockAudio(); await a.moveSoundsReady();
     a.playSound('move');
-    expect(recorded).toEqual([expect.stringMatching(/board-move\\.wav$/)]);
+    expect(recorded).toEqual([expect.stringMatching(/board-move\.wav$/)]);
     expect(synthesized).toEqual([]);
     a.playSound('check');
     expect(synthesized).toContain(659);
