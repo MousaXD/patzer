@@ -87,7 +87,7 @@ export async function previewAudio(theme: AudioTheme, kind: SoundKind = 'move'):
   if (!b) return false;
   if (theme === 'natural' || theme === 'board') {
     await loadBoardSamples(b.c);
-    if (boardState !== 'ready') return false;
+    if (!enabled || boardState !== 'ready') return false;
   }
   const priorTheme = audioTheme, priorSet = soundSet, priorMove = moveSoundSet;
   try {
