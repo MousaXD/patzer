@@ -151,6 +151,29 @@ try {
     }
     assert.equal((await api('/api/games/'+special.engine.id,{cookie})).json?.analysis?.scoring_version,scoring);
   });
+  await test('Variation-specific Stockfish scoring is read-only and agrees with FEN',async()=>{
+    const chess=new Chess();
+    chess.move('e4');chess.move('e5');
+    const before=chess.fen();
+    chess.move('Bc4');
+    const after=chess.fen();
+    const response=await api('/api/analyze/variation-move',{
+      method:'POST',cookie,body:{fen_before:before,move_uci:'f1c4',depth:8,ply:3}
+    });
+    assert.equal(response.status,200,'variation scoring endpoint: '+JSON.stringify(response.json));
+    const quality=response.json?.quality;
+    assert.equal(quality?.source,'variation');
+    assert.equal(quality?.uci,'f1c4');
+    assert.equal(quality?.san,'Bc4');
+    assert.equal(quality?.fen_after,after,'returned FEN must match legal move');
+    assert.ok(['brilliant','great','best','excellent','good','book','forced','inaccuracy','mistake','blunder','miss'].includes(quality?.classification));
+    assert.ok(Number.isFinite(quality?.centipawn_loss),'real numeric Stockfish score');
+    const invalid=await api('/api/analyze/variation-move',{
+      method:'POST',cookie,body:{fen_before:before,move_uci:'e7e5',depth:8,ply:3}
+    });
+    assert.equal(invalid.status,400,'illegal variation must be rejected');
+    assert.equal((await api('/api/games/'+main.id,{cookie})).json?.game?.pgn,main.pgn,'scoring must not mutate saved game');
+  });
   await test('All authenticated routes and admin destinations remain reachable',async()=>{
     const prior=browserErrors.length;
     for(const path of ['/','/play','/review','/insights','/train','/learn','/openings','/plan','/lab','/players','/settings','/admin/users','/admin/system']){
@@ -217,6 +240,16 @@ try {
     await marker.waitFor({state:'visible'});
     const b=await page.locator('cg-board').first().boundingBox(),m=await marker.boundingBox();
     assert.ok(b&&m&&m.x>b.x-30&&m.y>b.y-30&&m.x<b.x+b.width+30&&m.y<b.y+b.height+30,'badge outside board');
+  });
+  await test('Marker position follows flipped board orientation',async()=>{
+    await pageReady(page,main.id,5);
+    const marker=page.locator('[title="mistake"]').first();
+    const before=await marker.boundingBox();
+    assert.ok(before,'initial marker visible');
+    await page.getByRole('button',{name:/flip board/i}).first().click();
+    const after=await marker.boundingBox();
+    assert.ok(after,'flipped marker visible');
+    assert.ok(Math.abs(after.x-before.x)>8 || Math.abs(after.y-before.y)>8,'badge must move when board orientation changes');
   });
   await test('Review variation Bc4 is legal and saved PGN immutable',async()=>{
     await pageReady(page,main.id,2);
