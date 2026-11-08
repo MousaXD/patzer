@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   BarChart3, BookMarked, BookOpen, ChevronDown, GraduationCap, Home, Keyboard,
-  ListChecks, LogOut, Menu, Microscope, Search, Server, Settings as SettingsIcon,
+  ListChecks, LogOut, Menu, Microscope, Search, Server, Link2, Settings as SettingsIcon,
   Swords, Target, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
 import { api } from '../api';
@@ -46,6 +46,7 @@ const PRIMARY_DESTINATIONS: readonly Destination[] = [
 const ADMIN_DESTINATIONS: readonly Destination[] = [
   { to: '/admin/users', icon: Users, key: 'admin.users', fallback: 'Users' },
   { to: '/admin/system', icon: Server, key: 'admin.system', fallback: 'System' },
+  { to: '/admin/mcp', icon: Link2, key: 'mcp.title', fallback: 'ChatGPT / MCP' },
 ];
 
 function isDestinationActive(pathname: string, to: string): boolean {
