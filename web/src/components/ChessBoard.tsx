@@ -17,17 +17,21 @@ interface Props {
   /** Bump to force the board to re-sync to the current `fen` prop (e.g. after
    *  a rolled-back blunder warning, or after the server rejects a move). */
   resetKey?: number;
+  /** Opt-in, client-only free analysis with legal moves by the side to move. */
+  analysisMode?: boolean;
 }
 
 export type PieceLetter = 'q' | 'r' | 'b' | 'n';
 
 export default function ChessBoard({
   fen, orientation = 'white', movable = false, turnColor, onMove,
-  lastMove, arrows, size, resetKey,
+  lastMove, arrows, size, resetKey, analysisMode = false,
 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<CgApi | null>(null);
   const [promotion, setPromotion] = useState<{ from: string; to: string; color: 'white' | 'black' } | null>(null);
+  // Only analysis moves are held pending; live play and premoves remain unchanged.
+  const analysisMovePendingRef = useRef(false);
 
   // chessground's events.after closure is fixed at mount, so without these
   // refs `needsPromotion` would see the start FEN every move — a pawn pushing
@@ -36,9 +40,11 @@ export default function ChessBoard({
   const fenRef = useRef(fen);
   const onMoveRef = useRef(onMove);
   const turnColorRef = useRef(turnColor);
+  const analysisModeRef = useRef(analysisMode);
   fenRef.current = fen;
   onMoveRef.current = onMove;
   turnColorRef.current = turnColor;
+  analysisModeRef.current = analysisMode;
 
   // chessground caches the board's position on screen and only refreshes it on
   // window resize/scroll. Anything that moves the board *without* a resize
@@ -67,14 +73,30 @@ export default function ChessBoard({
   }
 
   function handleAfter(orig: Key, dest: Key) {
+    if (analysisModeRef.current) {
+      // Events are optimistic: never submit an old position or duplicate drop.
+      if (analysisMovePendingRef.current || !onMoveRef.current
+        || !legalDests(fenRef.current).get(orig)?.includes(dest)) {
+        apiRef.current?.set({ fen: fenRef.current });
+        return;
+      }
+    }
     if (needsPromotion(fenRef.current, orig, dest)) {
       // Show our picker instead of auto-promoting
-      setPromotion({ from: orig, to: dest, color: turnColorRef.current ?? 'white' });
+      setPromotion({ from: orig, to: dest, color: analysisModeRef.current
+        ? sideToMove(fenRef.current) : (turnColorRef.current ?? 'white') });
       // Don't call onMove yet — wait for piece pick
       return;
     }
+    if (analysisModeRef.current) analysisMovePendingRef.current = true;
     onMoveRef.current?.(orig + dest);
   }
+
+  // On a new analysis position (or rejected-move reset), permit the next drop.
+  useEffect(() => {
+    analysisMovePendingRef.current = false;
+    setPromotion(null);
+  }, [fen, resetKey]);
 
   // Mount chessground once
   useEffect(() => {
@@ -82,7 +104,7 @@ export default function ChessBoard({
     const config: Config = {
       fen,
       orientation,
-      turnColor,
+      turnColor: analysisMode ? sideToMove(fen) : turnColor,
       coordinates: true,
       // No slide animation. In a real game the 200ms tween is dead time: you
       // see the piece arrive later than the board already knows, and on a fast
@@ -90,8 +112,8 @@ export default function ChessBoard({
       animation: { enabled: false, duration: 0 },
       highlight: { lastMove: true, check: true },
       movable: {
-        ...(movable
-          ? { color: turnColor, free: false, dests: legalDests(fen), showDests: true }
+        ...(movable || analysisMode
+          ? { color: analysisMode ? sideToMove(fen) : turnColor, free: false, dests: legalDests(fen), showDests: true }
           : { free: false }),
         // Must be installed regardless of `movable` at mount time — chessground
         // deep-merges `set()` calls, so if the board first mounts while it
@@ -106,7 +128,7 @@ export default function ChessBoard({
       // auto-plays it (firing `movable.events.after`) when the opponent's move
       // arrives via the next `set()`. Free win for blitz/bullet — the CSS
       // for premove-dest squares was already in place but the config wasn't.
-      premovable: { enabled: true, showDests: true, castle: true },
+      premovable: { enabled: !analysisMode, showDests: true, castle: true },
       drawable: { enabled: true, defaultSnapToValidMove: true },
     };
     apiRef.current = Chessground(ref.current, config);
@@ -138,14 +160,15 @@ export default function ChessBoard({
     apiRef.current.set({
       fen,
       orientation,
-      turnColor,
+      turnColor: analysisMode ? sideToMove(fen) : turnColor,
       lastMove,
       movable: {
-        ...(movable
-          ? { color: turnColor, free: false, dests: legalDests(fen), showDests: true }
-          : { free: false }),
+        ...(movable || analysisMode
+          ? { color: analysisMode ? sideToMove(fen) : turnColor, free: false, dests: legalDests(fen), showDests: true }
+          : { color: undefined, free: false, dests: new Map<Key, Key[]>(), showDests: false }),
         events: { after: handleAfter },
       },
+      premovable: { enabled: !analysisMode },
     });
     if (arrows && arrows.length) {
       apiRef.current.setShapes(arrows.map((a) => ({ orig: a.orig, dest: a.dest, brush: a.brush ?? 'green' })));
@@ -154,16 +177,18 @@ export default function ChessBoard({
     }
     syncBounds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fen, orientation, turnColor, lastMoveKey, movable, arrowsKey, resetKey]);
+  }, [fen, orientation, turnColor, lastMoveKey, movable, analysisMode, arrowsKey, resetKey]);
 
   function pickPromotion(piece: PieceLetter) {
     if (!promotion) return;
+    if (analysisModeRef.current) analysisMovePendingRef.current = true;
     onMove?.(promotion.from + promotion.to + piece);
     setPromotion(null);
   }
   function cancelPromotion() {
     if (!promotion) return;
     setPromotion(null);
+    analysisMovePendingRef.current = false;
     // Roll back the chessground visual to the current fen (the piece was moved client-side)
     apiRef.current?.set({ fen });
   }
@@ -227,6 +252,10 @@ export function PromotionPicker({ color, square, orientation, onPick, onCancel }
       </div>
     </>
   );
+}
+
+function sideToMove(fen: string): Color {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white';
 }
 
 function legalDests(fen: string): Map<Key, Key[]> {
