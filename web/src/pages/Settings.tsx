@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES, type Language } from '../lib/languages';
-import { Volume2, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
+import { Volume2, VolumeX, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
 import { api } from '../api';
-import { useAuth, type Profile, type BoardTheme, type SiteTheme, type SoundSet, type MoveSoundSet } from '../state/auth';
+import { useAuth, type Profile, type BoardTheme, type SiteTheme } from '../state/auth';
 import { getVoices, onVoicesReady, speak } from '../lib/tts';
-import { moveSoundsReady, playSound, setMoveSoundSet, setSoundSet } from '../lib/sounds';
+import { getAudioLoadState, getAudioTheme, getAudioVolume, previewAudio, setAudioTheme, setAudioVolume, setSoundEnabled } from '../lib/sounds';
+import { isAudioThemeExplicit, type AudioTheme } from '../lib/audioPreferences';
 
 const EMOJIS = ['♟','♞','♝','♜','♛','♚','🦊','🐯','🦁','🐻','🐼','🐰','🐶','🐱','🐹','🐢','🐧','🐳','⭐','🌟'];
 
@@ -16,8 +17,19 @@ export default function Settings() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [audioTheme, setTheme] = useState<AudioTheme>(() => getAudioTheme());
+  const [volume, setVolume] = useState(() => getAudioVolume());
+  const [audioWarning, setAudioWarning] = useState(false);
 
-  useEffect(() => { if (user) setForm({ ...user.profile }); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    setForm({ ...user.profile });
+    setTheme(isAudioThemeExplicit() ? getAudioTheme()
+      : user.profile.move_sound_set === 'board'
+        ? (user.profile.sound_set === 'soft' ? 'board-soft' : 'board')
+        : (user.profile.sound_set === 'soft' ? 'soft' : 'natural'));
+    setVolume(getAudioVolume());
+  }, [user]);
   useEffect(() => onVoicesReady(() => setVoices(getVoices())), []);
 
   if (!form) return null;
@@ -58,24 +70,27 @@ export default function Settings() {
 
   const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(form.language));
 
-  // Play check then game-end in the given set, then fall back to the saved
-  // set so an unsaved preview doesn't leak into the next game.
-  function previewSoundSet(s: SoundSet) {
-    setSoundSet(s);
-    playSound('check');
-    window.setTimeout(() => playSound('game_end'), 700);
-    window.setTimeout(() => setSoundSet(user?.profile.sound_set ?? 'classic'), 2500);
+  const themeChoices: { id: AudioTheme; label: string; detail: string }[] = [
+    { id: 'natural', label: 'Natural (default)', detail: 'Short, dry chess-piece clicks for every game event.' },
+    { id: 'board', label: 'Board (legacy)', detail: 'Recorded moves with original classic alerts.' },
+    { id: 'board-soft', label: 'Board + Soft (legacy)', detail: 'Recorded moves with the original softer check and game-end alerts.' },
+    { id: 'classic', label: 'Classic (legacy)', detail: 'Original synthesized knocks and bell alerts.' },
+    { id: 'soft', label: 'Soft (legacy)', detail: 'Original knocks with softer alerts.' },
+  ];
+
+  function chooseAudioTheme(theme: AudioTheme) {
+    setTheme(theme);
+    setAudioTheme(theme);
+    // Natural maps to the legacy Classic defaults so other devices also
+    // discover Natural unless the user explicitly selected Board or Soft.
+    set('move_sound_set', theme === 'board' || theme === 'board-soft' ? 'board' : 'classic');
+    set('sound_set', theme === 'soft' || theme === 'board-soft' ? 'soft' : 'classic');
+    setAudioWarning(false);
   }
 
-  // Same idea for moves: a move, a capture and a castle in the given set.
-  // Waits for the recordings first so 'board' isn't previewed as the synth.
-  async function previewMoveSoundSet(s: MoveSoundSet) {
-    setMoveSoundSet(s);
-    await moveSoundsReady();
-    playSound('move');
-    window.setTimeout(() => playSound('capture'), 550);
-    window.setTimeout(() => playSound('castle'), 1100);
-    window.setTimeout(() => setMoveSoundSet(user?.profile.move_sound_set ?? 'classic'), 2000);
+  async function listen(theme: AudioTheme, kind: 'move' | 'capture' | 'check') {
+    const ok = await previewAudio(theme, kind);
+    setAudioWarning(!ok && (theme === 'natural' || theme === 'board' || theme === 'board-soft') && getAudioLoadState() === 'failed');
   }
 
   return (
@@ -220,22 +235,53 @@ export default function Settings() {
         </div>
         <div className="space-y-3 p-5">
           <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-ink-50 dark:hover:bg-ink-700/50">
-            <input type="checkbox" className="mt-1" checked={!!form.sound_enabled} onChange={(e) => set('sound_enabled', e.target.checked ? 1 : 0)} />
-            <div>
-              <div className="text-sm font-medium">{t('settings.soundEffects')}</div>
-              <div className="text-xs text-ink-500">{t('settings.soundEffectsDesc')}</div>
+            <input type="checkbox" className="mt-1" checked={!!form.sound_enabled}
+              onChange={(e) => { set('sound_enabled', e.target.checked ? 1 : 0); setSoundEnabled(e.target.checked); }} />
+            <div className="flex items-center gap-2">
+              {!!form.sound_enabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              <div>
+                <div className="text-sm font-medium">{t('settings.soundEffects')}</div>
+                <div className="text-xs text-ink-500">{t('settings.soundEffectsDesc')}</div>
+              </div>
             </div>
           </label>
           {!!form.sound_enabled && (
-            <div className="space-y-3 pl-8">
-              <SoundChoice label={t('settings.moveSoundSet')} options={['classic', 'board'] as const} value={form.move_sound_set}
-                optionText={(s) => t(`settings.moveSoundSetOption.${s}`)} descText={(s) => t(`settings.moveSoundSetDesc.${s}`)}
-                previewText={t('settings.soundSetPreview')}
-                onPick={(s) => set('move_sound_set', s)} onPreview={(s) => void previewMoveSoundSet(s)} />
-              <SoundChoice label={t('settings.soundSet')} options={['classic', 'soft'] as const} value={form.sound_set}
-                optionText={(s) => t(`settings.soundSetOption.${s}`)} descText={(s) => t(`settings.soundSetDesc.${s}`)}
-                previewText={t('settings.soundSetPreview')}
-                onPick={(s) => set('sound_set', s)} onPreview={previewSoundSet} />
+            <div className="space-y-4 pl-8">
+              <div>
+                <label htmlFor="chess-sound-volume" className="label mb-2 block">Chess sound volume: {Math.round(volume * 100)}%</label>
+                <input id="chess-sound-volume" type="range" min="0" max="100" step="5" value={Math.round(volume * 100)}
+                  onChange={(e) => { const next = Number(e.target.value) / 100; setVolume(next); setAudioVolume(next); }}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-ink-200 outline-none focus-visible:ring-2 focus-visible:ring-ink-500 dark:bg-ink-700 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-ink-900 dark:[&::-webkit-slider-thumb]:bg-cream [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink-900 dark:[&::-moz-range-thumb]:bg-cream" aria-label="Chess sound volume" />
+                <div className="mt-1 text-xs text-ink-500">Theme and volume are saved on this device. Use Save to sync supported sound settings to your account.</div>
+              </div>
+              <div>
+                <div className="label mb-2">Chess sound theme</div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {themeChoices.map((choice) => (
+                    <div key={choice.id} className={`flex items-center gap-2 rounded-xl border p-3 transition-colors ${audioTheme === choice.id
+                      ? 'border-ink-900 bg-ink-900 text-white dark:border-cream dark:bg-cream dark:text-ink-900'
+                      : 'border-ink-200 bg-white dark:border-ink-700 dark:bg-ink-800'}`}>
+                      <button type="button" className="min-w-0 flex-1 text-left"
+                        onClick={() => chooseAudioTheme(choice.id)} aria-pressed={audioTheme === choice.id}>
+                        <span className="block text-sm font-medium">{choice.label}</span>
+                        <span className="mt-1 block text-xs opacity-75">{choice.detail}</span>
+                      </button>
+                      <button type="button" className="rounded-md p-2 hover:bg-black/10 dark:hover:bg-white/10"
+                        onClick={() => void listen(choice.id, choice.id === 'soft' || choice.id === 'classic' ? 'check' : 'move')}
+                        title={`Preview ${choice.label}`} aria-label={`Preview ${choice.label}`}>
+                        <Volume2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2 text-xs">
+                  <button type="button" className="btn-ghost px-2 py-1" onClick={() => void listen(audioTheme, 'capture')}>Preview capture</button>
+                  <button type="button" className="btn-ghost px-2 py-1" onClick={() => void listen(audioTheme, 'check')}>Preview check</button>
+                </div>
+                {audioWarning && <p role="status" className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  The bundled chess recordings could not be loaded. Natural audio stays silent instead of playing synthesized fallback sounds.
+                </p>}
+              </div>
             </div>
           )}
           <label className="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-ink-50 dark:hover:bg-ink-700/50">
@@ -425,38 +471,3 @@ function BoardThemeOption({ value, selected, onPick, label }: { value: BoardThem
   );
 }
 
-// Two option cards side by side, each with its own preview button — used for
-// the move sounds and for the check / game-end sounds.
-function SoundChoice<T extends string>({ label, options, value, optionText, descText, previewText, onPick, onPreview }: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  optionText: (o: T) => string;
-  descText: (o: T) => string;
-  previewText: string;
-  onPick: (o: T) => void;
-  onPreview: (o: T) => void;
-}) {
-  return (
-    <div>
-      <label className="label mb-1 block">{label}</label>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {options.map((o) => (
-          <div key={o} className={`flex items-start gap-2 rounded-xl border p-3 text-sm transition-colors
-            ${value === o
-              ? 'border-ink-900 bg-ink-900 text-cream dark:border-cream dark:bg-cream dark:text-ink-900'
-              : 'border-ink-200 bg-white hover:border-ink-300 dark:border-ink-700 dark:bg-ink-800 dark:hover:border-ink-600'}`}>
-            <button type="button" onClick={() => onPick(o)} className="min-w-0 flex-1 text-left">
-              <div className="font-medium">{optionText(o)}</div>
-              <div className={`mt-1 text-xs ${value === o ? 'opacity-80' : 'text-ink-500'}`}>{descText(o)}</div>
-            </button>
-            <button type="button" onClick={() => onPreview(o)} className="shrink-0 rounded-md p-1 opacity-80 hover:opacity-100"
-              title={previewText} aria-label={previewText}>
-              <Volume2 className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
