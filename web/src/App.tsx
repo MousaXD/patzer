@@ -133,6 +133,7 @@ export default function App() {
       document.documentElement.classList.toggle('dark', dark);
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      document.documentElement.style.backgroundColor = dark ? '#171a1c' : '#ffffff';
       document.querySelector('meta[name="theme-color"]')
         ?.setAttribute('content', dark ? '#171a1c' : '#ffffff');
     };
