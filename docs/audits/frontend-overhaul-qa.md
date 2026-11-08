@@ -5,19 +5,19 @@
 **Repository:** https://github.com/MousaXD/patzer  
 **Intended integration branch:** `feat/patzer-frontend-overhaul`  
 **QA branch:** `agent-07/frontend-qa-certification`  
-**Decision:** **NO-GO — certification blocked; no integrated candidate exists to test**
+**Decision:** **NO-GO — integration exists but remains at the pre-overhaul baseline; release certification blocked**
 
 ## Exact revisions and evidence provenance
 
 | Item | Evidence / state |
 | --- | --- |
 | Baseline main | `31b6e55f0762d23f9cad738b05174815acd37ed1` (https://github.com/MousaXD/patzer/commit/31b6e55f0762d23f9cad738b05174815acd37ed1) |
-| Integration SHA | **N/A.** `feat/patzer-frontend-overhaul` returned GitHub 404 on 2026-11-08. |
-| Agent 01–06 branches | Not found by the initial GitHub branch/PR searches. This is not proof that work has not begun locally. |
-| QA branch | **Created remotely** at `agent-07/frontend-qa-certification` from baseline `31b6e55f0762d23f9cad738b05174815acd37ed1` after GitHub write access was repaired. The earlier HTTP 403 is historical. |
-| QA pull request | **Not opened** because the intended integration base branch is absent. The connector can now write; do not point the QA PR at `main` simply to circumvent branch ownership. |
-| GitHub Actions run URLs | **None available** for this integrated candidate. There is no exact SHA to correlate with a run. |
-| Test execution | **Not executed.** The available local runtime cannot access `github.com` for cloning. The GitHub installation write access was restored, but no integrated commit exists for certification. The Node QA harness passed JavaScript syntax validation only (`node --check`). |
+| Integration SHA | `31b6e55f0762d23f9cad738b05174815acd37ed1` when inspected on 2026-11-08. **This is identical to `main`**, so it does not yet contain the required frontend overhaul. The earlier HTTP 404 preceded creation of this branch. |
+| Agent 01–06 branches | Absent from the initial search. Agent 04 PR #2 and Agent 06 PR #1 appeared later while the audit was underway. Specialist code is not yet integrated. |
+| QA branch | **Created and pushed** at `agent-07/frontend-qa-certification`, containing only four QA files. Based on baseline `31b6e55f0762d23f9cad738b05174815acd37ed1`. Earlier HTTP 403 was resolved. |
+| QA pull request | **Draft PR #3:** https://github.com/MousaXD/patzer/pull/3, targeting `feat/patzer-frontend-overhaul`. Do not merge until Agent 00 coordinates integration. |
+| GitHub Actions run URLs | QA branch runs (not integration certification): https://github.com/MousaXD/patzer/actions/runs/42503453539 at QA SHA `5b40b62139b2cb112974eb9695a86a7627d8014b`; initially queued. Required integration-only CI: **not run**. |
+| Test execution | **Not executed.** The local runtime cannot access `github.com` for cloning. GitHub write access is now restored and the QA suite is pushed, but no specialist-integrated SHA has been tested. The Node QA harness passed JavaScript syntax validation only (`node --check`). |
 
 **Evidence standard:** Source inspection describes the existing `main` baseline and new QA expectations. None of the baseline observations below is an observed regression of the unpushed overhaul. Screenshots, CI passes, Stockfish results, audio quality, and accessibility cannot be certified by reading source alone.
 
@@ -25,7 +25,7 @@
 
 | ID | Severity / owner | Evidence on baseline `main` | Required acceptance evidence |
 | --- | --- | --- | --- |
-| QA-01 | **Release blocker / Agent 00** | Missing integration branch and SHA. | Integration PR or branch with a fixed reviewed commit and complete required CI logs. |
+| QA-01 | **Release blocker / Agent 00** | Integration branch points to unchanged pre-overhaul baseline; final specialist-integrated SHA is missing. | Integration PR or branch with a fixed reviewed commit and complete required CI logs. |
 | QA-02 | **P1 / Agent 01** | `web/src/App.tsx` computes `site_theme ?? 'auto'` and follows `prefers-color-scheme: dark`; `server/src/db.ts` defaults new profiles to `site_theme='auto'`. Under a dark OS, a newly created baseline user receives dark mode, contrary to the new white-default requirement. | A new-user real-browser case with dark OS preference remains light; explicit Dark still works. Confirm source of truth and migration compatibility. |
 | QA-03 | **P1 / Agent 01** | `web/src/index.css` declares `font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;`; no local `@font-face` declaration is present in the inspected first 65 lines. | Prove bundled font assets load successfully without network dependencies; computed controls use the intended custom family, and controls are styled consistently. |
 | QA-04 | **P1 / Agent 04** | Baseline `web/src/pages/GameAnalyzer.tsx` renders `<ChessBoard>` in the review pane without passing `movable` or `onMove`; `web/src/components/ChessBoard.tsx` defaults `movable=false`. Baseline game review is replay-only, not a variation editor. | Browser-driven Bc4 from the position after 1.e4 e5, with legal turns and saved PGN unchanged. Plus castling, en passant, promotions, branch navigation, keyboard, and touch. |
@@ -78,7 +78,7 @@ Before approval, independently exercise positive and negative cases for Game Rev
 
 ## CI and runtime evidence limitations
 
-- **Actual GitHub Actions job logs: not inspected**, because there was no candidate run to inspect; no run URLs may be invented.
+- **Actual GitHub Actions job logs: not yet inspected for a completed run.** QA-branch push created https://github.com/MousaXD/patzer/actions/runs/42503453539; this is not an integrated-candidate certification. Inspect logs once a run has completed.
 - **Actual browser screenshots: not captured.** The QA script will capture them in CI; this is not the same as approved pixel-diff references.
 - **Real audio listening: not performed.** A human should judge timbre, clipping and perceived responsiveness on desktop and mobile; this cannot be inferred from waveforms alone.
 - **Cross-browser testing: not performed.** The initial automation targets Chromium; add Firefox/WebKit passes where supported before claiming cross-browser certification.
@@ -86,9 +86,9 @@ Before approval, independently exercise positive and negative cases for Game Rev
 
 ## Follow-up and release decision
 
-1. Agent 00 creates the integration branch and integrates specialist PRs under a reviewable SHA.
-2. The QA files are applied **only to `agent-07/frontend-qa-certification`**; a QA-only PR must target `feat/patzer-frontend-overhaul`. Do not merge it without coordination.
+1. Agent 00 integrates specialist PRs into the existing integration branch under a reviewable SHA.
+2. QA files are pushed **only to `agent-07/frontend-qa-certification`** and draft QA PR #3 targets `feat/patzer-frontend-overhaul`. Do not merge without coordination.
 3. Verify the QA workflow triggers and inspect every failed job **log**. Rerun at the fixed integration SHA after changes. Publish exact run URLs and completed matrix results.
 4. Agent 07 re-inspects the six specialist code diffs, attends to browser screenshots/audio perception, and signs off only when all ten release gates are evidenced.
 
-**Current independent recommendation: NO-GO, due to absent integration artifact and unexecuted certification.** This status should be re-evaluated when code and CI evidence exist. Only Agent 00 can decide the final merge.
+**Current independent recommendation: NO-GO, because integration still points to the unmodified baseline and complete certification has not run.** This status should be re-evaluated when code and CI evidence exist. Only Agent 00 can decide the final merge.
