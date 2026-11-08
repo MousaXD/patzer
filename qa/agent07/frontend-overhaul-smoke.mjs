@@ -213,13 +213,14 @@ try {
     assert.ok(auth.cookie,'normal user session cookie');
     assert.equal((await api('/api/games/'+main.id,{cookie:auth.cookie})).status,404,'cross-user saved game must be private');
     assert.equal((await api('/api/admin/users',{cookie:auth.cookie})).status,403,'admin API must reject normal user');
+    const priorBrowserErrors=browserErrors.length;
     const normalContext=await browser.newContext({viewport:{width:1366,height:768}});
     try {
       const normalPage=await login(normalContext,'qauser','qa-user-password-123');
       await normalPage.goto(base+'/admin/users');
       await normalPage.waitForFunction(()=>location.pathname==='/',undefined,{timeout:6000});
       assert.equal(new URL(normalPage.url()).pathname,'/','normal user must not render admin route');
-      assert.deepEqual(browserErrors.filter(x=>x.includes('qauser')),[],'browser errors in normal user flow');
+      assert.deepEqual(browserErrors.slice(priorBrowserErrors),[],'browser errors in normal user flow');
     } finally { await normalContext.close(); }
   });
   await test('New user remains in white theme when OS prefers dark',async()=>{
