@@ -25,8 +25,9 @@ export default function Settings() {
     if (!user) return;
     setForm({ ...user.profile });
     setTheme(isAudioThemeExplicit() ? getAudioTheme()
-      : user.profile.move_sound_set === 'board' ? 'board'
-      : user.profile.sound_set === 'soft' ? 'soft' : 'natural');
+      : user.profile.move_sound_set === 'board'
+        ? (user.profile.sound_set === 'soft' ? 'board-soft' : 'board')
+        : (user.profile.sound_set === 'soft' ? 'soft' : 'natural'));
     setVolume(getAudioVolume());
   }, [user]);
   useEffect(() => onVoicesReady(() => setVoices(getVoices())), []);
@@ -72,6 +73,7 @@ export default function Settings() {
   const themeChoices: { id: AudioTheme; label: string; detail: string }[] = [
     { id: 'natural', label: 'Natural (default)', detail: 'Short, dry chess-piece clicks for every game event.' },
     { id: 'board', label: 'Board (legacy)', detail: 'Recorded moves with original classic alerts.' },
+    { id: 'board-soft', label: 'Board + Soft (legacy)', detail: 'Recorded moves with the original softer check and game-end alerts.' },
     { id: 'classic', label: 'Classic (legacy)', detail: 'Original synthesized knocks and bell alerts.' },
     { id: 'soft', label: 'Soft (legacy)', detail: 'Original knocks with softer alerts.' },
   ];
@@ -81,14 +83,14 @@ export default function Settings() {
     setAudioTheme(theme);
     // Natural maps to the legacy Classic defaults so other devices also
     // discover Natural unless the user explicitly selected Board or Soft.
-    set('move_sound_set', theme === 'board' ? 'board' : 'classic');
-    set('sound_set', theme === 'soft' ? 'soft' : 'classic');
+    set('move_sound_set', theme === 'board' || theme === 'board-soft' ? 'board' : 'classic');
+    set('sound_set', theme === 'soft' || theme === 'board-soft' ? 'soft' : 'classic');
     setAudioWarning(false);
   }
 
   async function listen(theme: AudioTheme, kind: 'move' | 'capture' | 'check') {
     const ok = await previewAudio(theme, kind);
-    setAudioWarning(!ok && (theme === 'natural' || theme === 'board') && getAudioLoadState() === 'failed');
+    setAudioWarning(!ok && (theme === 'natural' || theme === 'board' || theme === 'board-soft') && getAudioLoadState() === 'failed');
   }
 
   return (
