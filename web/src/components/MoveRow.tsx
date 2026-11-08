@@ -11,25 +11,17 @@ interface Props {
   black?: Move;
   current: number;
   onSelect: (ply: number) => void;
-  /** When set, only these plies stand out (a category picked in the Game
-   *  Report); the rest of the list is dimmed. */
+  /** Plies singled out by a game report filter; others are dimmed. */
   highlight?: Set<number> | null;
 }
 
-// Single move-pair row. Tints the row's left edge by the worst classification
-// of the two half-moves so a glance down the list reveals where the game
-// tilted (matches chess.com Game Review). No alternate-row striping —
-// chess.com uses only 1px hairlines between move pairs.
 export default function MoveRow({ num, white, black, current, onSelect, highlight }: Props) {
   const { t } = useTranslation();
   const wCur = white?.ply === current;
   const bCur = black?.ply === current;
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Keep the current row visible inside the move-list's own scroll container —
-  // but ONLY that container. Native `scrollIntoView` cascades up every
-  // scrollable ancestor, which previously scrolled the right rail and the
-  // page on each step, yanking focus away from the board.
+  // Scroll only the move list, not the outer rail, when stepping through moves.
   useEffect(() => {
     if (!(wCur || bCur)) return;
     const el = ref.current;
@@ -43,22 +35,16 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
     if (!scroller || scroller === document.body) return;
     const elRect = el.getBoundingClientRect();
     const scRect = scroller.getBoundingClientRect();
-    const fullyVisible = elRect.top >= scRect.top && elRect.bottom <= scRect.bottom;
-    if (fullyVisible) return;
+    if (elRect.top >= scRect.top && elRect.bottom <= scRect.bottom) return;
     const target = scroller.scrollTop + (elRect.top - scRect.top) - scroller.clientHeight / 2 + el.offsetHeight / 2;
     scroller.scrollTo({ top: target, behavior: 'smooth' });
   }, [wCur, bCur]);
 
-  const tint = pickTint(white?.classification, black?.classification);
-
   return (
-    <div
-      ref={ref}
-      className={cn(
-        'grid grid-cols-[2.25rem_1fr_1fr] items-stretch border-b border-chesscom-100 dark:border-chesscom-800',
-        tint,
-      )}
-    >
+    <div ref={ref} className={cn(
+      'grid grid-cols-[2.25rem_1fr_1fr] items-stretch border-b border-chesscom-100 dark:border-chesscom-800',
+      pickTint(white?.classification, black?.classification),
+    )}>
       <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400">{num}.</div>
       <Half move={white} current={wCur} onSelect={onSelect} t={t} highlight={highlight} />
       <Half move={black} current={bCur} onSelect={onSelect} t={t} highlight={highlight} />
@@ -66,17 +52,25 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
   );
 }
 
-function Half({
-  move, current, onSelect, t, highlight,
-}: { move?: Move; current: boolean; onSelect: (p: number) => void; t: (k: string) => string; highlight?: Set<number> | null }) {
+function Half({ move, current, onSelect, t, highlight }: {
+  move?: Move;
+  current: boolean;
+  onSelect: (p: number) => void;
+  t: (key: string) => string;
+  highlight?: Set<number> | null;
+}) {
   if (!move) return <div />;
   const style = styleFor(move.classification);
+  const label = style ? t(`classification.${style.labelKey}`) : null;
   const picked = !!highlight?.has(move.ply);
   const dimmed = !!highlight && !picked && !current;
   return (
     <button
+      type="button"
       onClick={() => onSelect(move.ply)}
-      title={style ? t(`classification.${style.labelKey}`) : undefined}
+      aria-current={current ? 'step' : undefined}
+      aria-label={label ? `${move.san}: ${label}` : move.san}
+      title={label ?? undefined}
       className={cn(
         'group flex items-center justify-between gap-2 px-2 py-1.5 text-left text-sm transition-colors',
         current
@@ -88,13 +82,7 @@ function Half({
     >
       <span className="truncate font-medium tabular-nums">{move.san}</span>
       {style && (
-        <span
-          className={cn(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white',
-            style.bgClass,
-            current && 'ring-1 ring-white/60',
-          )}
-        >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-chesscom-900/90 text-white" style={{ backgroundColor: style.hex }} aria-hidden="true">
           <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
             {GLYPH_SVG[style.glyph]}
           </svg>
@@ -104,22 +92,19 @@ function Half({
   );
 }
 
-// Severity order: blunder/miss > mistake > inaccuracy > brilliant > great > none.
-// Brilliants and greats earn their own positive-spotlight tints (teal / steel
-// blue) — chess.com's highlight reel leads with them, not buries them.
+// Severity order: blunder/miss > mistake > inaccuracy > brilliant > great.
 function pickTint(a?: string, b?: string): string {
   const sev = (c?: string) =>
-    c === 'blunder' ? 5 :
-    c === 'miss' ? 5 :
+    c === 'blunder' || c === 'miss' ? 5 :
     c === 'mistake' ? 4 :
     c === 'inaccuracy' ? 3 :
     c === 'brilliant' ? 2 :
     c === 'great' ? 1 : 0;
-  const w = Math.max(sev(a), sev(b));
-  if (w === 5) return 'shadow-[inset_3px_0_0_0_theme(colors.move.blunder)]';
-  if (w === 4) return 'shadow-[inset_3px_0_0_0_theme(colors.move.mistake)]';
-  if (w === 3) return 'shadow-[inset_3px_0_0_0_theme(colors.move.inaccuracy)]';
-  if (w === 2) return 'shadow-[inset_3px_0_0_0_theme(colors.move.brilliant)]';
-  if (w === 1) return 'shadow-[inset_3px_0_0_0_theme(colors.move.great)]';
+  const worst = Math.max(sev(a), sev(b));
+  if (worst === 5) return 'shadow-[inset_3px_0_0_0_theme(colors.move.blunder)]';
+  if (worst === 4) return 'shadow-[inset_3px_0_0_0_theme(colors.move.mistake)]';
+  if (worst === 3) return 'shadow-[inset_3px_0_0_0_theme(colors.move.inaccuracy)]';
+  if (worst === 2) return 'shadow-[inset_3px_0_0_0_theme(colors.move.brilliant)]';
+  if (worst === 1) return 'shadow-[inset_3px_0_0_0_theme(colors.move.great)]';
   return '';
 }
