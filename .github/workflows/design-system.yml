@@ -27,6 +27,10 @@ jobs:
         run: npm ci
       - name: Static design-system contract
         run: node --test web/tests/design-system.contract.test.mjs
+      - name: Existing repository typecheck
+        run: npm run typecheck
+      - name: Existing repository unit tests
+        run: npm test
       - name: TypeScript and production Vite build
         run: npm run build -w web
       - name: Install isolated Playwright and Chromium
