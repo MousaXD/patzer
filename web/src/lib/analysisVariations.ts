@@ -47,12 +47,13 @@ export interface AnalysisVariationView {
   basePly: number;
   /** FEN at this branch's immediate fork (may differ from baseGameFen). */
   variationBaseFen: string;
-  /** Entire active line, including future moves after the cursor for redo/history. */
+  /** Entire original-fork-to-active line, including ancestor prefixes and redo moves. */
   currentVariationMoves: AnalysisVariationMove[];
   /** Played prefix through the cursor; use when building a position-specific prompt. */
   playedVariationMoves: AnalysisVariationMove[];
   currentVariationSan: string[];
   currentVariationUci: string[];
+  /** Cursor within the active leaf branch (not the flattened line). */
   variationCursor: number;
   lastMove: { from: string; to: string; san?: string; uci?: string } | null;
 }
@@ -82,6 +83,22 @@ function originalMove(position: OriginalGamePosition | undefined): AnalysisVaria
   return { from: position.from, to: position.to, san: position.san, uci: position.uci };
 }
 
+/** Inherit each ancestor's played prefix, never its future/undone tail. */
+function variationPrefix(branch: AnalysisVariation, variations: AnalysisVariation[]): AnalysisVariationMove[] {
+  const segments: AnalysisVariationMove[][] = [];
+  const seen = new Set<string>([branch.id]);
+  let current = branch;
+  while (current.parentId) {
+    if (seen.has(current.parentId)) break;
+    seen.add(current.parentId);
+    const parent = variations.find((v) => v.id === current.parentId);
+    if (!parent) break;
+    segments.unshift(parent.moves.slice(0, current.parentCursor ?? 0));
+    current = parent;
+  }
+  return segments.flat();
+}
+
 /** Always derive the board FEN from an immutable move record and the cursor. */
 export function getAnalysisVariationView(
   state: AnalysisVariationState,
@@ -107,28 +124,23 @@ export function getAnalysisVariationView(
   }
 
   const cursor = Math.min(Math.max(0, state.variationCursor), branch.moves.length);
+  const prefix = variationPrefix(branch, state.variations);
   const played = branch.moves.slice(0, cursor);
+  const fullLine = [...prefix, ...branch.moves];
   const previous = played[played.length - 1];
-  let lastMove: AnalysisVariationView['lastMove'] = previous
-    ? { from: previous.from, to: previous.to, san: previous.san, uci: previous.uci }
-    : null;
-  if (!lastMove && branch.parentId) {
-    const parent = state.variations.find((v) => v.id === branch.parentId);
-    const parentMove = parent?.moves[(branch.parentCursor ?? 0) - 1];
-    lastMove = parentMove
-      ? { from: parentMove.from, to: parentMove.to, san: parentMove.san, uci: parentMove.uci }
-      : null;
-  }
-  if (!lastMove) lastMove = originalMove(positions[basePly]);
+  const highlighted = previous ?? prefix[prefix.length - 1];
+  const lastMove = highlighted
+    ? { from: highlighted.from, to: highlighted.to, san: highlighted.san, uci: highlighted.uci }
+    : originalMove(positions[basePly]);
   return {
     currentFen: previous?.fenAfter ?? branch.baseFen,
     baseGameFen,
     basePly,
     variationBaseFen: branch.baseFen,
-    currentVariationMoves: branch.moves,
-    playedVariationMoves: played,
-    currentVariationSan: branch.moves.map((m) => m.san),
-    currentVariationUci: branch.moves.map((m) => m.uci),
+    currentVariationMoves: fullLine,
+    playedVariationMoves: [...prefix, ...played],
+    currentVariationSan: fullLine.map((m) => m.san),
+    currentVariationUci: fullLine.map((m) => m.uci),
     variationCursor: cursor,
     lastMove,
   };

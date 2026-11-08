@@ -93,6 +93,23 @@ describe('local analysis variations', () => {
     expect(getAnalysisVariationView(state, history).playedVariationMoves.map((m) => m.san)).toEqual(['c5']);
   });
 
+  it('includes ancestor prefixes and correct last-move highlighting in nested variation', () => {
+    let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
+    state = submitAnalysisVariationMove(state, history, 'c7c5');
+    state = submitAnalysisVariationMove(state, history, 'g1f3');
+    state = stepAnalysisBackward(state, history);
+    state = submitAnalysisVariationMove(state, history, 'd2d4');
+    let view = getAnalysisVariationView(state, history);
+    expect(view.currentVariationSan).toEqual(['c5', 'd4']);
+    expect(view.currentVariationUci).toEqual(['c7c5', 'd2d4']);
+    expect(view.playedVariationMoves.map((m) => m.san)).toEqual(['c5', 'd4']);
+    state = stepAnalysisBackward(state, history);
+    view = getAnalysisVariationView(state, history);
+    expect(view.playedVariationMoves.map((m) => m.san)).toEqual(['c5']);
+    expect(view.lastMove?.san).toBe('c5');
+    expect(view.currentFen).toBe(state.variations[1]!.baseFen);
+  });
+
   it('redo restores the original variation after undo crosses to saved game', () => {
     let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
     state = submitAnalysisVariationMove(state, history, 'c7c5');
