@@ -179,6 +179,10 @@ try {
     for(const path of ['/','/play','/review','/insights','/train','/learn','/openings','/plan','/lab','/players','/settings','/admin/users','/admin/system']){
       await page.goto(base+path,{waitUntil:'domcontentloaded'});
       assert.equal(new URL(page.url()).pathname,path,'redirect at '+path);
+      // domcontentloaded may predate React hydration and authentication refresh.
+      // Wait for meaningful content rather than falsely flagging a normal loading transition.
+      await page.waitForFunction(() => (document.querySelector('#root')?.textContent?.trim().length ?? 0) > 0,
+        { timeout: 5000 });
       assert.ok((await page.locator('#root').innerText()).trim().length>0,'blank '+path);
     }
     assert.deepEqual(browserErrors.slice(prior),[],'uncaught route errors');
@@ -261,11 +265,21 @@ try {
   });
   await test('Keyboard first/previous/next/last follows selected ply',async()=>{
     await pageReady(page,main.id,2);
+    // Ensure the review state has hydrated before sending keyboard events.
+    await page.getByText('2 / 8', { exact: true }).waitFor({ timeout: 8000 });
     await page.locator('body').click({position:{x:3,y:3}});
-    await page.keyboard.press('ArrowLeft'); await page.waitForURL(/ply=1/);
-    await page.keyboard.press('ArrowRight'); await page.waitForURL(/ply=2/);
-    await page.keyboard.press('End'); await page.waitForURL(/ply=8/);
-    await page.keyboard.press('Home'); await page.waitForURL(u=>!u.searchParams.has('ply'));
+    const expectPly = async (expected) => {
+      await page.waitForFunction(ply => {
+        const actual = new URL(window.location.href).searchParams.get('ply');
+        return ply === 0 ? actual === null : actual === String(ply);
+      }, expected, {timeout: 8000});
+      const current = await page.locator('cg-board').first().isVisible();
+      assert.equal(current,true,'board must remain visible after keyboard navigation');
+    };
+    await page.keyboard.press('ArrowLeft'); await expectPly(1);
+    await page.keyboard.press('ArrowRight'); await expectPly(2);
+    await page.keyboard.press('End'); await expectPly(8);
+    await page.keyboard.press('Home'); await expectPly(0);
   });
   await test('Quality badge matches persisted class and is anchored to board',async()=>{
     await pageReady(page,main.id,5);
@@ -279,7 +293,9 @@ try {
     const marker=page.locator('[title="mistake"]').first();
     const before=await marker.boundingBox();
     assert.ok(before,'initial marker visible');
-    await page.getByRole('button',{name:/flip board/i}).first().click();
+    // The current button's accessible name is the visible action "Flip";
+    // its longer title is a tooltip, not the accessibility name.
+    await page.getByRole('button',{name:/^flip$/i}).first().click();
     const after=await marker.boundingBox();
     assert.ok(after,'flipped marker visible');
     assert.ok(Math.abs(after.x-before.x)>8 || Math.abs(after.y-before.y)>8,'badge must move when board orientation changes');
