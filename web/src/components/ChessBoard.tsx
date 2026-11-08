@@ -228,6 +228,7 @@ export function PromotionPicker({ color, square, orientation, onPick, onCancel }
     ? { bottom: `calc(${100 - rowPct}% + 6px)` }
     : { top: `calc(${rowPct + 12.5}% + 6px)` };
   const pieces: PieceLetter[] = ['q', 'r', 'b', 'n'];
+  const names: Record<PieceLetter, string> = { q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight' };
   const symbols: Record<PieceLetter, Record<'white' | 'black', string>> = {
     q: { white: '♕', black: '♛' },
     r: { white: '♖', black: '♜' },
@@ -243,7 +244,7 @@ export function PromotionPicker({ color, square, orientation, onPick, onCancel }
         style={{ left: `calc(${colPct}% - 8px)`, ...posStyle }}
       >
         {pieces.map((p) => (
-          <button key={p} onClick={(e) => { e.stopPropagation(); onPick(p); }}
+          <button key={p} type="button" aria-label={`Promote to ${names[p]}`} onClick={(e) => { e.stopPropagation(); onPick(p); }}
             className="flex h-12 w-12 items-center justify-center rounded-lg text-3xl transition-colors hover:bg-accent-100 dark:hover:bg-accent-700/30"
             title={p.toUpperCase()}>
             {symbols[p][color]}

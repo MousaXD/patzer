@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -19,6 +19,9 @@ import CapturedPieces from '../components/CapturedPieces';
 import ThreatPanel from '../components/ThreatPanel';
 import ExplorerPanel from '../components/ExplorerPanel';
 import { soundForMove, inferMoveFlagsFromSan } from '../lib/sounds';
+import { useAnalysisVariations } from '../lib/useAnalysisVariations';
+import { legalAnalysisMove } from '../lib/analysisVariations';
+import { qualityMatchesPosition, type VariationMoveQuality } from '../lib/classification';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPosition';
@@ -149,9 +152,71 @@ export default function GameAnalyzer() {
     const v = Number(searchParams.get('ply'));
     return Number.isFinite(v) && v >= 0 ? v : 0;
   })();
-  const [ply, setPly] = useState(initialPly);
+  // One source of truth for saved-game replay and local exploratory branches.
+  // Branches are ephemeral: no game/PGN writes and no broken mainline state.
+  const variations = useAnalysisVariations({ positions, initialPly, gameKey: `${gameId}:${data?.game.pgn ?? ''}` });
+  const ply = variations.originalPly;
+  const selectOriginalPly = variations.selectOriginalPly;
+  const setPly = useCallback((value: number | ((previous: number) => number)) => {
+    selectOriginalPly(typeof value === 'function' ? value(ply) : value);
+  }, [selectOriginalPly, ply]);
+  const isVariation = variations.activeVariationId !== null;
+  const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
+  const qualityKey = branchMove ? `${branchMove.fenBefore}|${branchMove.uci}` : null;
+  const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
+  const [qualityError, setQualityError] = useState('');
+  const variationQuality = qualityKey && qualityMatchesPosition(qualityCache[qualityKey], variations.currentFen)
+    ? qualityCache[qualityKey] : null;
+  const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
+  const displayedLastMove = variations.lastMove;
 
-  useEffect(() => { setPly(initialPly); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [gameId]);
+  // Each exploratory move is classified by the existing authenticated engine
+  // endpoint. A response for a deselected branch is cached but never rendered
+  // against another FEN; failed/429 searches never invent a label.
+  useEffect(() => {
+    if (!qualityKey || !branchMove || qualityCache[qualityKey]) return;
+    let cancelled = false;
+    let retry: number | undefined;
+    setQualityError('');
+    const evaluate = async (attempt: number) => {
+      try {
+        const result = await api.post<{quality: VariationMoveQuality}>('/api/analyze/variation-move', {
+          fen_before: branchMove.fenBefore,
+          move_uci: branchMove.uci,
+          depth: 12,
+          ply: Math.max(1, Math.min(1024, displayedPly)),
+        });
+        if (!cancelled && qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
+          setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
+        }
+      } catch (e) {
+        if (cancelled) return;
+        const status = (e as Error & {status?: number}).status;
+        if (status === 429 && attempt === 0) {
+          retry = window.setTimeout(() => void evaluate(1), 1100);
+        } else {
+          setQualityError('Move not scored — the Stockfish engine is unavailable or busy.');
+        }
+      }
+    };
+    const start = window.setTimeout(() => void evaluate(0), 250);
+    return () => { cancelled = true; window.clearTimeout(start); if (retry) window.clearTimeout(retry); };
+  // qualityKey and fen are the selection identity; avoid replaying a search
+  // just because the controller produces a new view object on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qualityKey, variations.currentFen, displayedPly]);
+  useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
+
+  const onAnalysisMove = (uci: string) => {
+    const move = legalAnalysisMove(variations.currentFen, uci);
+    if (variations.submitMove(uci) && move) soundForMove(inferMoveFlagsFromSan(move.san));
+  };
+  const backward = () => variations.stepBackward();
+  const forward = () => variations.stepForward();
+  const first = () => isVariation && variations.activeVariationId
+    ? variations.selectVariation(variations.activeVariationId, 0) : setPly(0);
+  const last = () => isVariation && variations.activeVariationId
+    ? variations.selectVariation(variations.activeVariationId) : setPly(positions.length - 1);
 
   // Keep ?ply= in the URL so refresh + share work. Replace, don't push.
   useEffect(() => {
@@ -175,10 +240,10 @@ export default function GameAnalyzer() {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'ArrowLeft') setPly((p) => Math.max(0, p - 1));
-      else if (e.key === 'ArrowRight') setPly((p) => Math.min(positions.length - 1, p + 1));
-      else if (e.key === 'Home') setPly(0);
-      else if (e.key === 'End') setPly(positions.length - 1);
+      if (e.key === 'ArrowLeft') backward();
+      else if (e.key === 'ArrowRight') forward();
+      else if (e.key === 'Home') first();
+      else if (e.key === 'End') last();
       else if (e.key === 'f' || e.key === 'F') setFlipped((f) => !f);
       else if (e.key === 's' || e.key === 'S') {
         const url = window.location.href;
@@ -190,7 +255,7 @@ export default function GameAnalyzer() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [positions.length]);
+  }, [positions.length, backward, forward, first, last]);
 
   async function analyze(depth: number, force = false) {
     setAnalyzing(true);
@@ -213,7 +278,7 @@ export default function GameAnalyzer() {
   const [linesHover, setLinesHover] = useState<EngineLine | null>(null);
   const [explorerHover, setExplorerHover] = useState<string | null>(null);
   const pos = data ? (positions[ply] ?? positions[0]) : undefined;
-  const currentFen = pos?.fen ?? '';
+  const currentFen = variations.currentFen || pos?.fen || '';
   useEffect(() => {
     if (!linesEnabled || !currentFen) return;
     let cancelled = false;
@@ -229,7 +294,7 @@ export default function GameAnalyzer() {
 
   if (isLoading || !data) return <AnalyzerSkeleton />;
 
-  const move: AnalyzedMove | undefined = analysis?.moves[ply - 1];
+  const move: AnalyzedMove | undefined = isVariation ? undefined : analysis?.moves[ply - 1];
   const userColor = data.game.user_color ?? 'white';
   // "Play from here" (in the move card): the position on the board, at any
   // move — you keep your colour and Patzer takes the other side. To redo a
@@ -241,7 +306,7 @@ export default function GameAnalyzer() {
   const orientation: 'white' | 'black' = flipped
     ? (userColor === 'white' ? 'black' : 'white')
     : userColor;
-  const currentEvalCp = move?.eval_after_cp ?? 0;
+  const currentEvalCp = variationQuality?.eval_after_cp ?? move?.eval_after_cp ?? 0;
 
   const historySoFar = analysis?.moves.slice(0, ply - 1).map((m) => m.san) ?? [];
   const coachReq = move ? () => ({
@@ -266,9 +331,11 @@ export default function GameAnalyzer() {
     },
   }) : null;
 
-  const baseArrow = move?.best_move_uci && move.best_move_uci !== move.uci ? [{
-    orig: move.best_move_uci.slice(0, 2) as never,
-    dest: move.best_move_uci.slice(2, 4) as never,
+  const bestUci = variationQuality?.best_move_uci ?? move?.best_move_uci;
+  const playedUci = variationQuality?.uci ?? move?.uci;
+  const baseArrow = bestUci && bestUci !== playedUci ? [{
+    orig: bestUci.slice(0, 2) as never,
+    dest: bestUci.slice(2, 4) as never,
     brush: 'paleBlue',
   }] : [];
   const hoverUci = linesHover?.uci ?? explorerHover;
@@ -308,7 +375,7 @@ export default function GameAnalyzer() {
   const openingName = analysis?.opening_name ?? data.game.opening_name ?? null;
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto w-full max-w-none" data-analysis-workspace="true">
       <div className="mb-3 flex items-center justify-between gap-3">
         <Link to="/review" className="btn-ghost text-sm shrink-0"><ChevronLeft className="h-4 w-4" />{t('common.back')}</Link>
         <div className="min-w-0 truncate text-right text-sm text-chesscom-500">
@@ -333,7 +400,7 @@ export default function GameAnalyzer() {
             accuracy={orientation === 'white' ? analysis?.accuracy_black : analysis?.accuracy_white}
             elo={orientation === 'white' ? analysis?.estimated_elo_black : analysis?.estimated_elo_white}
             side={orientation === 'white' ? 'black' : 'white'}
-            fen={pos?.fen ?? ''}
+            fen={currentFen}
           />
           {/* Board sized so column fits in the workspace height. Chrome math:
               workspace chrome (header + breadcrumb + page padding + footer) ≈
@@ -346,13 +413,18 @@ export default function GameAnalyzer() {
               className={`relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'green'} lg:max-w-[calc(100vh-24rem)]`}
             >
               <ChessBoard
-                fen={pos?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}
+                fen={currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}
+                analysisMode
+                onMove={onAnalysisMove}
                 orientation={orientation}
-                lastMove={pos?.from && pos?.to ? [pos.from as never, pos.to as never] : undefined}
+                lastMove={displayedLastMove ? [displayedLastMove.from as never, displayedLastMove.to as never] : undefined}
                 arrows={arrow as never[]}
               />
-              {move && pos?.to && (
+              {!isVariation && move && pos?.to && (
                 <ClassificationBadge classification={move.classification} square={pos.to} orientation={orientation} />
+              )}
+              {isVariation && variationQuality && (
+                <ClassificationBadge classification={variationQuality.classification} square={variationQuality.to} orientation={orientation} evaluatedFenAfter={variationQuality.fen_after} activeFen={currentFen} />
               )}
             </div>
           </div>
@@ -361,13 +433,17 @@ export default function GameAnalyzer() {
             accuracy={orientation === 'white' ? analysis?.accuracy_white : analysis?.accuracy_black}
             elo={orientation === 'white' ? analysis?.estimated_elo_white : analysis?.estimated_elo_black}
             side={orientation}
-            fen={pos?.fen ?? ''}
+            fen={currentFen}
             highlighted
           />
 
           <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft dark:bg-chesscom-800">
             <div className="min-w-0 truncate text-chesscom-500">
-              {move ? (
+              {isVariation ? (
+                <><span className="font-medium text-amber-600">Variation {branchMove?.san ?? 'starting position'}</span>
+                  {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
+                </>
+              ) : move ? (
                 <>
                   <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{ply % 2 === 1 ? t('review.sideShort.white') : t('review.sideShort.black')}: {move.san}</span>
                   {move.best_move_san && move.best_move_san !== move.san && (
@@ -381,13 +457,13 @@ export default function GameAnalyzer() {
             </div>
           </div>
           <div className="mt-3 flex items-center justify-center gap-1.5 sm:gap-2">
-            <button onClick={() => setPly(0)} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
-            <button onClick={() => setPly((p) => Math.max(0, p - 1))} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
+            <button onClick={first} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
+            <button onClick={backward} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
             <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
-              {ply} / {positions.length - 1}
+              {isVariation ? `${displayedPly} · var` : ply} / {positions.length - 1}
             </div>
-            <button onClick={() => setPly((p) => Math.min(positions.length - 1, p + 1))} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
-            <button onClick={() => setPly(positions.length - 1)} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
+            <button onClick={forward} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
+            <button onClick={last} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
 
         </div>
@@ -396,6 +472,31 @@ export default function GameAnalyzer() {
             `min-h-0` lets the flex child shrink below content height; without it
             flex would force the page to grow. */}
         <div className="min-w-0 space-y-3 lg:w-[380px] lg:flex-initial lg:max-w-md lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          <section className="card p-3" aria-label="Analysis variations">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold">Interactive analysis</div>
+                <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
+              </div>
+              <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                Return to game
+              </button>
+            </div>
+            {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
+              {variations.variations.map((branch, index) => (
+                <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
+                  className={`rounded-md px-2 py-1.5 text-xs font-medium ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
+                  onClick={() => variations.selectVariation(branch.id)} title={`Variation ${index + 1}, ${branch.moves.length} moves`}>
+                  Variation {index + 1}
+                </button>
+              ))}
+            </div>}
+            {isVariation && <div className="mt-2 text-sm">
+              <span className="font-mono text-xs text-chesscom-500">{variations.playedVariationMoves.map((m) => m.san).join(' ') || 'Branch point'}</span>
+              {qualityError && <p className="mt-1 text-xs text-amber-600">{qualityError}</p>}
+            </div>}
+            {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
+          </section>
           {!analysis && (
             <button onClick={() => analyze(requestedDepth, false)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
@@ -549,8 +650,8 @@ export default function GameAnalyzer() {
                 lines={lines}
                 loading={linesLoading}
                 error={linesError}
-                playedUci={positions[ply + 1] ? (positions[ply + 1]!.from ?? '') + (positions[ply + 1]!.to ?? '') : null}
-                onAdvance={() => setPly((p) => Math.min(positions.length - 1, p + 1))}
+                playedUci={!isVariation && positions[ply + 1] ? (positions[ply + 1]!.from ?? '') + (positions[ply + 1]!.to ?? '') : null}
+                onAdvance={forward}
                 onHover={setLinesHover}
               />
 
@@ -575,7 +676,7 @@ export default function GameAnalyzer() {
 
               <ExportRow
                 pgn={data.game.pgn}
-                fen={pos?.fen ?? ''}
+                fen={currentFen}
                 fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
               />
             </>

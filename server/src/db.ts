@@ -28,7 +28,7 @@ const SCHEMA = [
     tts_pitch REAL NOT NULL DEFAULT 1.0,
     board_theme TEXT NOT NULL DEFAULT 'wood',
     piece_set TEXT NOT NULL DEFAULT 'cburnett',
-    site_theme TEXT NOT NULL DEFAULT 'auto'
+    site_theme TEXT NOT NULL DEFAULT 'light'
   )`,
   `CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
@@ -121,7 +121,7 @@ ensureColumn('analyses', 'estimated_elo_black', 'INTEGER');
 // scoring_version lets us silently re-run analyses when the classifier or
 // elo curve changes. Default 1 = "pre-versioned" = stale until re-analyzed.
 ensureColumn('analyses', 'scoring_version', `INTEGER NOT NULL DEFAULT 1`);
-ensureColumn('profiles', 'site_theme', `TEXT NOT NULL DEFAULT 'auto'`);
+ensureColumn('profiles', 'site_theme', `TEXT NOT NULL DEFAULT 'light'`);
 ensureColumn('profiles', 'blunder_warning', `INTEGER NOT NULL DEFAULT 0`);
 // A game played from a position (Game Review → "Play from here"): the FEN it
 // started from. Such games are saved but kept out of the opening tree and

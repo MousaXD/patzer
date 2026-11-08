@@ -224,12 +224,18 @@ try {
     } finally { await normalContext.close(); }
   });
   await test('New user remains in white theme when OS prefers dark',async()=>{
-    await setTheme(cookie,'auto');
+    // A genuine newly created account defaults to Light; an existing user who
+    // explicitly selected Auto must still follow their OS preference.
     const darkOS=await browser.newContext({viewport:{width:1366,height:768},colorScheme:'dark'});
     try {
-      const fresh=await login(darkOS);
+      const fresh=await login(darkOS,'qauser','qa-user-password-123');
       await fresh.goto(base+'/settings');
+      await fresh.locator('input').first().waitFor({state:'visible'});
       assert.equal(await fresh.locator('html').evaluate(el=>el.classList.contains('dark')),false);
+      const explicit=await api('/api/settings/profile', {method:'PATCH',body:{site_theme:'auto'},cookie:(await api('/api/auth/login',{method:'POST',body:{username:'qauser',password:'qa-user-password-123'}})).cookie});
+      assert.equal(explicit.status,200,'Auto preference remains supported');
+      await fresh.reload();
+      await fresh.waitForFunction(() => document.documentElement.classList.contains('dark'));
     } finally {await darkOS.close();}
   });
   const sizes=[['1920x1080',1920,1080],['1440x900',1440,900],['1366x768',1366,768],['768x1024',768,1024],['390x844',390,844]];
@@ -254,6 +260,14 @@ try {
     await page.setViewportSize({width:1440,height:900});
     await setTheme(cookie,'light');
     await page.goto(base+'/settings');
+    // Wait for React hydration and CSS font requests before asserting their
+    // load state. document.fonts.ready on an empty loading shell can resolve
+    // before the authenticated Settings UI has mounted.
+    await page.locator('input').first().waitFor({state:'visible'});
+    await page.waitForFunction(async () => {
+      await document.fonts.load('400 14px "Patzer Sans"');
+      return [...document.fonts].some(f => f.family === 'Patzer Sans' && f.status === 'loaded');
+    }, undefined, { timeout: 10000 });
     const evidence=await page.evaluate(async()=>{
       await document.fonts.ready;
       const loaded=[...document.fonts].some(f=>f.status==='loaded');
@@ -303,7 +317,9 @@ try {
     await pageReady(page,main.id,2);
     // Ensure the review state has hydrated before sending keyboard events.
     await page.getByText('2 / 8', { exact: true }).waitFor({ timeout: 8000 });
-    await page.locator('body').click({position:{x:3,y:3}});
+    // The new navigation rail contains a Home link at top-left. Clicking
+    // body at (3,3) accidentally navigates Home; only clear field focus.
+    await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
     const expectPly = async (expected) => {
       await page.waitForFunction(ply => {
         const actual = new URL(window.location.href).searchParams.get('ply');
@@ -349,7 +365,21 @@ try {
     await test('Analysis special move '+key+' preserves saved game',async()=>{
       await pageReady(page,special[key].id);
       await move(page,from,to);
-      if(key==='promotion')await page.getByRole('button',{name:/queen|^q$/i}).first().click({timeout:2500});
+      if(key==='promotion') {
+        await page.getByRole('button',{name:/queen|^q$/i}).first().click({timeout:2500});
+        // Chessground redraw and React's immutable variation update are async.
+        // Check the resulting piece after the board actually settles.
+        await page.waitForFunction(() => {
+          const board=document.querySelector('cg-board');
+          if(!board)return false;
+          const br=board.getBoundingClientRect();
+          return [...board.querySelectorAll('piece')].some(piece => {
+            if(!piece.classList.contains('queen'))return false;
+            const r=piece.getBoundingClientRect();
+            return r.x+r.width/2<br.x+br.width/8 && r.y+r.height/2<br.y+br.height/8;
+          });
+        },undefined,{timeout:5000});
+      }
       const p=await pieces(page);
       assert.ok(at(p,type,target),'piece missing at '+target);
       if(key==='castle')assert.ok(at(p,'rook','f1'),'castling rook missing');

@@ -122,8 +122,8 @@ export default function Settings() {
               {form.avatar_emoji}
             </div>
             <div className="flex-1">
-              <label className="label mb-1 block">{t('settings.displayName')}</label>
-              <input className="input" value={form.display_name} onChange={(e) => set('display_name', e.target.value)} />
+              <label htmlFor="settings-display-name" className="label mb-1 block">{t('settings.displayName')}</label>
+              <input id="settings-display-name" className="input" value={form.display_name} onChange={(e) => set('display_name', e.target.value)} />
             </div>
           </div>
           <div className="sm:col-span-2">
@@ -139,14 +139,14 @@ export default function Settings() {
             </div>
           </div>
           <div>
-            <label className="label mb-1 block">{t('settings.language')}</label>
-            <select className="input" value={form.language} onChange={(e) => set('language', e.target.value as Language)}>
+            <label htmlFor="settings-language" className="label mb-1 block">{t('settings.language')}</label>
+            <select id="settings-language" className="input" value={form.language} onChange={(e) => set('language', e.target.value as Language)}>
               {LANGUAGES.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.native}</option>)}
             </select>
           </div>
           <div>
-            <label className="label mb-1 block">{t('settings.audience')}</label>
-            <select className="input" value={form.audience} onChange={(e) => set('audience', e.target.value as Profile['audience'])}>
+            <label htmlFor="settings-audience" className="label mb-1 block">{t('settings.audience')}</label>
+            <select id="settings-audience" className="input" value={form.audience} onChange={(e) => set('audience', e.target.value as Profile['audience'])}>
               <option value="kid">{t('settings.audienceLevel.kid')}</option>
               <option value="beginner">{t('settings.audienceLevel.beginner')}</option>
               <option value="intermediate">{t('settings.audienceLevel.intermediate')}</option>
@@ -155,13 +155,13 @@ export default function Settings() {
             <div className="mt-1 text-xs text-ink-400">{t('settings.audienceHelp')}</div>
           </div>
           <div>
-            <label className="label mb-1 block">{t('settings.chessCom')}</label>
-            <input className="input" value={form.chesscom_username ?? ''} onChange={(e) => set('chesscom_username', e.target.value)} placeholder="username" />
+            <label htmlFor="settings-chesscom" className="label mb-1 block">{t('settings.chessCom')}</label>
+            <input id="settings-chesscom" className="input" value={form.chesscom_username ?? ''} onChange={(e) => set('chesscom_username', e.target.value)} placeholder="username" />
             <div className="mt-1 text-xs text-ink-400">{t('settings.chessComHelp')}</div>
           </div>
           <div>
-            <label className="label mb-1 block">{t('settings.lichess')}</label>
-            <input className="input" value={form.lichess_username ?? ''} onChange={(e) => set('lichess_username', e.target.value)} placeholder="username" />
+            <label htmlFor="settings-lichess" className="label mb-1 block">{t('settings.lichess')}</label>
+            <input id="settings-lichess" className="input" value={form.lichess_username ?? ''} onChange={(e) => set('lichess_username', e.target.value)} placeholder="username" />
             <div className="mt-1 text-xs text-ink-400">{t('settings.lichessHelp')}</div>
           </div>
         </div>
@@ -347,8 +347,8 @@ export default function Settings() {
           {!!form.tts_enabled && (
             <>
               <div>
-                <label className="label mb-1 block">{t('settings.ttsVoice')}</label>
-                <select className="input" value={form.tts_voice ?? ''} onChange={(e) => set('tts_voice', e.target.value || null)}>
+                <label htmlFor="settings-tts-voice" className="label mb-1 block">{t('settings.ttsVoice')}</label>
+                <select id="settings-tts-voice" className="input" value={form.tts_voice ?? ''} onChange={(e) => set('tts_voice', e.target.value || null)}>
                   <option value="">{t('settings.ttsVoiceNone')}</option>
                   {langVoices.map((v) => (
                     <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>
@@ -360,12 +360,12 @@ export default function Settings() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="label mb-1 block">{t('settings.ttsRate')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_rate.toFixed(2)}</span></label>
-                  <input type="range" min={0.5} max={2} step={0.05} value={form.tts_rate} onChange={(e) => set('tts_rate', Number(e.target.value))} className="w-full" />
+                  <label htmlFor="settings-tts-rate" className="label mb-1 block">{t('settings.ttsRate')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_rate.toFixed(2)}</span></label>
+                  <input id="settings-tts-rate" type="range" min={0.5} max={2} step={0.05} value={form.tts_rate} onChange={(e) => set('tts_rate', Number(e.target.value))} className="w-full" />
                 </div>
                 <div>
-                  <label className="label mb-1 block">{t('settings.ttsPitch')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_pitch.toFixed(2)}</span></label>
-                  <input type="range" min={0} max={2} step={0.05} value={form.tts_pitch} onChange={(e) => set('tts_pitch', Number(e.target.value))} className="w-full" />
+                  <label htmlFor="settings-tts-pitch" className="label mb-1 block">{t('settings.ttsPitch')}: <span className="font-mono text-ink-700 dark:text-ink-200">{form.tts_pitch.toFixed(2)}</span></label>
+                  <input id="settings-tts-pitch" type="range" min={0} max={2} step={0.05} value={form.tts_pitch} onChange={(e) => set('tts_pitch', Number(e.target.value))} className="w-full" />
                 </div>
               </div>
               <button onClick={() => {

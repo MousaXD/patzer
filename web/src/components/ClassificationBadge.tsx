@@ -74,6 +74,7 @@ export default function ClassificationBadge({
         className="pointer-events-none absolute z-10"
         role="img"
         aria-label={description}
+        title={style.labelKey}
         style={{
           left: `${geo.left}%`, top: `${geo.top}%`,
           width: `${geo.diameter}%`, aspectRatio: '1 / 1',
