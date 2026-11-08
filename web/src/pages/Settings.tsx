@@ -79,7 +79,9 @@ export default function Settings() {
   function chooseAudioTheme(theme: AudioTheme) {
     setTheme(theme);
     setAudioTheme(theme);
-    set('move_sound_set', theme === 'board' || theme === 'natural' ? 'board' : 'classic');
+    // Natural maps to the legacy Classic defaults so other devices also
+    // discover Natural unless the user explicitly selected Board or Soft.
+    set('move_sound_set', theme === 'board' ? 'board' : 'classic');
     set('sound_set', theme === 'soft' ? 'soft' : 'classic');
     setAudioWarning(false);
   }
