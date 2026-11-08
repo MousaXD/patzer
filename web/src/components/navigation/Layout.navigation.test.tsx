@@ -209,8 +209,11 @@ describe('Patzer navigation rail', () => {
     fireEvent.change(language, { target: { value: 'de' } });
     expect(harness.changeLanguage).toHaveBeenCalledWith('de');
     expect(screen.getAllByRole('link', { name: 'Settings' })[0].getAttribute('href')).toBe('/settings');
-    // Check the footer before logout redirects outside this isolated router.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Patzer v7.19.0' })).toBeTruthy());
+    // Changelog remains discoverable from the navigation rail, without the
+    // permanent promotional footer on any application route.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Patzer version 7.19.0, view changelog' })).toBeTruthy());
+    expect(document.querySelector('footer')).toBeNull();
+    expect(screen.queryByRole('link', { name: /star on github/i })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await waitFor(() => expect(harness.endSession).toHaveBeenCalledTimes(1));
     expect(harness.refresh).toHaveBeenCalledTimes(1);

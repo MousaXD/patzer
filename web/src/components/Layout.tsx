@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -11,7 +11,6 @@ import UpdateNotice from './UpdateNotice';
 import { useAuth } from '../state/auth';
 import { cn } from '../lib/utils';
 import ChangelogModal from './ChangelogModal';
-import GitHubStar from './GitHubStar';
 import { LogoMark, LogoLockup } from './Logo';
 import { LANGUAGES, normalizeLanguage } from '../lib/languages';
 import { endSession } from '../lib/logout';
@@ -75,7 +74,7 @@ function NavigationItem({
         'dark:focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none',
         mobile
           ? 'min-h-11 w-full gap-3 px-3 py-2.5 text-sm'
-          : 'mx-auto min-h-[53px] w-[64px] flex-col justify-center gap-1 px-1.5 py-1.5 text-[10px]',
+          : 'mx-auto min-h-[53px] w-[64px] flex-col justify-center gap-1 px-1.5 py-1.5 text-[10px] select-none',
         isActive
           ? 'bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-100'
           : 'text-chesscom-600 hover:bg-chesscom-100 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white',
@@ -228,7 +227,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
         >
           <LogoMark size={33} />
         </NavLink>
-        <nav aria-label={primaryLabel} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-2 py-2" data-primary-navigation>
+        <nav aria-label={primaryLabel} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2" data-primary-navigation>
           {PRIMARY_DESTINATIONS.map((item) => (
             <NavigationItem key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })} />
           ))}
@@ -246,6 +245,13 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             item={{ to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' }}
             label={profileLabel}
           />
+          {version && (
+            <button type="button" onClick={() => setShowChangelog(true)}
+              className="mt-1 w-full rounded-md px-1 py-1 text-center text-[10px] text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:text-white"
+              title={t('common.viewChangelog')} aria-label={`Patzer version ${version}, view changelog`}>
+              v{version}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -321,26 +327,16 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',
           )} data-workspace-content>
-            <Outlet />
+            <Suspense fallback={
+              <div role="status" aria-live="polite" className="flex min-h-60 items-center justify-center text-sm text-chesscom-500 dark:text-chesscom-300">
+                Loading page…
+              </div>
+            }>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
 
-        <footer className="shrink-0 border-t border-chesscom-200 bg-white px-3 py-2 text-xs text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-300">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {version && (
-              <button
-                type="button"
-                onClick={() => setShowChangelog(true)}
-                className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 hover:text-chesscom-900 dark:hover:text-white"
-                title={t('common.viewChangelog')}
-              >
-                Patzer v{version}
-              </button>
-            )}
-            {version && <span aria-hidden="true">·</span>}
-            <GitHubStar />
-          </div>
-        </footer>
       </div>
 
       {drawerOpen && (
@@ -410,6 +406,13 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             </nav>
             <div className="mt-auto space-y-3 border-t border-chesscom-200 pt-4 dark:border-chesscom-700">
               <LanguageSelector mobile value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} />
+              {version && (
+                <button type="button" onClick={() => { setDrawerOpen(false); setShowChangelog(true); }}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
+                  title={t('common.viewChangelog')}>
+                  Patzer v{version} · {t('common.viewChangelog')}
+                </button>
+              )}
               {onOpenShortcuts && (
                 <button
                   type="button"

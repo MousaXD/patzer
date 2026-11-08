@@ -80,7 +80,27 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        className="block h-full w-full cursor-crosshair"
+        className="block h-full w-full cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+        role={onClick ? 'slider' : 'img'}
+        tabIndex={onClick ? 0 : undefined}
+        aria-label={t('review.evalGraph', { defaultValue: 'Move evaluation timeline' })}
+        aria-valuemin={onClick ? evals[0]?.ply : undefined}
+        aria-valuemax={onClick ? evals[evals.length - 1]?.ply : undefined}
+        aria-valuenow={onClick ? current ?? evals[0]?.ply : undefined}
+        aria-valuetext={onClick ? `Move ${current ?? evals[0]?.ply}; ${evals.find((v) => v.ply === current)?.cp == null ? 'unscored' : fmtCp(evals.find((v) => v.ply === current)!.cp)}` : undefined}
+        onKeyDown={(e) => {
+          if (!onClick) return;
+          const index = evals.findIndex((v) => v.ply === current);
+          const safe = Math.max(0, index);
+          let next = safe;
+          if (e.key === 'ArrowLeft') next = Math.max(0, safe - 1);
+          else if (e.key === 'ArrowRight') next = Math.min(evals.length - 1, safe + 1);
+          else if (e.key === 'Home') next = 0;
+          else if (e.key === 'End') next = evals.length - 1;
+          else return;
+          e.preventDefault(); e.stopPropagation();
+          onClick(evals[next]!.ply);
+        }}
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           setHoverPly(pickPly(e.clientX, rect));

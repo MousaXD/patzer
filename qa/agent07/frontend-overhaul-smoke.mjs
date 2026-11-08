@@ -333,6 +333,101 @@ try {
     await page.keyboard.press('End'); await expectPly(8);
     await page.keyboard.press('Home'); await expectPly(0);
   });
+  await test('Desktop review fills space without clipped or promotional chrome',async()=>{
+    await page.setViewportSize({width:1704,height:857});
+    await pageReady(page,main.id,3);
+    const dims=await page.evaluate(()=>{
+      const rect=(sel)=>{const n=document.querySelector(sel);return n?.getBoundingClientRect().toJSON();};
+      return {content:rect('[data-analysis-workspace]'), board:rect('cg-board'),
+        rail:rect('[data-review-side-rail]'), column:rect('.review-board-column'),
+        footerCount:document.querySelectorAll('[data-app-shell] footer').length,
+        railOverflow:getComputedStyle(document.querySelector('[data-review-side-rail]')).overflowY,
+        rootWidth:document.documentElement.scrollWidth};
+    });
+    assert.ok(dims.board?.width>580, 'board did not expand to use available space: '+JSON.stringify(dims));
+    assert.ok(dims.rail?.width>500, 'right rail should be useful on desktop: '+JSON.stringify(dims));
+    const leftGap=dims.column.left-dims.content.left;
+    const rightGap=dims.content.right-dims.rail.right;
+    assert.ok(Math.abs(leftGap-rightGap)<45,`unbalanced margins: ${leftGap}, ${rightGap}`);
+    assert.equal(dims.footerCount,0,'persistent GitHub promotion footer must be removed');
+    assert.equal(dims.rootWidth,1704,'unexpected horizontal overflow');
+    assert.notEqual(dims.railOverflow,'auto','rail should not have a second private vertical scrollbar');
+  });
+  await test('Review arrow shortcuts consume browser actions but respect editing controls',async()=>{
+    await page.setViewportSize({width:1366,height:768});
+    await pageReady(page,main.id,2);
+    await page.getByText('2 / 8',{exact:true}).waitFor();
+    await page.evaluate(()=>{
+      document.activeElement?.blur?.();
+      window.__patzerAuditKeys=[];
+      window.addEventListener('keydown',e=>{
+        if(['ArrowRight','ArrowLeft','Home','End'].includes(e.key)){
+          window.__patzerAuditKeys.push({key:e.key,prevented:e.defaultPrevented,target:e.target?.tagName});
+        }
+      });
+    });
+    const scrollStart=await page.evaluate(()=>window.scrollY);
+    await page.keyboard.press('ArrowRight');
+    await page.getByText('3 / 8',{exact:true}).waitFor();
+    await page.keyboard.press('ArrowLeft');
+    await page.getByText('2 / 8',{exact:true}).waitFor();
+    await page.keyboard.press('End');
+    await page.getByText('8 / 8',{exact:true}).waitFor();
+    await page.keyboard.press('Home');
+    await page.getByText('0 / 8',{exact:true}).waitFor();
+    const scrollEnd=await page.evaluate(()=>window.scrollY);
+    assert.equal(scrollEnd,scrollStart,'Home/End scrolled page instead of only navigating chess moves');
+    const keys=await page.evaluate(()=>window.__patzerAuditKeys);
+    assert.deepEqual(keys.map(x=>x.key),['ArrowRight','ArrowLeft','End','Home']);
+    assert.ok(keys.every(x=>x.prevented),'chess keyboard handler did not suppress native browser actions: '+JSON.stringify(keys));
+    await page.evaluate(()=>{
+      const input=document.createElement('input');input.id='qa-shortcut-input';
+      document.body.appendChild(input);input.focus();
+    });
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await page.getByText('0 / 8',{exact:true}).count()),1,'arrow key in text field changed review ply');
+    const last=await page.evaluate(()=>window.__patzerAuditKeys.at(-1));
+    assert.equal(last.target,'INPUT');
+    assert.equal(last.prevented,false,'arrow key in a text field should keep native caret movement');
+    await page.evaluate(()=>document.querySelector('#qa-shortcut-input')?.remove());
+  });
+  await test('Review tabs expose selected semantics and keyboard traversal',async()=>{
+    await pageReady(page,main.id,2);
+    const movesTab=page.getByRole('tab',{name:/^moves$/i});
+    await movesTab.focus();
+    assert.equal(await movesTab.getAttribute('aria-selected'),'true');
+    await page.keyboard.press('ArrowRight');
+    await page.getByRole('tab',{name:/AI report/i}).waitFor();
+    assert.equal(await page.getByRole('tab',{name:/AI report/i}).getAttribute('aria-selected'),'true');
+    assert.equal(await page.getByText('2 / 8',{exact:true}).count(),1,'tab arrow should not change chess ply');
+    await page.keyboard.press('End');
+    assert.equal(await page.getByRole('tab',{name:/key moments/i}).getAttribute('aria-selected'),'true');
+    await page.keyboard.press('Home');
+    assert.equal(await movesTab.getAttribute('aria-selected'),'true');
+    assert.equal(await page.getByRole('tabpanel').getAttribute('aria-labelledby'),'review-tab-moves');
+  });
+  await test('Changelog modal traps focus, blocks Review arrows and exits on Escape',async()=>{
+    await page.setViewportSize({width:1366,height:768});
+    await pageReady(page,main.id,2);
+    const version=page.getByRole('button',{name:/patzer version .* view changelog/i});
+    await version.click();
+    const modal=page.getByRole('dialog',{name:/changelog/i});
+    await modal.waitFor({state:'visible'});
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.getByText('2 / 8',{exact:true}).count(),1,'arrow navigated behind dialog');
+    await page.keyboard.press('Escape');
+    await modal.waitFor({state:'detached'});
+    assert.equal(await version.evaluate(el=>document.activeElement===el),true,'focus must return to changelog trigger');
+  });
+  await test('Evaluation graph has working keyboard scrubbing semantics',async()=>{
+    await pageReady(page,main.id,2);
+    const slider=page.getByRole('slider',{name:/move evaluation timeline/i});
+    await slider.focus();
+    assert.equal(await slider.getAttribute('aria-valuenow'),'2');
+    await page.keyboard.press('ArrowRight');
+    await page.getByText('3 / 8',{exact:true}).waitFor();
+    assert.equal(await slider.getAttribute('aria-valuenow'),'3');
+  });
   await test('Quality badge matches persisted class and is anchored to board',async()=>{
     await pageReady(page,main.id,5);
     const marker=page.locator('[title="mistake"]').first();
@@ -351,6 +446,51 @@ try {
     const after=await marker.boundingBox();
     assert.ok(after,'flipped marker visible');
     assert.ok(Math.abs(after.x-before.x)>8 || Math.abs(after.y-before.y)>8,'badge must move when board orientation changes');
+  });
+  await test('Engine suggested continuation is a playable legal branch',async()=>{
+    await pageReady(page,main.id,0);
+    await page.route('**/api/analyze/position', async route => {
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:new Chess().fen(),depth:12,lines:[{uci:'d2d4',san:'d4',pv_san:['d4','d5','c4'],cp:32,mate:null,multipv:1}]
+      })});
+    });
+    try {
+      await page.getByRole('button',{name:/show top engine lines/i}).click();
+      const tryMove=page.getByRole('button',{name:/try engine move d4/i});
+      await tryMove.waitFor({state:'visible',timeout:6000});
+      await tryMove.click();
+      await page.waitForFunction(()=>document.querySelector('section[aria-label="Analysis variations"]')?.textContent?.includes('Variation 1'),undefined,{timeout:7000});
+      assert.ok(at(await pieces(page),'pawn','d4'),'clicking best-line button did not play d4');
+      assert.equal((await api('/api/games/'+main.id,{cookie})).json?.game?.pgn,main.pgn);
+    } finally {await page.unroute('**/api/analyze/position');}
+  });
+  await test('Sharing a variation opens its exact FEN in the Lab, not a mainline link',async()=>{
+    await pageReady(page,main.id,2);
+    await page.evaluate(()=>{
+      window.__patzerCopiedText='';
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__patzerCopiedText=text;}}});
+    });
+    await move(page,'f1','c4');
+    await page.getByRole('button',{name:/share branch fen/i}).click();
+    const copied=await page.evaluate(()=>window.__patzerCopiedText);
+    assert.ok(copied.includes('/lab#'),'branch should link to Lab: '+copied);
+    const fen=decodeURI(new URL(copied).hash.slice(1));
+    const chess=new Chess(fen);
+    assert.equal(chess.get('c4')?.type,'b');
+    assert.equal((await api('/api/games/'+main.id,{cookie})).json?.game?.pgn,main.pgn);
+  });
+  await test('Unscored variation displays no fabricated 0.00 evaluation',async()=>{
+    await pageReady(page,main.id,2);
+    await page.route('**/api/analyze/variation-move', async route=>{
+      await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'engine_unavailable'})});
+    });
+    try {
+      await move(page,'f1','c4');
+      await page.getByText(/Move not scored/i).waitFor({timeout:8000});
+      assert.equal(await page.getByLabel('Position evaluation unavailable').count(),1);
+      assert.equal(await page.getByRole('img',{name:'Evaluation unavailable'}).count(),1);
+      assert.ok(!(await page.locator('[aria-label="Position evaluation unavailable"]').innerText()).includes('0.00'));
+    } finally {await page.unroute('**/api/analyze/variation-move');}
   });
   await test('Review variation Bc4 is legal and saved PGN immutable',async()=>{
     await pageReady(page,main.id,2);

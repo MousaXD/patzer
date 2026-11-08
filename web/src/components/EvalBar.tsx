@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 interface Props {
-  cp: number | null;       // white-perspective centipawns; null = even
+  cp: number | null;       // white-perspective centipawns; null = unscored/unknown
   mate?: number | null;    // mate-in-N from white's POV (positive = white mates)
   orientation?: 'white' | 'black';
   /** Optional explicit height. If omitted, fills parent height (use with align-self: stretch). */
@@ -19,7 +19,7 @@ function cpToShare(cp: number): number {
 }
 
 function fmtCp(cp: number | null): string {
-  if (cp == null) return '0.0';
+  if (cp == null) return '—';
   if (cp >= 9000) return '#';
   if (cp <= -9000) return '-#';
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
@@ -50,7 +50,7 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
   const ease = [0.22, 1, 0.36, 1] as const;
 
   return (
-    <div className="relative" style={wrapStyle}>
+    <div className="relative" style={wrapStyle} aria-label={cp === null && mate == null ? 'Evaluation unavailable' : `Evaluation ${label}`} role="img">
       <div
         className={`relative flex h-full w-full ${flip ? 'flex-col-reverse' : 'flex-col'} overflow-hidden rounded-l-md border border-chesscom-300 bg-chesscom-200 shadow-soft dark:border-chesscom-700 ${isMate ? 'shadow-glow' : ''}`}
       >

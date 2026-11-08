@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './state/auth';
@@ -11,26 +11,29 @@ import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
-import Home from './pages/Home';
-import SettingsPage from './pages/Settings';
-import Play from './pages/Play';
-import Review from './pages/Review';
-import GameAnalyzer from './pages/GameAnalyzer';
-import Insights from './pages/Insights';
-import Train from './pages/Train';
-import Openings from './pages/Openings';
-import Learn from './pages/Learn';
-import Plan from './pages/Plan';
-import Lab from './pages/Lab';
-import Players from './pages/Players';
-import PlayerProfile from './pages/PlayerProfile';
-import AdminUsers from './pages/admin/Users';
-import AdminSystem from './pages/admin/System';
-import McpConnection from './pages/admin/McpConnection';
 import IncomingChallengeModal from './components/IncomingChallengeModal';
 import CommandPalette from './components/CommandPalette';
 import ShortcutsModal from './components/ShortcutsModal';
 import { LogoMark } from './components/Logo';
+
+// Route-level splitting keeps Stockfish review, PvP, charts and admin pages out
+// of the initial login/dashboard bundle. Layout remains mounted during loads.
+const Home = lazy(() => import('./pages/Home'));
+const SettingsPage = lazy(() => import('./pages/Settings'));
+const Play = lazy(() => import('./pages/Play'));
+const Review = lazy(() => import('./pages/Review'));
+const GameAnalyzer = lazy(() => import('./pages/GameAnalyzer'));
+const Insights = lazy(() => import('./pages/Insights'));
+const Train = lazy(() => import('./pages/Train'));
+const Openings = lazy(() => import('./pages/Openings'));
+const Learn = lazy(() => import('./pages/Learn'));
+const Plan = lazy(() => import('./pages/Plan'));
+const Lab = lazy(() => import('./pages/Lab'));
+const Players = lazy(() => import('./pages/Players'));
+const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
+const AdminUsers = lazy(() => import('./pages/admin/Users'));
+const AdminSystem = lazy(() => import('./pages/admin/System'));
+const McpConnection = lazy(() => import('./pages/admin/McpConnection'));
 
 export default function App() {
   const { loading, setupRequired, user, refresh } = useAuth();
@@ -97,11 +100,12 @@ export default function App() {
       // ⌘K / Ctrl+K — palette (always, even in inputs).
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         setPaletteOpen((v) => !v);
         return;
       }
       if (isTextField(e.target)) return;
-      if (e.key === '?') { e.preventDefault(); setShortcutsOpen(true); return; }
+      if (e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); setShortcutsOpen(true); return; }
       // "g X" prefix navigation
       if (e.key === 'g' || e.key === 'G') {
         gPrefixRef.current = Date.now();
@@ -113,6 +117,7 @@ export default function App() {
         const target = map[e.key.toLowerCase()];
         if (target) {
           e.preventDefault();
+          e.stopImmediatePropagation();
           gPrefixRef.current = 0;
           nav(target);
         }
