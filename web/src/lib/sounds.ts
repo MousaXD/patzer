@@ -383,6 +383,10 @@ export function moveSoundsReady(): Promise<void> {
 // Some browsers require user interaction before audio plays. Call this once
 // from a click/keydown handler to "warm" the context.
 export function unlockAudio() {
+  const activation = typeof navigator !== 'undefined'
+    ? (navigator as Navigator & { userActivation?: { isActive: boolean; hasBeenActive: boolean } }).userActivation
+    : undefined;
+  if (activation && !activation.isActive && !activation.hasBeenActive) return;
   audioAuthorized = true;
   const b = ensureBus();
   if (b && b.c.state === 'suspended') void b.c.resume();
