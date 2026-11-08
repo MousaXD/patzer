@@ -88,6 +88,17 @@ async function check(os,stored,wantDark) {
   assert.notEqual(focus.width,'0px');
   const before=await page.locator('#check').evaluate(el=>getComputedStyle(el).backgroundColor);
   await page.locator('#check').check();
+  // The control deliberately animates to its checked color. Wait until it
+  // reaches the actual semantic token, not the transient first animation frame.
+  await page.waitForFunction(() => {
+    const checkbox=document.querySelector('#check');
+    const probe=document.createElement('span');
+    probe.style.backgroundColor='var(--ui-primary)';
+    document.body.append(probe);
+    const target=getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return getComputedStyle(checkbox).backgroundColor===target;
+  },null,{timeout:2000});
   const after=await page.locator('#check').evaluate(el=>getComputedStyle(el).backgroundColor);
   assert.notEqual(before,after,'Checkbox lacks styled checked state');
   console.log('PASS OS='+os+' stored='+(stored??'none')+' theme='+(wantDark?'dark':'light'));
