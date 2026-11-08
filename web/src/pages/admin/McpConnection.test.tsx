@@ -39,12 +39,13 @@ describe('Admin → ChatGPT / MCP', () => {
   });
 
   it('lets an admin replace a stale Patzer password without reentering an OpenAI key', async () => {
-    render(<McpConnection />);
-    await screen.findByText('Tunnel connected');
-    fireEvent.click(screen.getByText('Update Patzer password'));
-    const field = screen.getByPlaceholderText('Your Patzer password') as HTMLInputElement;
+    const { findByRole, getByPlaceholderText } = render(<McpConnection />);
+    // Wait for the actual conditional control in this render, not a generic
+    // status string: CI's slower render could race the status fetch.
+    fireEvent.click(await findByRole('button', { name: 'Update Patzer password' }, { timeout: 5000 }));
+    const field = getByPlaceholderText('Your Patzer password') as HTMLInputElement;
     fireEvent.change(field, {target: {value: 'new-private-password-123'}});
-    fireEvent.click(screen.getByText('Update & reconnect'));
+    fireEvent.click(await findByRole('button', { name: 'Update & reconnect' }, { timeout: 5000 }));
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/mcp/setup', {
       tunnelId: savedStatus.tunnelId,
       patzerPassword: 'new-private-password-123',
@@ -53,9 +54,8 @@ describe('Admin → ChatGPT / MCP', () => {
   });
 
   it('can reconfigure using saved credentials, without prompting for the key', async () => {
-    render(<McpConnection />);
-    await screen.findByText('Tunnel connected');
-    const submit = screen.getByText('Update & reconnect');
+    const { findByRole } = render(<McpConnection />);
+    const submit = await findByRole('button', { name: 'Update & reconnect' }, { timeout: 5000 });
     fireEvent.click(submit);
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/admin/mcp/setup', {
       tunnelId: savedStatus.tunnelId,
