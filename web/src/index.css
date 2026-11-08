@@ -344,7 +344,8 @@ input[type='checkbox']:checked::after {
 }
 input[type='radio']:checked::after { content:''; width:8px; height:8px; border-radius:50%; background:var(--ui-on-primary); }
 :where(input[type='range']) { appearance:none; width:100%; height:26px; background:transparent; cursor:pointer; }
-input[type='range']::-webkit-slider-runnable-track,input[type='range']::-moz-range-track { height:6px; border-radius:8px; background:var(--ui-border-strong); }
+input[type='range']::-webkit-slider-runnable-track { height:6px; border-radius:8px; background:var(--ui-border-strong); }
+input[type='range']::-moz-range-track { height:6px; border-radius:8px; background:var(--ui-border-strong); }
 input[type='range']::-webkit-slider-thumb { appearance:none; width:18px; height:18px; margin-top:-6px; border-radius:50%; border:3px solid var(--ui-surface); background:var(--ui-primary); box-shadow:0 0 0 1px var(--ui-primary); }
 input[type='range']::-moz-range-thumb { width:14px; height:14px; border-radius:50%; border:3px solid var(--ui-surface); background:var(--ui-primary); box-shadow:0 0 0 1px var(--ui-primary); }
 :where(input[type='file']) { max-width:100%; color:var(--ui-foreground-muted); }
