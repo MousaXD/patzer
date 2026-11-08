@@ -14,9 +14,9 @@
 | Baseline main | `31b6e55f0762d23f9cad738b05174815acd37ed1` (https://github.com/MousaXD/patzer/commit/31b6e55f0762d23f9cad738b05174815acd37ed1) |
 | Integration SHA | `31b6e55f0762d23f9cad738b05174815acd37ed1` when inspected on 2026-11-08. **This is identical to `main`**, so it does not yet contain the required frontend overhaul. The earlier HTTP 404 preceded creation of this branch. |
 | Agent 01–06 branches | Absent from the initial search. Agent 04 PR #2 and Agent 06 PR #1 appeared later while the audit was underway. Specialist code is not yet integrated. |
-| QA branch | **Created and pushed** at `agent-07/frontend-qa-certification`, containing only four QA files. Based on baseline `31b6e55f0762d23f9cad738b05174815acd37ed1`. Earlier HTTP 403 was resolved. |
+| QA branch | **Created and pushed** at `agent-07/frontend-qa-certification`. Latest verified QA commit: `17f5d5c2fe28555745f4b4fbf48e906ebf7dc093`. Four QA-only files; baseline parent `31b6e55f0762d23f9cad738b05174815acd37ed1`. |
 | QA pull request | **Draft PR #3:** https://github.com/MousaXD/patzer/pull/3, targeting `feat/patzer-frontend-overhaul`. Do not merge until Agent 00 coordinates integration. |
-| GitHub Actions run URLs | QA branch runs (not integration certification): https://github.com/MousaXD/patzer/actions/runs/42503453539 at QA SHA `5b40b62139b2cb112974eb9695a86a7627d8014b`; initially queued. Required integration-only CI: **not run**. |
+| GitHub Actions run URLs | Latest QA-branch runs: https://github.com/MousaXD/patzer/actions/runs/42503774198 (PR) and https://github.com/MousaXD/patzer/actions/runs/42503769434 (push), previously queued at SHA `fa64f7e733f9e3d98bedcad2aa73fb4e8f9004ae`. Newer QA commits require fresh checks; **no passed integrated candidate run**. |
 | Test execution | **Not executed.** The local runtime cannot access `github.com` for cloning. GitHub write access is now restored and the QA suite is pushed, but no specialist-integrated SHA has been tested. The Node QA harness passed JavaScript syntax validation only (`node --check`). |
 
 **Evidence standard:** Source inspection describes the existing `main` baseline and new QA expectations. None of the baseline observations below is an observed regression of the unpushed overhaul. Screenshots, CI passes, Stockfish results, audio quality, and accessibility cannot be certified by reading source alone.
@@ -25,7 +25,7 @@
 
 | ID | Severity / owner | Evidence on baseline `main` | Required acceptance evidence |
 | --- | --- | --- | --- |
-| QA-01 | **Release blocker / Agent 00** | Integration branch points to unchanged pre-overhaul baseline; final specialist-integrated SHA is missing. | Integration PR or branch with a fixed reviewed commit and complete required CI logs. |
+| QA-01 | **Release blocker / Agent 00** | Integration branch still points to unchanged pre-overhaul baseline; final specialist-integrated SHA is missing. Agent 04 PR #2 targets integration; Agent 06 PR #1 targets `main` instead, so Agent 00 must route it to integration without unsafe direct main merge. | Integration PR or branch with a fixed reviewed commit and complete required CI logs. |
 | QA-02 | **P1 / Agent 01** | `web/src/App.tsx` computes `site_theme ?? 'auto'` and follows `prefers-color-scheme: dark`; `server/src/db.ts` defaults new profiles to `site_theme='auto'`. Under a dark OS, a newly created baseline user receives dark mode, contrary to the new white-default requirement. | A new-user real-browser case with dark OS preference remains light; explicit Dark still works. Confirm source of truth and migration compatibility. |
 | QA-03 | **P1 / Agent 01** | `web/src/index.css` declares `font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;`; no local `@font-face` declaration is present in the inspected first 65 lines. | Prove bundled font assets load successfully without network dependencies; computed controls use the intended custom family, and controls are styled consistently. |
 | QA-04 | **P1 / Agent 04** | Baseline `web/src/pages/GameAnalyzer.tsx` renders `<ChessBoard>` in the review pane without passing `movable` or `onMove`; `web/src/components/ChessBoard.tsx` defaults `movable=false`. Baseline game review is replay-only, not a variation editor. | Browser-driven Bc4 from the position after 1.e4 e5, with legal turns and saved PGN unchanged. Plus castling, en passant, promotions, branch navigation, keyboard, and touch. |
@@ -66,9 +66,9 @@ Statuses here are **NOT TESTED / BLOCKED**, not fabricated pass/fail results for
 | 390×844 mobile | **Not run** | **Not run** | Screenshot, overflow, separate real touch variation |
 | 1366×768, dark OS, fresh profile | **Not run** | N/A | Must remain light unless dark explicitly chosen |
 
-Real-browser QA cases: new-user theme default; 13 authenticated routes; computed styles/fonts; keyboard nav; accessible names and focus; no decorative emoji in chrome; badge geometry on a synthetic fixture; legal alternative move and saved-game immutability; castling; en passant; queen promotion; touch move; saved sound/theme preference; **real** Stockfish classification for a known tactical error.
+Real-browser QA cases: new-user theme default; 13 authenticated routes; computed styles/fonts; keyboard nav; accessible names and focus; no decorative emoji in chrome; original badge geometry and flipped orientation; legal alternative move and saved-game immutability; castling; en passant; queen promotion; touch move; saved sound/theme preference; **real** Stockfish classification of a known tactical error **and a legal exploratory variation**, including illegal-move rejection.
 
-**Important:** The synthetic seed explicitly does *not* certify move classifications. The engine-based check analyzes a separate saved Fools' Mate game and checks both data integrity and an obviously damaging move. Exact classification thresholds still need specialist review and additional tactical positions.
+**Important:** Synthetic seed data checks presentation only; it does *not* certify scoring. Independent engine checks analyze a saved Fool's Mate game and the new `/api/analyze/variation-move` endpoint for a legal Bc4 variation, plus illegal-move rejection. Exact classification thresholds still need specialist review and additional tactical positions.
 
 ## Existing functionality not to drop
 
