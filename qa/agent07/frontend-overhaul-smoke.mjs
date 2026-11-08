@@ -42,12 +42,12 @@ async function api(path, { method='GET', body, cookie }={}) {
   try { json = await r.json(); } catch { json = null; }
   return {status:r.status, json, cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
-async function login(context) {
+async function login(context, username='qaadmin', password='qa-password-123') {
   const page = await context.newPage();
   page.on('pageerror', error => browserErrors.push(page.url()+': '+error.message));
   await page.goto(base + '/login');
-  await page.locator('#login-username').fill('qaadmin');
-  await page.locator('#login-password').fill('qa-password-123');
+  await page.locator('#login-username').fill(username);
+  await page.locator('#login-password').fill(password);
   await page.locator('#login-password').press('Enter');
   await page.waitForURL(u => u.pathname !== '/login', {timeout:15000});
   return page;
@@ -186,6 +186,41 @@ try {
       assert.ok((await page.locator('#root').innerText()).trim().length>0,'blank '+path);
     }
     assert.deepEqual(browserErrors.slice(prior),[],'uncaught route errors');
+  });
+  await test('Security headers, CSRF, role restriction and saved-game isolation',async()=>{
+    const root=await fetch(base+'/');
+    assert.equal(root.status,200);
+    assert.equal(root.headers.get('x-frame-options'),'DENY');
+    assert.equal(root.headers.get('x-content-type-options'),'nosniff');
+    const csp=root.headers.get('content-security-policy')||'';
+    assert.match(csp,/script-src 'self'/);
+    assert.match(csp,/frame-ancestors 'none'/);
+    // A session cookie alone must never authorize a mutating API request.
+    const csrf=await fetch(base+'/api/settings/profile',{
+      method:'PATCH',headers:{Cookie:cookie,'Content-Type':'application/json'},
+      body:JSON.stringify({site_theme:'dark'})
+    });
+    assert.equal(csrf.status,403,'missing CSRF header must be rejected');
+    assert.equal((await api('/api/games/'+main.id)).status,401,'anonymous game access');
+    const createdUser=await api('/api/admin/users',{method:'POST',cookie,body:{
+      username:'qauser',password:'qa-user-password-123',display_name:'QA User',role:'user'
+    }});
+    assert.equal(createdUser.status,200,'create normal-user fixture: '+JSON.stringify(createdUser.json));
+    const auth=await api('/api/auth/login',{method:'POST',body:{
+      username:'qauser',password:'qa-user-password-123'
+    }});
+    assert.equal(auth.status,200,'normal user authentication');
+    assert.ok(auth.cookie,'normal user session cookie');
+    assert.equal((await api('/api/games/'+main.id,{cookie:auth.cookie})).status,404,'cross-user saved game must be private');
+    assert.equal((await api('/api/admin/users',{cookie:auth.cookie})).status,403,'admin API must reject normal user');
+    const normalContext=await browser.newContext({viewport:{width:1366,height:768}});
+    try {
+      const normalPage=await login(normalContext,'qauser','qa-user-password-123');
+      await normalPage.goto(base+'/admin/users');
+      await normalPage.waitForFunction(()=>location.pathname==='/',undefined,{timeout:6000});
+      assert.equal(new URL(normalPage.url()).pathname,'/','normal user must not render admin route');
+      assert.deepEqual(browserErrors.filter(x=>x.includes('qauser')),[],'browser errors in normal user flow');
+    } finally { await normalContext.close(); }
   });
   await test('New user remains in white theme when OS prefers dark',async()=>{
     await setTheme(cookie,'auto');
