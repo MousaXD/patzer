@@ -249,7 +249,7 @@ export default function Settings() {
                 <label htmlFor="chess-sound-volume" className="label mb-2 block">Chess sound volume: {Math.round(volume * 100)}%</label>
                 <input id="chess-sound-volume" type="range" min="0" max="100" step="5" value={Math.round(volume * 100)}
                   onChange={(e) => { const next = Number(e.target.value) / 100; setVolume(next); setAudioVolume(next); }}
-                  className="w-full accent-current" aria-label="Chess sound volume" />
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-ink-200 outline-none focus-visible:ring-2 focus-visible:ring-ink-500 dark:bg-ink-700 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-ink-900 dark:[&::-webkit-slider-thumb]:bg-cream [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink-900 dark:[&::-moz-range-thumb]:bg-cream" aria-label="Chess sound volume" />
                 <div className="mt-1 text-xs text-ink-500">Theme and volume are saved on this device. Use Save to sync supported sound settings to your account.</div>
               </div>
               <div>
