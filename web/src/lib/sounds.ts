@@ -37,7 +37,11 @@ let pendingRecorded = 0;
 const activeRecorded = new Set<{ src: AudioBufferSourceNode; gain: GainNode }>();
 
 function inheritLegacyTheme() {
-  if (!audioThemeExplicit) audioTheme = moveSoundSet === 'board' ? 'board' : soundSet === 'soft' ? 'soft' : 'natural';
+  if (!audioThemeExplicit) {
+    audioTheme = moveSoundSet === 'board'
+      ? (soundSet === 'soft' ? 'board-soft' : 'board')
+      : (soundSet === 'soft' ? 'soft' : 'natural');
+  }
 }
 export function getAudioTheme(): AudioTheme { return audioTheme; }
 export function getAudioVolume(): number { return audioPreferences.volume; }
@@ -48,7 +52,7 @@ export function setAudioTheme(theme: AudioTheme) {
   audioThemeExplicit = true;
   audioPreferences = writeAudioPreferences({ theme });
   pendingRecorded++;
-  if (theme === 'natural' || theme === 'board') void fetchBoardFiles().catch(() => undefined);
+  if (theme === 'natural' || theme === 'board' || theme === 'board-soft') void fetchBoardFiles().catch(() => undefined);
 }
 export function setAudioVolume(volume: number) {
   audioPreferences = writeAudioPreferences({ volume });
@@ -85,15 +89,15 @@ export async function previewAudio(theme: AudioTheme, kind: SoundKind = 'move'):
   unlockAudio();
   const b = ensureBus();
   if (!b) return false;
-  if (theme === 'natural' || theme === 'board') {
+  if (theme === 'natural' || theme === 'board' || theme === 'board-soft') {
     await loadBoardSamples(b.c);
     if (!enabled || boardState !== 'ready') return false;
   }
   const priorTheme = audioTheme, priorSet = soundSet, priorMove = moveSoundSet;
   try {
     audioTheme = theme;
-    soundSet = theme === 'soft' ? 'soft' : 'classic';
-    moveSoundSet = theme === 'board' ? 'board' : 'classic';
+    soundSet = (theme === 'soft' || theme === 'board-soft') ? 'soft' : 'classic';
+    moveSoundSet = (theme === 'board' || theme === 'board-soft') ? 'board' : 'classic';
     playNow(kind);
     return true;
   } finally {
@@ -153,7 +157,7 @@ function ensureBus(): Bus | null {
     comp.connect(master).connect(ctx.destination);
   }
   if (ctx.state === 'suspended') void ctx.resume();
-  if (audioTheme === 'natural' || audioTheme === 'board') void loadBoardSamples(ctx);
+  if (audioTheme === 'natural' || audioTheme === 'board' || audioTheme === 'board-soft') void loadBoardSamples(ctx);
   return { c: ctx, dry: dryBus!, wet: wetBus!, now: ctx.currentTime };
 }
 
@@ -194,7 +198,7 @@ function loadBoardSamples(c: AudioContext): Promise<void> {
 
 /** Plays a board recording; false if 'board' isn't chosen or it hasn't loaded yet. */
 function boardSample(b: Bus, t0: number, kind: 'move' | 'capture', opts: { gain?: number; rate?: number; force?: boolean } = {}): boolean {
-  const buf = (opts.force || audioTheme === 'board')
+  const buf = (opts.force || audioTheme === 'board' || audioTheme === 'board-soft')
     ? (boardSamples[kind] ?? boardSamples[kind === 'move' ? 'capture' : 'move']) : undefined;
   if (!buf) return false;
   const src = b.c.createBufferSource();
@@ -366,7 +370,7 @@ export function setSoundSet(set: SoundSet) {
 export function setMoveSoundSet(set: MoveSoundSet) {
   moveSoundSet = set === 'board' ? 'board' : 'classic';
   inheritLegacyTheme();
-  if (audioTheme !== 'board' && audioTheme !== 'natural') return;
+  if (audioTheme !== 'board' && audioTheme !== 'board-soft' && audioTheme !== 'natural') return;
   if (ctx) void loadBoardSamples(ctx);
   else void fetchBoardFiles().catch(() => { /* loadBoardSamples notes the failure */ });
 }
@@ -375,7 +379,7 @@ export function setMoveSoundSet(set: MoveSoundSet) {
  *  doesn't fall back to the synthesized knock while the recordings decode.
  *  Call from a click handler: it may have to create the AudioContext. */
 export function moveSoundsReady(): Promise<void> {
-  if (audioTheme !== 'board' && audioTheme !== 'natural') return Promise.resolve();
+  if (audioTheme !== 'board' && audioTheme !== 'board-soft' && audioTheme !== 'natural') return Promise.resolve();
   const b = ensureBus();
   return b ? loadBoardSamples(b.c) : Promise.resolve();
 }
@@ -416,7 +420,7 @@ export function playSound(kind: SoundKind) {
     if (now - lastRecordedAt < 70) return;
     lastRecordedAt = now;
   }
-  if (audioTheme === 'board' && boardState === 'loading' && (kind === 'move' || kind === 'capture' || kind === 'castle')) {
+  if ((audioTheme === 'board' || audioTheme === 'board-soft') && boardState === 'loading' && (kind === 'move' || kind === 'capture' || kind === 'castle')) {
     // Wait for the recordings — but not so long that the sound lags the move.
     let done = false;
     const fallback = setTimeout(() => { done = true; playNow(kind); }, BOARD_WAIT_MS);
@@ -439,7 +443,7 @@ function playNow(kind: SoundKind) {
     recordedEvent(b, t, kind);
     return;
   }
-  if (audioTheme === 'board' && (kind === 'move' || kind === 'capture' || kind === 'castle')) stopRecorded(b.now);
+  if ((audioTheme === 'board' || audioTheme === 'board-soft') && (kind === 'move' || kind === 'capture' || kind === 'castle')) stopRecorded(b.now);
 
   switch (kind) {
     case 'move':
@@ -453,7 +457,7 @@ function playNow(kind: SoundKind) {
       noiseClick(b, t + 0.008, { duration: 0.04, gain: 0.18, cutoff: 1200, highpass: 350, wet: 0.5 });
       break;
     case 'check': {
-      if (audioTheme === 'soft') {
+      if (audioTheme === 'soft' || audioTheme === 'board-soft') {
         // Two short rising marimba notes (E5 → A5).
         marimba(b, t,         { freq: 659, duration: 0.28, gain: 0.2 });
         marimba(b, t + 0.085, { freq: 880, duration: 0.35, gain: 0.2 });
@@ -490,7 +494,7 @@ function playNow(kind: SoundKind) {
       break;
     }
     case 'game_end': {
-      if (audioTheme === 'soft') {
+      if (audioTheme === 'soft' || audioTheme === 'board-soft') {
         // The classic G5 → E5 → C5 cadence on marimba, with a faint bell
         // layered underneath so it still sounds like Patzer, just softer.
         const notes: [number, number, number][] = [[784, 0, 0.5], [659, 0.16, 0.6], [523, 0.34, 1.1]];
