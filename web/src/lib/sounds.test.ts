@@ -100,6 +100,29 @@ describe('Natural sound theme', () => {
     expect(synthesized).not.toContain(1175);
   });
 
+  it('honors the chosen theme for check and game end after legacy profile hydration', async () => {
+    const a = await import('./sounds');
+    a.unlockAudio();
+    // A device-specific theme overrides older account-level fields.
+    a.setAudioTheme('soft');
+    a.setSoundSet('classic');
+    a.setMoveSoundSet('classic');
+    a.playSound('check');
+    expect(synthesized).toContain(659);
+    expect(synthesized).not.toContain(1175);
+    synthesized.length = 0;
+    a.playSound('game_end');
+    expect(synthesized).toContain(784);
+    // Legacy Classic bells do not bleed into the Soft theme.
+    expect(synthesized).not.toContain(1175);
+
+    a.setAudioTheme('classic');
+    a.setSoundSet('soft');
+    synthesized.length = 0;
+    a.playSound('check');
+    expect(synthesized).toContain(1175);
+  });
+
   it('previews without changing selected device theme', async () => {
     const a = await import('./sounds');
     a.setAudioTheme('soft');
