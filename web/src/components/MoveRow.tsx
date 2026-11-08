@@ -37,7 +37,9 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
     const scRect = scroller.getBoundingClientRect();
     if (elRect.top >= scRect.top && elRect.bottom <= scRect.bottom) return;
     const target = scroller.scrollTop + (elRect.top - scRect.top) - scroller.clientHeight / 2 + el.offsetHeight / 2;
-    scroller.scrollTo({ top: target, behavior: 'smooth' });
+    // Keyboard replay can fire faster than animations finish. Keep focus
+    // tracking immediate so the move list never appears to fight navigation.
+    scroller.scrollTo({ top: target, behavior: 'auto' });
   }, [wCur, bCur]);
 
   return (

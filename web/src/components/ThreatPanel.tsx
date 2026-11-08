@@ -77,18 +77,19 @@ export function threatFromLine(nullFen: string, line: EngineLine, currentCpStm: 
 
 const PIECE_KEY: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 
-export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; currentCpWhite: number }) {
+export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; currentCpWhite: number | null }) {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(false);
   const [threat, setThreat] = useState<Threat | null>(null);
-  const [state, setState] = useState<'idle' | 'loading' | 'error' | 'check' | 'ok'>('idle');
+  const [state, setState] = useState<'idle' | 'loading' | 'error' | 'check' | 'ok' | 'unknown'>('idle');
 
   const nullFen = fen ? nullMoveFen(fen) : null;
   const stm = fen.split(' ')[1] === 'b' ? 'black' : 'white';
-  const currentCpStm = stm === 'white' ? currentCpWhite : -currentCpWhite;
+  const currentCpStm = currentCpWhite === null ? null : (stm === 'white' ? currentCpWhite : -currentCpWhite);
 
   useEffect(() => {
     if (!enabled || !fen) return;
+    if (currentCpStm === null) { setThreat(null); setState('unknown'); return; }
     if (!nullFen) { setThreat(null); setState('check'); return; }
     let cancelled = false;
     setState('loading');
@@ -156,6 +157,7 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
           {state === 'check' && (
             <div className="py-1 text-chesscom-500">{t('threat.inCheck', { defaultValue: 'In check — the threat is the check itself.' })}</div>
           )}
+          {state === 'unknown' && <div className="py-1 text-chesscom-500">Analyze this position first to see a reliable threat estimate.</div>}
           {state === 'error' && <div className="py-1 text-chesscom-400">—</div>}
           {state === 'ok' && threat && (
             <div className="space-y-1 py-1">
