@@ -27,6 +27,7 @@ const original: ReviewCacheSource = {
   estimated_elo_white: null, estimated_elo_black: 1000,
   performance_white: null, performance_black: null,
   opening_eco: 'C20', opening_name: 'King\'s Pawn', prose_json: null,
+  prose_version: 0, prose_lang: null, prose_audience: null,
 };
 const proposedReview = { version: REVIEW_PROSE_VERSION, summary: 'Position checked.', language: 'en' };
 
@@ -87,6 +88,18 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     db.prepare('UPDATE analyses SET prose_json = ?, prose_version = ? WHERE game_id = 1').run(newer, REVIEW_PROSE_VERSION);
     expect(save()).toBe(false);
     expect(cache().prose_json).toBe(newer);
+  });
+
+  it.each([
+    ['prose_version', 7],
+    ['prose_lang', 'ru'],
+    ['prose_audience', 'advanced'],
+  ] as const)('does not overwrite a concurrent cache metadata change: %s', (field, newValue) => {
+    // Even an empty/unchanged prose_json can acquire new provenance while
+    // the model request is pending. That update must not be lost.
+    db.prepare(`UPDATE analyses SET ${field} = ? WHERE game_id = 1`).run(newValue);
+    expect(save()).toBe(false);
+    expect(cache().prose_json).toBeNull();
   });
 
   it.each([

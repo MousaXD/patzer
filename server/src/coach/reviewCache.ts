@@ -20,6 +20,9 @@ export interface ReviewCacheSource {
   opening_eco: string | null;
   opening_name: string | null;
   prose_json: string | null;
+  prose_version: number;
+  prose_lang: string | null;
+  prose_audience: string | null;
 }
 
 export interface ReviewCacheGame {
@@ -50,7 +53,8 @@ export function saveReviewIfFresh(
        AND estimated_elo_white IS ? AND estimated_elo_black IS ?
        AND performance_white IS ? AND performance_black IS ?
        AND opening_eco IS ? AND opening_name IS ?
-       AND prose_json IS ?
+       AND prose_json IS ? AND prose_version = ?
+       AND prose_lang IS ? AND prose_audience IS ?
        AND EXISTS (
          SELECT 1 FROM games g
           WHERE g.id = analyses.game_id AND g.user_id = ?
@@ -64,7 +68,8 @@ export function saveReviewIfFresh(
     source.estimated_elo_white, source.estimated_elo_black,
     source.performance_white, source.performance_black,
     source.opening_eco, source.opening_name,
-    source.prose_json,
+    source.prose_json, source.prose_version,
+    source.prose_lang, source.prose_audience,
     game.user_id, game.pgn, game.user_color,
   );
   return changed.changes === 1;

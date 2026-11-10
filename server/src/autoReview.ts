@@ -20,6 +20,9 @@ interface ReviewRow extends AnalysisRow {
   user_color: 'white' | 'black' | null;
   scoring_version: number;
   prose_json: string | null;
+  prose_version: number;
+  prose_lang: string | null;
+  prose_audience: string | null;
 }
 
 let running = false;
@@ -58,7 +61,8 @@ async function sweep(): Promise<void> {
            a.performance_white, a.performance_black,
            a.opening_eco, a.opening_name,
            a.key_moments_json, a.phase_split_json, a.moves_json,
-           a.scoring_version, a.prose_json
+           a.scoring_version, a.prose_json,
+           a.prose_version, a.prose_lang, a.prose_audience
       FROM analyses a
       JOIN games g ON g.id = a.game_id
      WHERE a.prose_json IS NULL
