@@ -87,3 +87,20 @@ Changes made after the original `0cc6d87bdc9b27d7db21bc4d5bd269cc3fa538ed` hando
 **Correction:** `d6cb66d3b891b28cac613aa046c87b352f78363a` updates only `Home.stats.test.tsx`, replacing Framer Motion's test-only animated wrappers with equivalent static React elements. The real Home page keeps production Framer Motion unchanged. The test continues to verify the statistics failure/retry UI while no longer mounting Web Animations in Happy DOM.
 
 **Certification status:** Obtain and review exact-head CI, Frontend Overhaul QA, and design-system certification on the latest branch tip before accepting or merging PR #11. Do not infer green status from the 581 passing assertions if the test runner still reports unhandled rejections. No production, backend, main or other-agent changes were made.
+
+## Local independent verification — 2026-11-10
+
+Checked out the existing isolated branch into an additional local clone under `/game/patzer-agent-product-ui`. Verified source HEAD `978353020adef0c955af76b58ba9e5bcc65a28e6` with a clean working tree before running checks, using Node.js 22.23.2 and the repository lockfile.
+
+- `npm ci`: completed.
+- `npm run typecheck`: passed.
+- `npm test`: **64 test files, 581 tests passed**, exit zero, with no unhandled animation cancellation errors. The corrected Home statistics test and Settings draft-preservation regression tests passed.
+- `npm run build`: passed for both server and web.
+- `node --test web/tests/design-system.contract.test.mjs`: **5 passed**.
+- `npm run test:e2e`, `npm run test:resume`, and `npm run test:oidc`: passed against disposable local test servers.
+- `npm run test:ui`: passed in real Chromium browsers, including PvP, draw, rematch, takeback and mobile interactions.
+- `npm run test:resume-ui`: passed all reconnect, resume, reload, discard and game-over review checks (5/5 saved-game review rounds). Another agent was using its hardcoded port 8895, so the test ran from a temporary, uncommitted copy with port 8892 instead; the original test was unchanged.
+- Independent Chromium browser QA on the same source SHA: **35 passed, 0 failed**, using Stockfish 17 and an isolated disposable database. The preexisting QA harness uses port 8894, which was already occupied by another Patzer agent. Its *temporary, uncommitted* copy was run on port 8895 instead, with no QA source modification committed. Browser results and screenshots were saved outside the repository under `/tmp/patzer-product-ui-qa`.
+- Chromium design-system browser checks: passed for light, dark, explicit theme preference, auto theme and reduced-motion settings, using an isolated Vite preview port 4175.
+
+These checks certify the source revision locally; they **do not substitute for required GitHub Actions checks on the final documentation commit**. At the start of this verification, GitHub Actions runs `42863746234` (CI), `42863745963` (Frontend Overhaul QA), and `42863746097` (design system) remained queued without runners. Keep PR #11 in draft pending exact-HEAD GitHub checks and Agent 00 integration review. No application, API, or database changes were needed.
