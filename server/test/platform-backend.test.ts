@@ -93,7 +93,8 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
   it('rejects negative, non-finite, ambiguous and unbounded query parameters', async () => {
     for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',
-      'source=other', 'limit=Infinity']) {
+      'source=other', 'limit=Infinity', 'limit=1&limit=2',
+      'sort=newest&sort=oldest', 'bookmarked=1&bookmarked=0']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
@@ -105,6 +106,10 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     const data = await capped.json() as { limit: number; games: unknown[] };
     expect(data.limit).toBe(200);
     expect(data.games).toHaveLength(200);
+    const bigLimit = await get('/?limit=10000000000');
+    const big = await bigLimit.json() as { limit: number; games: unknown[] };
+    expect(big.limit).toBe(200);
+    expect(big.games).toHaveLength(200);
     expect(parseGameId('NaN')).toBeNull();
     expect(parseGameId('0')).toBeNull();
     expect(parseGameId('99999999999999999')).toBeNull();
