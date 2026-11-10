@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom';
 import { useAuth, type Profile } from '../state/auth';
 
 const mocks = vi.hoisted(() => ({
@@ -70,6 +71,14 @@ function nameInput() {
   return screen.getByRole('textbox', { name: 'Display name' }) as HTMLInputElement;
 }
 
+function mountSettings(initialEntries = ['/settings']) {
+  const router = createMemoryRouter([
+    { path: '/settings', element: <><Link to="/review">Review destination</Link><Settings /></> },
+    { path: '/review', element: <div>Review destination page</div> },
+  ], { initialEntries });
+  return { router, ...render(<RouterProvider router={router} />) };
+}
+
 beforeEach(() => {
   mocks.patch.mockReset();
   mocks.changeLanguage.mockReset();
@@ -93,7 +102,7 @@ describe('Settings persistence', () => {
     let finish!: (value: { profile: Profile }) => void;
     mocks.patch.mockReturnValueOnce(new Promise<{ profile: Profile }>((resolve) => { finish = resolve; }))
       .mockResolvedValueOnce({ profile: { ...initialProfile, display_name: 'Newer draft' } });
-    render(<Settings />);
+    mountSettings();
 
     fireEvent.change(nameInput(), { target: { value: 'First draft' } });
     const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
@@ -121,7 +130,7 @@ describe('Settings persistence', () => {
     mocks.patch.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({
       profile: { ...initialProfile, display_name: 'Retried' },
     });
-    render(<Settings />);
+    mountSettings();
     fireEvent.change(nameInput(), { target: { value: 'Retried' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
@@ -137,7 +146,7 @@ describe('Settings persistence', () => {
   it('does not misreport a persisted save when applying the language fails', async () => {
     mocks.patch.mockResolvedValue({ profile: { ...initialProfile, display_name: 'Updated' } });
     mocks.changeLanguage.mockRejectedValueOnce(new Error('browser i18n unavailable'));
-    render(<Settings />);
+    mountSettings();
     fireEvent.change(nameInput(), { target: { value: 'Updated' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
@@ -146,7 +155,7 @@ describe('Settings persistence', () => {
   });
 
   it('does not overwrite an unsaved draft when auth refreshes for the same user', () => {
-    render(<Settings />);
+    mountSettings();
     fireEvent.change(nameInput(), { target: { value: 'Local draft' } });
     act(() => {
       const previous = useAuth.getState().user!;
@@ -160,7 +169,7 @@ describe('Settings persistence', () => {
     let rejectOld!: (reason: Error) => void;
     mocks.patch.mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject; }))
       .mockResolvedValueOnce({ profile: { ...initialProfile, user_id: 8, display_name: 'Second saved' } });
-    render(<Settings />);
+    mountSettings();
 
     fireEvent.change(nameInput(), { target: { value: 'First pending' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -201,7 +210,7 @@ describe('Settings persistence', () => {
       mocks.patch.mockImplementation(async (_url: string, payload: Profile) => ({
         profile: { ...initialProfile, display_name: payload.display_name },
       }));
-      render(<Settings />);
+      mountSettings();
 
       fireEvent.change(nameInput(), { target: { value: 'First saved' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -220,5 +229,49 @@ describe('Settings persistence', () => {
     } finally {
       timer.mockRestore();
     }
+  });
+
+  it('protects unsaved edits during in-app navigation, with Keep editing and Discard changes', async () => {
+    mountSettings();
+    fireEvent.change(nameInput(), { target: { value: 'Unsaved player name' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Review destination' }));
+
+    const warning = await screen.findByRole('alertdialog', { name: 'Leave without saving?' });
+    expect(warning.getAttribute('aria-modal')).toBe('true');
+    expect(nameInput().value).toBe('Unsaved player name');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep editing' })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(nameInput().value).toBe('Unsaved player name');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Review destination' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
+    expect(await screen.findByText('Review destination page')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Display name' })).toBeNull();
+  });
+
+  it('blocks browser-back navigation and Escape keeps the editable draft', async () => {
+    const { router } = mountSettings(['/review', '/settings']);
+    fireEvent.change(nameInput(), { target: { value: 'Unsubmitted draft' } });
+    await act(async () => { void router.navigate(-1); });
+
+    expect(await screen.findByRole('alertdialog')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(nameInput().value).toBe('Unsubmitted draft');
+    expect(router.state.location.pathname).toBe('/settings');
+  });
+
+  it('navigates immediately after a successful save without a discard prompt', async () => {
+    mocks.patch.mockResolvedValueOnce({ profile: { ...initialProfile, display_name: 'Saved player' } });
+    mountSettings();
+    fireEvent.change(nameInput(), { target: { value: 'Saved player' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Saved');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Review destination' }));
+    expect(await screen.findByText('Review destination page')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 });

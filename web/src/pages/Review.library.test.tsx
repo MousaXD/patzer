@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -8,13 +8,14 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   patch: vi.fn(),
+  user: { id: 7, profile: { chesscom_username: null as string | null, lichess_username: null as string | null } },
 }));
 
 vi.mock('../api', () => ({
   api: { get: mocks.get, post: mocks.post, patch: mocks.patch },
 }));
 vi.mock('../state/auth', () => ({
-  useAuth: () => ({ user: { id: 7, profile: { chesscom_username: null, lichess_username: null } } }),
+  useAuth: () => ({ user: mocks.user }),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -44,7 +45,7 @@ function makeGame(id: number) {
 
 function mount(initial = '/review') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const result = render(
+  const view = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initial]}>
         <Routes>
@@ -52,13 +53,15 @@ function mount(initial = '/review') {
           <Route path="/review/:id" element={<div>Game detail</div>} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { ...result, queryClient };
+  const result = render(view());
+  return { ...result, queryClient, rerenderReview: () => result.rerender(view()) };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.user = { id: 7, profile: { chesscom_username: null, lichess_username: null } };
   mocks.get.mockImplementation(async (url: string) => {
     const query = new URLSearchParams(url.split('?')[1] ?? '');
     const limit = Number(query.get('limit') ?? 50);
@@ -215,5 +218,38 @@ describe('Review library with large histories', () => {
 
     expect(queryClient.getQueryData<{ games: { bookmarked: number }[] }>(otherHomeKey)?.games[0]?.bookmarked).toBe(0);
     expect(queryClient.getQueryData<{ pages: { games: { bookmarked: number }[] }[] }>(otherLibraryKey)?.pages[0]?.games[0]?.bookmarked).toBe(0);
+  });
+
+  it('refreshes the importing account history, insights, plan and achievements without touching another account', async () => {
+    mocks.user.profile.chesscom_username = 'tester';
+    mocks.post.mockResolvedValue({ imported: 12, total: 20 });
+    const { queryClient } = mount();
+    await screen.findByText(/40 of 1,000 games/);
+    const ownKeys = [
+      ['stats', 'me', 7], ['insights-v2', 7], ['achievements', 7],
+      ['achievements-home', 7], ['plan-home', 7],
+    ];
+    const otherKeys = ownKeys.map((key) => [...key.slice(0, -1), 101]);
+    for (const key of [...ownKeys, ...otherKeys]) queryClient.setQueryData(key, { value: 'cached' });
+
+    fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 20 }));
+    await waitFor(() => expect(ownKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated)).toBe(true));
+    expect(otherKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated === false)).toBe(true);
+  });
+
+  it('does not show a previous player import result after switching accounts mid-request', async () => {
+    mocks.user.profile.chesscom_username = 'first';
+    let resolveImport!: (result: { imported: number; total: number }) => void;
+    mocks.post.mockReturnValue(new Promise((resolve) => { resolveImport = resolve; }));
+    const { rerenderReview } = mount();
+    await screen.findByText(/40 of 1,000 games/);
+    fireEvent.click(screen.getByRole('button', { name: /review\.import \(@first\)/ }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    mocks.user = { id: 101, profile: { chesscom_username: null, lichess_username: null } };
+    rerenderReview();
+    await act(async () => { resolveImport({ imported: 17, total: 20 }); });
+    expect(screen.queryByText('review.imported')).toBeNull();
+    expect(screen.getByRole('link', { name: /Set Chess.com username/ })).toBeTruthy();
   });
 });

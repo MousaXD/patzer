@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBlocker } from 'react-router-dom';
 import { LANGUAGES, type Language } from '../lib/languages';
 import { Volume2, VolumeX, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
 import { api } from '../api';
@@ -14,6 +15,8 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const { user, setUser } = useAuth();
   const editRevision = useRef(0);
+  const stayButtonRef = useRef<HTMLButtonElement>(null);
+  const leaveDialogRef = useRef<HTMLDivElement>(null);
   // A save started under one account must never update the next account's
   // error, saving state or language after sign-out / account switching.
   const accountRevision = useRef(0);
@@ -27,6 +30,37 @@ export default function Settings() {
   const [audioTheme, setTheme] = useState<AudioTheme>(() => getAudioTheme());
   const [volume, setVolume] = useState(() => getAudioVolume());
   const [audioWarning, setAudioWarning] = useState(false);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    dirty && (currentLocation.pathname !== nextLocation.pathname ||
+      currentLocation.search !== nextLocation.search || currentLocation.hash !== nextLocation.hash));
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    stayButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        blocker.reset();
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(leaveDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first && last && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (first && last && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [blocker]);
 
   useEffect(() => {
     if (!user) {
@@ -165,6 +199,27 @@ export default function Settings() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-24">
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div ref={leaveDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="settings-leave-title" aria-describedby="settings-leave-description"
+            className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-ink-900 shadow-2xl dark:border-ink-700 dark:bg-ink-800 dark:text-cream">
+            <h2 id="settings-leave-title" className="text-lg font-semibold">
+              {t('settings.leaveTitle', { defaultValue: 'Leave without saving?' })}
+            </h2>
+            <p id="settings-leave-description" className="mt-2 text-sm text-ink-500 dark:text-ink-300">
+              {t('settings.leaveDescription', { defaultValue: 'You have unsaved profile changes. Leaving this page will discard your draft.' })}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button ref={stayButtonRef} type="button" className="btn-secondary" onClick={() => blocker.reset()}>
+                {t('settings.keepEditing', { defaultValue: 'Keep editing' })}
+              </button>
+              <button type="button" className="btn-primary" onClick={() => blocker.proceed()}>
+                {t('settings.discardChanges', { defaultValue: 'Discard changes' })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <header>
         <h1 className="page-h1">{t('settings.title')}</h1>
         <p className="page-sub">{t('settings.subtitle')}</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +24,17 @@ function isOwnGameQuery(queryKey: readonly unknown[], accountId: number | undefi
     (queryKey[1] === 'home' || queryKey[1] === 'library') && queryKey[2] === accountId;
 }
 
+// Importing games also changes the player's history-derived statistics and
+// achievements. Refresh them without touching another account's cached data.
+function isOwnHistoryQuery(queryKey: readonly unknown[], accountId: number | undefined): boolean {
+  if (accountId == null) return false;
+  return isOwnGameQuery(queryKey, accountId) ||
+    (queryKey[0] === 'stats' && queryKey[1] === 'me' && queryKey[2] === accountId) ||
+    (queryKey[0] === 'insights-v2' && queryKey[1] === accountId) ||
+    ((queryKey[0] === 'achievements' || queryKey[0] === 'achievements-home' ||
+      queryKey[0] === 'plan-home') && queryKey[1] === accountId);
+}
+
 function updateBookmarkInCache(value: unknown, id: number, bookmarked: number): unknown {
   if (!value || typeof value !== 'object') return value;
   if ('pages' in value && Array.isArray(value.pages)) {
@@ -41,9 +52,30 @@ function updateBookmarkInCache(value: unknown, id: number, bookmarked: number): 
 export default function Review() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const accountIdRef = useRef(user?.id);
+  accountIdRef.current = user?.id;
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const importMessageTimer = useRef<number | null>(null);
+  useEffect(() => {
+    // A previously signed-in account's import result must not remain visible
+    // when another account begins using this browser.
+    setImportMsg(null);
+    return () => {
+      if (importMessageTimer.current != null) window.clearTimeout(importMessageTimer.current);
+      importMessageTimer.current = null;
+    };
+  }, [user?.id]);
+
+  function showImportResult(result: { text: string; error?: boolean }, durationMs: number) {
+    if (importMessageTimer.current != null) window.clearTimeout(importMessageTimer.current);
+    setImportMsg(result);
+    importMessageTimer.current = window.setTimeout(() => {
+      importMessageTimer.current = null;
+      setImportMsg(null);
+    }, durationMs);
+  }
   // Platform Backend validates the server-side query at 120 characters.
   // Bound both typed searches and hand-edited/deep-linked URLs consistently.
   const q = (searchParams.get('q') ?? '').slice(0, MAX_SEARCH_LENGTH);
@@ -95,17 +127,17 @@ export default function Review() {
   });
 
   const importMut = useMutation({
-    mutationFn: (source: ImportSource) =>
+    mutationFn: ({ source }: { source: ImportSource; accountId: number }) =>
       api.post<{ imported: number; total: number }>(`/api/games/import/${source}`, { limit: 20 }),
-    onSuccess: (r) => {
-      setImportMsg({ text: t('review.imported', { n: r.imported }) });
-      qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, user?.id) });
-      setTimeout(() => setImportMsg(null), 3000);
+    onSuccess: (r, { accountId }) => {
+      void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
+      if (accountIdRef.current !== accountId) return;
+      showImportResult({ text: t('review.imported', { n: r.imported }) }, 3000);
     },
-    onError: (e) => {
+    onError: (e, { accountId }) => {
+      if (accountIdRef.current !== accountId) return;
       const code = (e as Error).message;
-      setImportMsg({ text: t(`review.importError.${code}`, { defaultValue: t('review.importError.generic') }), error: true });
-      setTimeout(() => setImportMsg(null), 6000);
+      showImportResult({ text: t(`review.importError.${code}`, { defaultValue: t('review.importError.generic') }), error: true }, 6000);
     },
   });
   const sources: { source: ImportSource; username: string | null | undefined; label: string }[] = [
@@ -139,9 +171,9 @@ export default function Review() {
         {linked.length > 0 ? (
           <div className="flex flex-wrap gap-2 self-start sm:self-auto">
             {linked.map((s) => (
-              <button key={s.source} onClick={() => importMut.mutate(s.source)} disabled={importMut.isPending} className="btn-primary">
+              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id })} disabled={importMut.isPending || !user} className="btn-primary">
                 <Download className="h-4 w-4" />
-                {importMut.isPending && importMut.variables === s.source ? t('review.importing') : `${s.label} (@${s.username})`}
+                {importMut.isPending && importMut.variables?.source === s.source ? t('review.importing') : `${s.label} (@${s.username})`}
               </button>
             ))}
           </div>
