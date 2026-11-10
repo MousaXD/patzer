@@ -1,8 +1,8 @@
 # Game Review experience — Agent handoff
 
-Date: 2026-11-10  
-Agent branch: `agent/review-experience-20261110`  
-Starting point: `c8d9e1e00609c30779a3e86542f25f9454e1e911`  
+Date: 2026-11-10
+Agent branch: `agent/review-experience-20261110`
+Starting point: `c8d9e1e00609c30779a3e86542f25f9454e1e911`
 Draft verification PR: https://github.com/MousaXD/patzer/pull/13
 
 ## Impact-ranked findings and implementation

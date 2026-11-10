@@ -92,9 +92,9 @@
 - **Release gate and dependencies:** Keep PR #12 in draft, unmerged and undeployed. Agent 00 must obtain exact-source GitHub Actions conclusions or explicitly accept the still-pending infrastructure exception before integration. Frontend ownership: stale-navigation cancellation and `429 engine_busy` retry UX. Platform/backend ownership: cross-workload scheduler and remote `ChessApiEngine` cancellation. No Stockfish throughput benchmark was taken.
 
 
-**Owner:** Staff Backend / Analysis Agent  
-**Branch:** `agent/chess-backend-20261110`  
-**Baseline:** `c8d9e1e`  
+**Owner:** Staff Backend / Analysis Agent
+**Branch:** `agent/chess-backend-20261110`
+**Baseline:** `c8d9e1e`
 **Status:** Continued implementation committed to the assigned branch; exact-head CI has not yet completed. **Keep draft; do not merge or deploy until exact-head checks pass and coordinator approves.**
 
 ## 2026-11-10 final CI follow-up — current code SHA `bf84272c7d61371ac61045ebf55a79d32921bbb0`
