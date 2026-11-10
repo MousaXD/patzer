@@ -122,10 +122,16 @@ export default function GameAnalyzer() {
 
   // Load any cached AI prose for this game
   useEffect(() => {
-    if (!gameId) return;
-    api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
-      .then((r) => setReviewProse(r.review))
-      .catch(() => setReviewProse(null));
+    // A slower request for a previous game must never replace this game's
+    // review text after navigating between library entries.
+    let active = true;
+    setReviewProse(null);
+    if (Number.isSafeInteger(gameId) && gameId > 0) {
+      api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
+        .then((r) => { if (active) setReviewProse(r.review); })
+        .catch(() => { if (active) setReviewProse(null); });
+    }
+    return () => { active = false; };
   }, [gameId]);
 
   useEffect(() => {
@@ -674,6 +680,7 @@ export default function GameAnalyzer() {
                   )}
                   {tab === 'report' && (
                     <GameReportPanel
+                      key={gameId}
                       gameId={gameId}
                       initial={reviewProse}
                       onMomentJump={setPly}
