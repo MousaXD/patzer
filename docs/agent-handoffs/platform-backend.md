@@ -82,6 +82,7 @@ Clients currently consuming `games` and `total` require no changes. For actual p
 
 - `server/test/platform-backend.test.ts`: **1,200** synthetic owned games plus **55** games for a second user and a third empty user in an isolated temporary test database. Covers first, last, empty, count-only and oldest-sorted pages, 200-row cap, invalid and non-finite query values, structured filters, stale-vs-current analysis, literal percent search, 401/404 ownership boundaries, numeric-zero empty-account Insights, and Insights coverage.
 - `server/test/chesscom-history.test.ts`: added cross-account/query/invalid-month archive rejection, archive deduplication, invalid date isolation, lookalike-domain rejection, and transient HTTP/timeout retry cases.
+- `server/test/platform-backend-scale.test.ts`: separate **20,000 owned + 700 other-user** game fixture with source-independent game IDs, deep offset 19,950 boundary, current/stale analysis filters, and full-history Insights totals. Added but **not run** in the current environment.
 - New pure decoder test cases verify invalid cached move JSON and phase JSON are handled without throwing.
 
 **Environment limitation:** The named local checkout and npm dependencies were not present, and container Git/network access was unavailable. Therefore `npm run typecheck`, Vitest, build and end-to-end API checks were **not run**. These test cases are committed but **not yet CI-verified**. A **draft** GitHub PR #14 was created solely to trigger the repository's configured PR validation workflows; it does not alter `main`. The workflows were still queued at the last check, and no build or test success is claimed. Do not mark this branch release-certified until the tests and CI pass.
@@ -95,6 +96,13 @@ These results were **actually rerun during this continuation** with local Python
 - `EXPLAIN QUERY PLAN`: `SEARCH g USING COVERING INDEX idx_games_user (user_id=?)` and `USE TEMP B-TREE FOR LAST TERM OF ORDER BY`.
 - **Correction to the earlier handoff:** prior benchmark numbers (833 analyzed, 7,500 stale/missing; 0.043 ms, 0.361 ms, 2.888 ms, 1.771 ms, 0.259 ms) were not reproducibly evidenced in the earlier tool record. They are **superseded**, not asserted as independently verified.
 - This is a SQL-only synthetic microbenchmark; **not a Hono HTTP API timing, Node better-sqlite3 run, or production measurement**.
+
+### GitHub Actions verification gate (continuation)
+
+- [Draft PR #14](https://github.com/MousaXD/patzer/pull/14) is open but unmerged and targets `main` only to trigger the repository's PR workflows. The target `main` was verified at starting commit `c8d9e1e00609c30779a3e86542f25f9454e1e911` during this continuation.
+- The CI and frontend QA workflow runs reported `queued` with null conclusions during the last check. **No GitHub Actions pass is claimed.** The final exact code commit `00e6ca0a846f2a8d50178432e18bb1848fd374c3` must receive fresh checks; older queued runs cannot certify it.
+- Required next commands in an authorized copy of the exact assigned worktree (or CI): `npm run typecheck`, `npm test -- server/test/platform-backend.test.ts server/test/platform-backend-scale.test.ts server/test/chesscom-history.test.ts server/test/insights-full-history.test.ts server/test/insights-move-quality.test.ts server/test/mcp-connection.test.ts`, `npm run build`. No new dependencies should be installed by this agent.
+- **Worktree blocker:** The original directory `/home/mousa/projects/my-creations/chess/patzer-agent-platform` does not exist in this execution container. Do not mistake GitHub connector writes for a successful local worktree checkout or local test run. No alternative worktree or branch was used.
 
 ## Security and operational considerations
 
@@ -114,10 +122,11 @@ These results were **actually rerun during this continuation** with local Python
 
 **Certification: implementation committed and pushed to the isolated branch; full TypeScript, Vitest and CI verification pending. PR #14 is draft and unmerged.**
 
-## Continuation status
+## Continuation status and final-code SHA
 
-- Starting head reverified: `d5b59e4cc4d9ef3a924a43a9eca9317fb8086159`.
-- Additional commits: fixed empty-account `games_eligible`, added third-user empty-account tests, secured the historical game URL origin and added lookalike-host tests.
-- Latest completed code commit before this report update: `3f08067d734641296d921ff5d0f30d6e923d5922`.
-- Handoff update commit: see latest `agent/platform-backend-20261110` branch HEAD (self-referential exact report commit cannot be embedded in the same commit without another update).
-- Latest PR: [#14](https://github.com/MousaXD/patzer/pull/14), draft. CI must finish and pass on the **final exact head** before merge. No live service or owned database was touched.
+- Original starting point: `c8d9e1e00609c30779a3e86542f25f9454e1e911`; original continuation head: `d5b59e4cc4d9ef3a924a43a9eca9317fb8086159`.
+- **Final code/test commit:** `00e6ca0a846f2a8d50178432e18bb1848fd374c3`. This commits a new 20,000-game scale API regression suite. The handoff-only commit written after this SHA is an additional documentation commit; its own SHA cannot be embedded within itself.
+- Additional continuation improvements: empty-account `games_eligible=0` fix; third-user empty-account regression; Chess.com game URL true-host validation; lookalike URL regression; 20,000-game real API fixture tests awaiting CI.
+- Actually executed checks: in-memory Python SQLite 10,500-row synthetic fixture with repeat measurements; see above. Not executed: TypeScript, Vitest, builds, browser tests and real MCP/systemd tests.
+- Integration dependency: coordinator must restore the original assigned worktree for local verification or authorize GitHub CI certification on [draft PR #14](https://github.com/MousaXD/patzer/pull/14); check conflicts with other agent branches **without merging them independently**. No changes to the latest-20-every-15-minutes auto-sync, schema, frontend or engine pipeline.
+- **Disposition: NOT MERGE READY.** Wait for exact-head CI results, resolve genuine regressions only in owned files, and obtain integration review. No live database or service was touched.
