@@ -7,6 +7,7 @@ import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
+import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -310,7 +311,7 @@ export default function GameAnalyzer() {
   const [explorerHover, setExplorerHover] = useState<string | null>(null);
   const pos = data ? (positions[ply] ?? positions[0]) : undefined;
   const currentFen = variations.currentFen || pos?.fen || '';
-  const freshLines = linesFen === currentFen ? lines : [];
+  const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
     if (!linesEnabled || !currentFen) return;
     let cancelled = false;
@@ -394,9 +395,13 @@ export default function GameAnalyzer() {
 
   // Scores refer to the position before a move. Only the NEXT move's
   // suggestion (or a fresh live line) is legal on the displayed board.
-  const bestUci = linesEnabled && !linesLoading && !linesError && freshLines.length
-    ? freshLines[0]!.uci
-    : !isVariation ? analysis?.moves[ply]?.best_move_uci : undefined;
+  const bestUci = bestMoveForDisplayedBoard({
+    ply,
+    isVariation,
+    mainline: analysis?.moves,
+    liveLines: freshLines,
+    liveReady: linesEnabled && !linesLoading && !linesError,
+  });
   const baseArrow = bestUci ? [{
     orig: bestUci.slice(0, 2) as never,
     dest: bestUci.slice(2, 4) as never,
