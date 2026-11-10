@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeStoredReviewJson } from './storedReview';
+import { decodeStoredReviewJson, needsFreshReviewAnalysis } from './storedReview';
 
 const move = {
   ply: 1, san: 'e4', uci: 'e2e4',
@@ -38,4 +38,13 @@ describe('cached review analysis decoder', () => {
     expect(result?.key_moments).toEqual([]);
     expect(result?.phase_split).toBeNull();
   });
+  it('forces a new Stockfish analysis only for a damaged cached record', () => {
+    expect(needsFreshReviewAnalysis(null, null)).toBe(false);
+    const decoded = decodeStoredReviewJson(valid);
+    expect(decoded).not.toBeNull();
+    expect(needsFreshReviewAnalysis(valid, decoded)).toBe(false);
+    const corrupted = { ...valid, moves_json: 'broken json' };
+    expect(needsFreshReviewAnalysis(corrupted, decodeStoredReviewJson(corrupted))).toBe(true);
+  });
+
 });
