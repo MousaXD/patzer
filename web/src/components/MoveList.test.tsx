@@ -31,7 +31,7 @@ describe('Game Review move history', () => {
   it('moves selection into the history without an extra selected starting position', () => {
     const html = markup(2);
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
-    expect(html).toContain('2… review.black e5');
+    expect(html).toContain('1… review.black e5');
     expect(html).toContain('max-h-[20rem]');
   });
 
