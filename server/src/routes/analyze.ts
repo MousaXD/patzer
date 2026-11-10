@@ -250,7 +250,7 @@ router.post('/position', async (c) => {
   positionInflight.set(user.id, work);
   try {
     const result = await work;
-    positionCache.set(cacheKey, result);
+    if (!c.req.raw.signal.aborted) positionCache.set(cacheKey, result);
     return c.json(result);
   } catch {
     // Never send local binary paths or process diagnostics to the browser.
@@ -273,10 +273,10 @@ router.post('/variation-move', async (c) => {
   const cached = variationCache.get(cacheKey);
   if (cached) return c.json({ quality: cached });
   if (positionInflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
+  const signal = c.req.raw.signal;
+  if (signal.aborted) return c.json({ error: 'analysis_cancelled' }, 503);
   const release = engineSlots.tryAcquire();
   if (!release) return c.json({ error: 'engine_busy' }, 429);
-
-  const signal = c.req.raw.signal;
   let removeAbort = () => undefined;
   const work = scoreVariationMove(parsed.data, () => {
     const engine = createAnalysisEngine();
@@ -564,6 +564,7 @@ export async function analyzePgnFull(
     });
   }
 
+  if (signal?.aborted) throw new Error('analysis_cancelled');
   const opening = lookupOpeningFromPgn(pgn);
   const phase_split = computePhaseSplit(moves, opening?.plies ?? 0);
   const km = extractKeyMoments(moves, 5);
@@ -579,6 +580,7 @@ export async function analyzePgnFull(
     best_pv: m.best_pv,
   }));
 
+  if (signal?.aborted) throw new Error('analysis_cancelled');
   return {
     // Record what the engine really did, so the stored depth isn't a claim the
     // remote backend never met — and so switching back to local re-analyzes
