@@ -91,7 +91,8 @@ afterEach(() => { cleanup(); });
 describe('Settings persistence', () => {
   it('keeps new edits and Save available when an older PATCH finishes', async () => {
     let finish!: (value: { profile: Profile }) => void;
-    mocks.patch.mockReturnValue(new Promise<{ profile: Profile }>((resolve) => { finish = resolve; }));
+    mocks.patch.mockReturnValueOnce(new Promise<{ profile: Profile }>((resolve) => { finish = resolve; }))
+      .mockResolvedValueOnce({ profile: { ...initialProfile, display_name: 'Newer draft' } });
     render(<Settings />);
 
     fireEvent.change(nameInput(), { target: { value: 'First draft' } });
@@ -108,6 +109,12 @@ describe('Settings persistence', () => {
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
     expect(useAuth.getState().user?.profile.display_name).toBe('First draft');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+    expect(mocks.patch).toHaveBeenCalledTimes(2);
+    expect(mocks.patch.mock.calls[1]?.[1]).toMatchObject({ display_name: 'Newer draft' });
+    expect(useAuth.getState().user?.profile.display_name).toBe('Newer draft');
   });
 
   it('leaves the draft intact after a failed PATCH and saves it on retry', async () => {
