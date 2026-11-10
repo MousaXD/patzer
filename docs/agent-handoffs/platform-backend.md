@@ -151,3 +151,23 @@ These results were **actually rerun during this continuation** with local Python
 - **GitHub CI:** Draft [PR #14](https://github.com/MousaXD/patzer/pull/14) remains open and unmerged. At last inspection, both CI and frontend QA workflows for earlier commits were queued, and no passing workflow result existed for the current code SHA. The coordinator must verify a fresh exact-head CI run and resolve any failures before merge. GitHub Actions is also showing queued runs on other Patzer branches.
 - **Final report commit:** The latest branch HEAD following this paragraph's commit is the authoritative report commit SHA. It intentionally is not embedded in the same file to avoid self-reference.
 - **Verdict: NOT MERGE READY / blocked on exact-head CI and integration QA.**
+
+
+## Final QA evidence update — 2026-11-10
+
+**Verified code/test revision:** `24b1fd8f0c16e7fcbc281539fa93adfc3b1d97f2`.
+**Branch revision that received QA:** `27fa5930c25b5f5da2acf83494aaa81329bad41a` (documentation-only child of the code/test revision).
+
+### GitHub Actions evidence actually inspected
+
+- **Frontend Overhaul QA:** [run #42855179762](https://github.com/MousaXD/patzer/actions/runs/42855179762), **completed / success** for head `27fa5930c25b5f5da2acf83494aaa81329bad41a`.
+- Job `Independent browser QA (Chromium)` [#129966161556](https://github.com/MousaXD/patzer/actions/runs/42855179762/job/129966161556): all steps passed, including `npm run typecheck`, `npm test`, `npm run build`, real Stockfish setup and independent Chromium browser certification.
+- The job's unit-test log confirms **62 test files and 585 tests passed**, including `server/test/platform-backend-scale.test.ts` (3 tests), `server/test/platform-backend.test.ts` (7 tests), `server/test/chesscom-history.test.ts` (10 tests), and `server/test/mcp-connection.test.ts` (3 tests).
+- **Main CI:** [run #42855181187](https://github.com/MousaXD/patzer/actions/runs/42855181187) was still **queued** at the last check. Its Node 20, Node 22, end-to-end regression and Docker job results were **not** available for this exact revision. Several earlier CI runs on older commits completed successfully, but are **not** substituted for an exact-revision main CI pass.
+- This report-only commit introduces **no changes to application code or test fixtures** relative to the verified code/test revision. It is not a claim that the subsequent report SHA itself has completed new GitHub Actions checks.
+
+### Final disposition
+
+- **Implemented and independently QA-tested:** game pagination, 20k-game scale route fixtures, owner isolation, Insights metrics, historical import correctness, MCP handling.
+- **Release gate still unresolved:** exact-code main CI across Node 20/22, e2e/browser, and Docker boot smoke, plus coordinator cross-agent integration review.
+- **Status: DRAFT / NOT MERGE READY** until main CI completes successfully. No live Patzer service, real database, or secret/config file was accessed; existing automatic sync remains unchanged (20 most recent games per 15-minute interval).
