@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { Chess } from 'chess.js';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
-import { createAnalysisEngine } from '../chess/engine.js';
-import { scoreVariationMove, VariationScoringError } from '../chess/variationScoring.js';
+import { createAnalysisEngine, engineBackend } from '../chess/engine.js';
+import { AnalysisAdmission, AnalysisResultCache } from '../chess/analysisAgentWork.js';
+import { scoreVariationMove, VariationScoringError, type VariationMoveQuality } from '../chess/variationScoring.js';
 import {
   classifyByWpDrop, refineClassification, normalizeEval, cpToWinPct,
   cpLossForPly, cpLossForAcpl, moveAccuracy, estimateElo, estimateGamePerformance, BOOK_PLIES,
@@ -33,9 +34,23 @@ const inflight = new Map<number, Promise<unknown>>();
 // keeps the engine fed as the user clicks through moves, and we don't want
 // two boards racing each other.
 const positionInflight = new Map<number, Promise<unknown>>();
+// One process-wide budget prevents many different users from independently
+// spawning unbounded multi-threaded engines. No queue of stale navigation jobs.
+const engineSlots = new AnalysisAdmission(2);
+interface PositionResult {
+  fen: string;
+  depth: number;
+  lines: Array<{ uci: string; san: string; pv_san: string[]; cp: number | null; mate: number | null; multipv: number }>;
+}
+// Cache only successful ad-hoc results. Keys include user, backend, depth and
+// MultiPV count; never reuse a shallower or differently ranked evaluation.
+const positionCache = new AnalysisResultCache<PositionResult>(128, 60_000);
+const variationCache = new AnalysisResultCache<VariationMoveQuality>(128, 60_000);
+const MAX_PGN_LENGTH = 256_000;
+const MAX_PGN_PLIES = 2048;
 
 const positionSchema = z.object({
-  fen: z.string().min(10),
+  fen: z.string().min(10).max(128),
   depth: z.number().int().min(8).max(22).default(16),
   lines: z.number().int().min(1).max(5).default(3),
 });
@@ -122,6 +137,9 @@ router.post('/', async (c) => {
     }
   }
 
+  const release = engineSlots.tryAcquire();
+  if (!release) return c.json({ error: 'engine_busy' }, 429);
+
   const work = (async () => {
     const result = await analyzePgnFull(game.pgn, depth, {
       score: scoreFromResultForUser(game.result, game.user_color ?? 'white'),
@@ -131,7 +149,7 @@ router.post('/', async (c) => {
       // silently corrupt the performance-blend confidence weighting. Use null;
       // estimateGamePerformance defaults to RD=350 (low confidence).
       opponentRd: null,
-    });
+    }, c.req.raw.signal);
     saveAnalysis(game_id, result);
     return result;
   })();
@@ -140,8 +158,14 @@ router.post('/', async (c) => {
   try {
     const result = await work;
     return c.json({ analysis: result, cached: false });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'pgn_too_large') return c.json({ error: code }, 413);
+    if (code === 'invalid_pgn') return c.json({ error: code }, 400);
+    return c.json({ error: 'analysis_failed' }, 503);
   } finally {
     inflight.delete(user.id);
+    release();
   }
 });
 
@@ -167,7 +191,12 @@ router.post('/position', async (c) => {
     return c.json({ error: 'invalid_fen' }, 400);
   }
 
+  const cacheKey = `${engineBackend()}|${user.id}|${depth}|${lines}|${fen}`;
+  const cached = positionCache.get(cacheKey);
+  if (cached) return c.json(cached);
   if (positionInflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
+  const release = engineSlots.tryAcquire();
+  if (!release) return c.json({ error: 'engine_busy' }, 429);
 
   const work = (async () => {
     const engine = createAnalysisEngine();
@@ -186,10 +215,12 @@ router.post('/position', async (c) => {
         const replay = new Chess(probe.fen());
         const pvSan: string[] = [];
         for (const u of cand.pv.slice(0, 8)) {
-          const m = replay.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4) || undefined });
-          if (!m) break;
-          if (san === null) san = m.san;
-          pvSan.push(m.san);
+          try {
+            const m = replay.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4) || undefined });
+            if (!m) break;
+            if (san === null) san = m.san;
+            pvSan.push(m.san);
+          } catch { break; } // A truncated/illegal remote PV must not fail the request.
         }
         return {
           uci,
@@ -204,7 +235,7 @@ router.post('/position', async (c) => {
         fen,
         depth: result.depth || depth,
         lines: linesOut,
-      };
+      } satisfies PositionResult;
     } finally {
       await engine.quit();
     }
@@ -213,11 +244,14 @@ router.post('/position', async (c) => {
   positionInflight.set(user.id, work);
   try {
     const result = await work;
+    positionCache.set(cacheKey, result);
     return c.json(result);
-  } catch (err) {
-    return c.json({ error: 'engine_error', detail: err instanceof Error ? err.message : String(err) }, 500);
+  } catch {
+    // Never send local binary paths or process diagnostics to the browser.
+    return c.json({ error: 'engine_error' }, 503);
   } finally {
     positionInflight.delete(user.id);
+    release();
   }
 });
 
@@ -228,12 +262,20 @@ router.post('/variation-move', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = variationSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
+  const r = parsed.data;
+  const cacheKey = `${engineBackend()}|${user.id}|${r.fen_before}|${r.move_uci}|${r.depth}|${r.ply ?? ''}`;
+  const cached = variationCache.get(cacheKey);
+  if (cached) return c.json({ quality: cached });
   if (positionInflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
+  const release = engineSlots.tryAcquire();
+  if (!release) return c.json({ error: 'engine_busy' }, 429);
 
   const work = scoreVariationMove(parsed.data, createAnalysisEngine);
   positionInflight.set(user.id, work);
   try {
-    return c.json({ quality: await work });
+    const quality = await work;
+    variationCache.set(cacheKey, quality);
+    return c.json({ quality });
   } catch (error) {
     if (error instanceof VariationScoringError) {
       const status = error.code === 'engine_timeout' ? 504
@@ -244,6 +286,7 @@ router.post('/variation-move', async (c) => {
     return c.json({ error: 'engine_error' }, 503);
   } finally {
     positionInflight.delete(user.id);
+    release();
   }
 });
 
@@ -280,12 +323,20 @@ export async function analyzePgnFull(
   pgn: string,
   depth: number,
   perf: PerformanceContext,
+  signal?: AbortSignal,
 ): Promise<AnalysisResult> {
+  if (pgn.length > MAX_PGN_LENGTH) throw new Error('pgn_too_large');
   const chess = new Chess();
-  chess.loadPgn(pgn, { strict: false });
+  try { chess.loadPgn(pgn, { strict: false }); }
+  catch { throw new Error('invalid_pgn'); }
   const history = chess.history({ verbose: true });
+  if (history.length > MAX_PGN_PLIES) throw new Error('pgn_too_large');
 
   const engine = createAnalysisEngine();
+  const onAbort = () => { void engine.quit().catch(() => undefined); };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+  if (signal?.aborted) throw new Error('analysis_cancelled');
   await engine.start();
   await engine.setOption('Skill Level', 20);
   // Operational tunables — bigger boxes can spend more. Defaults match v6.
@@ -323,6 +374,7 @@ export async function analyzePgnFull(
   let stillInBook = true;
 
   for (let i = 0; i < history.length; i++) {
+    if (signal?.aborted) throw new Error('analysis_cancelled');
     const move = history[i];
     if (!move) continue;
     const sideToMove: Color = replay.turn() === 'w' ? 'white' : 'black';
@@ -458,7 +510,6 @@ export async function analyzePgnFull(
   }
 
   const engineKind = engine.kind;
-  await engine.quit();
 
   // CAPS-style game accuracy (volatility-weighted + harmonic mean).
   const accuracy_white = Math.round(gameAccuracy(whitePoints) * 10) / 10;
@@ -530,6 +581,10 @@ export async function analyzePgnFull(
     key_moments,
     phase_split,
   };
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    await engine.quit();
+  }
 }
 
 function medianDepth(depths: number[]): number {
