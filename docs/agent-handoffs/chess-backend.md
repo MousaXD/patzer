@@ -3,7 +3,7 @@
 **Owner:** Staff Backend / Analysis Agent  
 **Branch:** `agent/chess-backend-20261110`  
 **Baseline:** `c8d9e1e`  
-**Status:** Previous baseline verified by CI. Continuation commits pushed; latest-head CI is queued/pending. **Keep draft; do not merge or deploy until exact-head checks pass and coordinator approves.**
+**Status:** Continued implementation committed to the assigned branch; exact-head CI has not yet completed. **Keep draft; do not merge or deploy until exact-head checks pass and coordinator approves.**
 
 ## Continuation — final implementation commit `bb93dbd93266d0dc8acdc4c27940dd700f32aa57`
 
@@ -21,6 +21,16 @@
 **Verification status (distinguish earlier from current):** CI run [#42846349912](https://github.com/MousaXD/patzer/actions/runs/42846349912) and independent QA run [#42846349945](https://github.com/MousaXD/patzer/actions/runs/42846349945) **passed** at the previous implementation SHA `098648d54c18c982207061b4a868766929368741`. The continuation's new source and test changes **were not included** in those checks. At handoff update, GitHub Actions had queued PR CI for the new commits; do not present the added concurrency/PGN tests as passed until the latest exact-HEAD run completes.
 
 **Follow-up before integration:** Confirm latest `npm run typecheck`, `npm test`, `npm run build`, Docker smoke, and real-browser regressions in CI. Another agent owns the frontend and should handle stale navigation cancellation and `429 engine_busy` retry UX. Another backend agent owns gameplay/WebSocket scheduling and remote `ChessApiEngine` cancellation; coordinate those changes instead of editing out-of-scope files. All other ownership boundaries remain intact.
+
+## Latest continuation — implementation commit `c2ab3b512c2c04a99bd32e4c5420620c9fdf8403`
+
+- **Cancel abandoned exploratory moves:** `server/src/routes/analyze.ts` attaches the HTTP request signal to the engine created for variation scoring, shuts the engine down on abort, and removes the listener in `finally`. The variation scorer retains its existing normal `quit` and 30-second timeout. The existing `variationScoring.ts` was **not edited**, respecting the file boundary.
+- **Prevent stale results:** avoid adding abandoned position/variation results to the 60-second cache. Full-PGN scoring checks for cancellation before opening/phase summaries and before returning, preventing late-aborted analyses from reaching the route's database save.
+- **Cancellation helper:** `stopEngineOnAbort` provides idempotent abort-listener cleanup and safe handling for already-aborted requests and shutdown failures. Added three unit tests in `analysis-agent-work.test.ts`.
+- **Additional PGN lifecycle regression:** proves that an abort triggered during the last ply still rejects `analyzePgnFull`, rather than returning a storable result.
+- **API compatibility:** all successful payloads remain unchanged. Already-aborted variation requests return `503 { "error": "analysis_cancelled" }` and do not launch new Stockfish processes. Ordinary browser disconnects can interrupt local engine work sooner. The remote `ChessApiEngine` HTTP fetch still has its independent timeout because `engine.ts` is outside assigned ownership.
+- **No production side effects:** all edits were GitHub contents commits directly to the existing remote branch. No local worktree was available, no Patzer service was touched, no live SQLite database was opened, no dependencies were installed, and no bulk analysis was started.
+- **Verification evidence:** the historical full CI run on implementation `098648d54...` passed. The later UCI serialization, PGN-lifecycle, and cancellation changes through `c2ab3b512c2c04a99bd32e4c5420620c9fdf8403` **have no passing exact-head CI evidence yet**. GitHub Actions is queuing branch PR checks (including CI and independent frontend QA); these changes are **not certified**, and no benchmarks or test passes are claimed for them. Required: Node 20/22 typechecks, all Vitest tests, Docker smoke, browser regressions and source tests at the current implementation commit or an unchanged-doc-only descendant.
 
 ## Scope and changes
 
@@ -80,7 +90,7 @@ npm run build
 ## Remaining risks / follow-up
 
 1. The system-wide admission budget applies to **HTTP analysis routes**, not bots, gameplay WebSocket requests or unrelated engines, which are outside this agent's file ownership. A cross-workstream scheduler would be required for a system-wide CPU guarantee.
-2. `variationScoring.ts` already has a 30-second timeout and cleanup, but does not receive the HTTP abort signal. This can hold a slot until its bounded scoring timeout after a browser navigation; expanding its signature would require ownership coordination.
+2. The variation route now interrupts **local** Stockfish on HTTP abort using an engine-factory hook. `variationScoring.ts` still has its separate 30-second timeout, and remote chess-api fetches may hold a slot until their HTTP timeout; upstream abort support inside `engine.ts` remains a coordinated follow-up outside our ownership.
 3. `ChessApiEngine` in `engine.ts` still performs one fixed 1-second retry before falling back, and its remote fetch is not connected to the HTTP abort signal. Scope is reserved for another owner or approved follow-up.
 4. No persistent position cache or cross-process scheduler was added: ephemeral entries vanish on restart, and separate server worker processes have independent admission budgets.
 5. Large imported annotated PGNs above the safety caps now return explicit errors, rather than initiating potentially unbounded analysis. Limits may need a user-facing explanation or tested streaming PGN import path.
