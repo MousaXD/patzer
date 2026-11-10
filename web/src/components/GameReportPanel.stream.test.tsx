@@ -21,6 +21,7 @@ function reply(...chunks: string[]) {
   const encoder = new TextEncoder();
   let index = 0;
   const reader = {
+    cancel: vi.fn().mockResolvedValue(undefined),
     read: vi.fn(async (): Promise<{ done: boolean; value?: Uint8Array }> => {
       if (index >= chunks.length) return { done: true };
       return { done: false, value: encoder.encode(chunks[index++]!) };
@@ -40,6 +41,26 @@ describe('Game Review report stream lifecycle', () => {
     fireEvent.click(screen.getByText('Write AI report'));
     await waitFor(() => expect(screen.getByText('A completed chess report')).toBeTruthy());
     expect(onGenerated).toHaveBeenCalledWith(review);
+  });
+
+  it('finishes immediately after done even if the server never closes its stream', async () => {
+    const onGenerated = vi.fn();
+    const encoder = new TextEncoder();
+    const done = encoder.encode('event: done\ndata: ' + JSON.stringify({ review }) + '\n\n');
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const read = vi.fn().mockResolvedValueOnce({ done: false, value: done })
+      .mockImplementation(() => new Promise(() => undefined));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, body: { getReader: () => ({ read, cancel }) },
+    }));
+
+    render(<GameReportPanel gameId={11} initial={null} onGenerated={onGenerated} />);
+    fireEvent.click(screen.getByText('Write AI report'));
+    await waitFor(() => expect(screen.getByText('A completed chess report')).toBeTruthy());
+    await waitFor(() => expect((screen.getByText('Write it again') as HTMLButtonElement).disabled).toBe(false));
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(onGenerated).toHaveBeenCalledOnce();
   });
 
   it('shows a recoverable error when the server closes without a done event', async () => {

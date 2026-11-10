@@ -69,6 +69,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
     const ac = new AbortController();
     abortRef.current = ac;
     setBusy(true); setError(null); setProgress(null);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const res = await fetch(`/api/games/${gameId}/review`, {
         method: 'POST',
@@ -83,7 +84,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         setBusy(false);
         return;
       }
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
       let complete = false;
@@ -119,6 +120,9 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
             setError(event.data || 'The report generator failed. Please retry.');
           }
         }
+        // A valid terminal SSE event is sufficient. Waiting for a proxy to
+        // close the HTTP stream can leave the button spinning indefinitely.
+        if (complete || failed) break;
       }
       if (!complete && !failed && !ac.signal.aborted) {
         setError('The AI report connection ended before the report was complete. Please retry.');
@@ -126,6 +130,9 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
     } catch (e) {
       if (!ac.signal.aborted) setError((e as Error).message);
     } finally {
+      // Close the response body even when it ends with an error or a valid
+      // `done` event; otherwise an SSE connection can keep a server slot open.
+      if (reader) void reader.cancel().catch(() => undefined);
       if (abortRef.current === ac) abortRef.current = null;
       if (!ac.signal.aborted) setBusy(false);
     }

@@ -6,7 +6,8 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Setti
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines } from '../components/review/reviewPosition';
+import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
@@ -67,7 +68,15 @@ function fmtCp(cp: number | null | undefined): string {
 
 type Tab = 'moves' | 'report' | 'moments';
 
+/** Route parameter changes can reuse the same React element. Key the complete
+ * review workspace so pending requests/state from game A cannot reappear in B.
+ */
 export default function GameAnalyzer() {
+  const { id } = useParams<{ id: string }>();
+  return <GameAnalyzerView key={id} />;
+}
+
+function GameAnalyzerView() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -77,10 +86,12 @@ export default function GameAnalyzer() {
   const { data, refetch, isLoading, isError, error: loadError } = useQuery({
     queryKey: ['game', gameId],
     queryFn: () => api.get<GameDetail>(`/api/games/${gameId}`),
-    enabled: !!gameId,
+    enabled: Number.isSafeInteger(gameId) && gameId > 0,
   });
 
   const [analyzing, setAnalyzing] = useState(false);
+  const analysisRequestRef = useRef<AbortController | null>(null);
+  useEffect(() => () => analysisRequestRef.current?.abort(), []);
   const [analysisError, setAnalysisError] = useState('');
   // Bind the cached/local analysis to its game ID. Otherwise moving rapidly
   // between game routes can briefly display the previous opponent's analysis.
@@ -196,7 +207,7 @@ export default function GameAnalyzer() {
   }, [selectOriginalPly, ply]);
   const isVariation = variations.activeVariationId !== null;
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
-  const qualityKey = branchMove ? `${branchMove.fenBefore}|${branchMove.uci}` : null;
+  const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
   const [qualityError, setQualityError] = useState('');
   const [qualityRetry, setQualityRetry] = useState(0);
@@ -215,17 +226,15 @@ export default function GameAnalyzer() {
   // against another FEN; failed/429 searches never invent a label.
   useEffect(() => {
     if (!qualityKey || !branchMove || qualityCache[qualityKey]) return;
+    const controller = new AbortController();
     let cancelled = false;
     let retry: number | undefined;
     setQualityError('');
     const evaluate = async (attempt: number) => {
       try {
-        const result = await api.post<{quality: VariationMoveQuality}>('/api/analyze/variation-move', {
-          fen_before: branchMove.fenBefore,
-          move_uci: branchMove.uci,
-          depth: 12,
-          ply: Math.max(1, Math.min(1024, displayedPly)),
-        });
+        const result = await postReviewAnalysis<{quality: VariationMoveQuality}>(
+          '/api/analyze/variation-move', reviewVariationScoringRequest(branchMove), controller.signal,
+        );
         if (!cancelled) {
           if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
@@ -234,7 +243,7 @@ export default function GameAnalyzer() {
           }
         }
       } catch (e) {
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         const status = (e as Error & {status?: number}).status;
         if (status === 429 && attempt === 0) {
           retry = window.setTimeout(() => void evaluate(1), 1100);
@@ -244,11 +253,11 @@ export default function GameAnalyzer() {
       }
     };
     const start = window.setTimeout(() => void evaluate(0), 250);
-    return () => { cancelled = true; window.clearTimeout(start); if (retry) window.clearTimeout(retry); };
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(start); if (retry) window.clearTimeout(retry); };
   // qualityKey and fen are the selection identity; avoid replaying a search
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, variations.currentFen, displayedPly, qualityRetry]);
+  }, [qualityKey, variations.currentFen, qualityRetry]);
   useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
@@ -319,17 +328,23 @@ export default function GameAnalyzer() {
   }, []);
 
   async function analyze(depth: number, force = false) {
-    if (analyzing) return;
+    if (analysisRequestRef.current || analyzing) return;
+    const controller = new AbortController();
+    analysisRequestRef.current = controller;
     setAnalyzing(true);
     setAnalysisError('');
     try {
-      const r = await api.post<{ analysis: AnalysisResult; cached: boolean }>('/api/analyze', { game_id: gameId, depth, force });
+      const r = await postReviewAnalysis<{ analysis: AnalysisResult; cached: boolean }>(
+        '/api/analyze', { game_id: gameId, depth, force }, controller.signal,
+      );
+      if (controller.signal.aborted) return;
       setAnalysis(r.analysis);
       await refetch();
     } catch (error) {
-      setAnalysisError(reviewAnalysisErrorMessage(error));
+      if (!controller.signal.aborted) setAnalysisError(reviewAnalysisErrorMessage(error));
     } finally {
-      setAnalyzing(false);
+      if (analysisRequestRef.current === controller) analysisRequestRef.current = null;
+      if (!controller.signal.aborted) setAnalyzing(false);
     }
   }
 
@@ -349,26 +364,31 @@ export default function GameAnalyzer() {
   const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
     if (!linesEnabled || !currentFen) return;
+    const controller = new AbortController();
     let cancelled = false;
     setLinesError(null);
     setLinesLoading(true);
     const handle = window.setTimeout(() => {
-      api.post<{ fen: string; depth: number; lines: EngineLine[] }>('/api/analyze/position', { fen: currentFen, depth: 18, lines: 3 })
+      postReviewAnalysis<{ fen: string; depth: number; lines: EngineLine[] }>(
+        '/api/analyze/position', { fen: currentFen, depth: 18, lines: 3 }, controller.signal,
+      )
         .then((r) => {
           if (cancelled) return;
-          setLines(r.lines ?? []);
+          const checked = verifiedPositionEngineLines<EngineLine>(r, currentFen);
+          setLines(checked ?? []);
           setLinesFen(currentFen);
+          setLinesError(checked === null ? 'unavailable' : null);
           setLinesLoading(false);
         })
         .catch((err: unknown) => {
-          if (cancelled) return;
+          if (cancelled || controller.signal.aborted) return;
           setLinesError((err as { status?: number } | null)?.status === 429 ? 'busy' : 'unavailable');
           setLines([]);
           setLinesFen(currentFen);
           setLinesLoading(false);
         });
     }, 400);
-    return () => { cancelled = true; window.clearTimeout(handle); };
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
   }, [linesEnabled, currentFen, linesRetry]);
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 

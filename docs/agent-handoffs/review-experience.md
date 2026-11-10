@@ -308,3 +308,41 @@ Local logs: `/tmp/patzer-review-goal-typecheck.log`, `/tmp/patzer-review-goal-un
 - The PR stays **draft, unmerged and undeployed**. New source is ready for the coordinator to review on the resulting pushed SHA (the documentation itself cannot state its resulting commit SHA). No exact-head GitHub Actions pass is claimed while runner jobs remain queued.
 
 **Verdict: Game Review source checks, unit tests, production build, and existing + targeted browser QA passed locally; overall multi-branch release remains gated on integration and backend/LLM acceptance.**
+
+## Continuation completed — latest Game Review hardening (2026-11-10)
+
+### Branch and conflict boundaries
+
+- Resumed **without replaying the completed audit** from clean tracked Game Review HEAD `e006b25d412067adb6570cc1623a5a71ae5bf608`; only existing `qa-artifacts/` test evidence was untracked in the isolated checkout.
+- Inspected other branches *read-only*, with no merges or cherry-picks. Latest compared source tips: `agent/chess-backend-20261110` `1a16d84`, `agent/platform-backend-20261110` `5948833`, `agent/product-ui-20261110` `2f1f3f2`. All continued to have **zero overlapping Game Review file changes** relative to the common baseline. Other agents' code and production infrastructure remain untouched.
+
+### Newly implemented and tested
+
+1. **Abort obsolete Stockfish work, not only state updates.** Added a small Game Review-only cancellable HTTP client (`reviewAnalysisRequest.ts`) that preserves the shared authenticated/CSRF headers and error codes. Full-game, ad-hoc position, and variation scoring requests now carry `AbortSignal`; changing FEN, changing game, disabling a view or unmounting aborts obsolete work. This cooperates with the chess-backend's process-wide engine-slot admission and HTTP abort handling when its branch is integrated.
+2. **Reset review identity on game route changes.** The Game Review inner workspace is keyed by game route ID; old full-analysis promises, errors, progress flags, move lists, and callbacks cannot reappear on another saved game. Invalid numeric IDs no longer start a fetch.
+3. **Verify position response before rendering live arrows.** Require the returned engine FEN to equal the requested FEN, all suggested UCI moves to be legal in that position, and scores and SAN fields to be structurally valid. A mismatched/invalid response is shown as an unavailable line, never relabelled with the current board FEN. No fabricated 0.00 score is accepted for a line with neither cp nor mate.
+4. **Correct FEN-started variation scoring context.** Removed a wrongly relative `ply` field from frontend variation-scoring requests. The backend already infers the **absolute** ply from the FEN's starting fullmove and side-to-move. Request cache identity also includes game ID, FEN and UCI to avoid reusing another game's classification.
+5. **Finish AI report on a real terminal `done` event.** A valid streamed report now immediately leaves busy state even if a proxy holds the SSE connection open. The response reader is cancelled on success/error, and a new regression proves completion without waiting for EOF; existing cancellation/regeneration and partial-stream tests remain green.
+
+Changes are isolated to `web/src/pages/GameAnalyzer.tsx`, `web/src/components/GameReportPanel.tsx`, `web/src/components/GameReportPanel.stream.test.tsx`, `web/src/components/review/reviewPosition.ts`, `web/src/components/review/reviewPosition.test.ts`, new `reviewAnalysisRequest.ts` and its tests, and this handoff. **No shared API wrapper, backend, database, config, package or CI files were edited.**
+
+### Observed local results on final source tree
+
+| Gate | Actual result |
+| --- | --- |
+| `npm run typecheck` | **PASS**, exit 0, server/web/test projects |
+| `npm test` | **PASS**, **77 test files, 630 tests, 0 failures**, exit 0 (includes new abort, FEN safety, custom Black-first request and sticky-SSE completion regressions) |
+| `npm run build` | **PASS**, server TypeScript plus Vite web production build, exit 0 |
+| `node qa/agent07/frontend-overhaul-smoke.mjs` | **PASS, 35/35**, zero failures, real local Stockfish, Chromium, disposable DB, five viewport sizes × light/dark; fresh evidence at untracked `qa-artifacts/frontend-overhaul-continuation/` |
+| Local isolated Chromium edge journey (`qa-artifacts/review-edge-smoke.mjs`) | **PASS**: partial-PGN move navigation (6 saved vs 2 evaluated), no unsaved notes leak across games, and **actual `AbortSignal` fired for an in-flight full-analysis fetch when navigating to another game** |
+| Design-system contract and browser checks | **PASS**: five contract assertions and six theme combinations; independent from the review data/cache changes |
+
+Exact post-change logs are retained locally at `/tmp/patzer-review-continuation-typecheck-20261110.log`, `/tmp/patzer-review-continuation-unit-20261110.log`, `/tmp/patzer-review-continuation-build-20261110.log`, `/tmp/patzer-review-continuation-exact-browser-20261110.log`, and `/tmp/patzer-review-continuation-edge-20261110.log`. Browser screenshots and disposable SQLite fixtures were **not** staged or pushed.
+
+### CI status, integration boundary and verdict
+
+GitHub Actions recovered **for the preceding source SHA `e006b25d412067adb6570cc1623a5a71ae5bf608`**: CI run `42884286626`, Frontend Overhaul QA run `42884286911`, and design-system certification run `42884286815` were each queried as **completed/success**. Those successful hosted jobs certify the *previous* source, **not** the new continuation changes or its final handoff commit. New exact-HEAD hosted checks must be reviewed if/when available.
+
+Local checks cover the new Game Review source independently. A live configured LLM's successful/interrupted report generation, backend corrupt-cache repair through real `force: true`, and an eventual combined-tree cross-branch QA run remain coordinator/backend acceptance responsibilities; these are not falsely marked as tested here. PR #13 stays draft and unmerged, with no deploy, no production database access and no action on `main`.
+
+**Game Review lane verdict: implementation, regression and local browser certification complete. Ready to hand to the coordinator for integration; the overall application/release is not declared certified from these isolated branch results.** The final branch SHA will be the GitHub remote tip after this handoff is committed (cannot self-reference its own hash).

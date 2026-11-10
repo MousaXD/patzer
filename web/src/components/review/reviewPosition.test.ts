@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bestMoveForDisplayedBoard, visibleEngineLines } from './reviewPosition';
+import { Chess } from 'chess.js';
+import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey } from './reviewPosition';
 
 const savedMoves = [
   { best_move_uci: 'e2e4' },
@@ -36,5 +37,26 @@ describe('review position-safe suggestions', () => {
     expect(bestMoveForDisplayedBoard({
       ply: 0, isVariation: true, mainline: savedMoves, liveLines: fresh, liveReady: false,
     })).toBeUndefined();
+  });
+
+  it('never substitutes relative PGN ply for absolute FEN-based scoring in custom setups', () => {
+    const move = { fenBefore: '8/8/8/8/8/8/8/K6k b - - 0 12', uci: 'h1h2' };
+    expect(reviewVariationScoringRequest(move)).toEqual({
+      fen_before: move.fenBefore, move_uci: move.uci, depth: 12,
+    });
+    expect(reviewVariationScoringRequest(move)).not.toHaveProperty('ply');
+    expect(reviewVariationScoringKey(1, move)).not.toBe(reviewVariationScoringKey(2, move));
+    expect(reviewVariationScoringKey(1, move)).not.toBe(reviewVariationScoringKey(1, { ...move, uci: 'h1g1' }));
+  });
+
+  it('rejects an engine response tagged for a different FEN or with illegal arrows', () => {
+    const fen = new Chess().fen();
+    const good = { uci: 'e2e4', san: 'e4', pv_san: ['e4'], cp: 45, mate: null, multipv: 1 };
+    expect(verifiedPositionEngineLines({ fen, lines: [good] }, fen)).toEqual([good]);
+    expect(verifiedPositionEngineLines({ fen: 'unrelated', lines: [good] }, fen)).toBeNull();
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, uci: 'e7e5' }] }, fen)).toBeNull();
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, cp: Number.NaN }] }, fen)).toBeNull();
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, cp: null, mate: null }] }, fen)).toBeNull();
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, san: null }] }, fen)).toBeNull();
   });
 });
