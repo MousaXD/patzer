@@ -95,9 +95,16 @@ export class StockfishEngine {
     this.proc = proc;
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (chunk: string) => this.onData(chunk));
-    proc.on('error', (err) => this.failWaiters(new Error(`stockfish: ${err.message}`)));
+    proc.stderr.resume(); // Never block an engine that writes diagnostics.
+    proc.stdin.on('error', (err) => {
+      if (this.proc === proc) this.failWaiters(new Error(`stockfish: ${err.message}`));
+    });
+    proc.on('error', (err) => {
+      if (this.proc === proc) this.failWaiters(new Error(`stockfish: ${err.message}`));
+    });
     proc.on('exit', () => {
-      if (this.proc === proc) this.proc = null;
+      if (this.proc !== proc) return; // An old child must not reject a restarted engine.
+      this.proc = null;
       this.failWaiters(new Error('engine_terminated'));
     });
     try {
@@ -119,12 +126,6 @@ export class StockfishEngine {
 
   private onData(chunk: string): void {
     this.buffer += chunk;
-    // A malformed child must not grow an unterminated stdout buffer forever.
-    if (this.buffer.length > 65_536) {
-      this.failWaiters(new Error('stockfish: oversized output line'));
-      void this.quit();
-      return;
-    }
     let idx: number;
     while ((idx = this.buffer.indexOf('\n')) >= 0) {
       const line = this.buffer.slice(0, idx).replace(/\r$/, '');
@@ -132,6 +133,12 @@ export class StockfishEngine {
       const waiters = this.waiters;
       this.waiters = [];
       for (const w of waiters) w(line);
+    }
+    // Only the un-terminated remainder is bounded; normal batches of many
+    // short UCI lines can exceed this size without being malformed.
+    if (this.buffer.length > 65_536) {
+      this.failWaiters(new Error('stockfish: oversized output line'));
+      void this.quit();
     }
   }
 
@@ -330,9 +337,8 @@ export class StockfishEngine {
     );
   }
 
-  // Async, idempotent shutdown. Sends `stop` + `quit` so any in-flight `go`
-  // finishes promptly, awaits the `bestmove`, then guarantees the OS process
-  // is gone within ~250 ms. Rejects pending waiters so callers stop hanging.
+  // Async, idempotent shutdown. Reject waiters immediately, ask the child to
+  // stop and quit, then force-kill after a bounded grace period.
   async quit(): Promise<void> {
     const proc = this.proc;
     if (!proc) {
