@@ -3,7 +3,24 @@
 **Owner:** Staff Backend / Analysis Agent  
 **Branch:** `agent/chess-backend-20261110`  
 **Baseline:** `c8d9e1e`  
-**Status:** Implemented and independently CI-verified on GitHub. **Do not merge without coordinator review.**
+**Status:** Previous baseline verified by CI. Continuation commits pushed; latest-head CI is queued/pending. **Keep draft; do not merge or deploy until exact-head checks pass and coordinator approves.**
+
+## Continuation — final implementation commit `bb93dbd93266d0dc8acdc4c27940dd700f32aa57`
+
+**Working directory verification:** This session's shell was at `/`, not a Git repository; the assigned path `/home/mousa/projects/my-creations/chess/patzer-agent-chess-backend` did not exist in the container. The original GitHub branch `agent/chess-backend-20261110` was verified through the authenticated connector; changes were made **only on that exact remote branch**. No substitute checkout, reset, merge, rebase, cherry-pick or deployment was performed.
+
+**Additional implemented work:**
+- Stockfish `evaluate`, `evaluateMulti`, and `bestMove` now acquire one exclusive per-process UCI search guard *before* asynchronous writes. Other searches, `setOption`, `newGame`, and `name` fail fast with `engine_busy` while a search is active. This prevents the same `bestmove` response being consumed by multiple callers or score lines being attributed to the wrong position; the guard releases in `finally`.
+- Starting a search on an unstarted/terminated Stockfish instance now rejects `engine_not_ready`. Delayed output from a previously stopped child is discarded when another child is running.
+- Failed UCI handshake writes now tear down the session instead of leaving an orphaned readiness waiter.
+- Added `server/test/analysis-agent-stockfish.test.ts` regressions for simultaneous `evaluate`/`evaluateMulti`/`bestMove`, option/new-game rejection during a search, subsequent clean sequential reuse, and post-quit searches. All use a disposable fake UCI executable.
+- Added `server/test/analysis-agent-pgn-lifecycle.test.ts` to check oversized/invalid PGN rejection before engine creation, shutdown after startup/search failures, and pre-aborted requests. Database and config modules are mocked to avoid live data and secret files.
+
+**API contract:** No new HTTP request fields, result fields or success-response changes. The `StockfishEngine` direct-call contract intentionally raises `engine_busy` instead of allowing concurrent use of the same process; callers must sequence searches or create separate admitted engines.
+
+**Verification status (distinguish earlier from current):** CI run [#42846349912](https://github.com/MousaXD/patzer/actions/runs/42846349912) and independent QA run [#42846349945](https://github.com/MousaXD/patzer/actions/runs/42846349945) **passed** at the previous implementation SHA `098648d54c18c982207061b4a868766929368741`. The continuation's new source and test changes **were not included** in those checks. At handoff update, GitHub Actions had queued PR CI for the new commits; do not present the added concurrency/PGN tests as passed until the latest exact-HEAD run completes.
+
+**Follow-up before integration:** Confirm latest `npm run typecheck`, `npm test`, `npm run build`, Docker smoke, and real-browser regressions in CI. Another agent owns the frontend and should handle stale navigation cancellation and `429 engine_busy` retry UX. Another backend agent owns gameplay/WebSocket scheduling and remote `ChessApiEngine` cancellation; coordinate those changes instead of editing out-of-scope files. All other ownership boundaries remain intact.
 
 ## Scope and changes
 
