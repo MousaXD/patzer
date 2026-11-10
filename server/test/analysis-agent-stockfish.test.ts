@@ -14,7 +14,7 @@ import { StockfishEngine } from '../src/chess/stockfish.js';
 const dir = mkdtempSync(join(tmpdir(), 'patzer-fake-uci-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-start' | 'hang-on-go'): string {
+function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-start' | 'hang-on-go' | 'slow-on-go'): string {
   const path = join(dir, mode + '.cjs');
   const lines = [
     '#!/usr/bin/env node',
@@ -38,7 +38,14 @@ function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-star
     "    } else if (line.startsWith('go ')) {",
     "      if (mode === 'crash-on-go') process.exit(3);",
     "      if (mode === 'hang-on-go') continue;",
-    "      process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
+    "      if (mode === 'slow-on-go') {",
+    "        setTimeout(() => {",
+    "          process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
+    "          process.stdout.write('bestmove e2e4\\n');",
+    "        }, 80);",
+    "        continue;",
+    "      }",
+    "      process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');
     "      if (multipv >= 2) process.stdout.write('info depth ' + (mode === 'mixed-depth' ? 15 : 16) + ' multipv 2 score cp 15 pv d2d4\\n');",
     "      process.stdout.write('bestmove e2e4\\n');",
     "    } else if (line === 'quit') {",
@@ -89,6 +96,31 @@ describeUnix('analysis-agent Stockfish subprocess lifecycle', () => {
     } finally {
       await engine.quit();
     }
+  });
+
+  it('rejects concurrent searches and option mutations instead of mixing UCI results', async () => {
+    const engine = new StockfishEngine(fakeUci('slow-on-go'));
+    try {
+      await engine.start();
+      const first = engine.evaluate(START_FEN, 16);
+      await expect(engine.evaluate(START_FEN, 12)).rejects.toThrow('engine_busy');
+      await expect(engine.evaluateMulti(START_FEN, 16, 3)).rejects.toThrow('engine_busy');
+      await expect(engine.bestMove(START_FEN, { depth: 8 })).rejects.toThrow('engine_busy');
+      await expect(engine.setOption('Hash', 32)).rejects.toThrow('engine_busy');
+      await expect(engine.newGame()).rejects.toThrow('engine_busy');
+      await expect(first).resolves.toMatchObject({ cp: 40, bestMoveUci: 'e2e4' });
+      // Search admission must be released on success, without restarting.
+      await expect(engine.bestMove(START_FEN, { depth: 8 })).resolves.toBe('e2e4');
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('does not accept further work on a terminated process', async () => {
+    const engine = new StockfishEngine(fakeUci('normal'));
+    await engine.start();
+    await engine.quit();
+    await expect(engine.evaluate(START_FEN, 12)).rejects.toThrow('engine_not_ready');
   });
 
   it('rejects promptly if the child exits while starting', async () => {
