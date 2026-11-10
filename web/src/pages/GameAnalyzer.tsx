@@ -937,12 +937,13 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   );
 }
 
-function LinesPanel({ enabled, onToggle, lines, loading, error, playedUci, onAdvance, onTryMove, onHover }: {
+function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
   enabled: boolean;
   onToggle: () => void;
   lines: EngineLine[];
   loading: boolean;
-  error: boolean;
+  error: 'busy' | 'unavailable' | null;
+  onRetry: () => void;
   playedUci: string | null;
   onAdvance: () => void;
   onTryMove: (uci: string) => void;
@@ -976,7 +977,10 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, playedUci, onAdv
             <div className="px-2 py-3 text-xs text-chesscom-400">—</div>
           )}
           {error && (
-            <div className="px-2 py-3 text-xs text-chesscom-400">—</div>
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-500">
+              <span>{error === 'busy' ? 'Stockfish is busy with another request.' : 'Engine lines are unavailable.'}</span>
+              <button type="button" onClick={onRetry} disabled={loading} className="btn-secondary px-2 py-1 text-xs">Retry</button>
+            </div>
           )}
           {lines.map((l) => {
             const isPlayed = playedUci != null && l.uci === playedUci;
