@@ -19,14 +19,13 @@ const review = {
 
 function reply(...chunks: string[]) {
   const encoder = new TextEncoder();
+  let index = 0;
   const reader = {
-    read: vi.fn()
-      .mockImplementationOnce(async () => ({ done: false, value: encoder.encode(chunks[0] ?? '') })),
+    read: vi.fn(async (): Promise<{ done: boolean; value?: Uint8Array }> => {
+      if (index >= chunks.length) return { done: true };
+      return { done: false, value: encoder.encode(chunks[index++]!) };
+    }),
   };
-  for (const chunk of chunks.slice(1)) {
-    reader.read.mockResolvedValueOnce({ done: false, value: encoder.encode(chunk) });
-  }
-  reader.read.mockResolvedValueOnce({ done: true, value: undefined });
   return { ok: true, body: { getReader: () => reader } };
 }
 
