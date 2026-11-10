@@ -140,6 +140,21 @@ describe('one-time Chess.com history', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({ n: 1 });
   });
 
+  it('never stores URL identifiers from lookalike Chess.com hosts', async () => {
+    const db = testDb();
+    const result = await importChessComHistory(db, 1, 'testuser', {
+      archives: async () => [archives[0]],
+      month: async () => [
+        sample(1, { url: 'https://www.chess.com.evil.example/game/live/1' }),
+        sample(2, { url: 'http://www.chess.com/game/live/2' }),
+        sample(3),
+      ],
+      delay: async () => {},
+    });
+    expect(result).toMatchObject({ imported: 1, skippedNonStandardOrInvalid: 2 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({ n: 1 });
+  });
+
   it('retries network timeouts and transient HTTP 408 without swallowing permanent errors', async () => {
     const delays: number[] = [];
     let attempts = 0;
