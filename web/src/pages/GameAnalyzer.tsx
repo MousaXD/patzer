@@ -78,7 +78,15 @@ export default function GameAnalyzer() {
 
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  // Bind the cached/local analysis to its game ID. Otherwise moving rapidly
+  // between game routes can briefly display the previous opponent's analysis.
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<{ gameId: number; value: AnalysisResult | null }>({
+    gameId, value: null,
+  });
+  const analysis = analysisSnapshot.gameId === gameId ? analysisSnapshot.value : null;
+  const setAnalysis = useCallback((value: AnalysisResult | null) => {
+    setAnalysisSnapshot({ gameId, value });
+  }, [gameId]);
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [requestedDepth, setRequestedDepth] = useState(16);
   const [showDepthControl, setShowDepthControl] = useState(false);
