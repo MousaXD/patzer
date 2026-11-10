@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AnalysisAdmission, AnalysisResultCache } from '../src/chess/analysisAgentWork.js';
+import { AnalysisAdmission, AnalysisResultCache, stopEngineOnAbort } from '../src/chess/analysisAgentWork.js';
 
 describe('analysis-agent engine admission', () => {
   it('never exceeds the global slot count and releases exactly once', () => {
@@ -51,5 +51,43 @@ describe('analysis-agent result cache', () => {
     now = 11;
     expect(cache.get('99')).toBeUndefined();
     expect(() => new AnalysisResultCache(0)).toThrow(RangeError);
+  });
+});
+
+describe('analysis-agent cancellation cleanup', () => {
+  it('stops abandoned engine exactly once and removes the listener', async () => {
+    const controller = new AbortController();
+    let stopped = 0;
+    const detach = stopEngineOnAbort(controller.signal, {
+      quit: async () => { stopped++; },
+    });
+    controller.abort();
+    controller.abort();
+    detach();
+    await Promise.resolve();
+    expect(stopped).toBe(1);
+  });
+
+  it('handles already-aborted requests and swallowed shutdown failures', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let stopped = 0;
+    const detach = stopEngineOnAbort(controller.signal, {
+      quit: async () => { stopped++; throw new Error('forced shutdown failure'); },
+    });
+    await Promise.resolve();
+    detach();
+    expect(stopped).toBe(1);
+  });
+
+  it('does not shut down a completed engine after listener cleanup', () => {
+    const controller = new AbortController();
+    let stopped = 0;
+    const detach = stopEngineOnAbort(controller.signal, {
+      quit: async () => { stopped++; },
+    });
+    detach();
+    controller.abort();
+    expect(stopped).toBe(0);
   });
 });
