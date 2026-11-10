@@ -24,9 +24,14 @@ export function validateAppAnalysis(pgn, output, { fixtureId='unnamed', referenc
   const startFen = source.header().FEN || new Chess().fen();
   const replay = new Chess(startFen);
   const outputMoves = output.moves;
+  // These totals are derived from the verified PGN, never from an app-reported
+  // accuracy percentage. Book/forced moves provide no skill-rating evidence.
+  const eligible = { w: 0, b: 0 };
   for (let i=0; i<history.length; i++) {
     const raw = outputMoves[i], expected = history[i], before = replay.fen(), ply=i+1;
     if (!raw || !expected) { add('move_missing',ply); break; }
+    const side = replay.turn();
+    const legalBefore = replay.moves().length;
     if (raw.ply!==ply) add('wrong_ply',ply);
     if (raw.fen_before!==before) add('stale_fen_before',ply);
     if (raw.san!==expected.san) add('wrong_move_san',ply);
@@ -52,15 +57,23 @@ export function validateAppAnalysis(pgn, output, { fixtureId='unnamed', referenc
     const m=moveUci(replay, expected.from+expected.to+(expected.promotion||''));
     if (!m) {add('gold_pgn_replay_failure',ply);break;}
     if (raw.fen_after!==replay.fen()) add('stale_fen_after',ply);
-    for (const score of ['eval_before_cp','eval_after_cp']) if (raw[score]!==null && !finite(raw[score])) add('bad_eval_cp',ply);
+    // A scored review with null/unknown evaluations is not evidence of an
+    // accurate numerical verdict. Reject, rather than conflating unknown and 0.
+    for (const score of ['eval_before_cp','eval_after_cp']) if (!finite(raw[score])) add('missing_or_invalid_eval_cp',ply);
     for (const mate of ['mate_before','mate_after']) if (raw[mate]!==null && (!Number.isInteger(raw[mate])||Math.abs(raw[mate])>1000)) add('bad_mate',ply);
     if (!finite(raw.centipawn_loss)||raw.centipawn_loss<0) add('bad_centipawn_loss',ply);
     if (!cls.has(raw.classification)) add('unknown_classification',ply);
+    if (legalBefore===1 && raw.classification!=='forced') add('missed_forced_classification',ply);
+    if (cls.has(raw.classification) && !['book','forced'].includes(raw.classification)) eligible[side]++;
     if (raw.classification==='best' && raw.best_move_uci && raw.best_move_uci !== raw.uci) add('false_best_classification',ply);
     if (['great','brilliant'].includes(raw.classification) && raw.best_move_uci && raw.best_move_uci !== raw.uci) add('false_top_move_award',ply);
     if (raw.classification==='forced' && new Chess(before).moves().length!==1) add('false_forced_classification',ply);
     if (raw.classification==='best' && raw.centipawn_loss>300) add('best_with_extreme_loss',ply);
     if (raw.classification==='blunder' && raw.centipawn_loss===0 && raw.eval_before_cp===raw.eval_after_cp) add('false_blunder_classification',ply);
+    if (replay.isCheckmate()) {
+      const winningSign = replay.turn()==='w' ? -1 : 1;
+      if (!finite(raw.eval_after_cp) || Math.sign(raw.eval_after_cp)!==winningSign) add('checkmate_score_perspective_mismatch',ply);
+    }
     if (i+1<outputMoves.length && outputMoves[i+1]?.eval_before_cp !==raw.eval_after_cp) add('eval_chain_break',ply);
     if (i+1<outputMoves.length && outputMoves[i+1]?.mate_before !==raw.mate_after) add('mate_chain_break',ply);
     // A claimed mate-in-one can be proved by legal move enumeration without any engine.
@@ -85,6 +98,15 @@ export function validateAppAnalysis(pgn, output, { fixtureId='unnamed', referenc
       } else if (finite(referenceBest.cp) && Math.abs(referenceBest.cp)>=80 && finite(score)) {
         if (Math.sign(score)!==Math.sign(referenceBest.cp) && Math.abs(score)>=50) add('reference_evaluation_side_mismatch',ply);
       }
+    }
+  }
+  // It is possible for a one-move, single-legal-reply game to receive a
+  // 2800+ estimated Elo from an ACPL=0 fallback. Do not accept a claim of
+  // quantified skill when the entire side had zero eligible scored choices.
+  for (const [side, suffix] of [['w','white'],['b','black']]) {
+    if (eligible[side]===0) {
+      if (output['estimated_elo_'+suffix] != null) add('rating_without_eligible_moves_'+suffix);
+      if (output['performance_'+suffix] != null) add('performance_without_eligible_moves_'+suffix);
     }
   }
   if (Array.isArray(output.coach_claims)) {
