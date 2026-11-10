@@ -526,14 +526,14 @@ export default function GameAnalyzer() {
               {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? 'Analyzing…' : '—') : fmtCp(currentEvalCp)}
             </div>
           </div>
-          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport>
+          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label="Game move navigation">
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
             <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
               {isVariation ? `${displayedPly} · var` : ply} / {positions.length - 1}
             </div>
-            <button type="button" onClick={forward} disabled={!isVariation && ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
-            <button type="button" onClick={last} disabled={!isVariation && ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
+            <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
+            <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
 
         </div>
@@ -594,50 +594,6 @@ export default function GameAnalyzer() {
                 />
               </div>
 
-              <GameReportCard
-                whiteName={data.game.white}
-                blackName={data.game.black}
-                accuracyW={analysis.accuracy_white}
-                accuracyB={analysis.accuracy_black}
-                eloW={analysis.estimated_elo_white}
-                eloB={analysis.estimated_elo_black}
-                perfW={analysis.performance_white}
-                perfB={analysis.performance_black}
-                moves={analysis.moves}
-                phaseSplit={analysis.phase_split}
-                userColor={userColor}
-                onPick={onPick}
-                picked={pick}
-              />
-
-              {showDepthControl && (
-                <div className="card p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="label" htmlFor="review-analysis-depth">{t('review.depth')}</label>
-                    <span className="font-mono text-sm font-semibold tabular-nums">{requestedDepth}</span>
-                  </div>
-                  <input
-                    id="review-analysis-depth" type="range" min={8} max={22} step={1}
-                    value={requestedDepth}
-                    onChange={(e) => setRequestedDepth(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 flex justify-between text-[11px] text-chesscom-400">
-                    <span>{t('review.depthFast')}</span>
-                    <span>{t('review.depthQuality')}</span>
-                    <span>{t('review.depthDeep')}</span>
-                  </div>
-                  <button
-                    onClick={() => void analyze(requestedDepth, true)}
-                    disabled={analyzing}
-                    className="btn-primary mt-3 w-full text-sm"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {analyzing ? t('review.analyzing', { progress: '…' }) : `${t('review.reanalyze')} (depth ${requestedDepth})`}
-                  </button>
-                </div>
-              )}
-
               {/* Tabbed workspace — Moves / AI report / Key moments / Engine / Coach.
                   This is the ONLY tabbed surface on the page: engine lines moved in
                   here (previously a peer card) so there is one mental model, not three. */}
@@ -692,7 +648,7 @@ export default function GameAnalyzer() {
                       onSelect={setPly}
                       phaseSplit={analysis.phase_split}
                       highlight={pickedSet}
-                      maxHeight={typeof window !== 'undefined' && window.innerWidth < 768 ? 320 : 460}
+
                     />
                   )}
                   {tab === 'report' && (
@@ -727,6 +683,50 @@ export default function GameAnalyzer() {
                   )}
                 </div>
               </div>
+
+              <GameReportCard
+                whiteName={data.game.white}
+                blackName={data.game.black}
+                accuracyW={analysis.accuracy_white}
+                accuracyB={analysis.accuracy_black}
+                eloW={analysis.estimated_elo_white}
+                eloB={analysis.estimated_elo_black}
+                perfW={analysis.performance_white}
+                perfB={analysis.performance_black}
+                moves={analysis.moves}
+                phaseSplit={analysis.phase_split}
+                userColor={userColor}
+                onPick={onPick}
+                picked={pick}
+              />
+
+              {showDepthControl && (
+                <div className="card p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="label" htmlFor="review-analysis-depth">{t('review.depth')}</label>
+                    <span className="font-mono text-sm font-semibold tabular-nums">{requestedDepth}</span>
+                  </div>
+                  <input
+                    id="review-analysis-depth" type="range" min={8} max={22} step={1}
+                    value={requestedDepth}
+                    onChange={(e) => setRequestedDepth(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="mt-1 flex justify-between text-[11px] text-chesscom-400">
+                    <span>{t('review.depthFast')}</span>
+                    <span>{t('review.depthQuality')}</span>
+                    <span>{t('review.depthDeep')}</span>
+                  </div>
+                  <button
+                    onClick={() => void analyze(requestedDepth, true)}
+                    disabled={analyzing}
+                    className="btn-primary mt-3 w-full text-sm"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {analyzing ? t('review.analyzing', { progress: '…' }) : `${t('review.reanalyze')} (depth ${requestedDepth})`}
+                  </button>
+                </div>
+              )}
 
               <LinesPanel
                 enabled={linesEnabled}
