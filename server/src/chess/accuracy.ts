@@ -1,98 +1,60 @@
-// Game-accuracy aggregation — chess.com CAPS2-approximation pass (v6).
-//
-// Per-move accuracy comes from `moveAccuracy` (Lichess formula). This module
-// turns a list of per-move accuracies + win-pct timeline into a single game
-// accuracy by combining four ideas chess.com publicly advertises:
-//
-//   1. **Volatility-weighted mean.** Slide a window across the player's
-//      win-pct timeline; positions with high stdev (sharp swings = critical
-//      moments) contribute more weight. Stops a sleepy 60-move endgame
-//      where every move is "good" from gaming the score.
-//   2. **Harmonic mean with a 3rd-worst floor.** Punishes a single bad move
-//      more than a single arithmetic mean would, but caps the floor at the
-//      3rd-worst per-move accuracy so the 4th-worst blunder doesn't punish
-//      twice. chess.com explicitly states they "reduce multi-blunder
-//      penalty" — this is our approximation.
-//   3. **0.6 vol + 0.4 harmonic blend.** Lets harmonic *punish* without
-//      *dominating* — v5 used 50/50, which over-punished multi-blunder games
-//      by 5-8 points vs chess.com.
-//   4. **Distribution shift.** chess.com states "the majority of scores
-//      fall between 50 and 95"; our blend sits ~3-6 points cool on club
-//      games and ~0-1 cool on master games. Add a small positive shift
-//      `+4·(1−blend/100)^1.5` that fades at the high end so 99 stays ~99.
-//
-// Book moves are dropped from the aggregate — they were "best by definition"
-// and including them inflates accuracy.
-//
-// Spec: .claude/specs/chess-math.md §2.
-//
-// v8 (Hikaru Apr-2026 benchmark, 10 blitz games): cap per-ply volatility
-// weight at 4.0. A single blunder in a calm game can otherwise hit weight
-// 10+, dragging a "1 bad + 21 great" game from chess.com's 88 → our 67. Cap
-// values tested: 2.0 over-softened (+4.8 bias, multi-error games drifted to
-// arithmetic); 3.0 still +3.5 biased; 4.0 lands MAE 4.97 vs 5.32 baseline,
-// max outlier 21 → 7, ±3 hit-rate 45% → 55%. Cost: +2.58 systematic bias.
+/** Game-level Stockfish accuracy (independent of Chess.com's proprietary CAPS2).
+ *
+ * Per-move accuracies follow Lichess's published win-chance loss formula.
+ * The game-level score blends a volatility-weighted mean and a harmonic mean.
+ *
+ * Previous Patzer v9 had two upward biases:
+ *  - It floored *every* bad move at the third-worst move's accuracy when taking
+ *    the harmonic mean. A single 58%-accurate mistake among good moves became
+ *    a 96%-accurate move, almost disappearing from the final score.
+ *  - Volatility only used positions AFTER each of the player's turns. That
+ *    could skip the exact win-chance collapse caused by the player's mistake
+ *    (positions on either side of that move weren't included together).
+ *  - It also added an arbitrary positive distribution shift.
+ *
+ * No one can claim numeric parity with Chess.com, whose CAPS2 weights/engine
+ * settings are unpublished. This is a deterministic, openly explainable
+ * measure of the supplied Stockfish evaluations.
+ * https://lichess.org/page/accuracy
+ */
 
 export interface MoveAccPoint {
-  acc: number;       // per-move accuracy [0, 100]
-  winPct: number;    // win% AFTER the move, in player's-perspective [0, 100]
-  isBook: boolean;   // exclude from aggregate if true
+  acc: number;            // per-move accuracy [0, 100]
+  winPctBefore: number;   // player's win chance just BEFORE the move [0, 100]
+  winPct: number;         // player's win chance just AFTER the move [0, 100]
+  isBook: boolean;        // exclude book and forced moves from the aggregate
 }
 
-/** Standard deviation of a small numeric array. */
 function stdev(xs: number[]): number {
   if (xs.length === 0) return 0;
-  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const variance = xs.reduce((a, b) => a + (b - mean) * (b - mean), 0) / xs.length;
-  return Math.sqrt(variance);
+  const mean = xs.reduce((sum, x) => sum + x, 0) / xs.length;
+  return Math.sqrt(xs.reduce((sum, x) => sum + (x - mean) ** 2, 0) / xs.length);
 }
 
-/** Game accuracy aggregation. Returns 0 when the player has no non-book moves. */
-export function gameAccuracy(points: MoveAccPoint[]): number {
-  const counted = points.filter((p) => !p.isBook);
-  if (counted.length === 0) return 0;
+/** Returns zero only when there are no eligible moves to score. */
+export function gameAccuracy(points: readonly MoveAccPoint[]): number {
+  const moves = points.filter((p) => !p.isBook);
+  if (!moves.length) return 0;
+  const accuracies = moves.map((m) => Math.max(0, Math.min(100, m.acc)));
+  const afterWin = moves.map((m) => m.winPct);
+  const size = Math.max(2, Math.min(8, Math.ceil(moves.length / 10)));
+  const weights = moves.map((move, i) => {
+    const first = Math.max(0, i - Math.floor(size / 2));
+    const window = afterWin.slice(first, Math.min(moves.length, first + size));
+    // Include this move's own change, rather than looking only at consecutive
+    // same-color after-move positions. A sharp blunder must not weigh less than
+    // a quiet best move just because subsequent positions were stable.
+    const ownLoss = Math.max(0, move.winPctBefore - move.winPct);
+    return Math.max(0.5, Math.min(4, Math.max(stdev(window), ownLoss / 2)));
+  });
+  const sumWeights = weights.reduce((sum, x) => sum + x, 0);
+  const weighted = accuracies.reduce((sum, x, i) => sum + x * weights[i]!, 0) / sumWeights;
 
-  const accs = counted.map((p) => Math.max(0, Math.min(100, p.acc)));
-  const wins = counted.map((p) => p.winPct);
-
-  // Window size scales with game length; clamp to [2, 8].
-  const windowSize = Math.max(2, Math.min(8, Math.ceil(counted.length / 10)));
-
-  // Volatility-weighted mean. Per-ply weight is window-stdev (sharp positions
-  // weight more). Clamp at 4.0 so a single anomalous spike (one blunder in a
-  // calm game) can't dominate — uncapped, that one ply could land 10–15× the
-  // floor weight and tank a 22-move "1 bad + 21 great" game to 67% when
-  // chess.com calls it 88%.
-  const weights: number[] = [];
-  for (let i = 0; i < counted.length; i++) {
-    const start = Math.max(0, i - Math.floor(windowSize / 2));
-    const end = Math.min(counted.length, start + windowSize);
-    const window = wins.slice(start, end);
-    weights.push(Math.max(0.5, Math.min(4.0, stdev(window))));
-  }
-  const wSum = weights.reduce((a, b) => a + b, 0) || 1;
-  const accSum = accs.reduce((a, v, i) => a + (weights[i]! * v), 0);
-  const volMean = accSum / wSum;
-
-  // Harmonic mean with a 3rd-worst floor. The k-th worst move's accuracy
-  // caps the per-move penalty for moves ranked worse than k — so a 4th blunder
-  // doesn't drag the score the same way a single blunder does. k = 3, but
-  // only applied when n ≥ 5; on shorter games the floor becomes the median
-  // and the aggregate collapses onto the worst move.
-  const sortedAccs = [...accs].sort((a, b) => a - b);
-  const floor = counted.length >= 5 ? (sortedAccs[2] ?? 0) : 0;
-  const clamped = accs.map((a) => Math.max(a, floor));
-  const inv = clamped.reduce((a, v) => a + 1 / Math.max(1, v), 0);
-  const harmonic = counted.length / inv;
-
-  // Blend: 60% volatility-weighted mean, 40% harmonic. Harmonic punishes but
-  // no longer dominates the average.
-  const blend = 0.6 * volMean + 0.4 * harmonic;
-
-  // chess.com distribution shift — soft positive bias that fades at the
-  // high end. Calibrated to land on hissha's published anchors (Magnus 91.2,
-  // Cramling 83.0, club 1500 ≈ 78-80) within ±1 point.
-  const shifted = blend + Math.max(0, 4 * Math.pow(1 - blend / 100, 1.5));
-
-  return Math.max(0, Math.min(100, shifted));
+  // Do not substitute the third-worst move's accuracy for a genuine mistake.
+  // A modest absolute 10% denominator floor limits an isolated literal 0%
+  // move from completely dominating the harmonic mean in short games. Unlike
+  // the old *relative* third-worst floor, this never promotes an actual 58%
+  // mistake to 96%, and adding more bad moves always lowers the result.
+  const harmonic = moves.length / accuracies.reduce((sum, x) => sum + 1 / Math.max(10, x), 0);
+  return Math.max(0, Math.min(100, (weighted + harmonic) / 2));
 }

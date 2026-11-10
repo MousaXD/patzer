@@ -11,6 +11,8 @@ import { isCompleteReviewPayload, parseReviewProgress, takeReviewEvents, type Re
 
 export interface GameReviewProse {
   version: number;
+  /** Historic prose was written using the old, inflated accuracy model. */
+  accuracy_model_version?: number;
   language: Language;
   audience: string;
   opening: { eco: string; name: string; prose: string } | null;
@@ -178,6 +180,16 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
 
   return (
     <div className="flex flex-col gap-3">
+      {review.accuracy_model_version !== undefined && review.accuracy_model_version < 10 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-chesscom-800 dark:text-chesscom-200">
+          <p>This AI report uses the old accuracy formula, so the percentages in its text may be outdated. Your game analysis is preserved.</p>
+          <button type="button" className="btn-secondary self-start text-xs" disabled={busy} onClick={() => void generate()}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Regenerate this report
+          </button>
+          {error && <p role="alert" className="text-bad">{error}</p>}
+        </div>
+      )}
       <div
         className="coach-md text-sm text-chesscom-800 dark:text-chesscom-100"
         dangerouslySetInnerHTML={{ __html: renderMarkdown(stripReasoning(review.summary)) }}

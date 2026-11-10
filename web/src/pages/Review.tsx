@@ -357,7 +357,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
         </div>
         {g.analyzed ? (
           <div className="text-right text-xs">
-            <div className="text-[11px] uppercase tracking-wider text-chesscom-400">{t('review.accuracy')}</div>
+            <div className="text-[11px] uppercase tracking-wider text-chesscom-400" title="Stockfish-based Patzer accuracy estimate; not Chess.com CAPS2.">{t('review.accuracy')} <span className="normal-case tracking-normal">· Patzer</span></div>
             <div className="font-mono text-sm font-semibold tabular-nums">
               <span className="text-chesscom-700 dark:text-chesscom-200">{fmtAccuracy(g.accuracy_white)}</span>
               <span className="mx-1 text-chesscom-400">/</span>
