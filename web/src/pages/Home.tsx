@@ -59,7 +59,7 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuth();
 
-  const { data: gamesData } = useQuery({
+  const { data: gamesData, isLoading: gamesLoading, isError: gamesError, refetch: refetchGames } = useQuery({
     queryKey: ['games', 'home'],
     queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=5'),
   });
@@ -92,7 +92,7 @@ export default function Home() {
         achievements={achievementsData?.achievements ?? null}
       />
 
-      <RecentGames games={games} />
+      <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
     </div>
   );
 }
@@ -405,8 +405,22 @@ function AchievementsTile({ achievements }: { achievements: Achievement[] | null
 
 /* ─────────────────────────────  RECENT GAMES  ──────────────────────────── */
 
-function RecentGames({ games }: { games: GameRow[] }) {
+function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loading: boolean; error: boolean; retry: () => void }) {
   const { t } = useTranslation();
+  if (loading) return (
+    <section className="card p-5" role="status" aria-live="polite">
+      <p className="text-sm text-chesscom-500">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
+      <div className="mt-4 space-y-2" aria-hidden="true">
+        {[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-md bg-chesscom-100 dark:bg-chesscom-700" />)}
+      </div>
+    </section>
+  );
+  if (error) return (
+    <section className="card flex flex-wrap items-center justify-between gap-3 p-5" role="alert">
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('home.gamesUnavailable', { defaultValue: 'Recent games could not be loaded.' })}</p>
+      <button type="button" onClick={retry} className="btn-secondary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </section>
+  );
   if (games.length === 0) {
     return (
       <motion.section
