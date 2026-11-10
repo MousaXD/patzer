@@ -62,3 +62,18 @@ export class AnalysisResultCache<V> {
 
   get size(): number { return this.entries.size; }
 }
+
+/**
+ * Shut down an engine when its owning HTTP request disappears.
+ * Returns an idempotent listener cleanup, also safe when the request
+ * was already aborted before engine allocation.
+ */
+export function stopEngineOnAbort(
+  signal: AbortSignal,
+  engine: { quit(): Promise<void> },
+): () => void {
+  const stop = () => { void engine.quit().catch(() => undefined); };
+  if (signal.aborted) stop();
+  else signal.addEventListener('abort', stop, { once: true });
+  return () => signal.removeEventListener('abort', stop);
+}
