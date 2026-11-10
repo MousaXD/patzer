@@ -20,8 +20,10 @@ beforeAll(async () => {
   insightsRoute = (await import('../src/routes/insightsV2.js')).default;
   db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (1,'owner','x','user')").run();
   db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (2,'other','x','user')").run();
+  db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (3,'empty','x','user')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (1,'Owner')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (2,'Other')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (3,'Empty')").run();
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
 
   const game = db.prepare(`INSERT INTO games (
@@ -122,6 +124,22 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     })).status).toBe(404);
     const row = db.prepare('SELECT notes FROM games WHERE id = 1201').get() as { notes: string | null };
     expect(row.notes).toBeNull();
+  });
+
+  it('uses numeric zeros and empty groups for accounts without games', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const emptyCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const emptyGames = await gamesRoute.request('/', { headers: { Cookie: emptyCookie } });
+    expect(emptyGames.status).toBe(200);
+    expect(await emptyGames.json()).toMatchObject({
+      total: 0, games: [], limit: 50, offset: 0, has_more: false,
+    });
+    const emptyInsights = await insightsRoute.request('/', { headers: { Cookie: emptyCookie } });
+    expect(emptyInsights.status).toBe(200);
+    expect(await emptyInsights.json()).toMatchObject({
+      games_total: 0, games_eligible: 0, games_analyzed: 0,
+      opening_repertoire: [], time_class_stats: {},
+    });
   });
 
   it('distinguishes saved games from current engine-analyzed games in Insights', async () => {
