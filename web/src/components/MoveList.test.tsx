@@ -35,6 +35,14 @@ describe('Game Review move history', () => {
     expect(html).toContain('max-h-[20rem]');
   });
 
+  it('shows the real fullmove number and Black column for a Black-to-move FEN', () => {
+    const html = renderToStaticMarkup(createElement(MoveList, {
+      moves, current: 1, startFen: '8/8/8/8/8/8/8/K6k b - - 0 12', onSelect: () => undefined,
+    }));
+    expect(html).toContain('12… review.black e4');
+    expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
+  });
+
   it('offers a useful empty-state message', () => {
     const html = renderToStaticMarkup(createElement(MoveList, {
       moves: [], current: 0, onSelect: () => undefined,
