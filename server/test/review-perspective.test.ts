@@ -170,6 +170,7 @@ describe('Game Review: whose move', () => {
   it('does not reuse a PR #17-tagged v9 AI report beside re-scored v10 analysis', () => {
     expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('6|en|beginner');
     expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('7|en|beginner');
+    expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('8|en|beginner');
     expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 9 }, 10)).toBe(true);
     expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 10 }, 10)).toBe(false);
     expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION }, 10)).toBe(false);

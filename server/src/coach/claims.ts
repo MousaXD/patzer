@@ -303,6 +303,50 @@ export function screenCoachProse(text: string, evidence: MomentEvidenceV1, langu
     if (!provenSan.has(canonicalSan(match[0]))) fail.push('unverified_named_move');
   }
 
+  // Quiet pawn SAN (`g5`, `e4`) is also a move, but the same token can name
+  // a *square*. A generic square regex would reject accurate board-location
+  // descriptions. Only screen an explicit pawn move recommendation and only
+  // authorize moves present in the position-grounded evidence allowlist.
+  const pawnMoveLanguage: Record<Language, { verb: string; recommendation: string; introducer: string }> = {
+    en: {
+      verb: 'play|plays|played|try|tried|consider|choose|chose|recommend|recommended|suggest|suggested',
+      recommendation: '(?:the\\s+)?(?:best|better|recommended)\\s+move\\s+(?:is|was)',
+      introducer: 'the\\s+move',
+    },
+    bg: {
+      verb: 'играй|изиграй|изиграха|изигра|предложи|разгледай|избери',
+      recommendation: '(?:най-добрият|по-добрият)\\s+ход\\s+е',
+      introducer: 'хода?|ход',
+    },
+    es: {
+      verb: 'juega|jugó|jugaron|prueba|considera|recomienda|recomendó|elige',
+      recommendation: '(?:la\\s+)?(?:mejor|recomendada)\\s+jugada\\s+es',
+      introducer: 'la\\s+jugada',
+    },
+    de: {
+      verb: 'spiele|spielte|zieh|ziehe|erwäge|empfiehlt|empfehle|wähle',
+      recommendation: '(?:der\\s+)?(?:beste|bessere|empfohlene)\\s+Zug\\s+ist',
+      introducer: 'den\\s+Zug',
+    },
+    ru: {
+      verb: 'сыграй|сыграл|сыграли|рассмотри|выбери|предлагаю|рекомендую',
+      recommendation: '(?:лучший|более\\s+сильный|рекомендуемый)\\s+ход\\s*[:—-]?',
+      introducer: 'ход(?:ом)?',
+    },
+  };
+  const pawnGrammar = pawnMoveLanguage[language];
+  const pawnSan = String.raw`([a-h][1-8](?:=[QRBN])?)(?=$|[^\p{L}\p{N}])`;
+  const pawnRecommendation = new RegExp(
+    String.raw`(?<![\p{L}\p{N}])(?:${pawnGrammar.verb})\s+(?:(?:${pawnGrammar.introducer})\s+)?${pawnSan}`,
+    'giu',
+  );
+  const pawnBest = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:${pawnGrammar.recommendation})\s+${pawnSan}`, 'giu');
+  for (const pattern of [pawnRecommendation, pawnBest]) {
+    for (const match of text.matchAll(pattern)) {
+      if (!provenSan.has(canonicalSan(match[1]!))) fail.push('unverified_pawn_recommendation');
+    }
+  }
+
   // High-confidence actor checks for statements that explicitly assign a
   // SAN to White/Black in each supported language. Longer implicit phrasing
   // is NOT certified by this lexical screen and remains a known limitation.

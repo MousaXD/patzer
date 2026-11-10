@@ -156,6 +156,25 @@ describe('coach_claims_v1: independent legal proof, not plausible prose', () => 
     }
   });
 
+  it('does not certify a made-up quiet pawn recommendation as the recorded alternative', () => {
+    const misleading = [
+      ['en', 'Play g5 instead of Nf6.'],
+      ['bg', 'Играй g5 вместо Nf6.'],
+      ['es', 'Juega g5 en vez de Nf6.'],
+      ['de', 'Spiele g5 statt Nf6.'],
+      ['ru', 'Сыграй g5 вместо Nf6.'],
+    ] as const;
+    for (const [lang, prose] of misleading) {
+      expect(screenCoachProse(prose, scholar, lang).reasons, lang).toContain('unverified_pawn_recommendation');
+    }
+    expect(screenCoachProse('Play g6 instead of Nf6.', scholar, 'en').accepted).toBe(true);
+    expect(screenCoachProse('The best move is g5.', scholar, 'en').reasons).toContain('unverified_pawn_recommendation');
+    expect(screenCoachProse('The best move is g6.', scholar, 'en').accepted).toBe(true);
+    // A board-square description is not an assertion that g5 is a move.
+    expect(screenCoachProse('The pawn on g5 would be exposed.', scholar, 'en').reasons).not.toContain('unverified_named_move');
+    expect(screenCoachProse('The pawn on g5 would be exposed.', scholar, 'en').reasons).not.toContain('unverified_pawn_recommendation');
+  });
+
   it('does not turn a coaching hint into an implicit natural-language move spoiler', () => {
     const spoilers = {
       en: 'Move your pawn forward on the kingside.',
