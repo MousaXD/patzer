@@ -433,7 +433,17 @@ export async function analyzePgnFull(
     replay.move({ from: move.from, to: move.to, promotion: move.promotion });
     const fenAfter = replay.fen();
 
-    const nextEval = await engine.evaluateMulti(fenAfter, depth, 3);
+    // FEN alone contains no repetition history. If the recorded game ends in
+    // an actually claimed threefold/50-move draw, the chess.js replay knows
+    // that history and proves the final score is 0. Do not let a FEN-only
+    // engine search overwrite this fact. A claimable repetition in an
+    // unfinished game is NOT automatically treated as an accepted draw.
+    const claimedDraw = i === history.length - 1
+      && chess.header().Result === '1/2-1/2'
+      && (replay.isThreefoldRepetition() || replay.isDrawByFiftyMoves());
+    const nextEval = claimedDraw
+      ? { cp: 0, mate: null, bestMoveUci: null, pv: [], depth: 0, candidates: [] }
+      : await engine.evaluateMulti(fenAfter, depth, 3);
     if (!replay.isGameOver() && !validPositionScore(nextEval)) throw new Error('engine_invalid_score');
     reachedDepths.push(nextEval.depth);
     const nextWhiteCp = normalizeEval(nextEval.cp, nextEval.mate, replay.turn());
@@ -541,14 +551,17 @@ export async function analyzePgnFull(
   const acplWhite = whiteCplN ? whiteCplSum / whiteCplN : 0;
   const acplBlack = blackCplN ? blackCplSum / blackCplN : 0;
 
-  const estimated_elo_white = whitePoints.length ? estimateElo(accuracy_white, acplWhite) : null;
-  const estimated_elo_black = blackPoints.length ? estimateElo(accuracy_black, acplBlack) : null;
+  // A side may have played book or forced moves without making a single
+  // scorable choice. No eligible moves means no Elo/performance evidence,
+  // regardless of whether it played one move or twenty.
+  const estimated_elo_white = whiteCplN ? estimateElo(accuracy_white, acplWhite) : null;
+  const estimated_elo_black = blackCplN ? estimateElo(accuracy_black, acplBlack) : null;
 
   // Per-game performance rating (chess.com Game Review "Your performance").
   // Only computed on the user's side when we know the score + opponent rating.
   let performance_white: number | null = null;
   let performance_black: number | null = null;
-  if (perf.score !== null) {
+  if (perf.score !== null && (perf.userColor === 'white' ? whiteCplN : blackCplN)) {
     const userPerf = estimateGamePerformance({
       accuracy: perf.userColor === 'white' ? accuracy_white : accuracy_black,
       acpl: perf.userColor === 'white' ? acplWhite : acplBlack,
@@ -560,13 +573,13 @@ export async function analyzePgnFull(
     else performance_black = userPerf;
   }
   // Fallback for the side without a known opponent rating: own-strength estimate.
-  if (performance_white === null && whitePoints.length) {
+  if (performance_white === null && whiteCplN) {
     performance_white = estimateGamePerformance({
       accuracy: accuracy_white, acpl: acplWhite,
       opponentRating: null, opponentRd: null, score: perf.score ?? 0.5,
     });
   }
-  if (performance_black === null && blackPoints.length) {
+  if (performance_black === null && blackCplN) {
     performance_black = estimateGamePerformance({
       accuracy: accuracy_black, acpl: acplBlack,
       opponentRating: null, opponentRd: null, score: perf.score ?? 0.5,
@@ -735,10 +748,13 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
       const point: MoveAccPoint = { acc, winPct: wpAfter, isBook: excludedFromAggregate };
       if (isWhite) {
         wPoints.push(point);
-        if (!excludedFromAggregate) { wAcpl += m.centipawn_loss; wN++; }
+        // Full-game ACPL uses cpLossForAcpl (300cp max), while the move's
+        // displayed CPL intentionally retains the 1000cp cap. Match the
+        // full-game reduction instead of averaging the unbounded label CPL.
+        if (!excludedFromAggregate) { wAcpl += Math.min(300, m.centipawn_loss); wN++; }
       } else {
         bPoints.push(point);
-        if (!excludedFromAggregate) { bAcpl += m.centipawn_loss; bN++; }
+        if (!excludedFromAggregate) { bAcpl += Math.min(300, m.centipawn_loss); bN++; }
       }
     }
     return {

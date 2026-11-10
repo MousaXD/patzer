@@ -146,11 +146,16 @@ export function strictFen(fen: string): string {
 
 export class ChessApiEngine implements AnalysisEngine {
   readonly kind = 'chessapi' as const;
-  // Lazily started the first time the API fails. Once we fall back we stay on
-  // the local engine for the rest of this game, so one review doesn't mix two
-  // engines' opinions move by move.
+  // A game must never compare positions scored by different engines. Local
+  // fallback is safe only BEFORE any hosted evaluation was accepted. A later
+  // provider outage (or a legal en-passant that the API cannot represent)
+  // must fail the review rather than silently switch halfway through.
   private fallback: StockfishEngine | null = null;
   private options: [string, string | number][] = [];
+  private remoteUsed = false;
+  private searchActive = false;
+  private closed = false;
+  private readonly requests = new Set<AbortController>();
 
   constructor(private readonly fetchImpl: FetchLike = fetch) {}
 
@@ -164,71 +169,117 @@ export class ChessApiEngine implements AnalysisEngine {
     }
   }
 
-  async start(): Promise<void> { /* stateless HTTP — nothing to start */ }
+  async start(): Promise<void> {
+    if (this.closed) throw new Error('engine_not_ready');
+  }
 
   async setOption(name: string, value: string | number): Promise<void> {
+    if (this.searchActive) throw new Error('engine_busy');
+    if (this.closed) throw new Error('engine_not_ready');
     // Remembered for the fallback engine; meaningless to the API.
     this.options.push([name, value]);
     if (this.fallback) await this.fallback.setOption(name, value);
   }
 
   async newGame(): Promise<void> {
+    if (this.searchActive) throw new Error('engine_busy');
+    if (this.closed) throw new Error('engine_not_ready');
     if (this.fallback) await this.fallback.newGame();
+    else this.remoteUsed = false;
   }
 
   async evaluateMulti(fen: string, depth: number, n: number): Promise<EngineMultiEval> {
-    const terminal = terminalEval(fen);
-    if (terminal) return terminal;
-    // The hosted API rejects every en-passant target. Never analyze a different
-    // position when an en-passant capture is actually available.
-    if (!this.fallback && hasLegalEnPassant(fen)) await this.startFallback();
-    if (!this.fallback) {
-      try {
-        return await this.query(fen, depth, n);
-      } catch (err) {
-        // One retry covers a dropped connection or a momentary 429/5xx.
-        await new Promise((r) => setTimeout(r, 1000));
+    if (this.searchActive) throw new Error('engine_busy');
+    if (this.closed) throw new Error('engine_not_ready');
+    this.searchActive = true;
+    try {
+      const terminal = terminalEval(fen);
+      if (terminal) return terminal;
+      // The hosted API rejects every en-passant target. Never analyze a
+      // different position or mix prior hosted scores with local ones.
+      if (!this.fallback && hasLegalEnPassant(fen)) {
+        if (this.remoteUsed) throw new Error('chessapi_source_change');
+        await this.startFallback();
+      }
+      if (!this.fallback) {
         try {
-          return await this.query(fen, depth, n);
-        } catch {
-          console.warn('[chess-api] unavailable, falling back to local Stockfish:', err instanceof Error ? err.message : err);
-          await this.startFallback();
+          const result = await this.query(fen, depth, n);
+          this.remoteUsed = true;
+          return result;
+        } catch (err) {
+          if (this.closed) throw new Error('engine_terminated');
+          // One retry covers a dropped connection or a momentary 429/5xx.
+          await new Promise((r) => setTimeout(r, 1000));
+          if (this.closed) throw new Error('engine_terminated');
+          try {
+            const result = await this.query(fen, depth, n);
+            this.remoteUsed = true;
+            return result;
+          } catch {
+            if (this.closed) throw new Error('engine_terminated');
+            if (this.remoteUsed) throw new Error('chessapi_source_change');
+            console.warn('[chess-api] unavailable at start, falling back to local Stockfish:', err instanceof Error ? err.message : err);
+            await this.startFallback();
+          }
         }
       }
+      // Await inside the try/finally: returning a bare pending promise would
+      // release searchActive while local Stockfish is still analyzing.
+      return await this.fallback!.evaluateMulti(fen, depth, n);
+    } finally {
+      this.searchActive = false;
     }
-    return this.fallback!.evaluateMulti(fen, depth, n);
   }
 
   async quit(): Promise<void> {
+    this.closed = true;
+    for (const controller of this.requests) controller.abort();
+    this.requests.clear();
     const f = this.fallback;
     this.fallback = null;
     if (f) await f.quit();
   }
 
   private async query(fen: string, depth: number, n = 1): Promise<EngineMultiEval> {
-    const res = await this.fetchImpl(CHESS_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'patzer (+https://github.com/SikamikanikoBG/patzer)' },
-      body: JSON.stringify({
-        fen: strictFen(fen),
-        depth: Math.min(depth, CHESS_API_MAX_DEPTH),
-        variants: Math.max(1, Math.min(5, n)),
-        maxThinkingTime: CHESS_API_MAX_THINK_MS,
-      }),
-      signal: AbortSignal.timeout(CHESS_API_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`chessapi_${res.status}`);
-    return parseChessApiResponse(await res.json(), fen);
+    if (this.closed) throw new Error('engine_terminated');
+    const controller = new AbortController();
+    this.requests.add(controller);
+    try {
+      const res = await this.fetchImpl(CHESS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'patzer (+https://github.com/SikamikanikoBG/patzer)' },
+        body: JSON.stringify({
+          fen: strictFen(fen),
+          depth: Math.min(depth, CHESS_API_MAX_DEPTH),
+          variants: Math.max(1, Math.min(5, n)),
+          maxThinkingTime: CHESS_API_MAX_THINK_MS,
+        }),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(CHESS_API_TIMEOUT_MS)]),
+      });
+      if (this.closed) throw new Error('engine_terminated');
+      if (!res.ok) throw new Error(`chessapi_${res.status}`);
+      const response = await res.json();
+      if (this.closed) throw new Error('engine_terminated');
+      return parseChessApiResponse(response, fen);
+    } finally {
+      this.requests.delete(controller);
+    }
   }
 
   private async startFallback(): Promise<void> {
     // Throws "Stockfish binary not found" when there is no local engine at
     // all — the analysis then fails loudly instead of silently half-finishing.
     const e = new StockfishEngine();
-    await e.start();
-    for (const [k, v] of this.options) await e.setOption(k, v);
-    await e.newGame();
-    this.fallback = e;
+    try {
+      await e.start();
+      for (const [k, v] of this.options) await e.setOption(k, v);
+      await e.newGame();
+      if (this.closed) throw new Error('engine_terminated');
+      this.fallback = e;
+    } catch (error) {
+      await e.quit();
+      throw error;
+    }
   }
 }
 

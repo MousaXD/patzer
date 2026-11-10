@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Chess } from 'chess.js';
+
+// The hosted adapter imports the local Stockfish fallback, which imports DB
+// and config at module load. Neither a real SQLite DB nor a session-secret
+// belongs in a deterministic chess-protocol unit test.
+vi.mock('../src/db.js', () => ({ getSetting: () => null }));
+vi.mock('../src/config.js', () => ({
+  config: { stockfishPathHint: undefined, projectRoot: '/unused-test-root' },
+}));
 import { ChessApiEngine, hasLegalEnPassant, parseChessApiResponse, strictFen } from '../src/chess/engine.js';
 
 describe('hosted engine chess legality', () => {
@@ -13,6 +21,16 @@ describe('hosted engine chess legality', () => {
   it('never returns illegal continuation moves', () => {
     const result = parseChessApiResponse({ move: 'e2e4', centipawns: 30, continuationArr: ['e7e5', 'e1e3', 'g8f6'] }, start);
     expect(result.pv).toEqual(['e2e4', 'e7e5']);
+  });
+
+  it('does not silently promote an invalid continuation missing the promotion suffix', () => {
+    const fen = '4k3/P7/8/8/8/8/8/4K3 b - - 0 1';
+    // Black's legal king move is followed by an apparently valid but
+    // underspecified White promotion. The UCI continuation must stop there.
+    const result = parseChessApiResponse({
+      move: 'e8e7', centipawns: 0, continuationArr: ['a7a8'],
+    }, fen);
+    expect(result.pv).toEqual(['e8e7']);
   });
 
   it('accepts legal promotions and rejects a promotion without its suffix', () => {
@@ -63,5 +81,99 @@ describe('hosted engine chess legality', () => {
     try { await engine.evaluateMulti('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1', 5, 1); } catch { /* local binary absent */ }
     expect(called).toBe(false);
     await engine.quit();
+  });
+
+  it('does not switch to local Stockfish mid-review after a hosted score was already used', async () => {
+    let calls = 0;
+    const engine = new ChessApiEngine(async () => {
+      calls++;
+      return { ok: true, status: 200, json: async () => ({ move: 'e2e4', centipawns: 0, depth: 12 }) };
+    });
+    try {
+      await engine.evaluateMulti(start, 12, 1);
+      await expect(engine.evaluateMulti('4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1', 12, 1))
+        .rejects.toThrow('chessapi_source_change');
+      expect(calls).toBe(1);
+    } finally { await engine.quit(); }
+  });
+
+  it('does not silently change engines when a later hosted evaluation fails', async () => {
+    let calls = 0;
+    const engine = new ChessApiEngine(async () => {
+      if (++calls > 1) throw new Error('injected hosted failure');
+      return { ok: true, status: 200, json: async () => ({ move: 'e2e4', centipawns: 0, depth: 12 }) };
+    });
+    try {
+      await engine.evaluateMulti(start, 12, 1);
+      const next = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+      await expect(engine.evaluateMulti(next, 12, 1)).rejects.toThrow('chessapi_source_change');
+      expect(calls).toBe(3); // original success, two bounded attempts
+    } finally { await engine.quit(); }
+  });
+
+  it('rejects parallel position evaluations on the same hosted engine session', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const engine = new ChessApiEngine(async () => {
+      await gate;
+      return { ok: true, status: 200, json: async () => ({ move: 'e2e4', centipawns: 10 }) };
+    });
+    try {
+      const first = engine.evaluateMulti(start, 12, 1);
+      await expect(engine.evaluateMulti(start, 12, 1)).rejects.toThrow('engine_busy');
+      release();
+      await first;
+    } finally { release(); await engine.quit(); }
+  });
+
+  it('cancels an in-flight hosted request on quit and never retries an abandoned evaluation', async () => {
+    let calls = 0;
+    let wasAborted = false;
+    const engine = new ChessApiEngine(async (_url, init) => {
+      calls++;
+      return new Promise((_resolve, reject) => {
+        const signal = init.signal!;
+        if (signal.aborted) return reject(new Error('request_aborted'));
+        signal.addEventListener('abort', () => {
+          wasAborted = true;
+          reject(new Error('request_aborted'));
+        }, { once: true });
+      });
+    });
+    const pending = engine.evaluateMulti(start, 16, 3);
+    // Attach the rejection expectation before shutdown to avoid an unhandled
+    // rejection even when cancellation resolves in the same microtask.
+    const rejected = expect(pending).rejects.toThrow('engine_terminated');
+    await engine.quit();
+    await rejected;
+    expect(wasAborted).toBe(true);
+    expect(calls).toBe(1);
+    await expect(engine.evaluateMulti(start, 16, 3)).rejects.toThrow('engine_not_ready');
+  });
+
+  it('keeps options and game reset exclusive while hosted evaluation is pending', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const engine = new ChessApiEngine(async () => {
+      await gate;
+      return { ok: true, status: 200, json: async () => ({ move: 'e2e4', centipawns: 20, depth: 10 }) };
+    });
+    try {
+      const pending = engine.evaluateMulti(start, 10, 2);
+      await expect(engine.setOption('Hash', 32)).rejects.toThrow('engine_busy');
+      await expect(engine.newGame()).rejects.toThrow('engine_busy');
+      release();
+      await pending;
+      await expect(engine.newGame()).resolves.toBeUndefined();
+    } finally { release(); await engine.quit(); }
+  });
+
+  it('normalizes both colors of White-perspective mate results into side-to-move scores', () => {
+    const fenBlack = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    expect(parseChessApiResponse({ move: 'e7e5', mate: 3 }, fenBlack).mate).toBe(-3);
+    expect(parseChessApiResponse({ move: 'e7e5', mate: -3 }, fenBlack).mate).toBe(3);
+    expect(parseChessApiResponse({ move: 'e2e4', mate: 3 }, start).mate).toBe(3);
+    expect(() => parseChessApiResponse({ move: 'e2e4', mate: 'NaN' }, start))
+      .toThrow('chessapi: no score');
   });
 });

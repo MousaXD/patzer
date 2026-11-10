@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AnalysisEngine } from '../src/chess/engine.js';
+import type { EngineMultiEval } from '../src/chess/stockfish.js';
 
 // This module must never load the user's real DB or create a session secret.
 const mocks = vi.hoisted(() => ({
@@ -36,7 +37,7 @@ function fakeEngine(options: { failStart?: boolean; failEval?: boolean } = {}) {
   });
   // Keep the real engine method signature so mock.calls includes the supplied
   // FEN for assertions (a zero-argument mock is typed as an empty tuple).
-  const evaluateMulti = vi.fn(async (_fen: string, _depth: number, _n: number) => {
+  const evaluateMulti = vi.fn(async (_fen: string, _depth: number, _n: number): Promise<EngineMultiEval> => {
     if (options.failEval) throw new Error('injected search failure');
     return {
       cp: 20, mate: null, pv: ['e2e4'], bestMoveUci: 'e2e4', depth: 16,
@@ -98,6 +99,102 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(result.moves).toHaveLength(1);
     expect(result.moves[0]).toMatchObject({ best_move_uci: null, best_move_san: null, best_pv: [] });
     expect(fake.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invent a game rating when only opening-book moves are available', async () => {
+    const fake = fakeEngine();
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const result = await analyzePgnFull('1. e4 e5', 16, {
+      ...perf, score: 1, opponentRating: 1600,
+    });
+    expect(result.moves.map((m) => m.classification)).toEqual(['book', 'book']);
+    expect(result.accuracy_white).toBe(0);
+    expect(result.accuracy_black).toBe(0);
+    expect(result.estimated_elo_white).toBeNull();
+    expect(result.estimated_elo_black).toBeNull();
+    expect(result.performance_white).toBeNull();
+    expect(result.performance_black).toBeNull();
+  });
+
+  it('does not estimate a rating from a single unavoidable reply in a Black-first FEN', async () => {
+    const fake = fakeEngine();
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const fen = 'k6R/8/2K5/8/8/8/8/8 b - - 0 1';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n\n1... Ka7`;
+    const result = await analyzePgnFull(pgn, 16, { ...perf, userColor: 'black', score: 0 });
+    expect(result.moves[0]?.classification).toBe('forced');
+    expect(result.estimated_elo_white).toBeNull();
+    expect(result.estimated_elo_black).toBeNull();
+    expect(result.performance_black).toBeNull();
+  });
+
+  it('uses the same 300cp ACPL cap in phases as in whole-game strength estimates', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => {
+      // First pair flips a mate evaluation from White-winning to Black-winning.
+      // This is a deliberate malformed-engine negative-control for ACPL math,
+      // not a claim that Stockfish would return these values for this game.
+      const index = fake.evaluateMulti.mock.calls.length - 1;
+      const mate = index === 0 || index === 1 ? 3 : null;
+      return { cp: mate === null ? 0 : null, mate, pv: [],
+        bestMoveUci: 'e2e4', depth: 16,
+        candidates: [{ cp: mate === null ? 0 : null, mate, pv: [], multipv: 1 }] };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const fen = 'k7/8/8/8/8/8/8/4K2R w - - 0 40';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n\n40. Rh8+ Kb7 41. Rh7+ Kb6 42. Rh6+ Kc5`;
+    const result = await analyzePgnFull(pgn, 16, perf);
+    const whiteEligible = result.moves.filter((m) => m.fen_before.split(' ')[1] === 'w'
+      && m.classification !== 'book' && m.classification !== 'forced');
+    expect(whiteEligible.some((m) => m.centipawn_loss === 1000)).toBe(true);
+    const expected = Math.round(whiteEligible.reduce((sum, m) => sum + Math.min(m.centipawn_loss, 300), 0) / whiteEligible.length);
+    expect(result.phase_split?.endgame?.acpl_white).toBe(expected);
+  });
+
+  it('scores a completed threefold draw using the recorded game history, not FEN-only engine output', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => ({
+      cp: 250, mate: null, bestMoveUci: 'g1f3', pv: ['g1f3'], depth: 16,
+      candidates: [{ cp: 250, mate: null, pv: ['g1f3'], multipv: 1 }],
+    }));
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const pgn = '[Result "1/2-1/2"]\n\n1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 1/2-1/2';
+    const result = await analyzePgnFull(pgn, 16, perf);
+    expect(result.moves).toHaveLength(8);
+    expect(result.moves[7]?.eval_after_cp).toBe(0);
+    expect(result.moves[7]?.mate_after).toBeNull();
+    // Starting position plus seven non-terminal positions. No Stockfish call
+    // is allowed to override an actual claimed terminal threefold draw.
+    expect(fake.evaluateMulti).toHaveBeenCalledTimes(8);
+  });
+
+  it('does not treat an unclaimed repetition in an unfinished PGN as a forced draw', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => ({
+      cp: 250, mate: null, bestMoveUci: 'g1f3', pv: ['g1f3'], depth: 16,
+      candidates: [{ cp: 250, mate: null, pv: ['g1f3'], multipv: 1 }],
+    }));
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const result = await analyzePgnFull('1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 *', 16, perf);
+    expect(result.moves[7]?.eval_after_cp).toBe(250);
+    expect(fake.evaluateMulti).toHaveBeenCalledTimes(9);
+  });
+
+  it('honors a claimed 50-move-rule draw at the end of a custom-FEN game', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => ({
+      cp: 200, mate: null, bestMoveUci: 'h1h8', pv: [], depth: 16,
+      candidates: [{ cp: 200, mate: null, pv: [], multipv: 1 }],
+    }));
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const fen = 'k7/8/8/8/8/8/8/4K2R w - - 99 40';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n[Result "1/2-1/2"]\n\n40. Rh8+ 1/2-1/2`;
+    const result = await analyzePgnFull(pgn, 16, perf);
+    // White POV of a zero score may be -0 because the turn is Black; both
+    // representations mean an exact draw and serialize to 0 in JSON.
+    expect(Math.abs(result.moves[0]!.eval_after_cp!)).toBe(0);
+    expect(result.moves[0]?.fen_after.split(' ')[4]).toBe('100');
+    expect(fake.evaluateMulti).toHaveBeenCalledTimes(1);
   });
 
   it('scores a FEN-started game where Black makes the first recorded move', async () => {
