@@ -196,3 +196,24 @@ The assigned local worktree remains unavailable, so all work again used the exis
 ### Remaining dependencies
 
 Independent QA must confirm the final exact-head typecheck, full Vitest suite, browser regression and theme checks. Backend ownership must confirm forced analysis cache repair, SSE completion semantics and Black-first imported-game scoring. The PR must remain **draft, unmerged and undeployed** until those acceptance gates are actually green.
+
+
+## Continuation — cached-data render safety (2026-11-10)
+
+**Branch verification:** The exact assigned local worktree `/home/mousa/projects/my-creations/chess/patzer-agent-review` remains absent (`pwd=/`), so local Git HEAD/status and npm commands could not be executed. GitHub confirmed PR #13 still targets `main` from the pre-existing `agent/review-experience-20261110` branch. The comparison against initial `c8d9e1e00609c30779a3e86542f25f9454e1e911` showed no behind commits, and all modified source/test files remained inside the Game Review assignment.
+
+### New source work — already pushed to the assigned branch
+
+- `aa315386690e467aaaec1d6e4d98bd99b553abab` — `web/src/components/review/storedReview.ts`: validate cached analyzed-move classification using the application's real `CLASSIFICATIONS`, numeric centipawn loss, null/finite evaluation, move suggestions and PV arrays; validate key-moment properties used by KeyMomentsList and phase accuracy fields used by GameReportCard. Cached JSON with an unexpected nested value is rejected for fresh engine analysis instead of crashing during React rendering.
+- `feb4085d0063dea79c120fc649803b607c7b7ec7` — `web/src/components/review/storedReview.test.ts`: complete valid cache fixture and new regression tests for valid moments/phases, invalid classification, null loss, bad evaluation/PV, out-of-range moment plies, and malformed phase data; confirms the already implemented corrupt-cache bypass remains active.
+- `452ebc4871d300237445bc575b040b580c0eaa72` — `web/src/pages/GameAnalyzer.tsx`: reuse the existing streamed review payload validator on cached `GET /api/games/:id/review` replies. Malformed persisted AI prose is no longer allowed through a separate unvalidated path to the report, OpeningBanner, or key-moment rendering.
+
+These three commits are **all within existing ownership**, do not modify other agents' code, and do not alter the backend, production DB, or API contract. No merge, rebase, deployment or main write was performed.
+
+### Verification evidence and release blockers
+
+- The GitHub remote accepted and pushed the three source/test commits. No local worktree is mounted, so no local Vitest, TS typecheck, build or browser results can be claimed.
+- On the exact final source SHA `452ebc4871d300237445bc575b040b580c0eaa72`, GitHub workflows were **queued** at last check: Frontend Overhaul QA `42873196642`, design-system certification `42873196937`, CI `42873197057`. A queued job is not a pass.
+- Complete checks required before approval: full `npm test` (including storedReview/reviewStream), `npm run typecheck`, production build, desktop/mobile browser QA in light/dark modes, and live game analysis/review generation acceptance.
+- **External dependencies:** backend agent must verify older saved analysis formats and server-side `force: true` cache repair, SSE `done` events and Black-first PGN scoring. Independent QA must verify the full player journey, and the design-system agent owns global CSS compatibility.
+- **Release verdict:** code committed for independent verification; **PR #13 remains DRAFT / NOT CERTIFIED** until exact-head GitHub CI and QA evidence is successful. The handoff-only commit necessarily advances the branch HEAD beyond the last source SHA; do not infer its checks from an earlier source commit.
