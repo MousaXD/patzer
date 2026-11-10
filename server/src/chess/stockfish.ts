@@ -298,25 +298,25 @@ export class StockfishEngine {
   async evaluate(fen: string, depth: number): Promise<EngineEval> {
     assertNoNewline(fen, 'fen');
     return this.withSearch(async () => {
-    await this.send(`position fen ${fen}`);
+      await this.send(`position fen ${fen}`);
 
-    let lastInfo: { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number } = {
-      cp: null, mate: null, pv: [], depth: 0, seldepth: 0,
-    };
-    const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
-      const parsed = parseInfoLine(line);
-      if (parsed
-          && (parsed.cp !== null || parsed.mate !== null)
-          && !parsed.bound
-          && (parsed.depth > lastInfo.depth
-              || (parsed.depth === lastInfo.depth && parsed.seldepth >= lastInfo.seldepth))) {
-        lastInfo = parsed;
-      }
-    });
-    return {
-      cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
-      pv: lastInfo.pv, depth: lastInfo.depth,
-    };
+      let lastInfo: { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number } = {
+        cp: null, mate: null, pv: [], depth: 0, seldepth: 0,
+      };
+      const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
+        const parsed = parseInfoLine(line);
+        if (parsed
+            && (parsed.cp !== null || parsed.mate !== null)
+            && !parsed.bound
+            && (parsed.depth > lastInfo.depth
+                || (parsed.depth === lastInfo.depth && parsed.seldepth >= lastInfo.seldepth))) {
+          lastInfo = parsed;
+        }
+      });
+      return {
+        cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
+        pv: lastInfo.pv, depth: lastInfo.depth,
+      };
     });
   }
 
@@ -327,41 +327,41 @@ export class StockfishEngine {
   async evaluateMulti(fen: string, depth: number, n: number): Promise<EngineMultiEval> {
     assertNoNewline(fen, 'fen');
     return this.withSearch(async () => {
-    const numLines = Math.max(1, Math.min(8, n));
-    await this.sendOption('MultiPV', numLines);
-    try {
-      await this.send(`position fen ${fen}`);
-      const perRank = new Map<number, { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number }>();
-      const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
-        const parsed = parseInfoLine(line);
-        if (!parsed || (parsed.cp === null && parsed.mate === null) || parsed.bound) return;
-        const rank = parsed.multipv;
-        if (rank < 1 || rank > numLines) return;
-        const prev = perRank.get(rank);
-        if (!prev || parsed.depth > prev.depth
-            || (parsed.depth === prev.depth && parsed.seldepth >= prev.seldepth)) {
-          perRank.set(rank, parsed);
-        }
-      });
+      const numLines = Math.max(1, Math.min(8, n));
+      await this.sendOption('MultiPV', numLines);
+      try {
+        await this.send(`position fen ${fen}`);
+        const perRank = new Map<number, { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number }>();
+        const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
+          const parsed = parseInfoLine(line);
+          if (!parsed || (parsed.cp === null && parsed.mate === null) || parsed.bound) return;
+          const rank = parsed.multipv;
+          if (rank < 1 || rank > numLines) return;
+          const prev = perRank.get(rank);
+          if (!prev || parsed.depth > prev.depth
+              || (parsed.depth === prev.depth && parsed.seldepth >= prev.seldepth)) {
+            perRank.set(rank, parsed);
+          }
+        });
 
-      // Only compare candidates at the same completed iteration as rank one.
-      // Mixed-depth rankings can manufacture a false "only good move" verdict.
-      const top = perRank.get(1);
-      const candidates: PvCandidate[] = Array.from(perRank.entries())
-        .filter(([rank, info]) => rank === 1 || (top !== undefined && info.depth === top.depth))
-        .sort(([a], [b]) => a - b)
-        .map(([rank, info]) => ({ cp: info.cp, mate: info.mate, pv: info.pv, multipv: rank }));
-      return {
-        cp: top?.cp ?? null,
-        mate: top?.mate ?? null,
-        bestMoveUci: bestMove,
-        pv: top?.pv ?? [],
-        depth: top?.depth ?? 0,
-        candidates,
-      };
-    } finally {
-      if (this.ready) await this.sendOption('MultiPV', 1);
-    }
+        // Only compare candidates at the same completed iteration as rank one.
+        // Mixed-depth rankings can manufacture a false "only good move" verdict.
+        const top = perRank.get(1);
+        const candidates: PvCandidate[] = Array.from(perRank.entries())
+          .filter(([rank, info]) => rank === 1 || (top !== undefined && info.depth === top.depth))
+          .sort(([a], [b]) => a - b)
+          .map(([rank, info]) => ({ cp: info.cp, mate: info.mate, pv: info.pv, multipv: rank }));
+        return {
+          cp: top?.cp ?? null,
+          mate: top?.mate ?? null,
+          bestMoveUci: bestMove,
+          pv: top?.pv ?? [],
+          depth: top?.depth ?? 0,
+          candidates,
+        };
+      } finally {
+        if (this.ready) await this.sendOption('MultiPV', 1);
+      }
     });
   }
 
