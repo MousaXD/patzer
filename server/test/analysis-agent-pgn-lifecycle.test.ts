@@ -34,7 +34,9 @@ function fakeEngine(options: { failStart?: boolean; failEval?: boolean } = {}) {
   const start = vi.fn(async () => {
     if (options.failStart) throw new Error('injected start failure');
   });
-  const evaluateMulti = vi.fn(async () => {
+  // Keep the real engine method signature so mock.calls includes the supplied
+  // FEN for assertions (a zero-argument mock is typed as an empty tuple).
+  const evaluateMulti = vi.fn(async (_fen: string, _depth: number, _n: number) => {
     if (options.failEval) throw new Error('injected search failure');
     return {
       cp: 20, mate: null, pv: ['e2e4'], bestMoveUci: 'e2e4', depth: 16,
