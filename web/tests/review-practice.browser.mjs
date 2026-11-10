@@ -149,6 +149,13 @@ try {
     assert.equal(new URL(await link.getAttribute('href'), base).searchParams.get('practice'), '1');
     await link.click();
     await page.locator('[data-practice-picker]').waitFor();
+    await page.waitForTimeout(150); // Allow router commit/focus effects, not a blind arbitrary navigation wait.
+    const initialFocus = await page.evaluate(() => ({
+      tag: document.activeElement?.tagName,
+      text: document.activeElement?.textContent?.trim().slice(0, 90),
+    }));
+    assert.deepEqual(initialFocus, { tag: 'H1', text: 'Practice without spoilers' },
+      'Entering the blind picker must announce its heading instead of leaving keyboard focus in the old library');
     assert.equal(await page.locator('[data-practice-mode]').count(), 0);
     await assertNoSpoilers(page);
     assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 3);
@@ -169,6 +176,8 @@ try {
       assert.deepEqual(hiddenWork, [], 'the blind picker requested answer-bearing or unrelated background work');
       await page.getByRole('button', { name: /Open full game review/ }).click();
       await page.locator('[data-analysis-workspace]').waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'full-game-review-heading',
+        null, { timeout: 2000 });
       await page.waitForFunction((id) => performance.getEntriesByType('resource')
         .some((entry) => entry.name.includes(`/api/games/${id}/review`)), standard.id, { timeout: 8000 });
       assert.ok(requests.some(({ path }) => path === `/api/games/${standard.id}/review`),

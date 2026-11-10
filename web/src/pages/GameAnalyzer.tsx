@@ -135,6 +135,26 @@ function GameAnalyzerView() {
     () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
     [data?.game.pgn],
   );
+  // React Router does not automatically hand keyboard/screen-reader focus to
+  // this new page. Focus its heading only on first entry, never after a
+  // background refetch or on return from an attempted move (which restores
+  // focus to the chosen practice moment instead).
+  const pickerHeadingFocusedRef = useRef(false);
+  useEffect(() => {
+    if (!practicePicker) {
+      pickerHeadingFocusedRef.current = false;
+      return;
+    }
+    if (practicePly !== null || positions.length === 0 || pickerHeadingFocusedRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      const heading = document.getElementById('practice-picker-heading');
+      if (heading) {
+        heading.focus();
+        pickerHeadingFocusedRef.current = true;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [practicePicker, practicePly, positions.length]);
   const timeline = useMemo(
     () => buildSavedReviewTimeline(positions, analysis?.moves),
     [positions, analysis?.moves],
@@ -572,10 +592,11 @@ function GameAnalyzerView() {
       const next = new URLSearchParams(searchParams);
       next.delete('practice');
       setSearchParams(next, { replace: true });
+      requestAnimationFrame(() => document.getElementById('full-game-review-heading')?.focus());
     };
     return <main data-practice-picker="true" className="mx-auto w-full max-w-2xl space-y-4 rounded-xl bg-white p-4 shadow-soft dark:bg-chesscom-800 sm:p-6">
       <Link to="/review" className="btn-ghost text-sm"><ChevronLeft className="h-4 w-4" />Back to saved games</Link>
-      <h1 className="text-xl font-bold">Practice without spoilers</h1>
+      <h1 id="practice-picker-heading" tabIndex={-1} className="text-xl font-bold focus:outline-none">Practice without spoilers</h1>
       <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
         Pick a moment to retry. The original move, engine answer and evaluation remain hidden until after your attempt.
       </p>
@@ -606,6 +627,9 @@ function GameAnalyzerView() {
 
   return (
     <div className="mx-auto w-full max-w-none" data-analysis-workspace="true">
+      <h1 id="full-game-review-heading" tabIndex={-1} className="sr-only focus:outline-none">
+        {t('review.title')} — {data.game.white} versus {data.game.black}
+      </h1>
       <div className="mb-3 flex items-center justify-between gap-3">
         <Link to="/review" className="btn-ghost text-sm shrink-0"><ChevronLeft className="h-4 w-4" />{t('common.back')}</Link>
         <div className="min-w-0 truncate text-right text-sm text-chesscom-500">
