@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES, type Language } from '../lib/languages';
 import { Volume2, VolumeX, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
@@ -12,7 +12,9 @@ const EMOJIS = ['♟','♞','♝','♜','♛','♚','🦊','🐯','🦁','🐻',
 
 export default function Settings() {
   const { t, i18n } = useTranslation();
-  const { user, refresh } = useAuth();
+  const { user, setUser } = useAuth();
+  const editRevision = useRef(0);
+  const previousUserId = useRef<number | null>(null);
   const [form, setForm] = useState<Profile | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [saved, setSaved] = useState(false);
@@ -24,7 +26,23 @@ export default function Settings() {
   const [audioWarning, setAudioWarning] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      previousUserId.current = null;
+      setForm(null);
+      setDirty(false);
+      return;
+    }
+    const accountChanged = previousUserId.current !== user.id;
+    previousUserId.current = user.id;
+    // Other parts of the app can refresh the profile while this form is being
+    // edited. Never replace an unsaved draft for the same signed-in account.
+    if (!accountChanged && dirty) return;
+    if (accountChanged) {
+      editRevision.current = 0;
+      setDirty(false);
+      setSaved(false);
+      setSaveError(null);
+    }
     setForm({ ...user.profile });
     setTheme(isAudioThemeExplicit() ? getAudioTheme()
       : user.profile.move_sound_set === 'board'
@@ -46,43 +64,56 @@ export default function Settings() {
   if (!form) return null;
 
   function set<K extends keyof Profile>(k: K, v: Profile[K]) {
+    editRevision.current += 1;
     setForm((f) => f ? { ...f, [k]: v } : f);
     setSaved(false); setDirty(true); setSaveError(null);
   }
 
   async function save() {
-    if (!form || saving || !dirty) return;
+    if (!form || saving || !dirty || !user) return;
+    const submitted = form;
+    const submittedRevision = editRevision.current;
+    const submittedUserId = user.id;
     setSaving(true);
     setSaveError(null);
     try {
-      await api.patch('/api/settings/profile', {
-      display_name: form.display_name,
-      avatar_emoji: form.avatar_emoji,
-      language: form.language,
-      audience: form.audience,
-      chesscom_username: form.chesscom_username || null,
-      lichess_username: form.lichess_username || null,
-      coach_behavior: form.coach_behavior,
-      tts_enabled: !!form.tts_enabled,
-      tts_voice: form.tts_voice,
-      tts_rate: form.tts_rate,
-      tts_pitch: form.tts_pitch,
-      board_theme: form.board_theme,
-      piece_set: form.piece_set,
-      site_theme: form.site_theme,
-      sound_enabled: !!form.sound_enabled,
-      sound_set: form.sound_set,
-      move_sound_set: form.move_sound_set,
-      blunder_warning: !!form.blunder_warning,
-      kid_piece_emotions: !!form.kid_piece_emotions,
-    });
-      await i18n.changeLanguage(form.language);
-      await refresh();
-      setSaved(true);
-      setDirty(false);
-      window.setTimeout(() => setSaved(false), 1800);
+      const { profile } = await api.patch<{ profile: Profile }>('/api/settings/profile', {
+        display_name: submitted.display_name,
+        avatar_emoji: submitted.avatar_emoji,
+        language: submitted.language,
+        audience: submitted.audience,
+        chesscom_username: submitted.chesscom_username || null,
+        lichess_username: submitted.lichess_username || null,
+        coach_behavior: submitted.coach_behavior,
+        tts_enabled: !!submitted.tts_enabled,
+        tts_voice: submitted.tts_voice,
+        tts_rate: submitted.tts_rate,
+        tts_pitch: submitted.tts_pitch,
+        board_theme: submitted.board_theme,
+        piece_set: submitted.piece_set,
+        site_theme: submitted.site_theme,
+        sound_enabled: !!submitted.sound_enabled,
+        sound_set: submitted.sound_set,
+        move_sound_set: submitted.move_sound_set,
+        blunder_warning: !!submitted.blunder_warning,
+        kid_piece_emotions: !!submitted.kid_piece_emotions,
+      });
+      // PATCH returns the persisted profile. Updating auth locally avoids a
+      // second GET that could fail or overwrite a newer unsaved edit.
+      const currentUser = useAuth.getState().user;
+      if (currentUser?.id !== submittedUserId || profile.user_id !== submittedUserId) return;
+      setUser({ ...currentUser, profile });
+      if (editRevision.current === submittedRevision) {
+        setForm({ ...profile });
+        setDirty(false);
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1800);
+      }
+      // Language application is separate from persistence. A browser/i18n
+      // failure must not falsely report that the server rejected the save.
+      void i18n.changeLanguage(profile.language).catch(() => undefined);
     } catch {
-      // Keep the draft and Save enabled; never report success on a failed PATCH.
+      // A rejected PATCH keeps the unsaved draft and retry action available.
       setSaveError(t('settings.saveFailed', { defaultValue: 'Unable to save settings. Check your connection and try again.' }));
     } finally {
       setSaving(false);
