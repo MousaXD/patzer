@@ -63,7 +63,7 @@ export default function Home() {
     queryKey: ['games', 'home'],
     queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=5'),
   });
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats', 'me'],
     queryFn: () => api.get<Stats>('/api/stats/me'),
   });
@@ -79,28 +79,34 @@ export default function Home() {
   const games = gamesData?.games ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-5">
       <Hero
         displayName={user?.profile.display_name ?? ''}
         avatar={user?.profile.avatar_emoji ?? '♟'}
         stats={stats ?? null}
+        loading={statsLoading}
         tagline={t('app.tagline')}
       />
 
-      <ContinueRow
-        goals={planData?.goals ?? null}
-        achievements={achievementsData?.achievements ?? null}
-      />
-
-      <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,1fr)]">
+        <div className="min-w-0 lg:order-2">
+          <ContinueRow
+            goals={planData?.goals ?? null}
+            achievements={achievementsData?.achievements ?? null}
+          />
+        </div>
+        <div className="min-w-0 lg:order-1">
+          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ───────────────────────────────  HERO  ────────────────────────────────── */
 
-function Hero({ displayName, avatar, stats, tagline }: {
-  displayName: string; avatar: string; stats: Stats | null; tagline: string;
+function Hero({ displayName, avatar, stats, tagline, loading }: {
+  displayName: string; avatar: string; stats: Stats | null; tagline: string; loading: boolean;
 }) {
   const { t } = useTranslation();
   const hour = new Date().getHours();
@@ -144,7 +150,11 @@ function Hero({ displayName, avatar, stats, tagline }: {
             </div>
           </div>
 
-          {hasGames ? (
+          {loading ? (
+            <div role="status" aria-label={t('home.loadingStats', { defaultValue: 'Loading your statistics' })} className="mt-5 flex flex-wrap gap-3" >
+              {[0, 1, 2].map((i) => <span key={i} className="h-6 w-24 animate-pulse rounded bg-white/15" aria-hidden="true" />)}
+            </div>
+          ) : hasGames ? (
             <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm text-white/75">
               <StatInline value={stats!.total.toLocaleString()} label={t('home.statGames', { defaultValue: 'games' })} />
               <StatInline value={`${winPct}%`} label={t('home.statWinRate', { defaultValue: 'win rate' })} />
@@ -210,8 +220,9 @@ function ContinueRow({ goals, achievements }: {
   };
 
   return (
-    <section>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <section aria-label="Continue improving">
+      <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">Continue improving</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <motion.div initial="hidden" animate="show" custom={0} variants={variants}>
           <LearnTile />
         </motion.div>
