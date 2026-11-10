@@ -81,7 +81,15 @@ try {
  const started=performance.now();
  const cpuStart=process.cpuUsage();
  const initRSS=process.memoryUsage().rss;
- let verifiedNegative=0;
+ // Exercise each control against the first *applicable* completed game in the
+ // bounded cohort, rather than silently dropping an attack because fixture #1
+ // lacks a best move or a decisively asymmetric independent reference.
+ const exercised=new Set();
+ const requiredControlNames=[
+  'illegal_best_move','illegal_pv','stale_fen','reversed_single_eval',
+  'reversed_entire_game','false_classification','best_move_marked_mistake',
+  'invented_coach_mate','unsupported_claim_type','all_evaluations_removed'
+ ];
  for(const e of entries) {
   const filename=resolve(benchDir,'fixtures',e.pgn_file);
   if(!relative(join(benchDir,'fixtures'),filename)||relative(join(benchDir,'fixtures'),filename).startsWith('..')) throw Error('illegal path');
@@ -121,14 +129,15 @@ try {
   report.engine.actual_depths.push(result.depth);
   report.failures.push(...issues);
   // Corrupt *actual application output* at the boundary, not isolated hand-written objects.
-  if(runBoundaryMutations && verifiedNegative===0) {
+  if(runBoundaryMutations) {
     const variants=[
       ['illegal_best_move',o=>{o.moves[0].best_move_uci='a1a8';},'illegal_best_uci'],
       ['illegal_pv',o=>{o.moves[0].best_pv=['illegal-san'];},'illegal_pv_san'],
       ['stale_fen',o=>{o.moves[0].fen_before=o.moves[0].fen_after;},'stale_fen_before'],
-      ['reversed_single_eval',o=>{o.moves[0].eval_before_cp=-(o.moves[0].eval_before_cp??0);o.moves[0].eval_after_cp=-(o.moves[0].eval_after_cp??0)+100;},'eval_chain_break'],
-      ['reversed_entire_game',o=>{for(const m of o.moves){m.eval_before_cp=-(m.eval_before_cp??0);m.eval_after_cp=-(m.eval_after_cp??0);m.mate_before=m.mate_before===null?null:-m.mate_before;m.mate_after=m.mate_after===null?null:-m.mate_after;}},'reference_evaluation_side_mismatch'],
-      ['false_classification',o=>{o.moves[0].classification='forced';},'false_forced_classification'],
+      ['reversed_single_eval',o=>{if(o.moves.length<2)return false;o.moves[0].eval_before_cp=-(o.moves[0].eval_before_cp??0);o.moves[0].eval_after_cp=-(o.moves[0].eval_after_cp??0)+100;},'eval_chain_break'],
+      ['reversed_entire_game',o=>{for(const m of o.moves){m.eval_before_cp=-(m.eval_before_cp??0);m.eval_after_cp=-(m.eval_after_cp??0);m.mate_before=m.mate_before===null?null:-m.mate_before;m.mate_after=m.mate_after===null?null:-m.mate_after;}},['reference_evaluation_side_mismatch','reference_mate_side_mismatch']],
+      ['false_classification',o=>{const m=o.moves.find(x=>x.classification!=='forced' && new Chess(x.fen_before).moves().length>1);if(!m)return false;m.classification='forced';},'false_forced_classification'],
+      ['best_move_marked_mistake',o=>{const m=o.moves.find(x=>x.best_move_uci && x.best_move_uci===x.uci && x.classification==='best');if(!m)return false;m.classification='mistake';},'played_best_move_labeled_error'],
       ['invented_coach_mate',o=>{o.coach_claims=[{ply:1,type:'forced_mate',pv_uci:['e2e4','e7e5'],winner:'w',status:'supported'}];},'unsupported_forced_mate_claim'],
       ['unsupported_claim_type',o=>{o.coach_claims=[{ply:1,type:'unknown_llm_prose_claim',status:'supported'}];},'unverifiable_coach_claim_type'],
       ['all_evaluations_removed',o=>{for(const m of o.moves){m.eval_before_cp=null;m.eval_after_cp=null;}},'missing_or_invalid_eval_cp']
@@ -136,21 +145,24 @@ try {
     // Whole-game sign inversion requires an independent non-zero reference.
     const independentSignProven=Object.values(independent.byPly).some(r=>Math.abs(r.cp??0)>=80 || r.mate);
     for(const [name,mutate,expected] of variants){
-      if(name==='reversed_entire_game' && !independentSignProven){
-       report.negative_controls.push({name,rejected:null,reason:['insufficient_independent_reference'],status:'not_tested'});
-       continue;
-      }
-      const corrupted=structuredClone(result); mutate(corrupted);
+      if(exercised.has(name))continue;
+      if(name==='reversed_entire_game' && !independentSignProven)continue;
+      const corrupted=structuredClone(result);
+      if(mutate(corrupted)===false)continue;
       const found=validateAppAnalysis(pgn,corrupted,{fixtureId:e.fixture_id,reference:independent});
       // A corrupted input only proves detection when the *same* failure did
       // not exist in the valid output. Otherwise negative controls can lie.
-      const rejected=!issues.some(x=>x.reason===expected)
+      // A reversed result can be disproved by centipawn perspective OR by a
+      // mate-score winner contradiction. Requiring only one error name would
+      // falsely flag correctly detected forced mates as escaped mutants.
+      const expectedReasons=Array.isArray(expected)?expected:[expected];
+      const rejected=!issues.some(x=>expectedReasons.includes(x.reason))
         && JSON.stringify(corrupted)!==JSON.stringify(result)
-        && found.some(x=>x.reason===expected);
-      report.negative_controls.push({name,rejected,reason:found.map(x=>x.reason)});
+        && found.some(x=>expectedReasons.includes(x.reason));
+      exercised.add(name);
+      report.negative_controls.push({name,fixture_id:e.fixture_id,rejected,reason:found.map(x=>x.reason)});
       if(!rejected)report.failures.push({fixture_id:e.fixture_id,reason:'negative_control_escaped:'+name});
     }
-    verifiedNegative++;
   }
   // A dedicated mutation attacks the exact zero-evidence rating bug. A main
   // baseline already exhibiting the bug must fail, not falsely earn credit
@@ -158,7 +170,8 @@ try {
   for(const [color,suffix] of (runBoundaryMutations ? [['w','white'],['b','black']] : [])) {
     const eligible=result.moves.filter(m=>m.fen_before.split(' ')[1]===color
       && !['book','forced'].includes(m.classification)).length;
-    if(eligible!==0 || issues.length)continue;
+    const name='inflated_zero_evidence_rating_'+suffix;
+    if(eligible!==0 || issues.length || exercised.has(name))continue;
     const corrupted=structuredClone(result);
     corrupted['estimated_elo_'+suffix]=2880;
     corrupted['performance_'+suffix]=2880;
@@ -166,9 +179,13 @@ try {
     const a='rating_without_eligible_moves_'+suffix;
     const b='performance_without_eligible_moves_'+suffix;
     const rejected=found.some(f=>f.reason===a)&&found.some(f=>f.reason===b);
-    report.negative_controls.push({name:'inflated_zero_evidence_rating_'+suffix,rejected,reason:found.map(x=>x.reason)});
+    exercised.add(name);
+    report.negative_controls.push({name,fixture_id:e.fixture_id,rejected,reason:found.map(x=>x.reason)});
     if(!rejected)report.failures.push({fixture_id:e.fixture_id,reason:'negative_control_escaped:inflated_zero_evidence_rating_'+suffix});
   }
+ }
+ if(runBoundaryMutations)for(const name of requiredControlNames) {
+  if(!exercised.has(name))report.negative_controls.push({name,rejected:null,status:'not_tested',reason:['no_applicable_fixture_in_selected_cohort']});
  }
  report.perf.elapsed_ms=Math.round(performance.now()-started);
  report.perf.node_cpu_us=process.cpuUsage(cpuStart);

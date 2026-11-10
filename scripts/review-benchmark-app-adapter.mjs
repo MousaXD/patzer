@@ -63,6 +63,13 @@ export function validateAppAnalysis(pgn, output, { fixtureId='unnamed', referenc
     for (const mate of ['mate_before','mate_after']) if (raw[mate]!==null && (!Number.isInteger(raw[mate])||Math.abs(raw[mate])>1000)) add('bad_mate',ply);
     if (!finite(raw.centipawn_loss)||raw.centipawn_loss<0) add('bad_centipawn_loss',ply);
     if (!cls.has(raw.classification)) add('unknown_classification',ply);
+    // Even if engine scores fluctuate slightly across depths, a move reported
+    // as the engine's own best candidate cannot simultaneously be an error.
+    // This is an evidence contradiction, not an attempt to calibrate labels.
+    if (raw.best_move_uci && raw.best_move_uci===raw.uci
+      && ['inaccuracy','mistake','blunder','miss'].includes(raw.classification)) {
+      add('played_best_move_labeled_error',ply);
+    }
     if (legalBefore===1 && raw.classification!=='forced') add('missed_forced_classification',ply);
     if (cls.has(raw.classification) && !['book','forced'].includes(raw.classification)) eligible[side]++;
     if (raw.classification==='best' && raw.best_move_uci && raw.best_move_uci !== raw.uci) add('false_best_classification',ply);

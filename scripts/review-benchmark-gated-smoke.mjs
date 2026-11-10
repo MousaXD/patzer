@@ -155,6 +155,9 @@ if(traceRun.error||traceRun.status!==0||traceRun.timedOut||traceRun.overflow||!r
  sources:rawEvidence?.failures?.map(x=>x.reason)||[]});
 if(appEvidence?.summary?.negative_rejections!==appEvidence?.summary?.negative_total ||
    !appEvidence?.summary?.negative_total)failures.push({reason:'missing_or_escaped_boundary_negative_control'});
+if(appEvidence?.summary?.unverified_controls)failures.push({
+ reason:'unverified_boundary_negative_control',count:appEvidence.summary.unverified_controls
+});
 if(appEvidence?.repo_sha && appEvidence.repo_sha!==intendedCandidateSha)failures.push({reason:'app_candidate_sha_mismatch'});
 if(rawEvidence && (rawEvidence.summary.legal_pv_lines!==rawEvidence.summary.pv_lines
  ||rawEvidence.summary.search_commands < plies+ids.length
@@ -197,6 +200,7 @@ const outcome={
  application:{exit:appRun.status,timed_out:appRun.timedOut,signal:appRun.signal??null,score_version:appEvidence?.scoring_version??null,
    negative_controls:appEvidence?.summary?.negative_total??0,
    rejected_controls:appEvidence?.summary?.negative_rejections??0,
+   unverified_controls:appEvidence?.summary?.unverified_controls??null,
    errors:appEvidence?.summary?.errors??null},
  raw_uci:{exit:traceRun.status,metrics:rawEvidence?.summary||null,errors:rawEvidence?.failures?.length??null},
  duration_ms:Date.now()-timeStarted,
