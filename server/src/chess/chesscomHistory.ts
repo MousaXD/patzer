@@ -58,6 +58,7 @@ export async function retryChessCom<T>(
 
 function gameResult(game: ChessComGame, color: 'white' | 'black'): 'win' | 'draw' | 'loss' | null {
   const outcome = color === 'white' ? game.white?.result : game.black?.result;
+  if (typeof outcome !== 'string') return null;
   if (outcome === 'win') return 'win';
   if (['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(outcome)) return 'draw';
   // Do not misreport a malformed, unknown or newly introduced outcome as a
