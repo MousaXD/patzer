@@ -1,4 +1,5 @@
-import { chatStream } from "./llm.js";
+import { chatStream, llmConfigured } from "./llm.js";
+import { momentEvidence, screenCoachProse } from "./claims.js";
 import { systemPrompt } from "./locales.js";
 import { correctionNote, explainMovePrompt, hintPrompt } from "./facts.js";
 import { contradiction, explainCoaching, fallbackText, hintCoaching, type CoachAction } from "./coaching.js";
@@ -56,6 +57,7 @@ export async function coachExplain(
   aud: Audience,
   opts: RunOpts = {},
 ): Promise<CoachAnswer> {
+  opts.signal?.throwIfAborted();
   // The move is the user's own when they're the one asking about their game
   // (Play), or in Game Review when the move belongs to their colour.
   const coaching = await explainCoaching({
@@ -66,6 +68,24 @@ export async function coachExplain(
     userId,
     ownMove: params.user_perspective ?? false,
   }, lang, aud);
+  opts.signal?.throwIfAborted();
+  const evidence = momentEvidence(params.fen, params.played_san, params.best_san, params.pv_san ?? []);
+  const mate = evidence.claims.find((c) => c.evidence_type === 'reply_mate_in_one')?.variation_san?.[0];
+  const better = evidence.legal_best_san && evidence.legal_best_san !== params.played_san ? evidence.legal_best_san : null;
+  const verdict = String(coaching.facts.verdict ?? '').trim();
+  const verdictIntro = verdict ? verdict.charAt(0).toUpperCase() + verdict.slice(1) + '.' : '';
+  const qualified: Record<Language, string> = {
+    en: [verdictIntro, mate ? `After ${params.played_san}, the opponent can give checkmate at once with ${mate}.` : 'The available facts do not prove a specific tactical explanation.', better ? `The recorded alternative ${better} is legal; compare the resulting positions.` : 'Examine the legal opponent replies before drawing a conclusion.'].join(' '),
+    bg: [verdictIntro, mate ? `След ${params.played_san} противникът може веднага да даде мат с ${mate}.` : 'Наличните факти не доказват конкретна тактика.', better ? `Записаната алтернатива ${better} е допустима; сравни позициите.` : 'Провери допустимите отговори.'].join(' '),
+    es: [verdictIntro, mate ? `Después de ${params.played_san}, el rival puede dar jaque mate con ${mate}.` : 'Los datos disponibles no demuestran una táctica concreta.', better ? `La alternativa registrada ${better} es legal; compara las posiciones.` : 'Examina las respuestas legales.'].join(' '),
+    de: [verdictIntro, mate ? `Nach ${params.played_san} kann der Gegner mit ${mate} sofort Schachmatt setzen.` : 'Die vorhandenen Fakten beweisen keine konkrete Taktik.', better ? `Die gespeicherte Alternative ${better} ist legal; vergleiche die Stellungen.` : 'Prüfe die legalen Antworten.'].join(' '),
+    ru: [verdictIntro, mate ? `После ${params.played_san} соперник может поставить мат ходом ${mate}.` : 'Имеющиеся данные не доказывают конкретную тактику.', better ? `Записанная альтернатива ${better} допустима; сравни позиции.` : 'Проверь допустимые ответы.'].join(' '),
+  };
+  const deterministic = fallbackText(coaching.facts, lang);
+  const safeFallback = evidence.status === 'verified' && screenCoachProse(deterministic, evidence, lang).accepted
+    ? deterministic : qualified[lang];
+  const fallback = (): CoachAnswer => ({ text: safeFallback, actions: coaching.actions, source: 'fallback' });
+  if (evidence.status !== 'verified' || params.player.toLowerCase() !== evidence.actor || !llmConfigured()) return fallback();
 
   const input = {
     ...params,
@@ -76,19 +96,24 @@ export async function coachExplain(
   const sys = systemPrompt(aud, lang);
   const usr = explainMovePrompt(input, lang, aud, coaching.facts);
 
-  const first = clean(await generate(sys, usr, opts));
-  if (first && !contradiction(first, params.classification, lang)) {
+  const valid = (text: string) => !contradiction(text, params.classification, lang)
+    && screenCoachProse(text, evidence, lang).accepted;
+  let first: string;
+  try { first = clean(await generate(sys, usr, opts)); }
+  catch (err) { if (opts.signal?.aborted) throw err; return fallback(); }
+  if (first && valid(first)) {
     return { text: first, actions: coaching.actions, source: "llm" };
   }
-  const verdict = String(coaching.facts.verdict ?? "");
   console.warn(`[coach] answer contradicted the verdict (${params.classification}); retrying`);
   const retryPrompt = explainMovePrompt(input, lang, aud, coaching.facts, correctionNote(lang, verdict));
-  const second = clean(await generate(sys, retryPrompt, { ...opts, temperature: 0.05 }));
-  if (second && !contradiction(second, params.classification, lang)) {
+  let second: string;
+  try { second = clean(await generate(sys, retryPrompt, { ...opts, temperature: 0.05 })); }
+  catch (err) { if (opts.signal?.aborted) throw err; return fallback(); }
+  if (second && valid(second)) {
     return { text: second, actions: coaching.actions, source: "llm_retry" };
   }
   console.warn(`[coach] retry contradicted the verdict too; using the facts-only answer`);
-  return { text: fallbackText(coaching.facts, lang), actions: coaching.actions, source: "fallback" };
+  return fallback();
 }
 
 /** A hint streams straight through: it names no move and passes no verdict,

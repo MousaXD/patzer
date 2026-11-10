@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { llmConfigured } from '../coach/llm.js';
-import { buildGameReview, reviewCacheKey, type GameReview, REVIEW_PROSE_VERSION } from '../coach/review.js';
+import { buildGameReview, isMarkedReviewScoringStale, reviewCacheKey, type GameReview, REVIEW_PROSE_VERSION } from '../coach/review.js';
 import type { AnalysisResult, AnalyzedMove, KeyMomentSummary, PhaseSplit } from '../types.js';
 
 const router = new Hono();
@@ -52,8 +52,8 @@ router.get('/:id/review', (c) => {
   const id = Number(c.req.param('id'));
   const game = db.prepare('SELECT user_color FROM games WHERE id = ? AND user_id = ?').get(id, user.id) as GameRow | undefined;
   if (!game) return c.json({ error: 'not_found' }, 404);
-  const row = db.prepare(`SELECT prose_json, prose_version, prose_lang, prose_audience FROM analyses WHERE game_id = ?`).get(id) as
-    | { prose_json: string | null; prose_version: number; prose_lang: string | null; prose_audience: string | null }
+  const row = db.prepare(`SELECT prose_json, prose_version, prose_lang, prose_audience, scoring_version FROM analyses WHERE game_id = ?`).get(id) as
+    | { prose_json: string | null; prose_version: number; prose_lang: string | null; prose_audience: string | null; scoring_version: number }
     | undefined;
   if (!row?.prose_json) return c.json({ review: null });
   // Validate the cached prose was generated for the same lang+audience+version.
@@ -61,7 +61,9 @@ router.get('/:id/review', (c) => {
   const haveKey = `${row.prose_version}|${row.prose_lang ?? ''}|${row.prose_audience ?? ''}`;
   if (wantKey !== haveKey) return c.json({ review: null, stale: true });
   try {
-    return c.json({ review: JSON.parse(row.prose_json) as GameReview });
+    const review = JSON.parse(row.prose_json) as GameReview;
+    if (isMarkedReviewScoringStale(review, row.scoring_version)) return c.json({ review: null, stale: true });
+    return c.json({ review });
   } catch {
     return c.json({ review: null });
   }
@@ -87,21 +89,31 @@ router.post('/:id/review', async (c) => {
   const audience = user.profile.audience;
 
   return streamSSE(c, async (stream) => {
+    const controller = new AbortController();
+    const onRequestAbort = () => controller.abort();
+    c.req.raw.signal.addEventListener('abort', onRequestAbort, { once: true });
+    stream.onAbort(onRequestAbort);
     try {
       const review = await buildGameReview({
         pgn: game.pgn, analysis, language, audience, userColor, userId: user.id,
         llmEnabled: llmConfigured(),
+        signal: controller.signal,
         onProgress: async (ev) => {
           await stream.writeSSE({ event: 'progress', data: JSON.stringify(ev) });
         },
       });
+      controller.signal.throwIfAborted();
       // Cache to DB
       db.prepare(`UPDATE analyses SET prose_json = ?, prose_version = ?, prose_lang = ?, prose_audience = ?
                   WHERE game_id = ?`)
         .run(JSON.stringify(review), REVIEW_PROSE_VERSION, language, audience, id);
       await stream.writeSSE({ event: 'done', data: JSON.stringify({ review }) });
     } catch (err) {
-      await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+      if (!controller.signal.aborted) {
+        await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+      }
+    } finally {
+      c.req.raw.signal.removeEventListener('abort', onRequestAbort);
     }
   });
 });

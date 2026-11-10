@@ -155,6 +155,25 @@ describe('Game Review: whose move', () => {
     expect(progress).toEqual(['opening', 'phase:opening', 'moment', 'summary']);
   });
 
+  it('stops immediately when a streamed review is canceled, before summary/cache data exists', async () => {
+    const controller = new AbortController();
+    const observed: string[] = [];
+    await expect(review.buildGameReview({
+      pgn: '[Result "1-0"]',
+      analysis: analysisOf(buildMoves()), language: 'en', audience: 'beginner',
+      userColor: 'white', llmEnabled: false, signal: controller.signal,
+      onProgress: ({ step }) => { observed.push(step); controller.abort(); },
+    })).rejects.toThrow();
+    expect(observed).toEqual(['opening']);
+  });
+
+  it('does not reuse a PR #17-tagged v9 AI report beside re-scored v10 analysis', () => {
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 9 }, 10)).toBe(true);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 10 }, 10)).toBe(false);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION }, 10)).toBe(false);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: '9' }, 10)).toBe(true);
+  });
+
   it('fails closed on fabricated mate and quantified mate claims', () => {
     const moves = buildMoves();
     const moment = momentOf(moves[2]!); // 2.Qh5: no mate in the next move

@@ -41,6 +41,7 @@ import { chatJsonRetry } from './llm.js';
 import { systemPrompt, sanToNatural, pvToNaturalSan, verdictPhrase, boardPiecesNatural } from './prompts.js';
 import { explainCoaching } from './coaching.js';
 import { contradiction } from './coaching.js';
+import { momentEvidence, screenCoachProse, screenUnanchoredProse } from './claims.js';
 import { Chess } from 'chess.js';
 import { cpToWinPct } from '../chess/classifier.js';
 import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase, KeyMomentSummary, Language } from '../types.js';
@@ -51,7 +52,8 @@ import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase,
 // v3 = anti-hallucination FACTS pass: piece inventory + win-prob in key moments.
 // v4 = whose move it was; coaching facts in key moments; a summary with content.
 // v5 = unknown evaluations stay unknown; custom-FEN move ownership follows FEN.
-export const REVIEW_PROSE_VERSION = 5;
+// v6 = independently validated tactical claims; conservative summary/fallback.
+export const REVIEW_PROSE_VERSION = 6;
 
 // JSON-mode rule append-on. R10 in the consolidated 10-rule scheme. We use
 // "R10:" numbering to extend prompts.ts's existing rule block cleanly.
@@ -78,6 +80,9 @@ interface ReviewText {
   fallbackSkillNone: string;
   fallbackSkill: (elo: number) => string;
   fallbackOpening: (name: string) => string;
+  fallbackMateReply: (reply: string, byUser: boolean) => string;
+  fallbackAlternative: (move: string) => string;
+  fallbackUnverified: string;
 }
 
 const MOMENT_SCHEMA = `Schema: { "title": string, "what_happened": string, "why_it_matters": string, "what_to_learn": string }`;
@@ -120,8 +125,11 @@ Schema: { "summary": string (3-5 sentences), "skill_assessment": string (1 sente
     fallbackMomentOpponent: (move, verdict) => `On move ${move} the opponent played ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Your accuracy was ${acc}%. You had ${brilliant} brilliant moves, ${mistakes} mistakes, and ${blunders} blunders.`,
     fallbackSkillNone: 'No skill estimate yet.',
-    fallbackSkill: (elo) => `This game played at roughly ${elo} Elo.`,
-    fallbackOpening: (name) => `You opened with ${name} — a solid choice.`,
+    fallbackSkill: () => 'One game cannot establish your playing strength; focus on the decisions you can improve.',
+    fallbackOpening: (name) => `The opening was recorded as ${name}; its name alone does not establish how well it was played.`,
+    fallbackMateReply: (reply, byUser) => `${byUser ? 'Your opponent' : 'You'} could respond with ${reply}.`,
+    fallbackAlternative: (move) => `The analysis lists ${move} as a legal alternative; its advantage needs positional evidence.`,
+    fallbackUnverified: 'This recorded move could not be checked against the position. Review the board before trusting a tactical explanation.',
   },
   bg: {
     jsonHard: `\n\nR10. Отговори с ТОЧНО ЕДИН JSON обект според схемата в TASK. Без текст извън JSON. Без markdown. Без допълнителни ключове.`,
@@ -160,8 +168,11 @@ Schema: { "summary": string (3-5 sentences), "skill_assessment": string (1 sente
     fallbackMomentOpponent: (move, verdict) => `На ход ${move} противникът изигра ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Точността ти беше ${acc}%. Имаше ${brilliant} брилянтни, ${mistakes} грешки и ${blunders} блъндера.`,
     fallbackSkillNone: 'Все още нямаме оценка на нивото.',
-    fallbackSkill: (elo) => `Партията ти изглежда на ниво около ${elo} Elo.`,
-    fallbackOpening: (name) => `Започна с ${name} — солиден избор.`,
+    fallbackSkill: () => 'Една партия не е достатъчна, за да определи игровото ти ниво.',
+    fallbackOpening: (name) => `Дебютът е записан като ${name}; името му не доказва качеството на ходовете.`,
+    fallbackMateReply: (reply, byUser) => `${byUser ? 'Противникът' : 'Ти'} можеше да отговори с ${reply}.`,
+    fallbackAlternative: (move) => `Анализът посочва ${move} като допустима алтернатива, но това не доказва предимство.`,
+    fallbackUnverified: 'Записаният ход не може да бъде проверен в позицията. Прегледай дъската, преди да се довериш на тактиката.',
   },
   es: {
     jsonHard: `\n\nR10. Responde con EXACTAMENTE UN objeto JSON que siga el esquema de TASK. Sin texto fuera del JSON. Sin bloques markdown. Sin claves adicionales.`,
@@ -200,8 +211,11 @@ Esquema: { "summary": string (3-5 frases), "skill_assessment": string (1 frase: 
     fallbackMomentOpponent: (move, verdict) => `En la jugada ${move} el rival jugó ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Tu precisión fue del ${acc}%. Tuviste ${brilliant} jugadas brillantes, ${mistakes} errores y ${blunders} errores graves.`,
     fallbackSkillNone: 'Aún no hay una estimación de nivel.',
-    fallbackSkill: (elo) => `Esta partida se jugó a un nivel de unos ${elo} Elo.`,
-    fallbackOpening: (name) => `Abriste con ${name}: una elección sólida.`,
+    fallbackSkill: () => 'Una sola partida no permite medir tu nivel de juego con fiabilidad.',
+    fallbackOpening: (name) => `La apertura figura como ${name}; el nombre no demuestra que se haya jugado bien.`,
+    fallbackMateReply: (reply, byUser) => `${byUser ? 'Tu rival' : 'Tú'} podía responder con ${reply}.`,
+    fallbackAlternative: (move) => `El análisis indica ${move} como alternativa legal; su ventaja necesita más pruebas.`,
+    fallbackUnverified: 'Esta jugada no pudo verificarse con la posición. Revisa el tablero antes de confiar en una afirmación táctica.',
   },
   de: {
     jsonHard: `\n\nR10. Antworte mit GENAU EINEM JSON-Objekt nach dem Schema in TASK. Kein Text außerhalb des JSON. Keine Markdown-Codeblöcke. Keine zusätzlichen Schlüssel.`,
@@ -240,8 +254,11 @@ Schema: { "summary": string (3-5 Sätze), "skill_assessment": string (1 Satz: wa
     fallbackMomentOpponent: (move, verdict) => `Im ${move}. Zug spielte der Gegner ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Deine Genauigkeit lag bei ${acc} %. Du hattest ${brilliant} brillante Züge, ${mistakes} Fehler und ${blunders} Patzer.`,
     fallbackSkillNone: 'Noch keine Einschätzung der Spielstärke.',
-    fallbackSkill: (elo) => `Diese Partie entsprach etwa ${elo} Elo.`,
-    fallbackOpening: (name) => `Du hast mit ${name} eröffnet — eine solide Wahl.`,
+    fallbackSkill: () => 'Eine einzelne Partie reicht nicht aus, um deine Spielstärke verlässlich einzuschätzen.',
+    fallbackOpening: (name) => `Die Eröffnung wird als ${name} geführt; der Name allein belegt keine gute Spielweise.`,
+    fallbackMateReply: (reply, byUser) => `${byUser ? 'Dein Gegner' : 'Du'} konnte mit ${reply} antworten.`,
+    fallbackAlternative: (move) => `Die Analyse nennt ${move} als legale Alternative; ein Vorteil ist damit noch nicht bewiesen.`,
+    fallbackUnverified: 'Der gespeicherte Zug ließ sich in dieser Stellung nicht prüfen. Kontrolliere das Brett, bevor du taktischen Aussagen vertraust.',
   },
   ru: {
     jsonHard: `\n\nR10. Ответь РОВНО ОДНИМ JSON-объектом по схеме из TASK. Без текста вне JSON. Без markdown-блоков. Без лишних ключей.`,
@@ -280,8 +297,11 @@ Schema: { "summary": string (3-5 Sätze), "skill_assessment": string (1 Satz: wa
     fallbackMomentOpponent: (move, verdict) => `На ${move}-м ходу соперник сыграл: ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Твоя точность — ${acc}%. Блестящих ходов: ${brilliant}, ошибок: ${mistakes}, зевков: ${blunders}.`,
     fallbackSkillNone: 'Оценки уровня пока нет.',
-    fallbackSkill: (elo) => `Эта партия сыграна примерно на уровне ${elo} Эло.`,
-    fallbackOpening: (name) => `Дебют партии — ${name}: крепкий выбор.`,
+    fallbackSkill: () => 'Одна партия не позволяет надёжно определить твой уровень игры.',
+    fallbackOpening: (name) => `Дебют записан как ${name}; само название не доказывает качество игры.`,
+    fallbackMateReply: (reply, byUser) => `${byUser ? 'Соперник' : 'Ты'} мог ответить ходом ${reply}.`,
+    fallbackAlternative: (move) => `Анализ предлагает ${move} как допустимую альтернативу; это ещё не доказательство преимущества.`,
+    fallbackUnverified: 'Не удалось проверить ход по позиции. Проверь доску, прежде чем доверять тактическому утверждению.',
   },
 };
 
@@ -461,9 +481,11 @@ async function callPhase(
       { role: 'system', content: sys },
       { role: 'user', content: task },
     ], { temperature: 0.2, numPredict: 450, signal });
-    const prose = (result.prose ?? '').trim() || fallbackPhase(phase, userAcc, slice.length, language);
+    const raw = result && typeof result.prose === 'string' ? result.prose.trim() : '';
+    const prose = screenUnanchoredProse(raw, language) ? raw : fallbackPhase(phase, userAcc, slice.length, language);
     return { from_ply: data.from_ply, to_ply: data.to_ply, accuracy: userAcc, acpl: userAcpl, prose };
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     return { from_ply: data.from_ply, to_ply: data.to_ply, accuracy: userAcc, acpl: userAcpl, prose: fallbackPhase(phase, userAcc, slice.length, language) };
   }
 }
@@ -483,31 +505,36 @@ export async function keyMomentFacts(
   userId?: number,
 ) {
   const text = reviewText(language);
-  const byUser = moment.side === userColor;
+  const evidence = momentEvidence(moment.fen_before, moment.san, moment.best_san, moment.best_pv);
+  const byUser = (evidence.actor ?? moment.side) === userColor;
   const played = sanToNatural(moment.san, moment.fen_before, language, audience);
-  const best = moment.best_san && moment.best_san !== moment.san ? sanToNatural(moment.best_san, moment.fen_before, language, audience) : null;
-  const pv = pvToNaturalSan(moment.best_pv, moment.fen_before, language, audience, 3);
+  const best = evidence.legal_best_san && evidence.legal_best_san !== moment.san
+    ? sanToNatural(evidence.legal_best_san, moment.fen_before, language, audience) : null;
+  const pvVerified = evidence.claims.find((c) => c.evidence_type === 'legal_variation' && c.proof_status === 'verified');
+  const pv = pvVerified ? pvToNaturalSan(pvVerified.verified_line_san, moment.fen_before, language, audience, 3) : [];
   // Piece inventory from the PLAYER's side, whoever moved — "your pieces"
   // must always be the player's.
   const board = boardPiecesNatural(moment.fen_before, userColor, language, audience);
-  const move = moves.find((m) => m.ply === moment.ply);
+  const move = moves.find((m) => m.ply === moment.ply && m.fen_before === moment.fen_before && m.san === moment.san);
   const wp = move && moverOf(move) === moment.side ? moverWinPct(move) : null;
 
   // The coach's deterministic facts: what the move did or allowed, the best
   // answer to it, the better move and what that does. Engine-backed; if the
   // engine isn't there it still answers from chess.js alone.
-  const coaching = await explainCoaching({
+  const coaching = evidence.status === 'verified' ? await explainCoaching({
     fen: moment.fen_before,
     played_san: moment.san,
     best_san: moment.best_san,
     classification: moment.classification,
     userId: userId ?? 0,
     ownMove: byUser && userId != null,
-  }, language, audience).catch(() => null);
+  }, language, audience).catch(() => null) : null;
   const c = coaching?.facts ?? {};
 
   // For the opponent's move: how the player answered it.
-  const next = byUser ? null : moves.find((m) => m.ply === moment.ply + 1);
+  const after = evidence.status === 'verified' ? new Chess(moment.fen_before) : null;
+  if (after) after.move(moment.san);
+  const next = byUser || !after ? null : moves.find((m) => m.ply === moment.ply + 1 && m.fen_before === after.fen());
   const yourAnswer = next ? {
     played: sanToNatural(next.san, next.fen_before, language, audience),
     verdict: verdictPhrase(next.classification, language),
@@ -526,11 +553,18 @@ export async function keyMomentFacts(
       verdict: verdictPhrase(moment.classification, language),
       win_pct_before: wp?.before ?? null,
       win_pct_after: wp?.after ?? null,
-      why: (c.why as string[] | undefined) ?? [],
-      // The strongest answer to the move that was played.
-      best_reply: (c.opponent_reply as string | null | undefined) ?? null,
-      better_move: (c.better_move as string | null | undefined) ?? best,
+      // Heuristic motifs (hanging/"wins material"/engine PV) are deliberately
+      // not accepted as proof. Only validated, local chess claims are offered.
+      why: [],
+      best_reply: evidence.claims.find((claim) => claim.evidence_type === 'reply_mate_in_one')?.variation_san?.[0] ?? null,
+      better_move: best,
       engine_pv: pv,
+      verified_claims: evidence.claims.map((claim) => ({
+        claim_id: claim.claim_id, type: claim.evidence_type,
+        status: claim.proof_status, line: claim.verified_line_san,
+        targets: claim.target_squares ?? [],
+        scope: claim.reason,
+      })),
       takeaway: byUser ? ((c.takeaway as string | null | undefined) ?? null) : null,
       ...(yourAnswer ? { your_answer: yourAnswer } : {}),
       your_pieces: board.player,
@@ -546,8 +580,10 @@ async function callKeyMoment(
 ): Promise<KeyMomentProse> {
   const { language, audience, userColor, signal } = args;
   const text = reviewText(language);
-  const byUser = moment.side === userColor;
-  if (args.llmEnabled === false) return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
+  const evidence = momentEvidence(moment.fen_before, moment.san, moment.best_san, moment.best_pv);
+  const byUser = (evidence.actor ?? moment.side) === userColor;
+  const safe = () => ({ ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language, audience), by_user: byUser });
+  if (args.llmEnabled === false || evidence.status !== 'verified' || evidence.actor !== moment.side) return safe();
   try {
     const facts = await keyMomentFacts(moment, moves, userColor, language, audience, args.userId);
     const sys = systemPrompt(audience, language) + text.jsonHard;
@@ -556,22 +592,43 @@ async function callKeyMoment(
       { role: 'system', content: sys },
       { role: 'user', content: task },
     ], { temperature: 0.2, numPredict: 500, signal });
-    const title = (result.title ?? '').trim() || text.keyMoment;
+    const title = typeof result?.title === 'string' ? result.title.trim() || text.keyMoment : text.keyMoment;
     // Slot-fill OR legacy `prose` field — accept both for backward compat.
-    const prose = result.prose?.trim() || joinSlots(result.what_happened, result.why_it_matters, result.what_to_learn) || fallbackMoment(moment, byUser, language);
-    if (unsupportedMateClaim(`${title} ${prose}`, moment, moves) || (byUser && contradiction(result.what_happened ?? prose, moment.classification, language))) {
-      return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
+    const prose = (typeof result?.prose === 'string' ? result.prose.trim() : '')
+      || joinSlots(
+        typeof result?.what_happened === 'string' ? result.what_happened : null,
+        typeof result?.why_it_matters === 'string' ? result.why_it_matters : null,
+        typeof result?.what_to_learn === 'string' ? result.what_to_learn : null,
+      );
+    if (!prose.trim()
+      || !screenCoachProse(`${title} ${prose}`, evidence, language).accepted
+      || unsupportedMateClaim(`${title} ${prose}`, moment, moves)
+      || (byUser && contradiction(typeof result?.what_happened === 'string' ? result.what_happened : prose, moment.classification, language))) {
+      return safe();
     }
     return { ...moment, title, prose, by_user: byUser };
-  } catch {
-    return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    return safe();
   }
 }
 
-function fallbackMoment(m: KeyMomentSummary, byUser: boolean, language: Language): string {
+function fallbackMoment(m: KeyMomentSummary, byUser: boolean, language: Language, audience: Audience): string {
   const cls = verdictPhrase(m.classification, language);
   const text = reviewText(language);
-  return byUser ? text.fallbackMoment(moveNumber(m.ply), cls, m.cp_loss) : text.fallbackMomentOpponent(moveNumber(m.ply), cls);
+  const evidence = momentEvidence(m.fen_before, m.san, m.best_san, m.best_pv);
+  if (evidence.status !== 'verified' || evidence.actor !== m.side) return text.fallbackUnverified;
+  const recordedMoveNumber = Number(m.fen_before.split(' ')[5]);
+  const number = Number.isSafeInteger(recordedMoveNumber) && recordedMoveNumber > 0 ? recordedMoveNumber : moveNumber(m.ply);
+  const parts = [byUser ? text.fallbackMoment(number, cls, m.cp_loss) : text.fallbackMomentOpponent(number, cls)];
+  const after = new Chess(m.fen_before);
+  after.move(m.san);
+  const reply = evidence.claims.find((claim) => claim.evidence_type === 'reply_mate_in_one' && claim.proof_status === 'verified')?.variation_san?.[0];
+  if (reply) parts.push(text.fallbackMateReply(sanToNatural(reply, after.fen(), language, audience), byUser));
+  if (evidence.legal_best_san && evidence.legal_best_san !== m.san) {
+    parts.push(text.fallbackAlternative(sanToNatural(evidence.legal_best_san, m.fen_before, language, audience)));
+  }
+  return parts.join(' ');
 }
 
 /** The FACTS for the summary. Exported for tests. */
@@ -659,12 +716,16 @@ async function callSummary(args: BuildReviewArgs): Promise<{ summary: string; sk
       { role: 'system', content: sys },
       { role: 'user', content: task },
     ], { temperature: 0.2, numPredict: 600, signal });
+    const summary = result?.summary;
     return {
-      summary: (result.summary ?? '').trim() || fallbackSummary(userAcc, counts, language),
-      skill_assessment: (result.skill_assessment ?? '').trim() || fallbackSkill(userElo, language),
-      opening_prose: (result.opening_prose ?? '').trim() || (analysis.opening_name ? fallbackOpening(analysis.opening_name, language) : ''),
+      summary: screenUnanchoredProse(summary, language) ? summary! : fallbackSummary(userAcc, counts, language),
+      // Neither Elo nor opening quality is an established fact from one game.
+      // These two fields are deliberately deterministic, even with an LLM.
+      skill_assessment: fallbackSkill(userElo, language),
+      opening_prose: analysis.opening_name ? fallbackOpening(analysis.opening_name, language) : '',
     };
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     return {
       summary: fallbackSummary(userAcc, counts, language),
       skill_assessment: fallbackSkill(userElo, language),
@@ -688,40 +749,50 @@ function fallbackOpening(name: string, language: Language): string {
 export async function buildGameReview(args: BuildReviewArgs): Promise<GameReview> {
   const total = totalSteps(args);
   let done = 0;
-  const fire = (step: ProgressEvent['step'], extra?: Partial<ProgressEvent>) => {
-    args.onProgress?.({ step, done, total, ...(extra as object) } as ProgressEvent);
+  const assertActive = () => args.signal?.throwIfAborted();
+  const fire = async (step: ProgressEvent['step'], extra?: Partial<ProgressEvent>) => {
+    assertActive();
+    await args.onProgress?.({ step, done, total, ...(extra as object) } as ProgressEvent);
+    assertActive();
   };
 
   // Step 1: opening (already in analysis — local lookup)
+  assertActive();
   done++;
-  fire('opening' as ProgressEvent['step']);
+  await fire('opening' as ProgressEvent['step']);
 
   const phases: GameReview['phases'] = { opening: null, middlegame: null, endgame: null };
   const phaseSplit = args.analysis.phase_split;
   if (phaseSplit?.opening) {
+    assertActive();
     phases.opening = await callPhase('opening', phaseSplit.opening, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
-    done++; fire('phase:opening');
+    done++; await fire('phase:opening');
   }
   if (phaseSplit?.middlegame) {
+    assertActive();
     phases.middlegame = await callPhase('middlegame', phaseSplit.middlegame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
-    done++; fire('phase:middlegame');
+    done++; await fire('phase:middlegame');
   }
   if (phaseSplit?.endgame) {
+    assertActive();
     phases.endgame = await callPhase('endgame', phaseSplit.endgame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
-    done++; fire('phase:endgame');
+    done++; await fire('phase:endgame');
   }
 
   const key_moments: KeyMomentProse[] = [];
   for (let i = 0; i < args.analysis.key_moments.length; i++) {
+    assertActive();
     const m = args.analysis.key_moments[i]!;
     const km = await callKeyMoment(m, args.analysis.moves, args);
     key_moments.push(km);
     done++;
-    args.onProgress?.({ step: 'moment', index: i, done, total });
+    await fire('moment', { index: i });
   }
 
+  assertActive();
   const final = await callSummary(args);
-  done++; fire('summary');
+  done++; await fire('summary');
+  assertActive();
 
   return {
     version: REVIEW_PROSE_VERSION,
@@ -741,4 +812,14 @@ export async function buildGameReview(args: BuildReviewArgs): Promise<GameReview
  *  current language/audience/version before re-using it. */
 export function reviewCacheKey(args: { language: Language; audience: Audience }): string {
   return `${REVIEW_PROSE_VERSION}|${args.language}|${args.audience}`;
+}
+
+/** PR #17's accuracy backfill retains old AI prose but stamps its source
+ * scoring version on the JSON. Never show that prose beside different scores
+ * simply because the language/audience/prose version still match. Old
+ * unmarked caches require an approved persistence contract for full safety. */
+export function isMarkedReviewScoringStale(review: unknown, scoringVersion: number): boolean {
+  if (!review || typeof review !== 'object' || Array.isArray(review)) return true;
+  const marker = (review as Record<string, unknown>).accuracy_model_version;
+  return marker !== undefined && (typeof marker !== 'number' || marker !== scoringVersion);
 }

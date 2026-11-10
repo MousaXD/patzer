@@ -374,6 +374,30 @@ describe('POST /explain (regression #37)', () => {
     await post('/explain', explainBody);
     expect(prompts).toHaveLength(1);
   });
+
+  it('retries a made-up pin and never exposes it even if the model repeats it', async () => {
+    const invented = 'A blunder. The bishop on a3 pins the queen, and this wins material.';
+    replies = [invented, GOOD_ANSWER];
+    const good = await post('/explain', explainBody);
+    expect(good.text).toBe(GOOD_ANSWER);
+    expect(prompts).toHaveLength(2);
+    replies = [invented, invented];
+    const safe = await post('/explain', explainBody);
+    expect(safe.text).not.toContain('a3');
+    expect(safe.text).toContain('checkmate at once');
+  });
+
+  it('returns evidence-grounded text when the LLM is not configured', async () => {
+    const dbm = await import('../src/db.js');
+    dbm.setSetting('vllm_url', '');
+    try {
+      const r = await post('/explain', explainBody);
+      expect(r.text).toContain('checkmate at once');
+      expect(prompts).toHaveLength(0);
+    } finally {
+      dbm.setSetting('vllm_url', `http://127.0.0.1:${(llm.address() as AddressInfo).port}`);
+    }
+  });
 });
 
 describe('POST /hint', () => {
