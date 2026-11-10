@@ -115,3 +115,46 @@ npm run build
 - **Design-system agent:** `GameAnalyzer.tsx` continues to use the shared `.review-workspace` grid class in `web/src/index.css`, which this agent does not own. Any future design-system CSS change must preserve mobile-to-desktop board/rail proportions and scrollbar behavior.
 - **Independent QA agent:** run latest-head CI, responsive visual checks in white and dark themes, Stockfish busy/retry checks, report generation/stream completion, and the complete saved-game / variation / engine / coach journey. No pass claim is made before that evidence exists.
 - No other agent branch has been fetched, rebased, cherry-picked or merged.
+
+
+## Continuation — final Game Review reliability pass (2026-11-10)
+
+### Verification of assignment and source baseline
+
+- At start, `pwd` returned `/` and `/home/mousa/projects/my-creations/chess/patzer-agent-review` was **not mounted**. The local Git branch and dirty/clean working-tree state could not be checked. No alternative worktree was created or selected.
+- Connected GitHub reads confirmed the exact existing branch `agent/review-experience-20261110`, the existing draft PR [#13](https://github.com/MousaXD/patzer/pull/13), and the previous handoff at this same path. The previous handoff-updated HEAD was `155f002de5b6e2705f8d1bd506aa5314b955ba92`.
+- Reviewed current GameAnalyzer/GameReportPanel, model/tests, the existing commit comparison, and PR status before modifying code; did not restart the earlier frontend audit.
+- **Latest source implementation commit in this continuation:** `2b238fb417f308bdb79e47831c4680471a9bfb10`. Subsequent documentation updates are not source changes. The final PR head can be verified from GitHub because a file cannot record its own resulting commit SHA.
+- GitHub accepted the individual file commits directly against the assigned branch. No local git checkout, alternate branch, merge, rebase, cherry-pick, deployment, database access, dependency installation or shared source edits occurred.
+
+### Newly completed improvements
+
+1. **Damaged cached analysis now genuinely recovers.** The Game Review already decoded and identified invalid JSON, but the manual “Run engine analysis” action used `force: false` and could receive the same corrupt cached result repeatedly. The decoder verdict is now memoized per cached record, and `needsFreshReviewAnalysis` selects `force: true` only for damaged cached analysis. Added the recovery-policy regression test.
+2. **AI report streaming handles real network boundaries.** The report generator previously split only on `\n\n`, potentially failing on CRLF SSE responses and chunk-split packets. The new review-specific `takeReviewEvents` parser handles LF/CRLF, multiple data lines, comments and incomplete chunks. The panel checks the `done` event for a usable review payload instead of blindly accepting any JSON.
+3. **Incomplete/failed AI reports now provide feedback.** An interrupted stream with no `done` previously silently returned to an empty report state. It now reports an actionable error and preserves the user's prior report when regeneration fails, with visible errors in the nonempty report view. Abort cleanup avoids applying the prior request's final state to a later request.
+4. **Regression test coverage expanded.** New review-owned files `web/src/components/review/reviewStream.ts`, `web/src/components/review/reviewStream.test.ts`, `web/src/components/GameReportPanel.stream.test.tsx`. Existing `web/src/components/review/storedReview.ts`, `storedReview.test.ts`, `web/src/components/GameReportPanel.tsx` and `web/src/pages/GameAnalyzer.tsx` updated.
+
+### Exact verification results and commands
+
+- **Local Git worktree, TypeScript, Vitest, build:** **NOT RUN** — assigned worktree unavailable. There is no truthful local pass/fail result.
+- **GitHub CI:** The previously queued CI `42852085533`, Frontend Overhaul QA `42852085470` and design-system certification `42852101453` were still marked **queued** when checked. No exact-head check result for source SHA `2b238fb417f308bdb79e47831c4680471a9bfb10` was returned at the last lookup. No tests were asserted passing.
+- **Remote source boundaries:** GitHub compare against `c8d9e1e` showed no base divergence and only `web/src/pages/GameAnalyzer.tsx`, owned Game Review components and new review-specific modules/tests plus this handoff. PR #13 stayed open and draft.
+
+To run in the originally assigned checkout with its **existing** dependencies (do not install new ones):
+
+```bash
+cd /home/mousa/projects/my-creations/chess/patzer-agent-review
+git branch --show-current  # must equal agent/review-experience-20261110
+npm run typecheck
+npm test -- web/src/components/review/storedReview.test.ts web/src/components/review/reviewStream.test.ts web/src/components/GameReportPanel.stream.test.tsx web/src/components/GameReportPanel.test.tsx
+npm test
+npm run build
+```
+
+### Outstanding acceptance / integration requirements
+
+- **Blocking:** complete latest exact-head CI, existing review regression suite, TypeScript check, and production build. Investigate test failures rather than assuming the new tests pass. Check reports in Chromium and Firefox, touch/mobile viewport sizes, and both light/dark themes.
+- **Backend owner:** verify server emits properly terminated SSE `done` events, honors `force: true` for cache repair, and correctly attributes analysis results for Black-first setup PGNs. These server contracts are read-only dependencies for this branch.
+- **Design-system owner:** the shared `.review-workspace` CSS and global fonts must remain compatible. No global CSS files were touched.
+- **Independent QA:** verify no AI report loss on stream interruption, reliable recovery from cached-analysis corruption, correct branch-versus-mainline arrows, and regression-free saved games.
+- **Release:** draft PR #13 remains **unmerged and undeployed** until these conditions are certified.
