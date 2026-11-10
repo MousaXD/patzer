@@ -44,3 +44,6 @@ integrations/mcp/dist-plugin/
 
 # Local Patzer credential file (created by secure setup script)
 integrations/mcp/.patzer-password
+
+# Independent review certification runtime artifacts
+qa/review-excellence/results/

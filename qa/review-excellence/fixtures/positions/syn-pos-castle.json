@@ -1,0 +1,16 @@
+{
+  "request_id": "SYN-POS-CASTLE",
+  "response_request_id": "SYN-POS-CASTLE",
+  "request_fen": "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+  "actor": "w",
+  "fen": "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+  "pv": [
+    "e1g1"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "e1g1"
+    }
+  ]
+}

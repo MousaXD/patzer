@@ -1,0 +1,9 @@
+[Event "Synthetic independently authored QA"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "WhiteFixture"]
+[Black "BlackFixture"]
+[Result "*"]
+
+1. e4 a6 2. e5 d5 3. exd6 *
