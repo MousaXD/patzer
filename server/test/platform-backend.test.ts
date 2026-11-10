@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,9 +21,15 @@ beforeAll(async () => {
   db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (1,'owner','x','user')").run();
   db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (2,'other','x','user')").run();
   db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (3,'empty','x','user')").run();
+  db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (4,'calendar','x','user')").run();
+  db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (5,'unknown_side','x','user')").run();
+  db.prepare("INSERT INTO users (id,username,password_hash,role) VALUES (6,'importer','x','user')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (1,'Owner')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (2,'Other')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (3,'Empty')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (4,'Calendar')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (5,'Unknown side')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (6,'Importer')").run();
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
 
   const game = db.prepare(`INSERT INTO games (
@@ -161,6 +167,146 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
   });
 });
 
+describe('platform backend edge-case protection', () => {
+  it('does not allow malformed recent PvP records to hide an older playable game', async () => {
+    const insert = db.prepare(`INSERT INTO games (user_id, source, pgn, white, black,
+      time_control, user_color, created_at)
+      VALUES (1, 'pvp', ?, 'owner', 'opponent', '600+0', 'white', ?)`);
+    const ids: number[] = [];
+    try {
+      const old = insert.run('1. e4 e5 *', new Date(Date.now() - 86_400_000).toISOString());
+      ids.push(Number(old.lastInsertRowid));
+      for (let i = 0; i < 20; i++) {
+        const invalid = insert.run(`invalid pgn token ${i}`, new Date(Date.now() - 3_600_000 + i * 1000).toISOString());
+        ids.push(Number(invalid.lastInsertRowid));
+      }
+      const response = await get('/live');
+      expect(response.status).toBe(200);
+      const body = await response.json() as { pvp: { game_id: number }[] };
+      expect(body.pvp.map((game) => game.game_id)).toContain(ids[0]);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ? AND user_id = 1');
+      for (const id of ids) remove.run(id);
+    }
+  });
+
+  it('only includes the last 365 calendar days in the activity heatmap', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const session = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(4))}`;
+    const insert = db.prepare(`INSERT INTO games (user_id, source, external_id, pgn,
+      white, black, result, end_time, user_color)
+      VALUES (4, 'chesscom', ?, '1. e4 e5 *', 'calendar', 'opponent', 'win', ?, 'white')`);
+    const today = new Date().toISOString();
+    insert.run('today', today);
+    insert.run('future', new Date(Date.now() + 7 * 86_400_000).toISOString());
+    insert.run('old', new Date(Date.now() - 400 * 86_400_000).toISOString());
+    const response = await insightsRoute.request('/', { headers: { Cookie: session } });
+    expect(response.status).toBe(200);
+    const data = await response.json() as { activity_heatmap: { day: string; games: number; wins: number }[] };
+    expect(data.activity_heatmap).toEqual([{ day: today.slice(0, 10), games: 1, wins: 1 }]);
+  });
+
+  it('does not invent a player side or personalized accuracy for games with unknown color', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    const session = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(5))}`;
+    const gameId = Number(db.prepare(`INSERT INTO games (user_id, source, pgn, white, black,
+      result, end_time, user_color)
+      VALUES (5, 'imported', '1. e4 e5 *', 'unknown_side', 'opponent', 'loss',
+        '2026-01-01T00:00:00Z', NULL)`).run().lastInsertRowid);
+    db.prepare(`INSERT INTO analyses (game_id, depth, scoring_version, accuracy_white,
+      accuracy_black, moves_json, phase_split_json) VALUES (?, 16, ?, 42, 77, ?, ?)`).run(
+      gameId, SCORING_VERSION,
+      JSON.stringify([{ ply: 1, san: 'e4', fen_after: '8/8/8/8/8/8/8/8', classification: 'blunder', centipawn_loss: 400 }]),
+      JSON.stringify({ opening: { from_ply: 1, to_ply: 14, accuracy_white: 42, accuracy_black: 77 } }),
+    );
+    const response = await insightsRoute.request('/', { headers: { Cookie: session } });
+    expect(response.status).toBe(200);
+    const data = await response.json() as {
+      games_analyzed: number; move_quality: { counts: Record<string, number> };
+      accuracy_trend: unknown[]; phase_accuracy: { opening: number };
+    };
+    expect(data.games_analyzed).toBe(1);
+    expect(data.move_quality.counts.blunder).toBe(0);
+    expect(data.accuracy_trend).toEqual([]);
+    expect(data.phase_accuracy.opening).toBe(0);
+  });
+});
+
+describe('manual Chess.com import resilience', () => {
+  const monthUrl = 'https://api.chess.com/pub/player/importer/games/2026/01';
+  const sample = (id: number, overrides: Record<string, unknown> = {}) => ({
+    url: `https://www.chess.com/game/live/${id}`,
+    pgn: '[Event "Live Chess"]\n[White "importer"]\n[Black "opponent"]\n\n1. e4 e5 *',
+    time_control: '600', end_time: 1760000000 + id,
+    rated: true, rules: 'chess', time_class: 'rapid',
+    white: { username: 'importer', rating: 1200, result: 'win' },
+    black: { username: 'opponent', rating: 1200, result: 'checkmated' },
+    ...overrides,
+  });
+  function mockFetch(monthGames: unknown[], onProfile?: () => Promise<void>) {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      let data: unknown;
+      if (url.pathname === '/pub/player/importer') {
+        await onProfile?.();
+        data = { username: 'importer' };
+      } else if (url.pathname === '/pub/player/importer/games/archives') {
+        data = { archives: [monthUrl] };
+      } else if (url.href === monthUrl) {
+        data = { games: monthGames };
+      } else {
+        throw new Error(`unexpected test fetch: ${url.href}`);
+      }
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+  }
+  async function postImport() {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    return gamesRoute.request('/import/chesscom', {
+      method: 'POST', headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'importer', limit: 20 }),
+    });
+  }
+
+  it('preserves unknown results without recording false losses and skips malformed or cross-user games', async () => {
+    mockFetch([
+      sample(99001),
+      sample(99002, { white: { username: 'importer', rating: 1200, result: 'future_outcome' } }),
+      sample(99003, { end_time: Number.MAX_VALUE }),
+      sample(99004, { white: { username: 'somebody_else', rating: 1200, result: 'win' } }),
+      sample(99005, { pgn: 'this is not legal PGN' }),
+    ]);
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ imported: 2, total: 5 });
+      expect(db.prepare('SELECT external_id, result FROM games WHERE user_id = 6 ORDER BY external_id').all()).toEqual([
+        { external_id: 'https://www.chess.com/game/live/99001', result: 'win' },
+        { external_id: 'https://www.chess.com/game/live/99002', result: null },
+      ]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('bounds concurrent manual imports per user and releases the slot after completion', async () => {
+    let release = () => {};
+    let entered = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    mockFetch([], async () => { entered(); await gate; });
+    try {
+      const first = postImport();
+      await started;
+      const duplicate = await postImport();
+      expect(duplicate.status).toBe(429);
+      expect(await duplicate.json()).toEqual({ error: 'import_in_progress' });
+      release();
+      expect((await first).status).toBe(200);
+      expect((await postImport()).status).toBe(200);
+    } finally { release(); vi.unstubAllGlobals(); }
+  });
+});
+
 describe('defensive analysis metric decoding', () => {
   it('tolerates corrupt caches without throwing and ignores invalid moves', () => {
     expect(readAnalysisMoves('{broken')).toEqual([]);
@@ -169,7 +315,13 @@ describe('defensive analysis metric decoding', () => {
       { ply: 1, san: 'e4', classification: 'good', fen_after: '8/8/8/8/8/8/8/8', centipawn_loss: 0 },
       { ply: 2, san: 'bad', classification: 'unknown', fen_after: 'invalid', centipawn_loss: 0 },
     ]))).toHaveLength(1);
+    expect(readAnalysisMoves(JSON.stringify([
+      { ply: 1, san: 'e4', classification: 'good', fen_after: '8/8/8/8/8/8/8/8', centipawn_loss: -30 },
+      { ply: 2, san: 'e5', classification: 'good', fen_after: '8/8/8/8/8/8/8/8', centipawn_loss: 20, eval_before_cp: 'invalid' },
+      { ply: 2, san: 'e5', classification: 'blunder', fen_after: '8/8/8/8/8/8/8/8', centipawn_loss: 500 },
+    ]))).toMatchObject([{ ply: 2, eval_before_cp: null }]);
     expect(readPhaseSplit('{broken')).toBeNull();
     expect(readPhaseSplit('{"opening":{"from_ply":1,"to_ply":14,"accuracy_white":85,"accuracy_black":75}}')?.opening?.accuracy_white).toBe(85);
+    expect(readPhaseSplit('{"opening":{"from_ply":1,"to_ply":14,"accuracy_white":180,"accuracy_black":75}}')?.opening).toBeNull();
   });
 });

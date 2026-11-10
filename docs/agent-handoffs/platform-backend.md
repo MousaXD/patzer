@@ -215,3 +215,56 @@ These results were **actually rerun during this continuation** with local Python
 - The already-existing behavior (20 most recent Chess.com games every 15 minutes) remains unchanged. Test-only environment overrides were not persisted.
 - Five mandatory GitHub checks and all prescribed local suites, including real-browser and isolated Docker, passed on exact tested code/doc revision `2afc70b`. The new handoff-only commit following this section contains documentation and therefore does not alter tested application code; GitHub may generate new PR checks for that documentation commit.
 - **Verification verdict: READY for coordinator review** on the tested application revision. **PR #14 remains draft and MUST NOT be merged** without Agent 00's cross-agent integration approval. Any fresh head check triggered by this documentation update should also be reviewed before merging.
+
+## Deep improvement sprint — November 10, 2026
+
+### Ownership and starting point
+
+- Continued on **existing** `/home/mousa/projects/my-creations/chess/patzer-agent-platform` worktree and `agent/platform-backend-20261110` branch, starting from verified clean SHA `9385b9a9c64b2989c0895b67f6f5490a127f1572`.
+- Read-only fetched and inspected the three other active agents' branches. Latest checked remote SHAs: Product UI `2f1f3f2`, Game Review `e006b25`, Chess Backend `1c8bc12`. No current changed-file overlap with this sprint's platform files. Earlier pairwise read-only merge-tree checks returned zero conflicts; the latest remote diffs were refreshed and compared by file ownership. **No branches were merged or cherry-picked.**
+- Product UI has now implemented offset-pagination in its Review library (`has_more` and `offset` support) using the server contract that this branch already provides, resolving the earlier stale 200-game display cap on modern servers. Game Review and Chess Backend have no incompatible owned-file changes identified. Cross-branch functional integration still belongs to Agent 00.
+
+### Root causes found and fixes shipped in this sprint
+
+1. **Resumable PvP list prematurely truncated.** `GET /api/games/live` applied SQL `LIMIT 20` before testing whether the returned PGNs were actually resumable, allowing recent invalid/finished records to hide older valid games. Now scans pages of up to 20 with deterministic ordering, stopping after 20 verified resumable games or 100 examined candidates. User ownership and the 14-day recency rule remain intact.
+2. **Activity heatmap admitted future games.** Insights v2 used an unbounded lower-end timestamp check and compared ISO `T` dates with SQLite's space-separated `datetime`, also producing a boundary ambiguity. Now selects exactly the last 365 **UTC calendar dates** using `substr(end_time,1,10) BETWEEN date('now','-364 days') AND date('now')`.
+3. **Wrong-side Insights attribution.** Nullable `games.user_color` was silently interpreted as white (or, in the v2 accuracy SQL expression, as black), manufacturing personal move classifications, phase accuracy and trend data for an unknown player color. Both Insights routes now count the analyzed game for coverage but skip *personal* aggregates when the player side is missing. The v2 SQL accuracy expression explicitly handles both known colors and otherwise yields NULL.
+4. **Corrupt analysis metrics contaminated aggregates.** The defensive decoder now drops negative centipawn loss, rejects repeat plies so a corrupt cached move cannot count twice, and normalizes invalid optional evaluation numbers to NULL without losing an otherwise usable move. Phase accuracy outside 0–100 is rejected rather than averaged into the player's performance.
+5. **Recent Chess.com import could fail halfway through on one malformed game or misclassify results.** The recent-game importer now validates HTTPS Chess.com game URL origin, standard-chess rules, legal PGN, players, finite timestamps and player membership in the requested account. Malformed/unrelated rows are skipped independently; unknown/new Chess.com outcome codes persist as `result=NULL` instead of invented losses. Existing `{ imported, total }` API and database uniqueness contract are preserved.
+6. **Manual Chess.com import lacked concurrency protection.** The manual import endpoint now permits only one in-flight request per user, covering the player lookup and import, returning HTTP 429 `import_in_progress` to concurrent submissions. A `finally` block releases the slot even after failures. This guard is **only** on the manual route; the existing automatic sync remains unchanged at **20 recent games every 15 minutes**.
+7. **Historical Chess.com import stored malformed PGNs.** An unrecognized opening and illegal PGN both previously yielded a null opening lookup; the importer still wrote the illegal game. It now explicitly parses PGN legality before committing each game, skipping an invalid entry without rolling back valid entries from the same month. Transaction/checkpoint behavior unchanged.
+
+### Regression evidence: demonstrated red before green
+
+- Existing `server/test/platform-backend.test.ts` increased from **7 to 12 tests**. New tests reproduce malformed recent game hiding a resumable PvP session; a future-dated heatmap game; null player-side false attribution; recent import of unknown result, invalid timestamp, unrelated players and illegal PGN; and concurrent manual import contention/recovery. Expanded the existing decoder test for duplicate plies, corrupt optional evaluations, negative losses and accuracy outside 0–100.
+- Existing `server/test/chesscom-history.test.ts` increased from **10 to 11 tests**, demonstrating that an illegal PGN was previously inserted and is now skipped.
+- The new edge-case tests **failed on the old code** (including HTTP 500 from the invalid Chess.com timestamp and a timed-out duplicate request), then passed after the fixes. This is independent reproduction evidence, not a theoretical audit item.
+
+### Exact local certification (executed with isolated fixtures; no GitHub CI assumption)
+
+| Test / command | Result |
+| --- | --- |
+| `npm run typecheck` | **PASS** (server, web, test TypeScript) |
+| `npm test` | **PASS: 591 tests across 62 files** (previous baseline 585; 6 tests added) |
+| `npm run build` | **PASS**, server and Vite web |
+| `npm run test:e2e` | **PASS**, synthetic PvP protocol, isolated local DB and port 18999 |
+| `npm run test:resume` | **PASS**, real Stockfish, isolated DB and port 18997 |
+| `npm run test:oidc` | **PASS**, local fake OIDC issuer on 18994, app on 18993, isolated DB |
+| `npm run test:ui` | **PASS**, real Chromium two-client game UI |
+| `npm run test:resume-ui` | **PASS**, real Chromium reconnect, resume, discard and review completion |
+| `docker build --progress=plain -t patzer-platform-sprint-20261110 .` | **PASS**, local image, no push |
+| Docker boot smoke on `127.0.0.1:18881` | **PASS**, both `/api/meta` and `/` HTTP 200; temporary container deleted |
+| `git diff --check` | **PASS**, no whitespace errors |
+
+- The isolated integration runs set `NODE_ENV=test` and `CHESSCOM_SYNC_MINUTES=0` **in child test processes only**, with synthetic users, test IdP and temporary databases. No live/import-production data accessed; no real historical import, remote player data scrape, deployments or database migrations.
+- Test screenshots were moved from the worktree to `/tmp/patzer-platform-sprint-browser-evidence/` and all main validation logs remain under `/tmp/patzer-platform-sprint-*.log`.
+- GitHub Actions may queue again when this branch is pushed. **Local certification is direct evidence; do not claim a new GitHub Actions run passed unless it actually does.** The previously passing exact-SHA GitHub jobs certify the *prior* `2afc70b` revision only.
+
+### Remaining considerations and safety
+
+- No database schema or migration, authentication, Stockfish engine, CI workflow, deployment secrets, production database, frontend file, or `server/src/autoImport.ts` changed.
+- The newer Product UI branch uses the additive `GET /api/games` pagination contract; this sprint preserves `games`, `total`, `limit`, `offset` and `has_more`. Manual Chess.com import still returns `{ imported, total }`, with only the new concurrent-request error response.
+- A corrupted cached analysis returned to Game Review directly (outside the Insights decoder) is a distinct frontend/analysis concern for the Review/Chess Backend owners; no unowned files were edited.
+- PR #14 must **remain draft**, and Agent 00 must run/approve the combined cross-branch integration before any merge. Do not equate this branch's green isolated local checks with release approval.
+
+**Sprint verdict: READY for coordinator integration review on this branch (verified locally); release/merge gate remains with Agent 00.**

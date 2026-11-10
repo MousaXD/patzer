@@ -9,6 +9,7 @@
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { getMonth, listArchives, type ChessComGame } from './chesscom.js';
 import { lookupOpeningFromPgn } from './openings.js';
+import { Chess } from 'chess.js';
 
 export interface HistoryProgress {
   archive: string;
@@ -94,6 +95,10 @@ function gameRow(game: ChessComGame, username: string) {
   const lc = username.toLowerCase();
   const userColor: 'white' | 'black' | null = white.toLowerCase() === lc ? 'white' : black.toLowerCase() === lc ? 'black' : null;
   if (!userColor) return null;
+  // The opening lookup can return null for both legitimate unrecognized
+  // openings and malformed PGNs; validate legality independently so corrupt
+  // source data never reaches the analysis or review pipeline.
+  try { new Chess().loadPgn(game.pgn, { strict: false }); } catch { return null; }
   const result = gameResult(game, userColor);
   if (result === null) return null;
   const ecoHeader = /^\[ECO\s+"([A-E][0-9]{2})"\]/m.exec(game.pgn)?.[1] ?? null;

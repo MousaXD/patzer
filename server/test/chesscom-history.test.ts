@@ -140,6 +140,17 @@ describe('one-time Chess.com history', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({ n: 1 });
   });
 
+  it('skips illegal PGNs without aborting valid games from the same month', async () => {
+    const db = testDb();
+    const result = await importChessComHistory(db, 1, 'testuser', {
+      archives: async () => [archives[0]],
+      month: async () => [sample(1, { pgn: 'this is not a legal chess PGN' }), sample(2)],
+      delay: async () => {},
+    });
+    expect(result).toMatchObject({ imported: 1, skippedNonStandardOrInvalid: 1 });
+    expect(db.prepare('SELECT external_id FROM games').all()).toEqual([{ external_id: sample(2).url }]);
+  });
+
   it('never stores URL identifiers from lookalike Chess.com hosts', async () => {
     const db = testDb();
     const result = await importChessComHistory(db, 1, 'testuser', {

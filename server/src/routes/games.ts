@@ -87,36 +87,50 @@ interface UnfinishedPvpRow {
 router.get('/live', (c) => {
   const user = c.get('user');
 
-  const pvpRows = db.prepare(`
+  // Validate before counting a result toward the 20 playable games. Applying
+  // LIMIT 20 *before* checking PGNs can hide an older resumable game whenever
+  // recent records contain malformed or already-finished positions. Scan in
+  // bounded batches so a corrupt history cannot cause unbounded PGN parsing.
+  const page = db.prepare(`
     SELECT id, white, black, user_color, time_control, pgn, last_move_at, created_at
     FROM games
     WHERE user_id = ? AND source = 'pvp' AND end_time IS NULL
       AND COALESCE(last_move_at, created_at) > datetime('now','-14 days')
-    ORDER BY COALESCE(last_move_at, created_at) DESC
-    LIMIT 20
-  `).all(user.id) as UnfinishedPvpRow[];
-
-  const pvp = [];
-  for (const row of pvpRows) {
-    let ply = 0;
-    try {
-      const probe = new Chess();
-      if (row.pgn && row.pgn.trim()) probe.loadPgn(row.pgn, { strict: false });
-      // A finished position with no end_time means the game ended in a way we
-      // failed to record. Don't invite the user back into a game they cannot play.
-      if (probe.isGameOver()) continue;
-      ply = probe.history().length;
-    } catch {
-      continue;
+    ORDER BY COALESCE(last_move_at, created_at) DESC, id DESC
+    LIMIT ? OFFSET ?
+  `);
+  const MAX_RESULTS = 20;
+  const MAX_SCANNED = 100;
+  const pvp: { game_id: number; opponent: string; user_color: 'white' | 'black';
+    time_control: string; ply: number; updated_at: string }[] = [];
+  let scanned = 0;
+  while (pvp.length < MAX_RESULTS && scanned < MAX_SCANNED) {
+    const batchSize = Math.min(MAX_RESULTS, MAX_SCANNED - scanned);
+    const batch = page.all(user.id, batchSize, scanned) as UnfinishedPvpRow[];
+    if (!batch.length) break;
+    scanned += batch.length;
+    for (const row of batch) {
+      let ply = 0;
+      try {
+        const probe = new Chess();
+        if (row.pgn && row.pgn.trim()) probe.loadPgn(row.pgn, { strict: false });
+        // A finished position without end_time cannot be resumed.
+        if (probe.isGameOver()) continue;
+        ply = probe.history().length;
+      } catch {
+        continue;
+      }
+      pvp.push({
+        game_id: row.id,
+        opponent: row.user_color === 'white' ? row.black : row.white,
+        user_color: row.user_color,
+        time_control: row.time_control,
+        ply,
+        updated_at: row.last_move_at ?? row.created_at,
+      });
+      if (pvp.length >= MAX_RESULTS) break;
     }
-    pvp.push({
-      game_id: row.id,
-      opponent: row.user_color === 'white' ? row.black : row.white,
-      user_color: row.user_color,
-      time_control: row.time_control,
-      ply,
-      updated_at: row.last_move_at ?? row.created_at,
-    });
+    if (batch.length < batchSize) break;
   }
 
   return c.json({ bot: resumableSummary(loadLiveBotGame(user.id)), pvp });
@@ -188,6 +202,10 @@ const importSchema = z.object({
   limit: z.number().int().min(1).max(200).default(20),
 });
 
+// Limit one manual Chess.com import per user, including the initial profile lookup.
+// Automatic background sync keeps its existing independent schedule.
+const chesscomImportsRunning = new Set<number>();
+
 router.post('/import/chesscom', async (c) => {
   const user = c.get('user');
   const body = await c.req.json().catch(() => ({}));
@@ -196,10 +214,15 @@ router.post('/import/chesscom', async (c) => {
   const username = parsed.data.username ?? user.profile.chesscom_username;
   if (!username) return c.json({ error: 'no_chesscom_username' }, 400);
 
-  const player = await getPlayer(username);
-  if (!player) return c.json({ error: 'player_not_found' }, 404);
-
-  return c.json(await importChessComGames(user.id, username, parsed.data.limit));
+  if (chesscomImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
+  chesscomImportsRunning.add(user.id);
+  try {
+    const player = await getPlayer(username);
+    if (!player) return c.json({ error: 'player_not_found' }, 404);
+    return c.json(await importChessComGames(user.id, username, parsed.data.limit));
+  } finally {
+    chesscomImportsRunning.delete(user.id);
+  }
 });
 
 const lichessImportSchema = z.object({

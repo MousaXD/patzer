@@ -46,7 +46,10 @@ router.get('/', (c) => {
     analyzedCount++;
     const moves = readAnalysisMoves(r.moves_json);
     const split = readPhaseSplit(r.phase_split_json);
-    const userColor = r.user_color ?? 'white';
+    // Legacy imported games can have an unknown player side; never
+    // attribute white's move quality or phase accuracy to that user.
+    if (r.user_color !== 'white' && r.user_color !== 'black') continue;
+    const userColor = r.user_color;
 
     if (split?.opening) {
       const acc = userColor === 'white' ? split.opening.accuracy_white : split.opening.accuracy_black;

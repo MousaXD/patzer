@@ -64,7 +64,7 @@ router.get('/', (c) => {
            SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) AS wins
     FROM games
     WHERE user_id = ? AND end_time IS NOT NULL AND start_fen IS NULL
-      AND end_time >= datetime('now','-365 days')
+      AND substr(end_time, 1, 10) BETWEEN date('now','-364 days') AND date('now')
     GROUP BY day
     ORDER BY day ASC
   `).all(me.id) as DayRow[];
@@ -122,7 +122,8 @@ router.get('/', (c) => {
   const rows = db.prepare(`
     SELECT a.game_id, g.user_color, g.end_time, g.result, g.time_class,
            g.eco, g.opening_name, a.moves_json, a.phase_split_json, g.white, g.black,
-           CASE WHEN g.user_color='white' THEN a.accuracy_white ELSE a.accuracy_black END AS accuracy_user
+           CASE WHEN g.user_color='white' THEN a.accuracy_white
+                WHEN g.user_color='black' THEN a.accuracy_black ELSE NULL END AS accuracy_user
     FROM analyses a JOIN games g ON g.id = a.game_id
     WHERE g.user_id = ? AND a.scoring_version >= ? AND g.start_fen IS NULL
     ORDER BY g.end_time DESC, g.id DESC
@@ -179,7 +180,10 @@ router.get('/', (c) => {
 
   for (const r of rows) {
     analyzedCount++;
-    const userColor: Color = r.user_color ?? 'white';
+    // The row may predate reliable player-color attribution. Count the
+    // analysis for coverage, but never invent white-side personal metrics.
+    if (r.user_color !== 'white' && r.user_color !== 'black') continue;
+    const userColor: Color = r.user_color;
     const moves = readAnalysisMoves(r.moves_json);
     const split = readPhaseSplit(r.phase_split_json);
 
