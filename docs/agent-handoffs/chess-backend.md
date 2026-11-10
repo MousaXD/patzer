@@ -5,6 +5,15 @@
 **Baseline:** `c8d9e1e`  
 **Status:** Continued implementation committed to the assigned branch; exact-head CI has not yet completed. **Keep draft; do not merge or deploy until exact-head checks pass and coordinator approves.**
 
+## 2026-11-10 final CI follow-up — current code SHA `bf84272c7d61371ac61045ebf55a79d32921bbb0`
+
+- Inspected the completed exact-head workflows on `c7bd46947d91a82acc1a4080dd8f91f36ea3b909`: [CI #42854314420](https://github.com/MousaXD/patzer/actions/runs/42854314420) and [Frontend Overhaul QA #42854314439](https://github.com/MousaXD/patzer/actions/runs/42854314439). Both **failed** on a shared TypeScript diagnostic at `server/src/routes/analyze.ts:285`: assigning a `() => void` abort cleanup callback to a variable incorrectly inferred as `() => undefined`. All affected workflow jobs were blocked at typecheck/build, not by a demonstrated runtime regression.
+- Fixed the exact type mismatch in the owned route with explicit `let removeAbort: () => void = () => {};`, committed/pushed as `bf84272c7d61371ac61045ebf55a79d32921bbb0`; no other code or API changes in this commit.
+- Exact code-commit verification runs: [CI #42863554257](https://github.com/MousaXD/patzer/actions/runs/42863554257) and [Frontend Overhaul QA #42863554271](https://github.com/MousaXD/patzer/actions/runs/42863554271). **Both still queued at last inspection. No latest-code CI success is claimed.**
+- The last fully green branch state was `7b99cc97868894848aa45aee5f715080fcc389ff`, with [CI #42850910996](https://github.com/MousaXD/patzer/actions/runs/42850910996) and [QA #42850911140](https://github.com/MousaXD/patzer/actions/runs/42850911140) succeeding. The new variation abort feature and its associated tests came afterward, so they are not covered by those earlier passes.
+- **Release gate:** Keep [draft PR #12](https://github.com/MousaXD/patzer/pull/12) unmerged and undeployed until at least the latest-code commit `bf84272...` has green Node 20/22 typecheck, tests/build, Docker smoke, browser regression, and independent QA, followed by Agent 00 integration review. A subsequent handoff-document-only commit does not change the code test target.
+- Only original remote branch used; no local worktree present, production services, live database, other agents' files, main-branch writes, merges or deployments. Integration dependency remains frontend handling for `429 engine_busy`/stale requests and backend ownership of remote engine cancellation.
+
 ## Continuation — final implementation commit `bb93dbd93266d0dc8acdc4c27940dd700f32aa57`
 
 **Working directory verification:** This session's shell was at `/`, not a Git repository; the assigned path `/home/mousa/projects/my-creations/chess/patzer-agent-chess-backend` did not exist in the container. The original GitHub branch `agent/chess-backend-20261110` was verified through the authenticated connector; changes were made **only on that exact remote branch**. No substitute checkout, reset, merge, rebase, cherry-pick or deployment was performed.
