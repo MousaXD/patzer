@@ -239,6 +239,13 @@ try {
   await test('Blind keyboard selector never reveals mate SAN before committing a move', async () => {
     await startBlind(page, mateLeakFixture.id);
     await assertNoSpoilers(page);
+    await page.getByText('Read board position as text').click();
+    const boardAsText = page.getByText('Read board position as text').locator('..');
+    const readableBefore = await boardAsText.innerText();
+    assert.match(readableBefore, /Black to move/);
+    assert.match(readableBefore, /Pawn on g4/);
+    assert.match(readableBefore, /Queen on d8/);
+    assert.ok(!readableBefore.includes('Qh4#'), 'text-only position revealed a future mate');
     await page.getByText(/Or choose a piece and destination/).click();
     const optionsBefore = await page.locator('option').allTextContents();
     assert.ok(optionsBefore.every((label) => !/[+#]/.test(label)), 'an accessible option exposed check or mate');
@@ -256,6 +263,9 @@ try {
       await page.getByRole('button', { name: 'Play chosen move' }).click();
       await page.getByText(/Your move:/).waitFor();
       assert.match(await page.locator('[data-practice-mode]').innerText(), /Qh4#/);
+      const readableAfter = await boardAsText.innerText();
+      assert.match(readableAfter, /White to move, in check/);
+      assert.match(readableAfter, /Queen on h4/);
       await page.getByText(/could not score this attempt/).waitFor();
       assert.equal(await page.getByText(/Engine assessment:/).count(), 0);
     } finally { await page.unroute('**/api/analyze/variation-move'); }

@@ -19,6 +19,25 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
+  it('provides a screen-reader-accessible board description without an engine hint, updated after an attempt', () => {
+    const game = new Chess();
+    for (const san of ['f3', 'e5', 'g4']) game.move(san);
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const { container } = render(<MistakePractice fenBefore={game.fen()} orientation="black" onExit={vi.fn()} />);
+    expect(screen.getByRole('group', { name: 'Practice chessboard' })).toBeTruthy();
+    fireEvent.click(screen.getByText('Read board position as text'));
+    const textualBoard = screen.getByText('Read board position as text').closest('details')!;
+    expect(screen.getByRole('group', { name: 'Current chess position' })).toBeTruthy();
+    expect(screen.getByText('Black to move.')).toBeTruthy();
+    expect(textualBoard.textContent).toContain('Pawn on g4');
+    expect(textualBoard.textContent).toContain('Queen on d8');
+    expect(container.textContent).not.toContain('Qh4#');
+    fireEvent.change(screen.getByLabelText(/Type a legal chess move/), { target: { value: 'd8h4' } });
+    fireEvent.click(screen.getByText('Submit move'));
+    expect(screen.getByText('White to move, in check.')).toBeTruthy();
+    expect(textualBoard.textContent).toContain('Queen on h4');
+    expect(screen.queryByText(/Engine assessment:/)).toBeNull();
+  });
   it('offers legal piece/square choices without score symbols to keyboard and screen-reader users', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ quality }) }));
     render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);

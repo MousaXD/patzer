@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
 import type { VariationMoveQuality } from '../../lib/classification';
-import { createPracticeAttempt, legalPracticeSquareMoves, verifiedPracticeQuality } from './mistakePractice';
+import { createPracticeAttempt, describePracticePosition, legalPracticeSquareMoves, verifiedPracticeQuality } from './mistakePractice';
 
 const start = new Chess().fen();
 const attempt = createPracticeAttempt(start, 'e2e4')!;
@@ -14,6 +14,23 @@ const quality = {
 } as VariationMoveQuality;
 
 describe('blind practice attempt boundary', () => {
+  it('describes all visible pieces and turn from FEN, without revealing future moves', () => {
+    const initial = describePracticePosition(start);
+    expect(initial?.toMove).toBe('White');
+    expect(initial?.inCheck).toBe(false);
+    expect(initial?.white).toHaveLength(16);
+    expect(initial?.black).toHaveLength(16);
+    expect(initial?.white).toContain('King on e1');
+    expect(initial?.black).toContain('Queen on d8');
+    const game = new Chess();
+    for (const san of ['f3', 'e5', 'g4']) game.move(san);
+    const beforeMate = describePracticePosition(game.fen());
+    expect(beforeMate?.toMove).toBe('Black');
+    expect(beforeMate?.white).toContain('Pawn on g4');
+    expect(beforeMate?.black).toContain('Queen on d8');
+    expect(JSON.stringify(beforeMate)).not.toMatch(/Qh4#|best_move|win_pct/);
+    expect(describePracticePosition('invalid')).toBeNull();
+  });
   it('does not expose SAN mate/check annotations before a blind attempt', () => {
     const game = new Chess();
     for (const san of ['f3', 'e5', 'g4']) game.move(san);

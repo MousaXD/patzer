@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ChessBoard from '../ChessBoard';
 import { postReviewAnalysis } from './reviewAnalysisRequest';
 import { reviewVariationScoringRequest } from './reviewPosition';
-import { createPracticeAttempt, legalPracticeSquareMoves, verifiedPracticeQuality, type PracticeAttempt } from './mistakePractice';
+import { createPracticeAttempt, describePracticePosition, legalPracticeSquareMoves, verifiedPracticeQuality, type PracticeAttempt } from './mistakePractice';
 import type { VariationMoveQuality } from '../../lib/classification';
 
 const PIECE_NAMES: Record<string, string> = {
@@ -34,6 +34,8 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const [promotion, setPromotion] = useState('');
   const [retry, setRetry] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const displayedFen = attempt?.fenAfter ?? fenBefore;
+  const positionSummary = useMemo(() => describePracticePosition(displayedFen), [displayedFen]);
   const choices = useMemo(() => legalPracticeSquareMoves(fenBefore), [fenBefore]);
   const origins = useMemo(() => Array.from(new Map(choices.map((move) => [
     move.from, { square: move.from, piece: move.piece },
@@ -90,11 +92,22 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
         <button type="button" className="btn-secondary min-h-11" onClick={exit}>{exitLabel}</button>
       </div>
       <div className="mx-auto w-full" style={{ maxWidth: 'min(72dvh, 560px, calc(100vw - 3.5rem))' }}>
-        <div className={`aspect-square w-full board-theme-${boardTheme}`} aria-label="Practice chessboard">
+        <div role="group" className={`aspect-square w-full board-theme-${boardTheme}`} aria-label="Practice chessboard">
           <ChessBoard key={attempt ? 'attempt' : 'blind'} fen={attempt?.fenAfter ?? fenBefore}
             orientation={orientation} analysisMode={!attempt} onMove={submitMove} />
         </div>
       </div>
+      <details className="mx-auto mt-3 max-w-xl rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
+        <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
+          Read board position as text
+        </summary>
+        {positionSummary ? <div role="group" className="mt-2 space-y-2" aria-label="Current chess position">
+          <p>{positionSummary.toMove} to move{positionSummary.inCheck ? ', in check' : ''}.</p>
+          <p><strong>White pieces:</strong> {positionSummary.white.join(', ')}.</p>
+          <p><strong>Black pieces:</strong> {positionSummary.black.join(', ')}.</p>
+          <p className="text-xs text-chesscom-500">Piece locations only — no engine recommendation is provided.</p>
+        </div> : <p className="mt-2" role="status">Position text is unavailable.</p>}
+      </details>
       {!attempt && <div className="mt-4 space-y-3">
         <p className="text-center text-sm" role="status">Make one legal move on the board. The engine suggestion is hidden until you try.</p>
         <form className="flex flex-wrap items-end justify-center gap-2" onSubmit={(event) => { event.preventDefault(); submitMove(typedMove.trim()); }}>

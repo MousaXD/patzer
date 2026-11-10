@@ -16,6 +16,40 @@ export interface PracticeSquareMove {
   promotion?: string;
 }
 
+export interface PracticePositionSummary {
+  toMove: 'White' | 'Black';
+  inCheck: boolean;
+  white: string[];
+  black: string[];
+}
+
+const pieceNames: Record<string, string> = {
+  p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King',
+};
+
+/** A factual, screen-reader-friendly description of the CURRENT board.
+ * Never read saved moves, the engine, evaluation or future variations. */
+export function describePracticePosition(fen: string): PracticePositionSummary | null {
+  try {
+    const chess = new Chess(fen);
+    const white: string[] = [];
+    const black: string[] = [];
+    for (const rank of chess.board()) {
+      for (const piece of rank) {
+        if (!piece) continue;
+        const item = `${pieceNames[piece.type]} on ${piece.square}`;
+        (piece.color === 'w' ? white : black).push(item);
+      }
+    }
+    return {
+      toMove: chess.turn() === 'w' ? 'White' : 'Black',
+      inCheck: chess.isCheck(),
+      white,
+      black,
+    };
+  } catch { return null; }
+}
+
 /** Only the squares, piece type and promotion choice are disclosed. Showing
  * full SAN before an attempt leaks checks (+) and even forced mates (#).
  * These choices are unranked and use chess.js legality, not engine evidence. */
