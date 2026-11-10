@@ -34,7 +34,7 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
   const result = params.get('result');
   const analyzed = params.get('analyzed');
   const sort = params.get('sort') ?? 'newest';
-  if (limit === null || limit < 1 || offset === null || q.length > 120 ||
+  if (limit === null || offset === null || q.length > 120 ||
       (bookmarked !== '0' && bookmarked !== '1') ||
       (source !== null && !SOURCES.has(source)) ||
       (timeClass !== null && !TIME_CLASSES.has(timeClass)) ||
