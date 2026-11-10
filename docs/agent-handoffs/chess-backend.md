@@ -1,5 +1,41 @@
 # Chess Backend Agent Handoff — 2026-11-10
 
+## 2026-11-10 independent improvement sprint — locally certified source `d6f788dadbae371cdc10e0e1a117203e819f13db`
+
+**Verdict: READY FOR COORDINATOR REVIEW on local evidence; GitHub-hosted checks are still a separate outstanding gate.** This is a targeted follow-up on the already completed backend work, not a redesign. No source/API success contract was removed. PR #12 must remain draft and unmerged until Agent 00 decides integration/release gates.
+
+### Proven defects and limited fixes
+
+1. **Concurrent control commands / UCI searches** (`server/src/chess/stockfish.ts`): A `newGame()` or `setOption()` call could start an asynchronous UCI write, yield, and then allow a new `evaluate()` or `bestMove()` to acquire the search guard before the control handshake completed. A regression first reproduced this command interleaving. Control operations (`newGame`, `setOption`, `name`) now acquire their own synchronous exclusive guard, checked alongside the existing search guard, and release it in `finally`. Sequential work is unaffected. A fake-UCI test verifies that concurrent calls fail fast with `engine_busy` and that the engine can subsequently evaluate successfully.
+2. **Malformed optional UCI PV aborting an otherwise valid game review** (`server/src/routes/analyze.ts`): `chess.js` throws for an illegal best-move/PV entry. The previous unguarded full-game SAN conversion could reject the entire analysis even with a valid engine score. The route now drops an illegal best move to `null` and stops PV SAN replay at the first invalid continuation, without hiding a scoring or engine failure. A regression first failed with `Invalid move` and now passes.
+3. **Late request cancellation after scoring but during engine teardown** (`server/src/routes/analyze.ts`): The request could abort while awaiting `engine.quit()` in the function's `finally`, after the final ply cancellation check, and the score could still resolve to the HTTP route for persistence. A regression reproduced this. The finalizer now rejects `analysis_cancelled` if the signal is aborted when shutdown completes. Previous cancellation behavior is preserved.
+4. **Cross-agent Game Review dependency checked:** An additional regression verifies a `[SetUp "1"]` / FEN-start PGN where Black plays the first recorded move, including use of the true starting FEN. No source fix was necessary for this case.
+
+**Changed files (source revision):** `server/src/chess/stockfish.ts`, `server/src/routes/analyze.ts`, `server/test/analysis-agent-stockfish.test.ts`, `server/test/analysis-agent-pgn-lifecycle.test.ts`. Only this handoff file is changed in the subsequent documentation commit. No frontend, gameplay, platform API, database, authentication, engine-provider or other agents' files were modified.
+
+### Exact local verification (Node v22.23.2, npm 11.18.0)
+
+- `npm ci --no-audit --no-fund`: PASS; locked dependencies installed in a separate fresh checkout, not another agent's assigned worktree.
+- `npm run typecheck`: PASS.
+- `npm test -- --run server/test/analysis-agent-work.test.ts server/test/analysis-agent-stockfish.test.ts server/test/analysis-agent-pgn-lifecycle.test.ts server/test/variation-scoring.test.ts server/test/classifier.test.ts`: PASS, **70/70** across five test files.
+- `npm test`: PASS, **595/595** across 63 test files (run after all new tests).
+- `npm run build`: PASS, server and web.
+- Five repeated runs of the three analysis-agent work/Stockfish/PGN regression files: **25/25 PASS each time** (125 repeated assertions; no observed hangs or unhandled rejections).
+- `npm run setup`: PASS; local Stockfish 17 installed in the disposable checkout. Playwright installed in an external prefix, Chromium available.
+- `npm run test:e2e`, `npm run test:resume`, `npm run test:oidc`, `npm run test:ui`, `npm run test:resume-ui`: **all PASS**, run sequentially against scratch SQLite databases/local test ports.
+- `PATZER_QA_ARTIFACTS=.local-validation/frontend-overhaul-exact-code GITHUB_SHA=d6f788dadbae371cdc10e0e1a117203e819f13db node qa/agent07/frontend-overhaul-smoke.mjs`: PASS, **35/35 checks, zero browser errors**, results tagged with the exact source commit.
+- `docker build -t patzer-chess-backend-polish:20261110 .`: PASS; a temporary image was started only on `127.0.0.1:18900`, `/api/meta` returned OK and `/` returned HTTP 200; temporary test container removed. No image was published or deployed.
+
+**Validation boundary:** GitHub Actions has been heavily queued across the four agent branches; local runs above are **not** GitHub-hosted green checks, and Node 20 parity was not independently run here. The previous baseline was `5a465051708683f4ec72d6b258f0de55cab43f7b`. This sprint's tests and browser QA certify source revision `d6f788d...`; the later handoff-only commit cannot alter its runtime behavior. No throughput or performance speedup was benchmarked.
+
+### Coordination / ownership
+
+- Compared paths changed from the shared `c8d9e1e` baseline across `agent/platform-backend-20261110`, `agent/product-ui-20261110`, and `agent/review-experience-20261110`. At the time of review, there were **no overlapping changed files** with this backend lane. The other branches were inspected read-only and never merged, checked out, modified or pushed.
+- Product UI/review agents still own client cancellation, stale position navigation, and retry UX for `429 engine_busy`. Agent 00 must coordinate review cache-repair/`force: true` and SSE end-to-end integration, which were not added to this scoped unit regression set.
+- Platform/backend owner still owns cross-workload CPU scheduling and cancellation/retry behavior in remote `ChessApiEngine`. No out-of-lane API or provider files were changed.
+- No production databases, Patzer services, live tunnels, secrets, other agents' worktrees or deployed code were accessed. All test evidence lives under an untracked `.local-validation/` in the disposable checkout and was not committed.
+
+
 ## Local CI recovery and certification — 2026-11-10 (Node 22)
 
 **Verdict: BLOCKED on GitHub-hosted exact-head CI, despite passing local verification.** The backend source revision verified locally was `40262d8e08a4598b21df58a31de53e600eae9286` (the source-code fix is `bf84272c7d61371ac61045ebf55a79d32921bbb0`; the subsequent commit only changed this handoff). This section is the only new change; no runtime sources, tests, API contracts, or other agent files were modified.
