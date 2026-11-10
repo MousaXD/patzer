@@ -79,3 +79,11 @@ Changes made after the original `0cc6d87bdc9b27d7db21bc4d5bd269cc3fa538ed` hando
 - **Backend owner:** Implement true stable cursor/offset pagination beyond the current 200-record API limit. The frontend cannot provide older arbitrary rows until that API contract lands.
 - **Agent 00:** Integrate shared Home/Review/Insights/Settings/Play/Layout changes only after exact-HEAD tests and conflicts with the independent review/analysis agent are reviewed; do not automatically merge another agent's files.
 - **QA:** Run GitHub CI and all relevant UI gates on the final branch SHA. Include 320px/375px touch layouts, dark/light, keyboard/reader interaction, authenticated Settings saves (including concurrent edits) and deep-library searches.
+
+## Final certification follow-up — 2026-11-10
+
+**Root-cause investigation on exact SHA `0a2b89f8c223339369f3aa205d8e9599db4951c2`:** All three workflows failed on the *Existing/unit tests* stage, despite 64 test files and 581 assertions passing. The logs identify six unhandled `AbortError: The animation was canceled` rejections from Framer Motion's `Animation.cancel` during Happy DOM teardown, all originating in the new `web/src/pages/Home.stats.test.tsx` test. Docker image builds, Node typechecking, browser regression job, and other non-unit gates passed. This is not evidence of a production animation defect.
+
+**Correction:** `d6cb66d3b891b28cac613aa046c87b352f78363a` updates only `Home.stats.test.tsx`, replacing Framer Motion's test-only animated wrappers with equivalent static React elements. The real Home page keeps production Framer Motion unchanged. The test continues to verify the statistics failure/retry UI while no longer mounting Web Animations in Happy DOM.
+
+**Certification status:** Obtain and review exact-head CI, Frontend Overhaul QA, and design-system certification on the latest branch tip before accepting or merging PR #11. Do not infer green status from the 581 passing assertions if the test runner still reports unhandled rejections. No production, backend, main or other-agent changes were made.
