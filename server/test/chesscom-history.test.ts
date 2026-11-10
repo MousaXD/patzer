@@ -108,4 +108,53 @@ describe('one-time Chess.com history', () => {
     expect(delays).toEqual([1000, 2000]);
     await expect(retryChessCom(async () => { throw new Error('invalid_username'); }, async () => {})).rejects.toThrow('invalid_username');
   });
+  it('rejects cross-account, query-bearing and invalid-month archives before fetching', async () => {
+    const db = testDb();
+    for (const url of [
+      'https://api.chess.com/pub/player/otheruser/games/2026/02',
+      archives[0] + '?redirect=https://example.com',
+      'https://api.chess.com/pub/player/testuser/games/2026/13',
+      'https://api.chess.com.evil.example/pub/player/testuser/games/2026/02',
+      'this is not a URL',
+    ]) {
+      let monthCalls = 0;
+      await expect(importChessComHistory(db, 1, 'testuser', {
+        archives: async () => [url],
+        month: async () => { monthCalls++; return [sample(1)]; },
+        delay: async () => {},
+      })).rejects.toThrow('invalid_archive_url');
+      expect(monthCalls).toBe(0);
+    }
+  });
+
+  it('deduplicates repeated archive entries and skips a malformed game without dropping the month', async () => {
+    const db = testDb();
+    let monthCalls = 0;
+    const result = await importChessComHistory(db, 1, 'testuser', {
+      archives: async () => [archives[0], archives[0]],
+      month: async () => { monthCalls++; return [sample(1), sample(2, { end_time: Number.MAX_VALUE })]; },
+      delay: async () => {},
+    });
+    expect(monthCalls).toBe(1);
+    expect(result).toMatchObject({ archives: 1, completed: 1, gamesFetched: 2, imported: 1, skippedNonStandardOrInvalid: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({ n: 1 });
+  });
+
+  it('retries network timeouts and transient HTTP 408 without swallowing permanent errors', async () => {
+    const delays: number[] = [];
+    let attempts = 0;
+    const value = await retryChessCom(async () => {
+      attempts++;
+      if (attempts === 1) throw new Error('chesscom_408');
+      if (attempts === 2) {
+        const error = new Error('Request cancelled by timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      }
+      return 123;
+    }, async (ms) => { delays.push(ms); });
+    expect(value).toBe(123);
+    expect(delays).toEqual([1000, 2000]);
+  });
+
 });
