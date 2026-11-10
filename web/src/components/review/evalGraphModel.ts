@@ -21,9 +21,10 @@ export function buildEvalGraphPoints(evals: readonly EvalSample[]): EvalPoint[] 
 /** Missing evaluations are gaps, not balanced positions or interpolated data. */
 export function scoredEvalSegments(points: readonly EvalPoint[]): EvalPoint[][] {
   const segments: EvalPoint[][] = [];
-  for (const point of points) {
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index]!;
     if (point.y === null) continue;
-    if (segments.length === 0 || points[points.indexOf(point) - 1]?.y === null) {
+    if (segments.length === 0 || index === 0 || points[index - 1]!.y === null) {
       segments.push([]);
     }
     segments[segments.length - 1]!.push(point);
