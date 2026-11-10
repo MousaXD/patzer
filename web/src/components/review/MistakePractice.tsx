@@ -2,8 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ChessBoard from '../ChessBoard';
 import { postReviewAnalysis } from './reviewAnalysisRequest';
 import { reviewVariationScoringRequest } from './reviewPosition';
-import { createPracticeAttempt, legalPracticeChoices, verifiedPracticeQuality, type PracticeAttempt } from './mistakePractice';
+import { createPracticeAttempt, legalPracticeSquareMoves, verifiedPracticeQuality, type PracticeAttempt } from './mistakePractice';
 import type { VariationMoveQuality } from '../../lib/classification';
+
+const PIECE_NAMES: Record<string, string> = {
+  p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King',
+};
+const PROMOTION_NAMES: Record<string, string> = {
+  q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight',
+};
 
 interface Props {
   /** Exact position before the selected saved mistake. */
@@ -22,10 +29,19 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [typedMove, setTypedMove] = useState('');
-  const [selectedMove, setSelectedMove] = useState('');
+  const [fromSquare, setFromSquare] = useState('');
+  const [toSquare, setToSquare] = useState('');
+  const [promotion, setPromotion] = useState('');
   const [retry, setRetry] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const choices = useMemo(() => legalPracticeChoices(fenBefore), [fenBefore]);
+  const choices = useMemo(() => legalPracticeSquareMoves(fenBefore), [fenBefore]);
+  const origins = useMemo(() => Array.from(new Map(choices.map((move) => [
+    move.from, { square: move.from, piece: move.piece },
+  ])).values()), [choices]);
+  const destinations = Array.from(new Set(choices.filter((move) => move.from === fromSquare).map((move) => move.to)));
+  const promotions = choices.filter((move) => move.from === fromSquare && move.to === toSquare && move.promotion)
+    .map((move) => move.promotion!);
+  const canPlaySquares = Boolean(fromSquare && toSquare && (promotions.length === 0 || promotions.includes(promotion)));
 
   useEffect(() => { headingRef.current?.focus(); }, []);
   useEffect(() => {
@@ -56,7 +72,10 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
     if (legal) { setError(''); setPending(true); setAttempt(legal); }
     else setError('That move is not legal in this position. Try another.');
   };
-  const reset = () => { setTypedMove(''); setSelectedMove(''); setAttempt(null); setQuality(null); setError(''); setPending(false); headingRef.current?.focus(); };
+  const reset = () => {
+    setTypedMove(''); setFromSquare(''); setToSquare(''); setPromotion('');
+    setAttempt(null); setQuality(null); setError(''); setPending(false); headingRef.current?.focus();
+  };
   const exit = () => { onExit(); };
 
   return (
@@ -88,19 +107,44 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
           <button type="submit" className="btn-primary min-h-11">Submit move</button>
         </form>
         <details className="mx-auto max-w-md rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
-          <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">Or choose from all legal moves (keyboard accessible)</summary>
-          <p id="practice-choices-help" className="mt-2 text-xs text-chesscom-500">These are legal moves only, not engine recommendations.</p>
-          <div className="mt-2 flex flex-wrap items-end gap-2">
-            <label htmlFor="practice-choice" className="flex min-w-0 flex-1 flex-col gap-1">Legal move
-              <select id="practice-choice" aria-describedby="practice-choices-help" value={selectedMove}
-                onChange={(event) => { setSelectedMove(event.target.value); setError(''); }}
+          <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
+            Or choose a piece and destination (keyboard accessible)
+          </summary>
+          <p id="practice-choices-help" className="mt-2 text-xs text-chesscom-500">
+            Choose your own move. The selectors include only legal squares, never engine suggestions, check markers or mate hints.
+          </p>
+          <div className="mt-2 flex flex-col gap-2">
+            <label htmlFor="practice-from" className="flex flex-col gap-1">
+              Piece to move
+              <select id="practice-from" aria-describedby="practice-choices-help" value={fromSquare}
+                onChange={(event) => { setFromSquare(event.target.value); setToSquare(''); setPromotion(''); setError(''); }}
                 className="min-h-11 w-full rounded-lg border border-chesscom-300 bg-white px-3 text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-900 dark:text-chesscom-100">
-                <option value="">Select a move</option>
-                {choices.map((move) => <option key={move.uci} value={move.uci}>{move.san} ({move.uci})</option>)}
+                <option value="">Choose a piece</option>
+                {origins.map((origin) => <option key={origin.square} value={origin.square}>
+                  {PIECE_NAMES[origin.piece]} on {origin.square}
+                </option>)}
               </select>
             </label>
-            <button type="button" className="btn-secondary min-h-11" disabled={!selectedMove}
-              onClick={() => submitMove(selectedMove)}>Play selected move</button>
+            <label htmlFor="practice-to" className="flex flex-col gap-1">
+              Destination square
+              <select id="practice-to" disabled={!fromSquare} value={toSquare}
+                onChange={(event) => { setToSquare(event.target.value); setPromotion(''); setError(''); }}
+                className="min-h-11 w-full rounded-lg border border-chesscom-300 bg-white px-3 text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-900 dark:text-chesscom-100">
+                <option value="">Choose a square</option>
+                {destinations.map((square) => <option key={square} value={square}>{square}</option>)}
+              </select>
+            </label>
+            {promotions.length > 0 && <label htmlFor="practice-promotion" className="flex flex-col gap-1">
+              Promote to
+              <select id="practice-promotion" value={promotion}
+                onChange={(event) => { setPromotion(event.target.value); setError(''); }}
+                className="min-h-11 w-full rounded-lg border border-chesscom-300 bg-white px-3 text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-900 dark:text-chesscom-100">
+                <option value="">Choose promotion piece</option>
+                {promotions.map((piece) => <option key={piece} value={piece}>{PROMOTION_NAMES[piece]}</option>)}
+              </select>
+            </label>}
+            <button type="button" className="btn-secondary min-h-11" disabled={!canPlaySquares}
+              onClick={() => submitMove(fromSquare + toSquare + promotion)}>Play chosen move</button>
           </div>
         </details>
       </div>}

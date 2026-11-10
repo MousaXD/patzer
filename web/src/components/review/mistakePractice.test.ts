@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
 import type { VariationMoveQuality } from '../../lib/classification';
-import { createPracticeAttempt, verifiedPracticeQuality } from './mistakePractice';
+import { createPracticeAttempt, legalPracticeSquareMoves, verifiedPracticeQuality } from './mistakePractice';
 
 const start = new Chess().fen();
 const attempt = createPracticeAttempt(start, 'e2e4')!;
@@ -14,6 +14,21 @@ const quality = {
 } as VariationMoveQuality;
 
 describe('blind practice attempt boundary', () => {
+  it('does not expose SAN mate/check annotations before a blind attempt', () => {
+    const game = new Chess();
+    for (const san of ['f3', 'e5', 'g4']) game.move(san);
+    const moves = legalPracticeSquareMoves(game.fen());
+    expect(moves).toContainEqual({ from: 'd8', to: 'h4', piece: 'q' });
+    expect(JSON.stringify(moves)).not.toContain('Qh4#');
+    expect(JSON.stringify(moves)).not.toMatch(/[+#]/);
+    expect(createPracticeAttempt(game.fen(), 'd8h4')?.san).toBe('Qh4#');
+  });
+  it('supports four explicit promotion choices, including underpromotions', () => {
+    const fen = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1';
+    expect(legalPracticeSquareMoves(fen).filter((move) => move.from === 'a7' && move.to === 'a8')
+      .map((move) => move.promotion).sort()).toEqual(['b', 'n', 'q', 'r']);
+    expect(createPracticeAttempt(fen, 'a7a8n')?.san).toContain('a8=N');
+  });
   it('accepts only legal moves from the exact puzzle FEN, without changing it', () => {
     expect(createPracticeAttempt(start, 'e2e5')).toBeNull();
     expect(createPracticeAttempt(start, 'e7e5')).toBeNull();

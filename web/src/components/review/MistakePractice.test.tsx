@@ -19,16 +19,54 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
-  it('offers only legal, non-ranked moves to keyboard and screen-reader users', async () => {
+  it('offers legal piece/square choices without score symbols to keyboard and screen-reader users', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ quality }) }));
     render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
-    fireEvent.click(screen.getByText(/Or choose from all legal moves/));
-    const options = screen.getAllByRole('option');
-    expect(options).toHaveLength(21); // Standard chess opening: 20 legal moves plus placeholder.
+    fireEvent.click(screen.getByText(/Or choose a piece and destination/));
+    const origins = screen.getByLabelText('Piece to move') as HTMLSelectElement;
+    expect(origins.options).toHaveLength(11); // 8 pawns + 2 knights + placeholder.
     expect(screen.queryByText(/Engine-preferred move/)).toBeNull();
-    fireEvent.change(screen.getByLabelText('Legal move'), { target: { value: 'e2e4' } });
-    fireEvent.click(screen.getByText('Play selected move'));
+    fireEvent.change(origins, { target: { value: 'e2' } });
+    const destination = screen.getByLabelText('Destination square') as HTMLSelectElement;
+    expect(Array.from(destination.options).map((option) => option.textContent)).toEqual(['Choose a square', 'e3', 'e4']);
+    fireEvent.change(destination, { target: { value: 'e4' } });
+    fireEvent.click(screen.getByText('Play chosen move'));
     await waitFor(() => expect(screen.getByText(/Engine assessment/)).toBeTruthy());
+  });
+
+  it('does not disclose a forced mate in the legal-move selector before attempting it', () => {
+    const game = new Chess();
+    for (const san of ['f3', 'e5', 'g4']) game.move(san);
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const { container } = render(<MistakePractice fenBefore={game.fen()} orientation="black" onExit={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Or choose a piece and destination/));
+    expect(container.textContent).not.toContain('Qh4#');
+    expect(Array.from(screen.getAllByRole('option')).map((option) => option.textContent).join(' ')).not.toMatch(/[+#]/);
+    fireEvent.change(screen.getByLabelText('Piece to move'), { target: { value: 'd8' } });
+    expect(screen.getByRole('option', { name: 'h4' })).toBeTruthy();
+    expect(container.textContent).not.toContain('Qh4#');
+    fireEvent.change(screen.getByLabelText('Destination square'), { target: { value: 'h4' } });
+    expect(container.textContent).not.toContain('Qh4#');
+    fireEvent.click(screen.getByText('Play chosen move'));
+    expect(screen.getByText(/Your move:/).textContent).toContain('Qh4#'); // Revealed only AFTER committing the move.
+  });
+
+  it('requires an explicit promotion choice and permits legal underpromotion', async () => {
+    const promotionFen = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1';
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      requests.push(JSON.parse(String(init.body)).move_uci as string);
+      return new Promise(() => undefined);
+    }));
+    render(<MistakePractice fenBefore={promotionFen} orientation="white" onExit={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Or choose a piece and destination/));
+    fireEvent.change(screen.getByLabelText('Piece to move'), { target: { value: 'a7' } });
+    fireEvent.change(screen.getByLabelText('Destination square'), { target: { value: 'a8' } });
+    expect((screen.getByRole('button', { name: 'Play chosen move' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Promote to'), { target: { value: 'n' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Play chosen move' }));
+    await waitFor(() => expect(requests).toEqual(['a7a8n']));
+    expect(screen.getByText(/Your move:/).textContent).toContain('a8=N');
   });
 
   it('aborts an obsolete attempt and ignores late engine success after cancel and retry', async () => {

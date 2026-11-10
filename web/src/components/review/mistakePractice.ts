@@ -9,14 +9,24 @@ export interface PracticeAttempt {
   fenAfter: string;
 }
 
-/** All choices come from chess.js, never from an engine ranking. Suitable for
- * users who cannot drag pieces or type SAN, without disclosing the solution. */
-export function legalPracticeChoices(fenBefore: string): { uci: string; san: string }[] {
+export interface PracticeSquareMove {
+  from: string;
+  to: string;
+  piece: string;
+  promotion?: string;
+}
+
+/** Only the squares, piece type and promotion choice are disclosed. Showing
+ * full SAN before an attempt leaks checks (+) and even forced mates (#).
+ * These choices are unranked and use chess.js legality, not engine evidence. */
+export function legalPracticeSquareMoves(fenBefore: string): PracticeSquareMove[] {
   try {
     const chess = new Chess(fenBefore);
     return chess.moves({ verbose: true }).map((move) => ({
-      uci: move.from + move.to + (move.promotion ?? ''),
-      san: move.san,
+      from: move.from,
+      to: move.to,
+      piece: move.piece,
+      ...(move.promotion ? { promotion: move.promotion } : {}),
     }));
   } catch { return []; }
 }

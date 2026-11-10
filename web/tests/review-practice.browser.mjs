@@ -130,6 +130,12 @@ try {
     ['book', 'book', 'good', 'best', 'mistake', 'good', 'inaccuracy', 'blunder']);
   const partial = seed(user.id, 'partial', ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'],
     ['good', 'mistake', 'good', 'blunder', 'blunder'], 2);
+  // Adversarial presentation-only fixture: intentionally labels a mate-in-one
+  // as a missed moment to test that SAN '#' is NEVER exposed before the
+  // player's attempt. This is not a gold engine classification or benchmark.
+  const beforeMate = new Chess();
+  for (const san of ['f3', 'e5', 'g4']) beforeMate.move(san);
+  const mateLeakFixture = seed(user.id, 'spoiler-negative-control', ['Qh4#'], ['miss'], 1, beforeMate.fen());
   const baselinePgn = db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn;
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
@@ -146,6 +152,31 @@ try {
     assert.equal(await page.locator('[data-practice-mode]').count(), 0);
     await assertNoSpoilers(page);
     assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 3);
+  });
+
+  await test('Blind keyboard selector never reveals mate SAN before committing a move', async () => {
+    await startBlind(page, mateLeakFixture.id);
+    await assertNoSpoilers(page);
+    await page.getByText(/Or choose a piece and destination/).click();
+    const optionsBefore = await page.locator('option').allTextContents();
+    assert.ok(optionsBefore.every((label) => !/[+#]/.test(label)), 'an accessible option exposed check or mate');
+    assert.ok(!(await page.locator('[data-practice-mode]').innerText()).includes('Qh4#'), 'the answer was shown before attempting');
+    await page.locator('#practice-from').selectOption('d8');
+    const optionsAfter = await page.locator('#practice-to option').allTextContents();
+    assert.ok(optionsAfter.includes('h4'), 'legal queen destination omitted');
+    assert.ok(optionsAfter.every((label) => !/[+#]/.test(label)), 'destination leaked mate');
+    await page.locator('#practice-to').selectOption('h4');
+    assert.ok(!(await page.locator('[data-practice-mode]').innerText()).includes('Qh4#'), 'the answer leaked after choosing a destination');
+    await page.route('**/api/analyze/variation-move', (route) => route.fulfill({
+      status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'offline_negative_control' }),
+    }));
+    try {
+      await page.getByRole('button', { name: 'Play chosen move' }).click();
+      await page.getByText(/Your move:/).waitFor();
+      assert.match(await page.locator('[data-practice-mode]').innerText(), /Qh4#/);
+      await page.getByText(/could not score this attempt/).waitFor();
+      assert.equal(await page.getByText(/Engine assessment:/).count(), 0);
+    } finally { await page.unroute('**/api/analyze/variation-move'); }
   });
 
   await test('Independent attempt, keyboard SAN, real Stockfish feedback, saved PGN unchanged', async () => {
@@ -168,13 +199,13 @@ try {
 
   await test('Original game remains immutable after repeated attempts and game switch', async () => {
     await startBlind(page, standard.id);
-    await page.getByText(/Or choose from all legal moves/).click();
-    const selected = page.locator('#practice-choice');
-    await selected.selectOption({ label: 'd4 (d2d4)' });
-    await page.getByRole('button', { name: 'Play selected move' }).click();
+    await page.getByText(/Or choose a piece and destination/).click();
+    await page.locator('#practice-from').selectOption('d2');
+    await page.locator('#practice-to').selectOption('d4');
+    await page.getByRole('button', { name: 'Play chosen move' }).click();
     await page.getByText(/Engine assessment:/).waitFor({ timeout: 120_000 });
     await page.getByRole('button', { name: 'Try another move' }).click();
-    await page.getByText(/Or choose from all legal moves/).click();
+    await page.getByText(/Or choose a piece and destination/).click();
     await page.locator('#practice-move-input').fill('Nf3');
     // Nf3 is illegal because the knight was already moved on the saved timeline.
     await page.getByRole('button', { name: 'Submit move' }).click();
