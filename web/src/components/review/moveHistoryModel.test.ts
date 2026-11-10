@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMovePairs, moveListStart, pairIndexForPly } from './moveHistoryModel';
+import { buildMovePairs, moveListStart, moveNumberForPly, moveSideForPly, pairIndexForPly } from './moveHistoryModel';
 
 const moves = [{ ply: 1, san: 'Nf6' }, { ply: 2, san: 'd4' }, { ply: 3, san: 'g6' }];
 
@@ -19,6 +19,19 @@ describe('Review FEN-aware move numbering', () => {
     expect(pairs[0].white).toBeUndefined();
     expect(pairs[1]).toMatchObject({ num: 13, white: moves[1], black: moves[2] });
     expect(pairIndexForPly(2, fen)).toBe(2);
+  });
+
+  it('maps every game-relative ply to the correct mover and fullmove number', () => {
+    expect(moveSideForPly(1)).toBe('white');
+    expect(moveSideForPly(2)).toBe('black');
+    expect(moveNumberForPly(3)).toBe(2);
+    const blackFirst = '8/8/8/8/8/8/8/K6k b - - 0 12';
+    expect(moveSideForPly(1, blackFirst)).toBe('black');
+    expect(moveSideForPly(2, blackFirst)).toBe('white');
+    expect(moveSideForPly(3, blackFirst)).toBe('black');
+    expect(moveNumberForPly(1, blackFirst)).toBe(12);
+    expect(moveNumberForPly(2, blackFirst)).toBe(13);
+    expect(moveNumberForPly(3, blackFirst)).toBe(13);
   });
 
   it('falls back safely for absent or malformed FEN metadata', () => {
