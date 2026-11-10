@@ -9,6 +9,7 @@ import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
 import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
+import { decodeStoredReviewJson } from '../components/review/storedReview';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -96,23 +97,31 @@ export default function GameAnalyzer() {
     if (!data) return;
     if (data.analysis) {
       const a = data.analysis;
-      setAnalysis({
-        depth: a.depth,
-        accuracy_white: a.accuracy_white,
-        accuracy_black: a.accuracy_black,
-        estimated_elo_white: a.estimated_elo_white,
-        estimated_elo_black: a.estimated_elo_black,
-        performance_white: a.performance_white ?? null,
-        performance_black: a.performance_black ?? null,
-        opening_eco: a.opening_eco,
-        opening_name: a.opening_name,
-        key_moments: a.key_moments_json ? (JSON.parse(a.key_moments_json) as KeyMomentSummary[]) : [],
-        phase_split: a.phase_split_json ? (JSON.parse(a.phase_split_json) as PhaseSplit) : null,
-        moves: JSON.parse(a.moves_json) as AnalyzedMove[],
-      });
-      setRequestedDepth(Math.max(16, a.depth));
+      const stored = decodeStoredReviewJson(a);
+      if (stored) {
+        setAnalysis({
+          depth: a.depth,
+          accuracy_white: a.accuracy_white,
+          accuracy_black: a.accuracy_black,
+          estimated_elo_white: a.estimated_elo_white,
+          estimated_elo_black: a.estimated_elo_black,
+          performance_white: a.performance_white ?? null,
+          performance_black: a.performance_black ?? null,
+          opening_eco: a.opening_eco,
+          opening_name: a.opening_name,
+          ...stored,
+        });
+        setAnalysisError('');
+        setRequestedDepth(Math.max(16, a.depth));
+      } else {
+        // A failed cached JSON decode must not crash the whole Game Review.
+        // Keep the saved PGN and let the user explicitly rerun analysis.
+        setAnalysis(null);
+        setAnalysisError('Stored engine analysis could not be read. Run engine analysis again to restore this report.');
+      }
     } else {
       setAnalysis(null);
+      setAnalysisError('');
     }
     if (data.analysis_stale && !analyzing) {
       void analyze(16, true);
