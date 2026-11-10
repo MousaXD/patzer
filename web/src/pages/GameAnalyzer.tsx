@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
-import { Chess } from 'chess.js';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
 import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson } from '../components/review/storedReview';
+import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -28,7 +28,7 @@ import { qualityMatchesPosition, type VariationMoveQuality } from '../lib/classi
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPosition';
-import type { AnalysisResult, AnalyzedMove, KeyMomentSummary, PhaseSplit } from '../types';
+import type { AnalysisResult, AnalyzedMove } from '../types';
 
 interface GameDetail {
   game: { id: number; pgn: string; white: string; black: string; result: string; user_color: 'white' | 'black' | null; eco?: string | null; opening_name?: string | null; bookmarked?: number | null; notes?: string | null; start_fen?: string | null };
@@ -149,21 +149,13 @@ export default function GameAnalyzer() {
       .catch(() => setCoachConfigured(false));
   }, []);
 
-  const positions = useMemo(() => {
-    if (!data) return [];
-    const chess = new Chess();
-    chess.loadPgn(data.game.pgn, { strict: false });
-    const history = chess.history({ verbose: true });
-    // A game played from a position starts there, not at the opening.
-    const headers = chess.getHeaders();
-    const replay = new Chess(headers.SetUp === '1' && headers.FEN ? headers.FEN : undefined);
-    const list: { fen: string; san?: string; from?: string; to?: string; uci?: string }[] = [{ fen: replay.fen() }];
-    for (const m of history) {
-      replay.move({ from: m.from, to: m.to, promotion: m.promotion });
-      list.push({ fen: replay.fen(), san: m.san, from: m.from, to: m.to, uci: m.from + m.to + (m.promotion ?? '') });
-    }
-    return list;
-  }, [data]);
+  // Replaying a PGN is work proportional to game length. Rebuild only when
+  // its text changes (not when notes/bookmarks or cached analysis refresh).
+  // A corrupted PGN is represented as an empty result, not a render-time throw.
+  const positions = useMemo(
+    () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
+    [data?.game.pgn],
+  );
 
   // Read initial ?ply= from the URL so deep-links to a specific position
   // open at that move on first render. After that we keep them in sync.
@@ -354,13 +346,14 @@ export default function GameAnalyzer() {
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
-  if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data) {
+  if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data || positions.length === 0) {
     return (
       <div role="alert" className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-white p-6 text-chesscom-900 shadow-soft dark:bg-chesscom-800 dark:text-chesscom-100">
         <h1 className="text-lg font-semibold">Game Review unavailable</h1>
         <p className="mt-2 text-sm text-chesscom-500">
           {!Number.isSafeInteger(gameId) || gameId <= 0
             ? 'The game link is invalid.'
+            : data && positions.length === 0 ? 'This game has an invalid or unreadable saved PGN.'
             : loadError instanceof Error ? loadError.message : 'This game could not be loaded.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
