@@ -17,6 +17,17 @@ export function moveListStart(startFen?: string): { startsBlack: boolean; fullmo
   };
 }
 
+/** Side and fullmove number of a game-relative ply, including SetUp/FEN games. */
+export function moveSideForPly(ply: number, startFen?: string): 'white' | 'black' {
+  const { startsBlack } = moveListStart(startFen);
+  return ((Math.max(1, Math.trunc(ply)) - 1 + (startsBlack ? 1 : 0)) % 2 === 0) ? 'white' : 'black';
+}
+
+export function moveNumberForPly(ply: number, startFen?: string): number {
+  const { startsBlack, fullmove } = moveListStart(startFen);
+  return fullmove + Math.floor((Math.max(1, Math.trunc(ply)) - 1 + (startsBlack ? 1 : 0)) / 2);
+}
+
 export function buildMovePairs<T extends ReviewMove>(moves: readonly T[], startFen?: string): ReviewMovePair<T>[] {
   const { startsBlack, fullmove } = moveListStart(startFen);
   const pairs: ReviewMovePair<T>[] = [];
