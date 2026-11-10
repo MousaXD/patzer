@@ -664,6 +664,7 @@ export default function GameAnalyzer() {
                       current={isVariation ? -1 : ply}
                       onSelect={setPly}
                       phaseSplit={analysis.phase_split}
+                      startFen={positions[0]?.fen}
                       highlight={pickedSet}
 
                     />
