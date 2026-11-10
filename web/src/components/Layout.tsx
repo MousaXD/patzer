@@ -42,6 +42,8 @@ const PRIMARY_DESTINATIONS: readonly Destination[] = [
   { to: '/lab', icon: Microscope, key: 'lab.nav', fallback: 'Lab' },
 ];
 
+const SETTINGS_DESTINATION: Destination = { to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' };
+
 const ADMIN_DESTINATIONS: readonly Destination[] = [
   { to: '/admin/users', icon: Users, key: 'admin.users', fallback: 'Users' },
   { to: '/admin/system', icon: Server, key: 'admin.system', fallback: 'System' },
@@ -138,7 +140,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const openMenuLabel = t('navigation.open', { defaultValue: 'Open menu' });
   const languageLabel = t('navigation.language', { defaultValue: 'Language' });
   const isAnalysis = isDestinationActive(location.pathname, '/review') && location.pathname !== '/review';
-  const activeItem = [...PRIMARY_DESTINATIONS, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
+  const activeItem = [...PRIMARY_DESTINATIONS, SETTINGS_DESTINATION, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
     .find((item) => isDestinationActive(location.pathname, item.to));
   const pageTitle = activeItem ? t(activeItem.key, { defaultValue: activeItem.fallback }) : t('app.name');
 
@@ -162,6 +164,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
     desktop.addEventListener('change', onChange);
     return () => desktop.removeEventListener('change', onChange);
   }, []);
+
+  // Prevent background scrolling while the mobile navigation is modal.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = oldOverflow; };
+  }, [drawerOpen]);
 
   // The mobile drawer behaves as a modal: Escape closes, Tab stays inside,
   // and closing returns keyboard focus to the menu trigger.
@@ -242,7 +252,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
         </nav>
         <div className="shrink-0 border-t border-chesscom-200 px-2 py-2 dark:border-chesscom-700">
           <NavigationItem
-            item={{ to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' }}
+            item={SETTINGS_DESTINATION}
             label={profileLabel}
           />
           {version && (
@@ -389,7 +399,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
                 />
               ))}
               <NavigationItem
-                item={{ to: '/settings', icon: SettingsIcon, key: 'common.settings', fallback: 'Settings' }}
+                item={SETTINGS_DESTINATION}
                 label={profileLabel} mobile onNavigate={() => setDrawerOpen(false)}
               />
               {user?.role === 'admin' && (
