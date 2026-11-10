@@ -4,8 +4,9 @@
 import { Hono } from 'hono';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
+import { readAnalysisMoves, readPhaseSplit } from './analysisData.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
-import type { AnalyzedMove, Classification, GamePhase, PhaseSplit } from '../types.js';
+import type { Classification, GamePhase, PhaseSplit } from '../types.js';
 
 const router = new Hono();
 router.use('*', requireAuth);
@@ -43,8 +44,8 @@ router.get('/', (c) => {
   let analyzedCount = 0;
   for (const r of rows) {
     analyzedCount++;
-    const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
-    const split = r.phase_split_json ? (JSON.parse(r.phase_split_json) as PhaseSplit) : null;
+    const moves = readAnalysisMoves(r.moves_json);
+    const split = readPhaseSplit(r.phase_split_json);
     const userColor = r.user_color ?? 'white';
 
     if (split?.opening) {
