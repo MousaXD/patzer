@@ -156,6 +156,27 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(result.phase_split?.endgame).toMatchObject({ from_ply: 1, to_ply: 6 });
   });
 
+  it('excludes forced moves from phase ACPL just as full-game scoring does', async () => {
+    const fake = fakeEngine();
+    const scores = [0, 300, -40, 200, -100, 0, 200];
+    fake.evaluateMulti.mockImplementation(async () => {
+      const cp = scores[fake.evaluateMulti.mock.calls.length - 1] ?? 0;
+      return {
+        cp, mate: null, pv: [], bestMoveUci: 'e2e4', depth: 16,
+        candidates: [{ cp, mate: null, pv: [], multipv: 1 }],
+      };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const fen = 'k6R/8/2K5/8/8/8/8/8 b - - 0 1';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n\n1... Ka7 2. Rh7+ Kb8 3. Rh8+ Ka7 4. Rh7+`;
+    const result = await analyzePgnFull(pgn, 16, perf);
+    const blackMoves = result.moves.filter((m) => m.fen_before.split(' ')[1] === 'b');
+    expect(blackMoves.map((m) => m.classification)).toEqual(['forced', expect.not.stringMatching(/^forced$/), 'forced']);
+    const chosenMoves = blackMoves.filter((m) => m.classification !== 'book' && m.classification !== 'forced');
+    const expectedAcpl = Math.round(chosenMoves.reduce((sum, m) => sum + m.centipawn_loss, 0) / chosenMoves.length);
+    expect(result.phase_split?.endgame?.acpl_black).toBe(expectedAcpl);
+  });
+
   it('does not publish a completed score if the request aborts at the final ply', async () => {
     const controller = new AbortController();
     const fake = fakeEngine();

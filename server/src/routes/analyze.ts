@@ -720,7 +720,9 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
       // Plies are numbered relative to the saved PGN, not necessarily from
       // White's first turn. A SetUp/FEN game may begin with Black to move.
       const isWhite = m.fen_before.split(' ')[1] === 'w';
-      const isBook = m.classification === 'book';
+      // Match full-game aggregation: neither memorized book moves nor forced
+      // replies are a player's choice, so neither belongs in phase accuracy/ACPL.
+      const excludedFromAggregate = m.classification === 'book' || m.classification === 'forced';
       const wpBeforeWhite = cpToWinPct(m.eval_before_cp ?? 0);
       const wpAfterWhite = cpToWinPct(m.eval_after_cp ?? 0);
       const wpBefore = isWhite ? wpBeforeWhite : 100 - wpBeforeWhite;
@@ -730,13 +732,13 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
       const playerEvalAfter = isWhite ? (m.eval_after_cp ?? 0) : -(m.eval_after_cp ?? 0);
       const wpDrop = winDropForPly(playerEvalBefore, playerEvalAfter, wpBefore, wpAfter);
       const acc = moveAccuracy(wpBefore, wpBefore - wpDrop);
-      const point: MoveAccPoint = { acc, winPct: wpAfter, isBook };
+      const point: MoveAccPoint = { acc, winPct: wpAfter, isBook: excludedFromAggregate };
       if (isWhite) {
         wPoints.push(point);
-        if (!isBook) { wAcpl += m.centipawn_loss; wN++; }
+        if (!excludedFromAggregate) { wAcpl += m.centipawn_loss; wN++; }
       } else {
         bPoints.push(point);
-        if (!isBook) { bAcpl += m.centipawn_loss; bN++; }
+        if (!excludedFromAggregate) { bAcpl += m.centipawn_loss; bN++; }
       }
     }
     return {

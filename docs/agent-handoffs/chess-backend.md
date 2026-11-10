@@ -1,5 +1,17 @@
 # Chess Backend Agent Handoff — 2026-11-10
 
+## 2026-11-11 follow-up: forced-move phase aggregation consistency
+
+**Status: locally verified, pending exact-HEAD GitHub workflow conclusions at this commit.** This continuation builds on the previously fully green `3abff5c7b448a360e9086e230dc6122d19c55353` and does not rerun the completed Stockfish/cancellation/phase-boundary audit.
+
+- **Reproduced defect:** Full-game scoring intentionally excludes both `book` and `forced` classifications from accuracy and ACPL. `computePhaseSplit()` excluded only `book`, so opening/middlegame/endgame accuracy and ACPL could penalize unavoidable forced replies. A real, legal six-ply FEN-started rook endgame with two forced Black king responses reproduced endgame Black ACPL **153 (incorrect) versus 160 (expected)** with a failing test before the fix.
+- **Fix:** In `server/src/routes/analyze.ts`, phase aggregation now applies the identical `book || forced` exclusion for both its accuracy points and ACPL contributions. The existing phase and game response shapes are unchanged. `server/test/analysis-agent-pgn-lifecycle.test.ts` adds the failing-before/passing-after endgame regression.
+- **Local validation:** `npm test -- --run server/test/analysis-agent-pgn-lifecycle.test.ts server/test/classifier.test.ts server/test/variation-scoring.test.ts` **57/57 PASS (3 files)**; `npm run typecheck` **PASS**; `npm test` **598/598 PASS (63 files)**; `npm run build` **PASS**; `git diff --check` **PASS**. Node `v22.23.2` and the isolated backend-polish checkout were used. No production data, merges, or deployments.
+- **Cross-lane check:** Read-only fetch and changed-file comparison of the other three agent branches found no overlap with this branch's changes at inspection time. No files on those branches were modified.
+- **Cache caveat / coordinator action:** Existing stored analyses with the same `SCORING_VERSION` will not be silently reanalyzed by this fix; affected saved games require an explicit `force: true` reanalysis to update their stored phase metrics. Do **not** assume historical phase statistics were backfilled. Any wider scoring-version/migration decision belongs to Agent 00 to coordinate.
+- **Remaining gate:** Keep PR #12 draft; exact-final-head Node 20/22, regression/browser and Docker GitHub workflows must be read before marking this follow-up certified. Prior green Actions apply to `3abff5c...`, not the new revision.
+
+
 ## Final continuation: custom-FEN phase scoring regressions (2026-11-10)
 
 **Scope:** Continued only the chess-backend lane from the previously green exact-head revision `1a16d848f120ce29e1b8a52bbf8eccaf19fa8927`. This is not a repeat of the engine lifecycle/CI audit. The three other agent branches were fetched for read-only changed-path comparison; none overlapped `server/src/routes/analyze.ts`, the analysis-agent tests, or this handoff at inspection time. No merge, deployment, real database or production service was involved.
