@@ -17,7 +17,7 @@ No merge, rebase, deployment, dependency installation, backend edit or user-data
 | P1 | Library state | Rejected queries could look like a new account with no games; search-empty and not-imported states were indistinguishable. | Separate loading, error/retry, no-match, starred-empty, and truly empty states. |
 | P1 | Library touch/bookmark | Unstarred bookmarks were hidden behind hover and had small targets. | Visible touch targets, keyboard focus rings, descriptive names, aria-pressed and mutation-pending disabled state. |
 | P1 | Settings save | An unhandled failed PATCH gave no feedback and could encourage repeated saves. | Duplicate-submission guard, saving indicator, recoverable error, retained draft, unload warning and accessible pressed state on visual choices. |
-| P1 | Home | Recent games defaulted to empty during loading or failed requests, falsely showing first-game onboarding. | Loading skeleton, retryable error and onboarding only after an actual empty response. |
+| P1 | Home | Recent games defaulted to empty during loading or failed requests, falsely showing first-game onboarding. Wide screens spread short game rows across the entire page, while the four learning tiles competed equally with core game history. | Loading skeleton, retryable error, true-empty onboarding, accurate stats loading, and balanced responsive recent-games/next-steps columns with a clear section heading. |
 | P1 | Insights | Analytics failure was displayed as empty history. | Explicit retryable analytics failure state, not an empty-games prompt. |
 | P2 | Insights charts | Long legend, 53-week heatmap and unlabeled SVG were difficult on small or keyboard-only screens. | Wrapping legends/header, keyboard-scrollable heatmap region, accessible chart names, explanatory accuracy empty state. |
 | P2 | Navigation | Settings was missing from section-title resolver; mobile modal did not lock background scrolling. | Centralized Settings destination; scroll containment restored when the drawer closes. |
@@ -32,6 +32,7 @@ No merge, rebase, deployment, dependency installation, backend edit or user-data
 - web/src/pages/Play.tsx
 - web/src/components/Layout.tsx
 - web/src/pages/Review.library.test.tsx (new)
+- web/src/pages/Insights.states.test.tsx (new)
 - web/src/components/navigation/Layout.navigation.test.tsx (expanded)
 - docs/agent-handoffs/product-ui.md (this file)
 
@@ -41,6 +42,7 @@ Global CSS was audited. Baseline already has local font assets, light/dark token
 
 - Inspected baseline source and server route behavior; reviewed isolated branch changes.
 - Added Vitest/happy-dom tests for a 1,000-game history, bounded incremental loading, debounced global search, retryable errors and bookmark discoverability.
+- Added an Insights error/retry state regression test.
 - Expanded navigation regression test for Settings heading and mobile scroll containment.
 - Draft PR #11 triggers existing GitHub Actions CI, Frontend Overhaul QA and design-system certification. Do not claim release certification until all relevant checks pass.
 - Direct npm typecheck, unit test, build and real-browser QA were not available from this environment: local source worktree absent and network resolution for a git clone unavailable. No packages installed.
