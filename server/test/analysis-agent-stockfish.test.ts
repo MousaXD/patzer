@@ -45,7 +45,7 @@ function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-star
     "        }, 80);",
     "        continue;",
     "      }",
-    "      process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');
+    "      process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
     "      if (multipv >= 2) process.stdout.write('info depth ' + (mode === 'mixed-depth' ? 15 : 16) + ' multipv 2 score cp 15 pv d2d4\\n');",
     "      process.stdout.write('bestmove e2e4\\n');",
     "    } else if (line === 'quit') {",
