@@ -56,11 +56,15 @@ export async function retryChessCom<T>(
   }
 }
 
-function gameResult(game: ChessComGame, color: 'white' | 'black' | null): 'win' | 'draw' | 'loss' {
-  const outcome = color === 'white' ? game.white.result : color === 'black' ? game.black.result : game.white.result;
+function gameResult(game: ChessComGame, color: 'white' | 'black'): 'win' | 'draw' | 'loss' | null {
+  const outcome = color === 'white' ? game.white?.result : game.black?.result;
   if (outcome === 'win') return 'win';
   if (['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(outcome)) return 'draw';
-  return 'loss';
+  // Do not misreport a malformed, unknown or newly introduced outcome as a
+  // loss. An unknown result is omitted from this one-time historical import.
+  if (['checkmated', 'resigned', 'timeout', 'abandoned', 'lose', 'kingofthehill',
+       'threecheck', 'bughousepartnerlose'].includes(outcome)) return 'loss';
+  return null;
 }
 
 /** A game URL is an identifier, not a fetch target. Still validate the true
@@ -89,6 +93,8 @@ function gameRow(game: ChessComGame, username: string) {
   const lc = username.toLowerCase();
   const userColor: 'white' | 'black' | null = white.toLowerCase() === lc ? 'white' : black.toLowerCase() === lc ? 'black' : null;
   if (!userColor) return null;
+  const result = gameResult(game, userColor);
+  if (result === null) return null;
   const ecoHeader = /^\[ECO\s+"([A-E][0-9]{2})"\]/m.exec(game.pgn)?.[1] ?? null;
   const recognized = lookupOpeningFromPgn(game.pgn);
   const eco = ecoHeader ?? recognized?.eco ?? null;
@@ -98,7 +104,7 @@ function gameRow(game: ChessComGame, username: string) {
     pgn: game.pgn,
     white,
     black,
-    result: gameResult(game, userColor),
+    result,
     timeControl: game.time_control ?? null,
     timeClass: ['bullet', 'blitz', 'rapid', 'daily'].includes(game.time_class) ? game.time_class : null,
     endTime: endDate.toISOString(),
