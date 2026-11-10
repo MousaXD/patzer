@@ -217,3 +217,24 @@ These three commits are **all within existing ownership**, do not modify other a
 - Complete checks required before approval: full `npm test` (including storedReview/reviewStream), `npm run typecheck`, production build, desktop/mobile browser QA in light/dark modes, and live game analysis/review generation acceptance.
 - **External dependencies:** backend agent must verify older saved analysis formats and server-side `force: true` cache repair, SSE `done` events and Black-first PGN scoring. Independent QA must verify the full player journey, and the design-system agent owns global CSS compatibility.
 - **Release verdict:** code committed for independent verification; **PR #13 remains DRAFT / NOT CERTIFIED** until exact-head GitHub CI and QA evidence is successful. The handoff-only commit necessarily advances the branch HEAD beyond the last source SHA; do not infer its checks from an earlier source commit.
+
+
+## Continuation — cached analysis/PGN identity (2026-11-10)
+
+**The original local worktree is still unmounted.** Verification in the container returned `PWD=/`, no Git repository, and no directory at `/home/mousa/projects/my-creations/chess/patzer-agent-review`. Only the existing remote `agent/review-experience-20261110` branch was accessed for writes. The exact previous remote HEAD, PR #13, prior handoff, changed-file comparison and relevant current files were read first.
+
+### Finished source changes (same branch; no restarts)
+
+- **`e36454da4197fff49c42ee6eda64057a730646f3`**: `web/src/components/review/storedReview.ts` now optionally matches cached `moves_json` UCI values to each corresponding ply of the saved PGN replay. It rejects stale or cross-game cached analysis without requiring every long-game ply to have an engine score; the existing `needsFreshReviewAnalysis` policy then forces a real engine refresh.
+- **`568b1868f16c56771dd5cf8caca88f489a63801e`**: `web/src/pages/GameAnalyzer.tsx` constructs the PGN replay once before decoding cached analysis and passes the replay into the decoder. This prevents wrong-move cached classifications and best-move arrows from being rendered against a modified PGN.
+- **`30b009bfef10bb96379745b576bea88ee61a2e9b`**: `web/src/components/review/storedReview.test.ts` adds verification of an exact match, valid partial analysis, cross-PGN UCI mismatch, missing moves and the forced-repair decision.
+
+No other source paths were modified. **Last source commit:** `30b009bfef10bb96379745b576bea88ee61a2e9b`. The branch comparison remains within owned Game Review files and this handoff, with 0 commits behind the assigned starting point.
+
+### Verification and release decision
+
+- **GitHub runs on last source commit:** Patzer design system certification `42876795907`, CI `42876795942`, Frontend Overhaul QA `42876796046`. All were **queued** when queried. No recent exact-head passing results or failure logs were available.
+- **Prior completed test evidence** remains 608 passing, 1 failing on the older `ee377e1` run; the isolated React test cleanup was fixed separately in `d0c26c0`. Do not treat that historic partial result as validation of current source.
+- **Local TypeScript/Vitest/build/browser:** **not executable** because this user's exact worktree is not mounted. No unverified pass claim.
+- **Integration dependencies:** independent QA must exercise complete saved-game→engine→coach and interactive variation flows, including Black-first setup FENs, longer partial engine analyses, and mobile/light/dark QA. Backend owner must verify cached analysis storage, `force: true` behavior and review SSE completion. Design-system agent owns `.review-workspace` global styling. No other agent branch was merged.
+- **Final state:** source changes pushed, the assigned branch and draft PR #13 unmerged; release certification remains **blocked only on actual exact-head checks and cross-agent acceptance evidence**, not on a confirmed new failing source test. Do not deploy or merge without green gates.
