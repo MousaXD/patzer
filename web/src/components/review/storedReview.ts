@@ -89,13 +89,22 @@ function validPhases(value: unknown): boolean {
   });
 }
 
-export function decodeStoredReviewJson(data: StoredReviewJson): DecodedReviewJson | null {
+/** Optional replay positions bind cached move UCI data to the current saved
+ * PGN, so a stale cache cannot show classifications for another game. */
+export function decodeStoredReviewJson(
+  data: StoredReviewJson,
+  replayPositions?: readonly { uci?: string }[],
+): DecodedReviewJson | null {
   try {
     const moves: unknown = JSON.parse(data.moves_json);
     const moments: unknown = data.key_moments_json ? JSON.parse(data.key_moments_json) : [];
     const phases: unknown = data.phase_split_json ? JSON.parse(data.phase_split_json) : null;
     if (!Array.isArray(moves) || !Array.isArray(moments)) return null;
     if (!moves.every(validMove)) return null;
+    // Allow valid partial analyses of very long games but never show cached
+    // evaluations beside moves from a different saved PGN.
+    if (replayPositions && (moves.length > replayPositions.length - 1
+      || moves.some((move: AnalyzedMove, index: number) => move.uci !== replayPositions[index + 1]?.uci))) return null;
     if (!moments.every((m: unknown) => validMoment(m, moves.length))) return null;
     if (!validPhases(phases)) return null;
 
