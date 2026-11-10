@@ -70,6 +70,10 @@ describe('written review rejects unsupported model statements', () => {
     'This creates an unstoppable threat.',
     'Black must win a whole rook.',
     'The move forces mate in 2.',
+    'Black played Nf6. White could checkmate with Qh4#.',
+    'White played Nf6. Black could reply with Qxf7#, checkmate.',
+    'Black played Nf6. White played Qxf7#, checkmate.',
+    'Black\'s queen on h5 is exposed.',
   ])('rejects the invented claim: %s', async (fabricated) => {
     vi.mocked(llm.chatJsonRetry).mockResolvedValueOnce({ title: 'Key moment', prose: fabricated } as never)
       .mockResolvedValueOnce({ summary: 'A game was played.' } as never);

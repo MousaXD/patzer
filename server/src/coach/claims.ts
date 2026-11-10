@@ -288,6 +288,45 @@ export function screenCoachProse(text: string, evidence: MomentEvidenceV1, langu
   if (rules.threat.test(text)) fail.push('unproved_threat');
   if (rules.material.test(text)) fail.push('unproved_material_gain');
 
+  // A verified mate somewhere in this position does not prove *any other*
+  // move quoted by the model. Restrict SAN references to the exact played
+  // move, legal recommendation and independently verified local variations.
+  // Do not use a merely legal, unscored SAN to substantiate a tactic.
+  const canonicalSan = (s: string) => s.replace(/[+#?!]+$/u, '');
+  const quotedSan = /(?<![\p{L}\p{N}])(?:[KQRBN](?:[a-h1-8])?x?[a-h][1-8](?:=[QRBN])?|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][18]=[QRBN])[+#]?(?![\p{L}\p{N}])/gu;
+  const provenSan = new Set([
+    evidence.played_san,
+    evidence.legal_best_san,
+    ...evidence.claims.filter((c) => c.proof_status === 'verified').flatMap((c) => c.verified_line_san),
+  ].filter((s): s is string => typeof s === 'string').map(canonicalSan));
+  for (const match of text.matchAll(quotedSan)) {
+    if (!provenSan.has(canonicalSan(match[0]))) fail.push('unverified_named_move');
+  }
+
+  // High-confidence actor checks for statements that directly assign an
+  // explicit SAN or mating move to White/Black. Longer implicit phrasing is
+  // NOT certified by this lexical screen and remains a known limitation.
+  const actorName = evidence.actor === 'white' ? 'White' : 'Black';
+  const oppositeName = evidence.actor === 'white' ? 'Black' : 'White';
+  const namedMove = String.raw`(?:[KQRBN](?:[a-h1-8])?x?[a-h][1-8](?:=[QRBN])?|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?`;
+  const assertedPlayed = new RegExp(String.raw`\b(White|Black|you)\s+(?:played|plays|chose|made)\s+(${namedMove})(?=$|[^\p{L}\p{N}])`, 'giu');
+  for (const m of text.matchAll(assertedPlayed)) {
+    if (canonicalSan(m[2]!) !== canonicalSan(evidence.played_san)) {
+      // A possible mating reply or engine recommendation is not evidence
+      // that the move occurred in the real game.
+      fail.push('unverified_past_move');
+    } else if (m[1]!.toLowerCase() === oppositeName.toLowerCase()) {
+      fail.push('wrong_played_move_actor');
+    }
+  }
+  const mateActor = has('checkmate') ? actorName : has('reply_mate_in_one') ? oppositeName : null;
+  if (mateActor) {
+    const wrongMateActor = mateActor === 'White' ? 'Black' : 'White';
+    if (new RegExp(`\\b${wrongMateActor}\\s+(?:(?:can|could|would|will)\\s+)?(?:give|deliver|achieve|play|reply with|respond with|answer with)\\s+[^.!?]{0,65}\\b(?:checkmate|mate)\\b`, 'i').test(text)) {
+      fail.push('wrong_mating_actor');
+    }
+  }
+
   // Refuse concrete piece/square claims unless the piece exists either just
   // before or just after the move. Does not license tactical consequences.
   const names: Record<Language, Record<string, PieceSymbol>> = {
@@ -311,6 +350,18 @@ export function screenCoachProse(text: string, evidence: MomentEvidenceV1, langu
     if (type) {
       mentioned.push({ type, square: sq });
       if (before.get(sq)?.type !== type && after.get(sq)?.type !== type) fail.push('piece_on_wrong_square');
+    }
+  }
+  // 'Black's queen on h5' was previously accepted if WHITE owned the queen
+  // there. Check the explicitly asserted owner, not only piece geometry.
+  if (language === 'en') {
+    const owners = /\b(white|black)(?:['’]s)?\s+(king|queen|rook|bishop|knight|pawn)\s+(?:on|at)\s+([a-h][1-8])\b/gi;
+    for (const m of text.matchAll(owners)) {
+      const expected = m[1]!.toLowerCase() === 'white' ? 'w' : 'b';
+      const type = lookup[m[2]!.toLowerCase()];
+      const sq = m[3] as Square;
+      const actual = [before.get(sq), after.get(sq)];
+      if (!actual.some((p) => p?.type === type && p.color === expected)) fail.push('piece_owner_wrong');
     }
   }
   // A true *somewhere* fork/pin cannot validate a sentence about an
@@ -354,5 +405,17 @@ export function screenHintProse(text: unknown, language: Language): boolean {
   // a bare coordinate: telling the student 'look at g6' may spoil a retry.
   if (/(?:^|[^a-z0-9])[a-h][1-8](?:[a-h][1-8])?[nbrq]?(?=$|[^a-z0-9])/i.test(text as string)) return false;
   if (/(?:^|[^a-z0-9])(?:O-O(?:-O)?|0-0(?:-0)?)(?=$|[^a-z0-9])/i.test(text as string)) return false;
+  // Exact squares are not the only spoiler: a model can give a disguised
+  // instruction such as "Move your pawn forward". Reject clear imperative
+  // piece moves in the five supported prose languages. This is a conservative
+  // negative screen, not a complete semantic spoiler detector.
+  const directMove: Record<Language, RegExp> = {
+    en: /\b(?:move|play|push|advance|develop|castle|capture|take|sacrifice|trade)\s+(?:(?:your|the|a|an)\s+)?(?:king|queen|rook|bishop|knight|pawn)\b/i,
+    bg: /(?:премести|изиграй|движи|вземи|пожертвай)\s+(?:(?:своя|своята|този|тази|една|един)\s+)?(?:пешк|кон|офицер|топ|дам|цар)[\p{L}]*/iu,
+    es: /\b(?:mueve|juega|avanza|captura|sacrifica)\s+(?:(?:tu|el|la|un|una)\s+)?(?:rey|reina|dama|torre|alfil|caballo|pe[oó]n)\b/iu,
+    de: /\b(?:zieh|spiele|bewege|schlage|opfere)\s+(?:(?:deinen?|deine|den|die|einen?|eine)\s+)?(?:k[oö]nig|dame|turm|l[aä]ufer|springer|bauer[n]?)\b/iu,
+    ru: /(?:передвинь|двинь|сыграй|выведи|возьми|атакуй|пожертвуй)\s+(?:(?:свою|своего|своей|эту|этого)\s+)?(?:пешк|кон|слон|ладь|ферз|корол)[\p{L}]*/iu,
+  };
+  if (directMove[language].test(text as string)) return false;
   return true;
 }

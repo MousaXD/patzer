@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
 import {
-  momentEvidence, replayLegalSan, screenCoachProse, verifyCoachClaim,
+  momentEvidence, replayLegalSan, screenCoachProse, screenHintProse, verifyCoachClaim,
   type ClaimType, type CoachClaimV1,
 } from '../src/coach/claims.js';
 import type { Language } from '../src/types.js';
@@ -132,6 +132,43 @@ describe('coach_claims_v1: independent legal proof, not plausible prose', () => 
     }
     expect(screenCoachProse('x', { ...scholar, status: 'contradicted' }, 'en').accepted).toBe(false);
     expect(screenCoachProse('x'.repeat(2100), scholar, 'en').accepted).toBe(false);
+  });
+
+  it('does not let a real checkmate elsewhere authorize invented SAN or the wrong player', () => {
+    const supported = 'Black played Nf6. White could reply with Qxf7#, checkmate.';
+    expect(screenCoachProse(supported, scholar, 'en').accepted).toBe(true);
+    expect(screenCoachProse('Black played Nf6. White could checkmate with Qh4#.', scholar, 'en').accepted).toBe(false);
+    expect(screenCoachProse('White played Nf6. Black could reply with Qxf7#, checkmate.', scholar, 'en').accepted).toBe(false);
+    expect(screenCoachProse('Black played Nf6. White played Qxf7#, checkmate.', scholar, 'en').accepted).toBe(false); // possible reply is not proof of actual game move
+    expect(screenCoachProse('Black played Qxf7#, checkmate.', scholar, 'en').accepted).toBe(false);
+    expect(screenCoachProse('White could reply with Qxf7#, checkmate.', scholar, 'en').accepted).toBe(true);
+    expect(screenCoachProse('Black played Nf6. Black can give checkmate with Qxf7#.', scholar, 'en').accepted).toBe(false);
+    expect(screenCoachProse('Black\'s queen on h5 is exposed.', scholar, 'en').accepted).toBe(false);
+    // SAN is shared notation across the five supported prose languages.
+    for (const [lang, sentence] of [
+      ['en', 'White could win by Qh4#.'],
+      ['bg', 'Белите могат да играят Qh4# и дават мат.'],
+      ['es', 'Las blancas juegan Qh4# y dan mate.'],
+      ['de', 'Weiß könnte Qh4# spielen und mattsetzen.'],
+      ['ru', 'Белые могут сыграть Qh4# и поставить мат.'],
+    ] as const) {
+      expect(screenCoachProse(sentence, scholar, lang).reasons, lang).toContain('unverified_named_move');
+    }
+  });
+
+  it('does not turn a coaching hint into an implicit natural-language move spoiler', () => {
+    const spoilers = {
+      en: 'Move your pawn forward on the kingside.',
+      bg: 'Премести пешката напред по царския фланг.',
+      es: 'Mueve tu peón hacia adelante.',
+      de: 'Zieh deinen Bauern nach vorne.',
+      ru: 'Передвинь пешку вперёд.',
+    } as const;
+    for (const [lang, sentence] of Object.entries(spoilers) as [Language, string][]) {
+      expect(screenHintProse(sentence, lang), `${lang}: ${sentence}`).toBe(false);
+    }
+    expect(screenHintProse('Before you move, compare checks and captures for both sides. What is your opponent threatening?', 'en')).toBe(false); // unverified threat
+    expect(screenHintProse('Before moving, compare checks and captures for both sides. How might your opponent reply?', 'en')).toBe(true);
   });
 
   it('assigns stable distinct claim IDs when the opponent has multiple captures', () => {

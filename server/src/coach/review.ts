@@ -53,7 +53,9 @@ import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase,
 // v4 = whose move it was; coaching facts in key moments; a summary with content.
 // v5 = unknown evaluations stay unknown; custom-FEN move ownership follows FEN.
 // v6 = independently validated tactical claims; conservative summary/fallback.
-export const REVIEW_PROSE_VERSION = 6;
+// v7 = reject false named SAN, unproven played replies and wrong actor/owner.
+//      Never reuse cached v6 prose screened by the less restrictive gate.
+export const REVIEW_PROSE_VERSION = 7;
 
 // JSON-mode rule append-on. R10 in the consolidated 10-rule scheme. We use
 // "R10:" numbering to extend prompts.ts's existing rule block cleanly.
