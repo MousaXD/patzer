@@ -395,22 +395,31 @@ export async function analyzePgnFull(
     if (!move) continue;
     const sideToMove: Color = replay.turn() === 'w' ? 'white' : 'black';
     const fenBefore = replay.fen();
-    const bestUci = prevEval.bestMoveUci;
+    let bestUci = prevEval.bestMoveUci;
 
     let bestSan: string | null = null;
     if (bestUci) {
-      const probe = new Chess(fenBefore);
-      const m = probe.move({ from: bestUci.slice(0, 2), to: bestUci.slice(2, 4), promotion: bestUci.slice(4) || undefined });
-      if (m) bestSan = m.san;
+      try {
+        const probe = new Chess(fenBefore);
+        const m = probe.move({ from: bestUci.slice(0, 2), to: bestUci.slice(2, 4), promotion: bestUci.slice(4) || undefined });
+        if (m) bestSan = m.san;
+        else bestUci = null;
+      } catch {
+        // PV is advisory; a malformed move from a remote/failed UCI engine
+        // must not discard the valid search score and entire game analysis.
+        bestUci = null;
+      }
     }
 
     const pvSan: string[] = [];
     if (prevEval.pv.length) {
       const pvProbe = new Chess(fenBefore);
       for (const u of prevEval.pv.slice(0, 6)) {
-        const m = pvProbe.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4) || undefined });
-        if (!m) break;
-        pvSan.push(m.san);
+        try {
+          const m = pvProbe.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.slice(4) || undefined });
+          if (!m) break;
+          pvSan.push(m.san);
+        } catch { break; }
       }
     }
 
@@ -601,6 +610,10 @@ export async function analyzePgnFull(
   } finally {
     signal?.removeEventListener('abort', onAbort);
     await engine.quit();
+    // The request can disappear during shutdown, after the last ply was
+    // scored but before this promise resolves. Never hand that abandoned
+    // result to the route for persistence.
+    if (signal?.aborted) throw new Error('analysis_cancelled');
   }
 }
 

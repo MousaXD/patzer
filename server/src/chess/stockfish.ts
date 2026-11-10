@@ -69,6 +69,10 @@ export class StockfishEngine {
   // One UCI process has a single stdin/stdout command stream. Overlapping
   // searches would consume the same bestmove and corrupt both results.
   private searchActive = false;
+  // Command/ready handshakes must also be exclusive. A search started while
+  // ucinewgame/isready or setoption is awaiting its write would otherwise
+  // interleave UCI commands even though the search guard itself is held.
+  private controlActive = false;
   private static readonly SEARCH_TIMEOUT_MS = 120_000;
   private static readonly HANDSHAKE_TIMEOUT_MS = 10_000;
 
@@ -257,7 +261,18 @@ export class StockfishEngine {
   }
 
   private assertIdle(): void {
-    if (this.searchActive) throw new Error('engine_busy');
+    if (this.searchActive || this.controlActive) throw new Error('engine_busy');
+  }
+
+  private async withControl<T>(work: () => Promise<T>): Promise<T> {
+    this.assertIdle();
+    if (!this.proc || !this.ready) throw new Error('engine_not_ready');
+    this.controlActive = true;
+    try {
+      return await work();
+    } finally {
+      this.controlActive = false;
+    }
   }
 
   private async withSearch<T>(work: () => Promise<T>): Promise<T> {
@@ -278,21 +293,22 @@ export class StockfishEngine {
   }
 
   async setOption(name: string, value: string | number): Promise<void> {
-    this.assertIdle();
-    await this.sendOption(name, value);
+    return this.withControl(() => this.sendOption(name, value));
   }
 
   async newGame(): Promise<void> {
-    this.assertIdle();
-    await this.send('ucinewgame');
-    await this.sendAndWait('isready', (l) => l === 'readyok');
+    return this.withControl(async () => {
+      await this.send('ucinewgame');
+      await this.sendAndWait('isready', (l) => l === 'readyok');
+    });
   }
 
   async name(): Promise<string> {
-    this.assertIdle();
-    const line = await this.sendAndWait('uci', (l) => l.startsWith('id name') || l === 'uciok');
-    if (line.startsWith('id name')) return line.replace('id name ', '');
-    return 'Stockfish';
+    return this.withControl(async () => {
+      const line = await this.sendAndWait('uci', (l) => l.startsWith('id name') || l === 'uciok');
+      if (line.startsWith('id name')) return line.replace('id name ', '');
+      return 'Stockfish';
+    });
   }
 
   async evaluate(fen: string, depth: number): Promise<EngineEval> {

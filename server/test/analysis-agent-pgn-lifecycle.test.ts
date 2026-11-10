@@ -84,6 +84,34 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(fake.quit).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a valid game analysis when the engine supplies an illegal optional PV', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => ({
+      cp: 20, mate: null, pv: ['a1a1'], bestMoveUci: 'h9h9', depth: 16,
+      candidates: [{ cp: 20, mate: null, pv: ['a1a1'], multipv: 1 }],
+    }));
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+
+    const result = await analyzePgnFull('1. e4', 16, perf);
+    expect(result.moves).toHaveLength(1);
+    expect(result.moves[0]).toMatchObject({ best_move_uci: null, best_move_san: null, best_pv: [] });
+    expect(fake.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('scores a FEN-started game where Black makes the first recorded move', async () => {
+    const fake = fakeEngine();
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
+    const pgn = `[SetUp "1"]\n[FEN "${startingFen}"]\n\n1... e5`;
+
+    const result = await analyzePgnFull(pgn, 16, { ...perf, userColor: 'black' });
+    expect(fake.evaluateMulti.mock.calls[0]?.[0]).toBe(startingFen);
+    expect(result.moves).toHaveLength(1);
+    expect(result.moves[0]).toMatchObject({ uci: 'e7e5', fen_before: startingFen });
+    expect(result.moves[0]?.fen_after).toContain(' w ');
+    expect(fake.quit).toHaveBeenCalledTimes(1);
+  });
+
   it('does not publish a completed score if the request aborts at the final ply', async () => {
     const controller = new AbortController();
     const fake = fakeEngine();
@@ -95,6 +123,17 @@ describe('analysis-agent PGN lifecycle', () => {
       };
     });
     mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    await expect(analyzePgnFull('1. e4', 16, perf, controller.signal))
+      .rejects.toThrow('analysis_cancelled');
+    expect(fake.quit).toHaveBeenCalled();
+  });
+
+  it('does not return a result when the request aborts during final engine teardown', async () => {
+    const controller = new AbortController();
+    const fake = fakeEngine();
+    fake.quit.mockImplementation(async () => { controller.abort(); });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+
     await expect(analyzePgnFull('1. e4', 16, perf, controller.signal))
       .rejects.toThrow('analysis_cancelled');
     expect(fake.quit).toHaveBeenCalled();

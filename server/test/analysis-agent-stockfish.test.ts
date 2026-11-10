@@ -116,6 +116,31 @@ describeUnix('analysis-agent Stockfish subprocess lifecycle', () => {
     }
   });
 
+  it('keeps new-game and configuration handshakes exclusive before a search starts', async () => {
+    const engine = new StockfishEngine(fakeUci('normal'));
+    try {
+      await engine.start();
+
+      // A search started in the same tick must not interleave its position/go
+      // commands with an outstanding ucinewgame/isready handshake.
+      const reset = engine.newGame();
+      await expect(engine.evaluate(START_FEN, 12)).rejects.toThrow('engine_busy');
+      await expect(engine.setOption('Hash', 32)).rejects.toThrow('engine_busy');
+      await expect(engine.name()).rejects.toThrow('engine_busy');
+      await reset;
+
+      const option = engine.setOption('Hash', 32);
+      await expect(engine.bestMove(START_FEN, { depth: 12 })).rejects.toThrow('engine_busy');
+      await option;
+
+      // Exclusivity must be released after both control operations.
+      await expect(engine.evaluate(START_FEN, 12)).resolves.toMatchObject({ cp: 40 });
+      await expect(engine.name()).resolves.toBe('FakeFish');
+    } finally {
+      await engine.quit();
+    }
+  });
+
   it('does not accept further work on a terminated process', async () => {
     const engine = new StockfishEngine(fakeUci('normal'));
     await engine.start();
