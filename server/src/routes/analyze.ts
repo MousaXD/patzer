@@ -4,7 +4,7 @@ import { Chess } from 'chess.js';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { createAnalysisEngine, engineBackend } from '../chess/engine.js';
-import { AnalysisAdmission, AnalysisResultCache } from '../chess/analysisAgentWork.js';
+import { AnalysisAdmission, AnalysisResultCache, stopEngineOnAbort } from '../chess/analysisAgentWork.js';
 import { scoreVariationMove, VariationScoringError, type VariationMoveQuality } from '../chess/variationScoring.js';
 import {
   classifyByWpDrop, refineClassification, normalizeEval, cpToWinPct,
@@ -276,11 +276,19 @@ router.post('/variation-move', async (c) => {
   const release = engineSlots.tryAcquire();
   if (!release) return c.json({ error: 'engine_busy' }, 429);
 
-  const work = scoreVariationMove(parsed.data, createAnalysisEngine);
+  const signal = c.req.raw.signal;
+  let removeAbort = () => undefined;
+  const work = scoreVariationMove(parsed.data, () => {
+    const engine = createAnalysisEngine();
+    // The scorer still owns the final quit and the 30-second timeout. This
+    // listener releases local Stockfish promptly after abandoned navigation.
+    removeAbort = stopEngineOnAbort(signal, engine);
+    return engine;
+  });
   positionInflight.set(user.id, work);
   try {
     const quality = await work;
-    variationCache.set(cacheKey, quality);
+    if (!signal.aborted) variationCache.set(cacheKey, quality);
     return c.json({ quality });
   } catch (error) {
     if (error instanceof VariationScoringError) {
@@ -291,6 +299,7 @@ router.post('/variation-move', async (c) => {
     // Never expose local binary paths or process error messages to the client.
     return c.json({ error: 'engine_error' }, 503);
   } finally {
+    removeAbort();
     positionInflight.delete(user.id);
     release();
   }
