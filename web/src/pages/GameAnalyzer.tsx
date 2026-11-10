@@ -8,6 +8,7 @@ import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
 import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
+import { moveSideForPly } from '../components/review/moveHistoryModel';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -356,6 +357,8 @@ export default function GameAnalyzer() {
   }
 
   const move: AnalyzedMove | undefined = isVariation ? undefined : analysis?.moves[ply - 1];
+  const startFen = positions[0]?.fen;
+  const reviewedMoveSide = moveSideForPly(ply, startFen);
   const userColor = data.game.user_color ?? 'white';
   // "Play from here" (in the move card): the position on the board, at any
   // move — you keep your colour and Patzer takes the other side. To redo a
@@ -375,7 +378,7 @@ export default function GameAnalyzer() {
     url: '/api/coach/explain',
     body: {
       fen: move.fen_before,
-      player: ply % 2 === 1 ? 'White' : 'Black',
+      player: reviewedMoveSide === 'white' ? 'White' : 'Black',
       played_san: move.san,
       best_san: move.best_move_san,
       classification: move.classification,
@@ -389,7 +392,7 @@ export default function GameAnalyzer() {
       history: historySoFar,
       // Your own moves get "you" and your history (past mistakes of the same
       // kind, weakest phase, the opening trainer); the opponent's get neither.
-      user_perspective: !!data.game.user_color && (ply % 2 === 1 ? 'white' : 'black') === data.game.user_color,
+      user_perspective: !!data.game.user_color && reviewedMoveSide === data.game.user_color,
     },
   }) : null;
 
@@ -417,7 +420,7 @@ export default function GameAnalyzer() {
 
   const pickedPlies = pick && analysis
     ? analysis.moves
-      .filter((m) => m.classification === pick.classification && (pick.side === 'both' || (m.ply % 2 === 1 ? 'white' : 'black') === pick.side))
+      .filter((m) => m.classification === pick.classification && (pick.side === 'both' || moveSideForPly(m.ply, startFen) === pick.side))
       .map((m) => m.ply)
     : [];
   const pickedSet = pick ? new Set(pickedPlies) : null;
@@ -434,7 +437,7 @@ export default function GameAnalyzer() {
     if (pick && pick.classification === p.classification && pick.side === p.side) { setPick(null); return; }
     setPick(p);
     setTab('moves');
-    const first = analysis?.moves.find((m) => m.classification === p.classification && (p.side === 'both' || (m.ply % 2 === 1 ? 'white' : 'black') === p.side));
+    const first = analysis?.moves.find((m) => m.classification === p.classification && (p.side === 'both' || moveSideForPly(m.ply, startFen) === p.side));
     if (first) setPly(first.ply);
     // Bring the move list into view inside the right rail.
     requestAnimationFrame(() => {
@@ -529,7 +532,7 @@ export default function GameAnalyzer() {
                 </>
               ) : move ? (
                 <>
-                  <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{ply % 2 === 1 ? t('review.sideShort.white') : t('review.sideShort.black')}: {move.san}</span>
+                  <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{reviewedMoveSide === 'white' ? t('review.sideShort.white') : t('review.sideShort.black')}: {move.san}</span>
                   {move.best_move_san && move.best_move_san !== move.san && (
                     <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: move.best_move_san })}</span>
                   )}
@@ -676,6 +679,7 @@ export default function GameAnalyzer() {
                       onMomentJump={setPly}
                       onGenerated={setReviewProse}
                       userColor={data.game.user_color}
+                      startFen={startFen}
                     />
                   )}
                   {tab === 'moments' && (
@@ -755,6 +759,7 @@ export default function GameAnalyzer() {
                 moves={analysis.moves}
                 phaseSplit={analysis.phase_split}
                 userColor={userColor}
+                startFen={startFen}
                 onPick={onPick}
                 picked={pick}
               />
