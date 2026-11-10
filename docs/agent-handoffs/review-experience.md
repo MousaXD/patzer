@@ -158,3 +158,19 @@ npm run build
 - **Design-system owner:** the shared `.review-workspace` CSS and global fonts must remain compatible. No global CSS files were touched.
 - **Independent QA:** verify no AI report loss on stream interruption, reliable recovery from cached-analysis corruption, correct branch-versus-mainline arrows, and regression-free saved games.
 - **Release:** draft PR #13 remains **unmerged and undeployed** until these conditions are certified.
+
+
+## CI failure remediation — 2026-11-10
+
+**Root cause established from completed GitHub Actions logs:**
+
+- Commit `ee377e1111001536f6f7546b5489be3e20441691` triggered failing Frontend Overhaul QA `42854841075` (job `129964930604`) and design-system certification `42854842900` (job `129964938859`).
+- The completed design-system run executed the repository's TypeScript/typecheck step and then the full unit suite. The unit suite reported **608 passed and 1 failed across 73 test files (609 total tests)**. The *sole* failed assertion was `web/src/components/GameReportPanel.stream.test.tsx:58`: `TestingLibraryElementError: Found multiple elements with the text: Write it again`.
+- The failure was test-harness leakage, not an identified production stream bug: `GameReportPanel.stream.test.tsx` mounted a component in each case without explicitly unmounting between cases. The third test therefore saw duplicate buttons from earlier cases.
+- **Fix committed and pushed:** `d0c26c0625c598cec7ffac967c30a5274de2ffba`. Imported `cleanup` from `@testing-library/react` and invoked `cleanup()` before restoring globals/mocks in `afterEach`. No runtime code or unrelated files were modified.
+- At the last fresh check, the new *exact-source-head* runs were all **queued**, with no confirmed conclusion: CI `42863700735`, Frontend Overhaul QA `42863700785`, design-system certification `42863700787`. Their pending status is not a pass. The local assigned worktree is still unavailable, so the assistant could not run npm commands.
+- A handoff-only commit will move the branch head beyond the source commit; require passing checks on the eventual integrated/head commit before approving or merging PR #13.
+
+**Next verifiable step:** obtain successful statuses and logs for the latest head's full unit tests, TypeScript, production build, Chromium QA and theme certification. Do not infer success from the eliminated test failure or the previous 608 passes. The independent QA owner should also verify the installed app and review workflows; other agents own backend contracts and shared design-system CSS.
+
+The branch remains `agent/review-experience-20261110`, PR #13 remains **draft**, and no main-branch edit, deployment, merge, database access or out-of-scope source change was made.
