@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { parseGameId, parseGameListQuery } from './platformQueries.js';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
@@ -14,23 +15,38 @@ router.use('*', requireAuth);
 
 router.get('/', (c) => {
   const user = c.get('user');
-  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
-  const bookmarked = c.req.query('bookmarked') === '1';
-  const q = (c.req.query('q') ?? '').trim().toLowerCase();
-  // An analysis cached at an older scoring_version reads as "not analyzed" in
-  // the list — accuracy values from the old scoring would mislead the user.
+  const query = parseGameListQuery(new URL(c.req.url).searchParams);
+  if (!query) return c.json({ error: 'invalid_input' }, 400);
+
+  // Both queries enforce user ownership. Stale analyses are not "analyzed".
   const filters: string[] = ['g.user_id = ?'];
-  const params: unknown[] = [user.id];
-  if (bookmarked) filters.push('g.bookmarked = 1');
-  if (q) {
-    filters.push('(LOWER(g.white) LIKE ? OR LOWER(g.black) LIKE ? OR LOWER(g.opening_name) LIKE ? OR LOWER(g.notes) LIKE ?)');
-    const like = `%${q}%`;
-    params.push(like, like, like, like);
+  const params: (string | number)[] = [user.id];
+  if (query.bookmarked) filters.push('g.bookmarked = 1');
+  if (query.source !== null) { filters.push('g.source = ?'); params.push(query.source); }
+  if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
+  if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
+  if (query.analyzed !== null) {
+    filters.push(query.analyzed ? 'a.scoring_version >= ?' : '(a.game_id IS NULL OR a.scoring_version < ?)');
+    params.push(SCORING_VERSION);
   }
-  // Limit only the displayed page, not the collection count or Insights.
-  // Review can show the latest 100 while reporting how many were truly saved.
-  const total = db.prepare(`SELECT count(*) AS n FROM games g WHERE ${filters.join(' AND ')}`)
+  if (query.q) {
+    // Literal substring search: percent and underscore are not wildcards.
+    filters.push(`(
+      instr(LOWER(COALESCE(g.white, '')), ?) > 0 OR
+      instr(LOWER(COALESCE(g.black, '')), ?) > 0 OR
+      instr(LOWER(COALESCE(g.opening_name, '')), ?) > 0 OR
+      instr(LOWER(COALESCE(g.notes, '')), ?) > 0
+    )`);
+    params.push(query.q, query.q, query.q, query.q);
+  }
+  const joined = 'FROM games g LEFT JOIN analyses a ON a.game_id = g.id';
+  const where = `WHERE ${filters.join(' AND ')}`;
+  const total = db.prepare(`SELECT COUNT(*) AS n ${joined} ${where}`)
     .get(...params) as { n: number };
+  // Never interpolate raw query parameters into ORDER BY.
+  const order = query.sort === 'oldest'
+    ? 'g.end_time ASC NULLS LAST, g.id ASC'
+    : 'g.end_time DESC NULLS LAST, g.id DESC';
   const rows = db.prepare(`
     SELECT g.id, g.source, g.external_id, g.white, g.black, g.result, g.time_control, g.time_class,
            g.eco, g.opening_name, g.end_time, g.user_color, g.rated,
@@ -41,12 +57,16 @@ router.get('/', (c) => {
            CASE WHEN a.scoring_version >= ? THEN a.accuracy_black ELSE NULL END as accuracy_black,
            CASE WHEN a.scoring_version >= ? THEN a.performance_white ELSE NULL END as performance_white,
            CASE WHEN a.scoring_version >= ? THEN a.performance_black ELSE NULL END as performance_black
-    FROM games g LEFT JOIN analyses a ON a.game_id = g.id
-    WHERE ${filters.join(' AND ')}
-    ORDER BY g.end_time DESC NULLS LAST, g.id DESC
-    LIMIT ?
-  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, ...params, limit);
-  return c.json({ games: rows, total: total.n });
+    ${joined} ${where}
+    ORDER BY ${order}
+    LIMIT ? OFFSET ?
+  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION,
+    ...params, query.limit, query.offset) as { id: number }[];
+  return c.json({
+    games: rows, total: total.n,
+    limit: query.limit, offset: query.offset,
+    has_more: query.offset + rows.length < total.n,
+  });
 });
 
 // Games you can walk back into: the bot game you left mid-move, and any PvP
@@ -109,7 +129,8 @@ router.delete('/live/bot', (c) => {
 const notesSchema = z.object({ notes: z.string().max(4000) });
 router.patch('/:id/notes', async (c) => {
   const user = c.get('user');
-  const id = Number(c.req.param('id'));
+  const id = parseGameId(c.req.param('id'));
+  if (id === null) return c.json({ error: 'invalid_input' }, 400);
   const body = await c.req.json().catch(() => ({}));
   const parsed = notesSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
@@ -121,7 +142,8 @@ router.patch('/:id/notes', async (c) => {
 const bookmarkSchema = z.object({ bookmarked: z.boolean() });
 router.patch('/:id/bookmark', async (c) => {
   const user = c.get('user');
-  const id = Number(c.req.param('id'));
+  const id = parseGameId(c.req.param('id'));
+  if (id === null) return c.json({ error: 'invalid_input' }, 400);
   const body = await c.req.json().catch(() => ({}));
   const parsed = bookmarkSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
@@ -132,7 +154,8 @@ router.patch('/:id/bookmark', async (c) => {
 
 router.get('/:id', (c) => {
   const user = c.get('user');
-  const id = Number(c.req.param('id'));
+  const id = parseGameId(c.req.param('id'));
+  if (id === null) return c.json({ error: 'invalid_input' }, 400);
   const game = db.prepare('SELECT * FROM games WHERE id = ? AND user_id = ?').get(id, user.id);
   if (!game) return c.json({ error: 'not_found' }, 404);
   const analysis = db.prepare('SELECT * FROM analyses WHERE game_id = ?').get(id) as
@@ -150,7 +173,8 @@ router.get('/:id', (c) => {
 
 router.delete('/:id', (c) => {
   const user = c.get('user');
-  const id = Number(c.req.param('id'));
+  const id = parseGameId(c.req.param('id'));
+  if (id === null) return c.json({ error: 'invalid_input' }, 400);
   const r = db.prepare('DELETE FROM games WHERE id = ? AND user_id = ?').run(id, user.id);
   if (r.changes === 0) return c.json({ error: 'not_found' }, 404);
   return c.json({ ok: true });
