@@ -51,7 +51,7 @@ router.get('/', (c) => {
 
   const gamesTotal = db.prepare(`
     SELECT COUNT(*) AS total,
-           SUM(CASE WHEN start_fen IS NULL THEN 1 ELSE 0 END) AS eligible
+           COALESCE(SUM(CASE WHEN start_fen IS NULL THEN 1 ELSE 0 END), 0) AS eligible
     FROM games WHERE user_id = ?
   `).get(me.id) as { total: number; eligible: number };
 
