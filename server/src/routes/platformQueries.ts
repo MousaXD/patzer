@@ -19,12 +19,19 @@ const RESULTS = new Set(['win', 'draw', 'loss']);
 
 function integerParam(raw: string | null, fallback: number, max: number, clamp = false): number | null {
   if (raw === null) return fallback;
-  if (!/^(0|[1-9][0-9]{0,8})$/.test(raw)) return null;
+  if (!/^(0|[1-9][0-9]{0,14})$/.test(raw)) return null;
   const n = Number(raw);
+  if (!Number.isSafeInteger(n)) return null;
   return n > max ? (clamp ? max : null) : n;
 }
 
 export function parseGameListQuery(params: URLSearchParams): GameListQuery | null {
+  // Duplicated recognized parameters are ambiguous to caches and clients:
+  // reject them instead of silently using the first value.
+  for (const key of ['limit', 'offset', 'q', 'bookmarked', 'source',
+    'time_class', 'result', 'analyzed', 'sort']) {
+    if (params.getAll(key).length > 1) return null;
+  }
   const limit = integerParam(params.get('limit'), 50, 200, true);
   const offset = integerParam(params.get('offset'), 0, 1_000_000);
   const q = (params.get('q') ?? '').trim().toLowerCase();
