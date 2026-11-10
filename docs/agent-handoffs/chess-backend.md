@@ -3,7 +3,7 @@
 **Owner:** Staff Backend / Analysis Agent  
 **Branch:** `agent/chess-backend-20261110`  
 **Baseline:** `c8d9e1e`  
-**Status:** Implemented on GitHub; CI evidence is recorded below as available. **Do not merge until the required checks pass.**
+**Status:** Implemented and independently CI-verified on GitHub. **Do not merge without coordinator review.**
 
 ## Scope and changes
 
@@ -48,7 +48,7 @@ Potentially observable differences:
 
 The supplied working-tree path `/home/mousa/projects/my-creations/chess/patzer-agent-chess-backend` is **not mounted** in the tool environment, and that environment cannot resolve github.com to clone. No local dependencies were installed, no existing Patzer service was touched, and no live database was opened. Source inspection and modifications were performed through the GitHub repository connector.
 
-**GitHub Actions verification on code commit `098648d54c18c982207061b4a868766929368741`:** [CI run #42846349912](https://github.com/MousaXD/patzer/actions/runs/42846349912) reported successful Node 20 and Node 22 typechecks, complete unit suites, and production builds. The Node 22 log confirms **62 passing test files**, including all **6 fake-UCI lifecycle** and **4 engine-admission/cache** regression tests; the existing classifier and variation-scoring tests also passed. The CI Docker image build/boot smoke test passed. [Independent frontend QA run #42846349945](https://github.com/MousaXD/patzer/actions/runs/42846349945) passed. The long browser reconnect/resume job in the primary CI workflow was still running when this evidence snapshot was recorded. A handoff-document-only commit follows the verified code commit and does not change runtime or tests.
+**GitHub Actions verification on code commit `098648d54c18c982207061b4a868766929368741`:** [CI run #42846349912](https://github.com/MousaXD/patzer/actions/runs/42846349912) reported successful Node 20 and Node 22 typechecks, complete unit suites, and production builds. The Node 22 log confirms **62 passing test files**, including all **6 fake-UCI lifecycle** and **4 engine-admission/cache** regression tests; the existing classifier and variation-scoring tests also passed. The CI Docker image build/boot smoke test passed. [Independent frontend QA run #42846349945](https://github.com/MousaXD/patzer/actions/runs/42846349945) passed. The primary CI workflow **finished successfully**, including PvP protocol, reconnect/resume, SSO integration, two-browser PvP, and browser resume acceptance; all four CI jobs passed. A handoff-document-only commit follows the verified code commit and does not change runtime or tests.
 
 **Static claims, not measurements:** HTTP-triggered analysis has a hard bound of two simultaneous admitted jobs; successful ephemeral-result cache has a hard bound of 128 entries and a 60-second lifetime. This reduces worst-case engine work and repeated exact-FEN requests, but **no benchmark throughput or speedup is claimed**. Timing and memory benchmarks need a disposable CI or development environment.
 
