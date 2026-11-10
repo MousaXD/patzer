@@ -100,7 +100,7 @@ These results were **actually rerun during this continuation** with local Python
 ### GitHub Actions verification gate (continuation)
 
 - [Draft PR #14](https://github.com/MousaXD/patzer/pull/14) is open but unmerged and targets `main` only to trigger the repository's PR workflows. The target `main` was verified at starting commit `c8d9e1e00609c30779a3e86542f25f9454e1e911` during this continuation.
-- The CI and frontend QA workflow runs reported `queued` with null conclusions during the last check. **No GitHub Actions pass is claimed.** The final exact code commit `19e60ce9a838513f0c04db352a26394a97feeb7c` must receive fresh checks; older queued runs cannot certify it.
+- The CI and frontend QA workflow runs reported `queued` with null conclusions during the last check. **No GitHub Actions pass is claimed.** The final exact code commit `24b1fd8f0c16e7fcbc281539fa93adfc3b1d97f2` must receive fresh checks; older queued runs cannot certify it.
 - Required next commands in an authorized copy of the exact assigned worktree (or CI): `npm run typecheck`, `npm test -- server/test/platform-backend.test.ts server/test/platform-backend-scale.test.ts server/test/chesscom-history.test.ts server/test/insights-full-history.test.ts server/test/insights-move-quality.test.ts server/test/mcp-connection.test.ts`, `npm run build`. No new dependencies should be installed by this agent.
 - **Worktree blocker:** The original directory `/home/mousa/projects/my-creations/chess/patzer-agent-platform` does not exist in this execution container. Do not mistake GitHub connector writes for a successful local worktree checkout or local test run. No alternative worktree or branch was used.
 
@@ -125,7 +125,7 @@ These results were **actually rerun during this continuation** with local Python
 ## Continuation status and final-code SHA
 
 - Original starting point: `c8d9e1e00609c30779a3e86542f25f9454e1e911`; original continuation head: `d5b59e4cc4d9ef3a924a43a9eca9317fb8086159`.
-- **Final code/test commit as of this continuation:** `19e60ce9a838513f0c04db352a26394a97feeb7c`. This commits a new 20,000-game scale API regression suite. The handoff-only commit written after this SHA is an additional documentation commit; its own SHA cannot be embedded within itself.
+- **Latest code/test commit as of this continuation:** `24b1fd8f0c16e7fcbc281539fa93adfc3b1d97f2`. This commits a new 20,000-game scale API regression suite. The handoff-only commit written after this SHA is an additional documentation commit; its own SHA cannot be embedded within itself.
 - Additional continuation improvements: empty-account `games_eligible=0` fix; third-user empty-account regression; Chess.com game URL true-host validation; lookalike URL regression; 20,000-game real API fixture tests awaiting CI.
 - **Third continuation:** the one-time history importer now recognizes explicit Chess.com loss/draw/win outcomes and refuses to count unknown or missing outcomes as losses; added a fixture regression with a made-up future outcome code. This preserves historical stats correctness even if Chess.com adds an outcome code. The automatic sync module is unchanged.
 - Actually executed checks: in-memory Python SQLite 10,500-row synthetic fixture with repeat measurements; see above. Not executed: TypeScript, Vitest, builds, browser tests and real MCP/systemd tests.
@@ -140,3 +140,14 @@ These results were **actually rerun during this continuation** with local Python
 - **Exact final code/test commit before this report:** `19e60ce9a838513f0c04db352a26394a97feeb7c` (the report-only commit is later; use branch HEAD for its SHA).
 - **CI status:** Draft [PR #14](https://github.com/MousaXD/patzer/pull/14) remains unmerged. GitHub Actions CI and frontend QA for preceding heads were still `queued`, without conclusions; latest code SHA had no published completed checks at last lookup. Other Patzer branches also had queued runs. Neither `npm run typecheck` nor Vitest/build could run without the missing worktree. **No tests were claimed passed** for these new commits.
 - **Coordinator follow-up:** verify CI on exact final head and restore the designated worktree for local checks if required; do not merge until all mandatory gates and cross-agent integration review pass. Nothing in `autoImport.ts`, `analyze.ts`, `stockfish.ts`, auth, database schema/migrations, frontend or secrets was changed.
+
+## Fourth continuation — query validation hardening and final gate
+
+- Original worktree was rechecked and remains unavailable. This continuation used the verified existing **remote** `agent/platform-backend-20261110` branch only. No alternate local checkout, main edits, deployment or private-data access.
+- **Code/test HEAD before report:** `24b1fd8f0c16e7fcbc281539fa93adfc3b1d97f2`. The new parser rejects duplicated known filter keys, making query interpretation deterministic. It now clamps large positive *safe decimal integer* limits to 200 instead of rejecting some values based solely on their digit length. Offsets remain strictly bounded.
+- **Regression additions:** duplicated `limit`, `sort` and `bookmarked` inputs return 400; `limit=10000000000` returns no more than 200 rows.
+- Historical result validation change already committed at `19e60ce9a838513f0c04db352a26394a97feeb7c` remains in place.
+- **Tests:** The new TypeScript/Vitest checks were written and pushed, but **not run** because the assigned worktree and npm dependencies are inaccessible here. Existing isolated SQLite microbenchmark remains the only completed executable evidence and does not certify Hono runtime code.
+- **GitHub CI:** Draft [PR #14](https://github.com/MousaXD/patzer/pull/14) remains open and unmerged. At last inspection, both CI and frontend QA workflows for earlier commits were queued, and no passing workflow result existed for the current code SHA. The coordinator must verify a fresh exact-head CI run and resolve any failures before merge. GitHub Actions is also showing queued runs on other Patzer branches.
+- **Final report commit:** The latest branch HEAD following this paragraph's commit is the authoritative report commit SHA. It intentionally is not embedded in the same file to avoid self-reference.
+- **Verdict: NOT MERGE READY / blocked on exact-head CI and integration QA.**
