@@ -82,6 +82,12 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
   const [enabled, setEnabled] = useState(false);
   const [threat, setThreat] = useState<Threat | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'check' | 'ok' | 'unknown'>('idle');
+  const [resultFen, setResultFen] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  // A reply for another board must never be visible for this FEN, even on
+  // the first render before the next effect schedules a new engine request.
+  const displayedState = resultFen === fen ? state : 'loading';
+  const displayedThreat = resultFen === fen ? threat : null;
 
   const nullFen = fen ? nullMoveFen(fen) : null;
   const stm = fen.split(' ')[1] === 'b' ? 'black' : 'white';
@@ -89,9 +95,12 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
 
   useEffect(() => {
     if (!enabled || !fen) return;
-    if (currentCpStm === null) { setThreat(null); setState('unknown'); return; }
-    if (!nullFen) { setThreat(null); setState('check'); return; }
+    if (currentCpStm === null) { setThreat(null); setResultFen(fen); setState('unknown'); return; }
+    if (!nullFen) { setThreat(null); setResultFen(fen); setState('check'); return; }
     let cancelled = false;
+    let retryTimer: number | undefined;
+    setResultFen(fen);
+    setThreat(null);
     setState('loading');
     // The endpoint is single-flight per user: if the engine-lines panel is
     // mid-search we get a 429, so back off and retry a few times.
@@ -107,14 +116,18 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
         .catch((err: unknown) => {
           if (cancelled) return;
           const status = (err as { status?: number } | null)?.status;
-          if (status === 429 && n < 4) { window.setTimeout(() => { if (!cancelled) attempt(n + 1); }, 900); return; }
+          if (status === 429 && n < 4) { retryTimer = window.setTimeout(() => { if (!cancelled) attempt(n + 1); }, 900); return; }
           setThreat(null);
           setState('error');
         });
     };
     const handle = window.setTimeout(() => attempt(0), 400);
-    return () => { cancelled = true; window.clearTimeout(handle); };
-  }, [enabled, fen, nullFen, currentCpStm]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [enabled, fen, nullFen, currentCpStm, retry]);
 
   function describe(th: Threat): string {
     const piece = th.captured ? t(`threat.pieces.${PIECE_KEY[th.captured] ?? 'pawn'}`, { defaultValue: PIECE_KEY[th.captured] ?? 'piece' }) : null;
@@ -149,27 +162,32 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
       </div>
       {enabled && (
         <div className="px-3 py-2 text-xs">
-          {state === 'loading' && (
+          {displayedState === 'loading' && (
             <div className="flex items-center gap-2 py-1 text-chesscom-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
             </div>
           )}
-          {state === 'check' && (
+          {displayedState === 'check' && (
             <div className="py-1 text-chesscom-500">{t('threat.inCheck', { defaultValue: 'In check — the threat is the check itself.' })}</div>
           )}
-          {state === 'unknown' && <div className="py-1 text-chesscom-500">Analyze this position first to see a reliable threat estimate.</div>}
-          {state === 'error' && <div className="py-1 text-chesscom-400">—</div>}
-          {state === 'ok' && threat && (
+          {displayedState === 'unknown' && <div className="py-1 text-chesscom-500">Analyze this position first to see a reliable threat estimate.</div>}
+          {displayedState === 'error' && (
+            <div role="status" className="flex items-center justify-between gap-2 py-1 text-chesscom-500">
+              <span>The engine could not evaluate this threat. It may be busy.</span>
+              <button type="button" onClick={() => setRetry((n) => n + 1)} className="btn-secondary px-2 py-1 text-xs">Retry</button>
+            </div>
+          )}
+          {displayedState === 'ok' && displayedThreat && (
             <div className="space-y-1 py-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-[11px] uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
                   {t('threat.if', { side: t(`threat.side.${stm}`, { defaultValue: stm }), defaultValue: 'If {{side}} passed' })}
                 </span>
-                <span className="font-mono text-sm font-bold text-chesscom-900 dark:text-chesscom-100">{threat.san}</span>
+                <span className="font-mono text-sm font-bold text-chesscom-900 dark:text-chesscom-100">{displayedThreat.san}</span>
               </div>
-              <div className="text-chesscom-700 dark:text-chesscom-300">{describe(threat)}</div>
-              {threat.pv.length > 1 && (
-                <div className="truncate font-mono text-[11px] text-chesscom-500">{threat.pv.join(' ')}</div>
+              <div className="text-chesscom-700 dark:text-chesscom-300">{describe(displayedThreat)}</div>
+              {displayedThreat.pv.length > 1 && (
+                <div className="truncate font-mono text-[11px] text-chesscom-500">{displayedThreat.pv.join(' ')}</div>
               )}
             </div>
           )}
