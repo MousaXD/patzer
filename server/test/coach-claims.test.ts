@@ -171,6 +171,19 @@ describe('coach_claims_v1: independent legal proof, not plausible prose', () => 
     expect(screenHintProse('Before moving, compare checks and captures for both sides. How might your opponent reply?', 'en')).toBe(true);
   });
 
+  it('does not silently reverse the mover in non-English reviews', () => {
+    for (const [lang, wrong, trueActor, unsupportedPast] of [
+      ['bg', 'Белите изиграха Nf6.', 'Черните изиграха Nf6.', 'Белите изиграха Qxf7#.'],
+      ['es', 'Las blancas jugaron Nf6.', 'Las negras jugaron Nf6.', 'Las blancas jugaron Qxf7#.'],
+      ['de', 'Weiß spielte Nf6.', 'Schwarz spielte Nf6.', 'Weiß spielte Qxf7#.'],
+      ['ru', 'Белые сыграли Nf6.', 'Чёрные сыграли Nf6.', 'Белые сыграли Qxf7#.'],
+    ] as const) {
+      expect(screenCoachProse(wrong, scholar, lang).accepted, `${lang} wrong actor`).toBe(false);
+      expect(screenCoachProse(trueActor, scholar, lang).accepted, `${lang} correct actor`).toBe(true);
+      expect(screenCoachProse(unsupportedPast, scholar, lang).accepted, `${lang} unproven played reply`).toBe(false);
+    }
+  });
+
   it('assigns stable distinct claim IDs when the opponent has multiple captures', () => {
     const fen = '4k3/8/8/8/2p1p3/3P4/8/4K3 w - - 0 1';
     const first = momentEvidence(fen, 'Ke2', null);

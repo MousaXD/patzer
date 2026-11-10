@@ -55,7 +55,8 @@ import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase,
 // v6 = independently validated tactical claims; conservative summary/fallback.
 // v7 = reject false named SAN, unproven played replies and wrong actor/owner.
 //      Never reuse cached v6 prose screened by the less restrictive gate.
-export const REVIEW_PROSE_VERSION = 7;
+// v8 = reject explicit reversed mover claims in every supported prose language.
+export const REVIEW_PROSE_VERSION = 8;
 
 // JSON-mode rule append-on. R10 in the consolidated 10-rule scheme. We use
 // "R10:" numbering to extend prompts.ts's existing rule block cleanly.

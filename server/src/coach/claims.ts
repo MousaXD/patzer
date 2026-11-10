@@ -303,19 +303,29 @@ export function screenCoachProse(text: string, evidence: MomentEvidenceV1, langu
     if (!provenSan.has(canonicalSan(match[0]))) fail.push('unverified_named_move');
   }
 
-  // High-confidence actor checks for statements that directly assign an
-  // explicit SAN or mating move to White/Black. Longer implicit phrasing is
-  // NOT certified by this lexical screen and remains a known limitation.
+  // High-confidence actor checks for statements that explicitly assign a
+  // SAN to White/Black in each supported language. Longer implicit phrasing
+  // is NOT certified by this lexical screen and remains a known limitation.
   const actorName = evidence.actor === 'white' ? 'White' : 'Black';
   const oppositeName = evidence.actor === 'white' ? 'Black' : 'White';
   const namedMove = String.raw`(?:[KQRBN](?:[a-h1-8])?x?[a-h][1-8](?:=[QRBN])?|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?`;
-  const assertedPlayed = new RegExp(String.raw`\b(White|Black|you)\s+(?:played|plays|chose|made)\s+(${namedMove})(?=$|[^\p{L}\p{N}])`, 'giu');
+  const moveSpeech: Record<Language, { names: string; verbs: string; white: string; black: string }> = {
+    en: { names: 'White|Black|you', verbs: 'played|plays|chose|made', white: 'White', black: 'Black' },
+    bg: { names: 'Белите|Черните|ти', verbs: 'изиграха|играха|изигра|игра', white: 'Белите', black: 'Черните' },
+    es: { names: String.raw`las\s+blancas|las\s+negras|tú|tu`, verbs: 'jugaron|jugó|jugo|jugaste|juegan|juega', white: 'las blancas', black: 'las negras' },
+    de: { names: 'Weiß|Schwarz|du', verbs: 'spielte|spielten|spielt|zogen|zog', white: 'Weiß', black: 'Schwarz' },
+    ru: { names: 'Белые|Чёрные|Черные|ты', verbs: 'сыграли|сыграл|сыграла|сделали|ходили', white: 'Белые', black: 'Чёрные' },
+  };
+  const grammar = moveSpeech[language];
+  const assertedPlayed = new RegExp(String.raw`(?<![\p{L}\p{N}])(${grammar.names})\s+(?:${grammar.verbs})\s+(${namedMove})(?=$|[^\p{L}\p{N}])`, 'giu');
+  const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   for (const m of text.matchAll(assertedPlayed)) {
     if (canonicalSan(m[2]!) !== canonicalSan(evidence.played_san)) {
       // A possible mating reply or engine recommendation is not evidence
       // that the move occurred in the real game.
       fail.push('unverified_past_move');
-    } else if (m[1]!.toLowerCase() === oppositeName.toLowerCase()) {
+    } else if (normalizeName(m[1]!) === normalizeName(evidence.actor === 'white' ? grammar.black : grammar.white)
+      || (language === 'ru' && evidence.actor === 'white' && normalizeName(m[1]!) === 'черные')) {
       fail.push('wrong_played_move_actor');
     }
   }
