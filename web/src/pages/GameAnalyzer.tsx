@@ -540,6 +540,9 @@ export default function GameAnalyzer() {
             <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
             <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
+          <p className="mt-1 text-center text-[11px] text-chesscom-500">
+            Left / Right: step through moves · Home / End: jump to start / end · F: flip board
+          </p>
 
         </div>
 
@@ -560,12 +563,12 @@ export default function GameAnalyzer() {
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
                   className={`rounded-md px-2 py-1.5 text-xs font-medium ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
-                  onClick={() => variations.selectVariation(branch.id)} title={`Variation ${index + 1}, ${branch.moves.length} moves`}>
-                  Variation {index + 1}
+                  onClick={() => variations.selectVariation(branch.id)} title={`Variation ${index + 1}, ${branch.moves.length} moves, from game ply ${branch.basePly}`}>
+                  Variation {index + 1} · {branch.moves.length} moves
                 </button>
               ))}
             </div>}
-            {isVariation && <div className="mt-2 text-sm">
+            {isVariation && <div role="status" className="mt-2 text-sm">
               <span className="font-mono text-xs text-chesscom-500">{variations.playedVariationMoves.map((m) => m.san).join(' ') || 'Branch point'}</span>
               {qualityError && <p className="mt-1 text-xs text-amber-600">{qualityError}</p>}
             </div>}
@@ -620,7 +623,7 @@ export default function GameAnalyzer() {
                   <TabBtn id="review-tab-moves" active={tab === 'moves'} onClick={() => setTab('moves')} icon={ListOrdered} label={t('review.moves', { defaultValue: 'Moves' })} />
                   <TabBtn id="review-tab-report" active={tab === 'report'} onClick={() => setTab('report')} icon={FileText} label={t('review.gameReport', { defaultValue: 'AI report' })} />
                   <TabBtn id="review-tab-moments" active={tab === 'moments'} onClick={() => setTab('moments')} icon={Sparkles} label={t('review.keyMoments', { defaultValue: 'Key moments' })} />
-                  <button onClick={() => setShowDepthControl((s) => !s)} className="btn-ghost ml-auto p-1.5" title={t('review.depth')}>
+                  <button onClick={() => setShowDepthControl((s) => !s)} aria-label={t('review.depth', { defaultValue: 'Engine depth settings' })} aria-expanded={showDepthControl} className="btn-ghost ml-auto p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500" title={t('review.depth')}>
                     <SettingsIcon className="h-3.5 w-3.5" />
                   </button>
                 </div>
