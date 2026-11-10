@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseGameId, parseGameListQuery } from '../src/routes/platformQueries.js';
+import { Chess } from 'chess.js';
 import { readAnalysisMoves, readPhaseSplit } from '../src/routes/analysisData.js';
 
 const tmp = mkdtempSync(join(tmpdir(), 'patzer-platform-fixture-'));
@@ -323,5 +324,47 @@ describe('defensive analysis metric decoding', () => {
     expect(readPhaseSplit('{broken')).toBeNull();
     expect(readPhaseSplit('{"opening":{"from_ply":1,"to_ply":14,"accuracy_white":85,"accuracy_black":75}}')?.opening?.accuracy_white).toBe(85);
     expect(readPhaseSplit('{"opening":{"from_ply":1,"to_ply":14,"accuracy_white":180,"accuracy_black":75}}')?.opening).toBeNull();
+  });
+});
+
+
+describe('Black-first position analytics regression', () => {
+  it('attributes Insights v1 mistakes to the actual mover, not odd/even ply parity', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    const legacyInsights = (await import('../src/routes/insights.js')).default;
+    db.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (7, 'fen_black', 'x', 'user')").run();
+    db.prepare("INSERT INTO profiles (user_id, display_name) VALUES (7, 'FEN Black')").run();
+
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1';
+    const gameId = Number(db.prepare(`
+      INSERT INTO games (user_id, source, external_id, pgn, white, black,
+        result, user_color, start_fen, end_time, rated)
+      VALUES (7, 'played', 'fen-black-first', '*', 'opponent', 'fen_black',
+        'loss', 'black', ?, '2026-11-01T00:00:00Z', 0)
+    `).run(fen).lastInsertRowid);
+    const chess = new Chess(fen);
+    const sanMoves = ['e5', 'e4', 'Nf6', 'Nc3', 'Nc6', 'Nf3', 'd5', 'd3', 'Bc5', 'Be2'];
+    const moves = sanMoves.map((san, index) => {
+      const before = chess.fen();
+      const move = chess.move(san);
+      expect(move, san).not.toBeNull();
+      return {
+        ply: index + 1, san, fen_before: before, fen_after: chess.fen(),
+        classification: index % 2 === 0 ? 'blunder' : 'good',
+        centipawn_loss: index % 2 === 0 ? 250 : 0,
+      };
+    });
+    db.prepare('INSERT INTO analyses (game_id, depth, scoring_version, moves_json) VALUES (?, 16, ?, ?)')
+      .run(gameId, SCORING_VERSION, JSON.stringify(moves));
+
+    const cookie7 = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(7))}`;
+    const response = await legacyInsights.request('/', { headers: { Cookie: cookie7 } });
+    expect(response.status).toBe(200);
+    const data = await response.json() as {
+      games_analyzed: number; weak_spots: { key: string; count: number }[];
+    };
+    expect(data.games_analyzed).toBe(1);
+    expect(data.weak_spots.find((spot) => spot.key === 'hung_pieces')?.count).toBe(5);
   });
 });

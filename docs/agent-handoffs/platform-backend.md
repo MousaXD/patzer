@@ -268,3 +268,31 @@ These results were **actually rerun during this continuation** with local Python
 - PR #14 must **remain draft**, and Agent 00 must run/approve the combined cross-branch integration before any merge. Do not equate this branch's green isolated local checks with release approval.
 
 **Sprint verdict: READY for coordinator integration review on this branch (verified locally); release/merge gate remains with Agent 00.**
+
+## Follow-on four-agent integration and Black-first Insights fix — 2026-11-10
+
+This work continued from the certified Platform Backend sprint instead of repeating earlier fixes. All four branch heads were assembled into a **disposable snapshot outside every Git worktree** by overlaying branch-owned changed paths onto `origin/main`. No commits, branches, merges or production resources were changed to construct or exercise the snapshot. The snapshot was not a merged PR or deployment candidate.
+
+### Exact integration source set
+
+- Base `origin/main`: `c8d9e1e00609c30779a3e86542f25f9454e1e911`
+- Product UI: `d2de0715b113502f870d8c8377adf31f411e0a99`
+- Game Review: `d0c14a7afe0327e45b302f5008cdfe0d8096bb7c`
+- Chess Backend (updated during verification): `3abff5c7b448a360e9086e230dc6122d19c55353`
+- Platform Backend: `59488333b94426839610b7d19ae51dddde315cd2` plus the platform-only Black-first change documented below, which is included in the new commit following this handoff update
+
+The first four-branch snapshot (Chess Backend at `1a16d84`, before its latest FEN fix) passed 699/699 unit tests in 86 files, TypeScript, production build, all five actual isolated integration suites (`test:e2e`, `test:resume`, `test:oidc`, `test:ui`, `test:resume-ui`), the 5/5 design-system contract, and 35/35 independent Chromium checks. These are **not** presented as E2E evidence for the later changed Chess Backend SHA.
+
+### Newly reproduced cross-branch defect and owned fix
+
+- The newest Chess Backend agent improved handling of games starting from custom FENs with Black to move. A separate audit uncovered that the **legacy** `GET /api/insights` route still classified a move's player with `ply % 2`. PGN ply 1 is not always White's turn, so this mislabeled user-side mistakes for Black-first FEN games. Insights v2 already excludes custom-position games from these aggregates; the defect was specific to the legacy route.
+- Added a test in `server/test/platform-backend.test.ts` that constructs a **legal** Black-first FEN game with alternating moves and verifies that five Black-side mistakes trigger the correct per-user `hung_pieces` Insights pattern. This test **failed on the previous source** (`expected undefined to be 5`) and passed after the fix.
+- Fixed `server/src/routes/insights.ts` to derive the mover from each analyzed move's `fen_before` turn (`w`/`b`). Standard-start legacy caches without this field safely fall back to ply parity; malformed custom-position caches without a trustworthy turn do not receive invented per-user attribution. No game schema, authentication, engine, frontend or production data was altered.
+
+### Updated combined-source certification
+
+- At the **updated** Chess Backend revision plus the new Platform fix, executed `npm run typecheck`: **PASS**, `npm test`: **702/702 tests across 86/86 files PASS**, and `npm run build`: **PASS**. Logs: `/tmp/patzer-four-agent-final-{typecheck,test,build}-20261110.log`.
+- Independently reran **35/35** Chromium black-box checks on the updated four-branch snapshot; zero failures. Covered responsive views, keyboard and touch navigation, variation boards, FEN analysis, notes, settings and game review. Evidence: `/tmp/patzer-four-agent-browser-qa-final-20261110` and `/tmp/patzer-four-agent-browser-qa-final-20261110.log`.
+- Rebuilt the combined source Docker image (`patzer-four-agent-final-20261110`) locally and launched a disposable container with no persisted real data. Startup checks: `/` **HTTP 200**, `/api/meta` **HTTP 200**, unauthenticated `/api/games` **HTTP 401**. Container removed afterward. Log: `/tmp/patzer-four-agent-docker-final-20261110.log`.
+- Earlier combined real-server protocol, resume, OIDC, PvP Chromium and resume Chromium suites all passed at the prior Chess Backend SHA; **do not claim they were repeated on `3abff5c`**. The changed backend FEN-analysis path is now covered by the full 702-test suite and 35-check black-box QA.
+- All prior branch commits and all PRs remain separate, draft and unmerged. This is local combined-source evidence for Agent 00, **not** permission to merge. Final integration, repository CI on any new Platform head, configured live-LLM scenarios, multi-process workload saturation and release approval remain coordinator-owned gates.
