@@ -7,6 +7,7 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { renderMarkdown, stripReasoning } from '../lib/markdown';
 import type { Language } from '../lib/languages';
 import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
+import { isCompleteReviewPayload, takeReviewEvents } from './review/reviewStream';
 
 export interface GameReviewProse {
   version: number;
@@ -81,39 +82,43 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
+      let complete = false;
+      let failed = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
-        let nl;
-        while ((nl = buf.indexOf('\n\n')) >= 0) {
-          const block = buf.slice(0, nl);
-          buf = buf.slice(nl + 2);
-          let event = 'message';
-          let data = '';
-          for (const line of block.split('\n')) {
-            if (line.startsWith('event:')) event = line.slice(6).trim();
-            else if (line.startsWith('data:')) data += line.slice(5).replace(/^ /, '');
-          }
-          if (event === 'progress') {
-            try { setProgress(JSON.parse(data) as ProgressEvent); } catch { /* ignore */ }
-          } else if (event === 'done') {
+        const parsed = takeReviewEvents(buf);
+        buf = parsed.rest;
+        for (const event of parsed.events) {
+          if (ac.signal.aborted) return;
+          if (event.type === 'progress') {
+            try { setProgress(JSON.parse(event.data) as ProgressEvent); } catch { /* ignore invalid progress */ }
+          } else if (event.type === 'done') {
             try {
-              const parsed = JSON.parse(data) as { review: GameReviewProse };
-              setReview(parsed.review);
-              onGenerated?.(parsed.review);
+              const payload: unknown = JSON.parse(event.data);
+              if (!isCompleteReviewPayload(payload)) throw new Error('missing or invalid report');
+              const result = payload.review as unknown as GameReviewProse;
+              setReview(result);
+              onGenerated?.(result);
+              complete = true;
             } catch (err) {
-              setError(`bad payload: ${(err as Error).message}`);
+              failed = true;
+              setError(`Report returned an invalid result: ${(err as Error).message}. Please retry.`);
             }
-          } else if (event === 'error') {
-            setError(data);
+          } else if (event.type === 'error') {
+            failed = true;
+            setError(event.data || 'The report generator failed. Please retry.');
           }
         }
+      }
+      if (!complete && !failed && !ac.signal.aborted) {
+        setError('The AI report connection ended before the report was complete. Please retry.');
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (!ac.signal.aborted) setBusy(false);
     }
   }
 
@@ -128,7 +133,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
           <Sparkles className="h-4 w-4" />
           {t('review.generateReport', { defaultValue: 'Write AI report' })}
         </button>
-        {error && <div className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">{error}</div>}
+        {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">{error}</div>}
       </div>
     );
   }
@@ -205,6 +210,8 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
           })}
         </div>
       )}
+      {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">{error}</div>}
+      {busy && <p role="status" className="text-xs text-chesscom-500">Updating the AI report…</p>}
       <button onClick={generate} disabled={busy} className="btn-ghost self-start px-2 py-1 text-xs">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
         {t('review.regenerateReport', { defaultValue: 'Write it again' })}
