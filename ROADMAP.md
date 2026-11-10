@@ -2,6 +2,8 @@
 
 A loose, opinionated list of where Patzer is headed. Items aren't promises — they're the maintainer's current view, and they shift. Open an issue / discussion if you want to nudge priority.
 
+For the separate, evidence-first **Game Review excellence program**—benchmarks, four-agent ownership, explicit assumptions and release gates—see [the master planning pack](docs/review-excellence/README.md). It is a proposal, not implemented work or a commitment to a release date.
+
 ## Now
 
 - **Drag gesture for the phone moves sheet** — the tap-to-expand sheet shipped in 7.10; a real swipe is the follow-up.
