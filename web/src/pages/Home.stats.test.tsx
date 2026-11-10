@@ -5,6 +5,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+// Unit tests only exercise loading, errors and retry. Disable motion wrappers
+// here so happy-dom does not reject pending Web Animations on unmount.
+vi.mock('framer-motion', async () => {
+  const { createElement } = await import('react');
+  const staticElement = (tag: 'div' | 'section') =>
+    ({ initial: _initial, animate: _animate, transition: _transition,
+      variants: _variants, custom: _custom, ...props }: Record<string, unknown>) =>
+      createElement(tag, props);
+  return { motion: { div: staticElement('div'), section: staticElement('section') } };
+});
 vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ user: { profile: { display_name: 'Player', avatar_emoji: '♟' } } }),
