@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -59,48 +60,67 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuth();
 
-  const { data: gamesData } = useQuery({
-    queryKey: ['games', 'home'],
+  const { data: gamesData, isLoading: gamesLoading, isError: gamesError, refetch: refetchGames } = useQuery({
+    queryKey: ['games', 'home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=5'),
   });
-  const { data: stats } = useQuery({
-    queryKey: ['stats', 'me'],
+  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
+    queryKey: ['stats', 'me', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<Stats>('/api/stats/me'),
   });
-  const { data: planData } = useQuery({
-    queryKey: ['plan-home'],
+  const { data: planData, isPending: planPending, isError: planError, refetch: refetchPlan } = useQuery({
+    queryKey: ['plan-home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ goals: PlanGoal[] }>('/api/plan'),
   });
-  const { data: achievementsData } = useQuery({
-    queryKey: ['achievements-home'],
+  const { data: achievementsData, isPending: achievementsPending, isError: achievementsError, refetch: refetchAchievements } = useQuery({
+    queryKey: ['achievements-home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ achievements: Achievement[] }>('/api/achievements'),
   });
 
   const games = gamesData?.games ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-5">
       <Hero
         displayName={user?.profile.display_name ?? ''}
         avatar={user?.profile.avatar_emoji ?? '♟'}
         stats={stats ?? null}
+        loading={statsLoading}
+        error={statsError}
+        retry={() => void refetchStats()}
         tagline={t('app.tagline')}
       />
 
-      <ContinueRow
-        goals={planData?.goals ?? null}
-        achievements={achievementsData?.achievements ?? null}
-      />
-
-      <RecentGames games={games} />
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,1fr)]">
+        <div className="min-w-0 lg:order-2">
+          <ContinueRow
+            goals={planData?.goals ?? null}
+            achievements={achievementsData?.achievements ?? null}
+            planLoading={planPending}
+            planError={planError}
+            retryPlan={() => void refetchPlan()}
+            achievementsLoading={achievementsPending}
+            achievementsError={achievementsError}
+            retryAchievements={() => void refetchAchievements()}
+          />
+        </div>
+        <div className="min-w-0 lg:order-1">
+          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ───────────────────────────────  HERO  ────────────────────────────────── */
 
-function Hero({ displayName, avatar, stats, tagline }: {
-  displayName: string; avatar: string; stats: Stats | null; tagline: string;
+function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
+  displayName: string; avatar: string; stats: Stats | null; tagline: string; loading: boolean;
+  error: boolean; retry: () => void;
 }) {
   const { t } = useTranslation();
   const hour = new Date().getHours();
@@ -144,7 +164,19 @@ function Hero({ displayName, avatar, stats, tagline }: {
             </div>
           </div>
 
-          {hasGames ? (
+          {loading ? (
+            <div role="status" aria-label={t('home.loadingStats', { defaultValue: 'Loading your statistics' })} className="mt-5 flex flex-wrap gap-3" >
+              {[0, 1, 2].map((i) => <span key={i} className="h-6 w-24 animate-pulse rounded bg-white/15" aria-hidden="true" />)}
+            </div>
+          ) : error ? (
+            <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 text-sm text-white/85">
+              <span>{t('home.statsUnavailable', { defaultValue: 'Your statistics could not be loaded.' })}</span>
+              <button type="button" onClick={retry}
+                className="rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                {t('common.retry', { defaultValue: 'Retry' })}
+              </button>
+            </div>
+          ) : hasGames ? (
             <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm text-white/75">
               <StatInline value={stats!.total.toLocaleString()} label={t('home.statGames', { defaultValue: 'games' })} />
               <StatInline value={`${winPct}%`} label={t('home.statWinRate', { defaultValue: 'win rate' })} />
@@ -199,10 +231,17 @@ function StatInline({ value, label, glow }: { value: string; label: string; glow
 
 /* ───────────────────────  CONTINUE YOUR JOURNEY  ───────────────────────── */
 
-function ContinueRow({ goals, achievements }: {
+function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, achievementsLoading, achievementsError, retryAchievements }: {
   goals: PlanGoal[] | null;
   achievements: Achievement[] | null;
+  planLoading: boolean;
+  planError: boolean;
+  retryPlan: () => void;
+  achievementsLoading: boolean;
+  achievementsError: boolean;
+  retryAchievements: () => void;
 }) {
+  const { t } = useTranslation();
   // Stagger entrance — modest. 60ms between cards, no scale or rotate gimmicks.
   const variants = {
     hidden: { opacity: 0, y: 8 },
@@ -210,8 +249,9 @@ function ContinueRow({ goals, achievements }: {
   };
 
   return (
-    <section>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <section aria-label={t('home.continue', { defaultValue: 'Continue improving' })}>
+      <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">{t('home.continue', { defaultValue: 'Continue improving' })}</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <motion.div initial="hidden" animate="show" custom={0} variants={variants}>
           <LearnTile />
         </motion.div>
@@ -219,10 +259,10 @@ function ContinueRow({ goals, achievements }: {
           <DailyPuzzleTile />
         </motion.div>
         <motion.div initial="hidden" animate="show" custom={2} variants={variants}>
-          <PlanTile goals={goals} />
+          <PlanTile goals={goals} loading={planLoading} error={planError} retry={retryPlan} />
         </motion.div>
         <motion.div initial="hidden" animate="show" custom={3} variants={variants}>
-          <AchievementsTile achievements={achievements} />
+          <AchievementsTile achievements={achievements} loading={achievementsLoading} error={achievementsError} retry={retryAchievements} />
         </motion.div>
       </div>
     </section>
@@ -232,8 +272,18 @@ function ContinueRow({ goals, achievements }: {
 function LearnTile() {
   const { t } = useTranslation();
   const { t: tl } = useTranslation('learn');
+  const { user } = useAuth();
   const { cur } = useLearnContent();
-  const { data } = useQuery({ queryKey: LEARN_QUERY_KEY, queryFn: fetchLearnProgress });
+  // The shared learning invalidation prefix still refreshes this query, but
+  // cached progress from a previous account is never displayed on Home.
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: [...LEARN_QUERY_KEY, user?.id],
+    queryFn: fetchLearnProgress,
+    enabled: user?.id != null,
+  });
+  if ((isPending || isError) && !data) {
+    return <ActivityStatusTile label={t('learn.nav')} loading={isPending} retry={() => void refetch()} Icon={GraduationCap} />;
+  }
   const progress = new Map((data?.lessons ?? []).map((r) => [r.lesson_id, r]));
   const stars = [...progress.values()].reduce((s, r) => s + r.stars, 0);
   const next = cur ? suggestedLesson(cur, progress) : null;
@@ -262,14 +312,63 @@ interface DailyPuzzle {
   streak: number;
 }
 
+function ActivityStatusTile({ label, loading, retry, Icon }: {
+  label: string; loading: boolean; retry: () => void; Icon: React.ElementType;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-3 p-4">
+      <Pill tone="muted" Icon={Icon} />
+      <div className="min-w-0 flex-1">
+        <Kicker>{label}</Kicker>
+        <Title>{loading
+          ? t('home.tileLoading', { defaultValue: 'Loading your progress…' })
+          : t('home.tileUnavailable', { defaultValue: 'Progress temporarily unavailable' })}</Title>
+        {!loading && (
+          <button type="button" onClick={retry}
+            aria-label={`${t('common.retry', { defaultValue: 'Retry' })} ${label}`}
+            className="mt-2 rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
+            {t('common.retry', { defaultValue: 'Retry' })}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The puzzle of the day: one puzzle near your rating, the same all day, and
  *  how many days in a row you've done it (server/src/chess/tactics.ts). */
 function DailyPuzzleTile() {
   const { t } = useTranslation();
-  const { data } = useQuery({
-    queryKey: ['tactics-daily'],
-    queryFn: () => api.get<DailyPuzzle>(`/api/tactics/daily?today=${localDay()}`),
+  const { user } = useAuth();
+  // Include both the player and local calendar day in the cache identity.
+  // Otherwise another account (or tomorrow's session) can see yesterday's
+  // solved status and streak until the old cache is evicted.
+  const [today, setToday] = useState(localDay);
+  useEffect(() => {
+    const refreshDay = () => {
+      const latest = localDay();
+      setToday((previous) => previous === latest ? previous : latest);
+    };
+    // The page may stay open across midnight or resume from a sleeping tab.
+    const interval = window.setInterval(refreshDay, 60_000);
+    window.addEventListener('focus', refreshDay);
+    const onVisible = () => { if (!document.hidden) refreshDay(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshDay);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: ['tactics-daily', user?.id, today],
+    enabled: user?.id != null,
+    queryFn: () => api.get<DailyPuzzle>(`/api/tactics/daily?today=${today}`),
   });
+  if ((isPending || isError) && !data) {
+    return <ActivityStatusTile label={t('home.todayPuzzle')} loading={isPending} retry={() => void refetch()} Icon={Target} />;
+  }
   const done = data?.done ?? null;
   const title = !data ? t('home.todayPuzzle')
     : !data.puzzle ? t('train.puzzles.allDone')
@@ -295,8 +394,14 @@ function DailyPuzzleTile() {
   );
 }
 
-function PlanTile({ goals }: { goals: PlanGoal[] | null }) {
+function PlanTile({ goals, loading, error, retry }: {
+  goals: PlanGoal[] | null; loading: boolean; error: boolean; retry: () => void;
+}) {
   const { t } = useTranslation();
+  if ((loading || error) && !goals) {
+    return <ActivityStatusTile label={t('home.planLabel', { defaultValue: "This week's plan" })}
+      loading={loading} retry={retry} Icon={ListChecks} />;
+  }
   const list = goals ?? [];
   const active = list.filter((g) => g.status === 'active');
   const imminent = active.length
@@ -352,8 +457,14 @@ function PlanTile({ goals }: { goals: PlanGoal[] | null }) {
   );
 }
 
-function AchievementsTile({ achievements }: { achievements: Achievement[] | null }) {
+function AchievementsTile({ achievements, loading, error, retry }: {
+  achievements: Achievement[] | null; loading: boolean; error: boolean; retry: () => void;
+}) {
   const { t } = useTranslation();
+  if ((loading || error) && !achievements) {
+    return <ActivityStatusTile label={t('home.achievementsLabel', { defaultValue: 'Achievements' })}
+      loading={loading} retry={retry} Icon={Award} />;
+  }
   const list = achievements ?? [];
   const unlocked = list.filter((a) => a.unlocked);
   const recent = [...unlocked]
@@ -405,8 +516,22 @@ function AchievementsTile({ achievements }: { achievements: Achievement[] | null
 
 /* ─────────────────────────────  RECENT GAMES  ──────────────────────────── */
 
-function RecentGames({ games }: { games: GameRow[] }) {
+function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loading: boolean; error: boolean; retry: () => void }) {
   const { t } = useTranslation();
+  if (loading) return (
+    <section className="card p-5" role="status" aria-live="polite">
+      <p className="text-sm text-chesscom-500">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
+      <div className="mt-4 space-y-2" aria-hidden="true">
+        {[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-md bg-chesscom-100 dark:bg-chesscom-700" />)}
+      </div>
+    </section>
+  );
+  if (error) return (
+    <section className="card flex flex-wrap items-center justify-between gap-3 p-5" role="alert">
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('home.gamesUnavailable', { defaultValue: 'Recent games could not be loaded.' })}</p>
+      <button type="button" onClick={retry} className="btn-secondary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </section>
+  );
   if (games.length === 0) {
     return (
       <motion.section
@@ -460,7 +585,7 @@ function RecentGames({ games }: { games: GameRow[] }) {
                   )}
                 </div>
                 <div className="text-xs text-chesscom-500">
-                  <span>{new Date(g.end_time).toLocaleDateString()}</span>
+                  <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
                   <span className="mx-1.5 text-chesscom-400">·</span>
                   <span>{fmtTimeControl(g.time_control, t)}</span>
                   {g.opening_name && (
@@ -535,6 +660,7 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
 }
 
 function ResultGlyph({ r }: { r: string }) {
+  const { t } = useTranslation();
   if (r === 'win') {
     return (
       <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
@@ -549,6 +675,11 @@ function ResultGlyph({ r }: { r: string }) {
       </span>
     );
   }
+  if (r !== 'draw') return (
+    <span aria-label={t('review.inProgress', { defaultValue: 'In progress' })} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+      •
+    </span>
+  );
   return (
     <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
       D

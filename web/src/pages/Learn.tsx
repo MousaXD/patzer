@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, GraduationCap, Play, RotateCcw, Star, Trophy } from 'lucide-react';
 import { api } from '../api';
+import { useAuth } from '../state/auth';
 import { normalizeLanguage } from '../lib/languages';
 import { cn } from '../lib/utils';
 import BetaBadge from '../components/BetaBadge';
@@ -58,11 +59,19 @@ export function suggestedLesson(cur: Curriculum, progress: Map<string, LessonPro
 
 export default function Learn() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const lessonId = params.get('lesson');
   const courseId = params.get('course');
   const { cur, failed } = useLearnContent();
-  const { data, isLoading, isError } = useQuery({ queryKey: LEARN_QUERY_KEY, queryFn: fetchLearnProgress });
+  // Match Home's per-account lesson cache. A second player who signs in on
+  // this browser must never inherit the previous player's earned stars or
+  // lesson resume point while /api/learn is still loading.
+  const { data, isLoading, isError } = useQuery({
+    queryKey: [...LEARN_QUERY_KEY, user?.id],
+    enabled: user?.id != null,
+    queryFn: fetchLearnProgress,
+  });
 
   const progress = useMemo(() => new Map((data?.lessons ?? []).map((r) => [r.lesson_id, r])), [data]);
   // Only lessons that still exist count (a lesson could be renamed one day).
@@ -87,7 +96,9 @@ export default function Learn() {
       : { step: 0, flawed: 0 };
     return (
       <LessonPlayer
-        key={ref.lesson.id}
+        // A cached lesson on two accounts is still two distinct sessions.
+        // Remount the stateful board when the signed-in player changes.
+        key={`${user?.id ?? 'none'}:${ref.lesson.id}`}
         refInfo={ref}
         resume={resume}
         bestStars={row?.stars ?? 0}

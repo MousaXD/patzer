@@ -1376,7 +1376,7 @@ export default function Play() {
 
 function TabButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors
+    <button type="button" onClick={onClick} aria-pressed={active} className={`flex min-h-11 items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500
       ${active ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900' : 'bg-chesscom-100 text-chesscom-700 hover:bg-chesscom-200 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700'}`}>
       <Icon className="h-4 w-4" /> {children}
     </button>
@@ -1533,15 +1533,17 @@ function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boo
   const urgent = active && timeMs > 0 && timeMs <= 30_000;
   const critical = active && timeMs > 0 && timeMs < 10_000;
   return (
-    <div className={`flex items-center justify-between rounded-md px-4 transition-all
+    <div className={`flex min-w-0 items-center justify-between gap-3 rounded-md px-3 sm:px-4 transition-colors
       ${urgent ? 'py-2.5' : 'py-2'}
       ${active
         ? (critical ? 'bg-bad text-white animate-pulse-soft' : 'bg-green-500 text-white')
         : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'} ${flip ? '' : ''}`}>
-      <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+      <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide" title={label}>{label}</span>
       <span
-        className={`font-mono font-bold tabular-nums transition-all ${urgent ? 'text-3xl leading-none tracking-tight sm:text-4xl' : 'text-lg'}`}
-        aria-live={critical ? 'assertive' : 'off'}
+        role="timer"
+        aria-label={`${label}: ${fmtClock(timeMs)}`}
+        className={`shrink-0 font-mono font-bold tabular-nums ${urgent ? 'text-2xl leading-none tracking-tight sm:text-3xl' : 'text-lg'}`}
+        aria-live="off"
       >
         {fmtClock(timeMs)}
       </span>

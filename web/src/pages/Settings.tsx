@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBlocker } from 'react-router-dom';
 import { LANGUAGES, type Language } from '../lib/languages';
 import { Volume2, VolumeX, Save, User as UserIcon, Palette, Sparkles, Type, Check, Smile } from 'lucide-react';
 import { api } from '../api';
@@ -12,17 +13,79 @@ const EMOJIS = ['♟','♞','♝','♜','♛','♚','🦊','🐯','🦁','🐻',
 
 export default function Settings() {
   const { t, i18n } = useTranslation();
-  const { user, refresh } = useAuth();
+  const { user, setUser } = useAuth();
+  const editRevision = useRef(0);
+  const stayButtonRef = useRef<HTMLButtonElement>(null);
+  const leaveDialogRef = useRef<HTMLDivElement>(null);
+  // A save started under one account must never update the next account's
+  // error, saving state or language after sign-out / account switching.
+  const accountRevision = useRef(0);
+  const previousUserId = useRef<number | null>(null);
   const [form, setForm] = useState<Profile | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [audioTheme, setTheme] = useState<AudioTheme>(() => getAudioTheme());
   const [volume, setVolume] = useState(() => getAudioVolume());
   const [audioWarning, setAudioWarning] = useState(false);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    dirty && (currentLocation.pathname !== nextLocation.pathname ||
+      currentLocation.search !== nextLocation.search || currentLocation.hash !== nextLocation.hash));
 
   useEffect(() => {
-    if (!user) return;
+    if (blocker.state !== 'blocked') return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    stayButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        blocker.reset();
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(leaveDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first && last && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (first && last && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [blocker]);
+
+  useEffect(() => {
+    if (!user) {
+      if (previousUserId.current !== null) accountRevision.current += 1;
+      previousUserId.current = null;
+      setForm(null);
+      setDirty(false);
+      setSaving(false);
+      setSaved(false);
+      setSaveError(null);
+      return;
+    }
+    const accountChanged = previousUserId.current !== user.id;
+    previousUserId.current = user.id;
+    // Other parts of the app can refresh the profile while this form is being
+    // edited. Never replace an unsaved draft for the same signed-in account.
+    if (!accountChanged && dirty) return;
+    if (accountChanged) {
+      accountRevision.current += 1;
+      editRevision.current = 0;
+      setDirty(false);
+      setSaving(false);
+      setSaved(false);
+      setSaveError(null);
+    }
     setForm({ ...user.profile });
     setTheme(isAudioThemeExplicit() ? getAudioTheme()
       : user.profile.move_sound_set === 'board'
@@ -31,41 +94,82 @@ export default function Settings() {
     setVolume(getAudioVolume());
   }, [user]);
   useEffect(() => onVoicesReady(() => setVoices(getVoices())), []);
+  useEffect(() => {
+    if (!dirty) return;
+    const preventLoss = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', preventLoss);
+    return () => window.removeEventListener('beforeunload', preventLoss);
+  }, [dirty]);
 
   if (!form) return null;
 
   function set<K extends keyof Profile>(k: K, v: Profile[K]) {
+    editRevision.current += 1;
     setForm((f) => f ? { ...f, [k]: v } : f);
-    setSaved(false); setDirty(true);
+    setSaved(false); setDirty(true); setSaveError(null);
   }
 
   async function save() {
-    if (!form) return;
-    await api.patch('/api/settings/profile', {
-      display_name: form.display_name,
-      avatar_emoji: form.avatar_emoji,
-      language: form.language,
-      audience: form.audience,
-      chesscom_username: form.chesscom_username || null,
-      lichess_username: form.lichess_username || null,
-      coach_behavior: form.coach_behavior,
-      tts_enabled: !!form.tts_enabled,
-      tts_voice: form.tts_voice,
-      tts_rate: form.tts_rate,
-      tts_pitch: form.tts_pitch,
-      board_theme: form.board_theme,
-      piece_set: form.piece_set,
-      site_theme: form.site_theme,
-      sound_enabled: !!form.sound_enabled,
-      sound_set: form.sound_set,
-      move_sound_set: form.move_sound_set,
-      blunder_warning: !!form.blunder_warning,
-      kid_piece_emotions: !!form.kid_piece_emotions,
-    });
-    await i18n.changeLanguage(form.language);
-    await refresh();
-    setSaved(true); setDirty(false);
-    setTimeout(() => setSaved(false), 1800);
+    if (!form || saving || !dirty || !user) return;
+    const submitted = form;
+    const submittedRevision = editRevision.current;
+    const submittedUserId = user.id;
+    const submittedAccountRevision = accountRevision.current;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const { profile } = await api.patch<{ profile: Profile }>('/api/settings/profile', {
+        display_name: submitted.display_name,
+        avatar_emoji: submitted.avatar_emoji,
+        language: submitted.language,
+        audience: submitted.audience,
+        chesscom_username: submitted.chesscom_username || null,
+        lichess_username: submitted.lichess_username || null,
+        coach_behavior: submitted.coach_behavior,
+        tts_enabled: !!submitted.tts_enabled,
+        tts_voice: submitted.tts_voice,
+        tts_rate: submitted.tts_rate,
+        tts_pitch: submitted.tts_pitch,
+        board_theme: submitted.board_theme,
+        piece_set: submitted.piece_set,
+        site_theme: submitted.site_theme,
+        sound_enabled: !!submitted.sound_enabled,
+        sound_set: submitted.sound_set,
+        move_sound_set: submitted.move_sound_set,
+        blunder_warning: !!submitted.blunder_warning,
+        kid_piece_emotions: !!submitted.kid_piece_emotions,
+      });
+      // PATCH returns the persisted profile. Updating auth locally avoids a
+      // second GET that could fail or overwrite a newer unsaved edit.
+      const currentUser = useAuth.getState().user;
+      if (accountRevision.current !== submittedAccountRevision ||
+          currentUser?.id !== submittedUserId || profile.user_id !== submittedUserId) return;
+      setUser({ ...currentUser, profile });
+      if (editRevision.current === submittedRevision) {
+        setForm({ ...profile });
+        setDirty(false);
+        setSaved(true);
+        window.setTimeout(() => {
+          // A previous save's acknowledgement must not clear a newer save's
+          // message, especially after a user switch or an intervening edit.
+          if (accountRevision.current === submittedAccountRevision &&
+              editRevision.current === submittedRevision) setSaved(false);
+        }, 1800);
+      }
+      // Language application is separate from persistence. A browser/i18n
+      // failure must not falsely report that the server rejected the save.
+      void i18n.changeLanguage(profile.language).catch(() => undefined);
+    } catch {
+      // A rejected PATCH keeps the unsaved draft and retry action available.
+      if (accountRevision.current === submittedAccountRevision) {
+        setSaveError(t('settings.saveFailed', { defaultValue: 'Unable to save settings. Check your connection and try again.' }));
+      }
+    } finally {
+      if (accountRevision.current === submittedAccountRevision) setSaving(false);
+    }
   }
 
   const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(form.language));
@@ -95,6 +199,27 @@ export default function Settings() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-24">
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div ref={leaveDialogRef} role="alertdialog" aria-modal="true" aria-labelledby="settings-leave-title" aria-describedby="settings-leave-description"
+            className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-ink-900 shadow-2xl dark:border-ink-700 dark:bg-ink-800 dark:text-cream">
+            <h2 id="settings-leave-title" className="text-lg font-semibold">
+              {t('settings.leaveTitle', { defaultValue: 'Leave without saving?' })}
+            </h2>
+            <p id="settings-leave-description" className="mt-2 text-sm text-ink-500 dark:text-ink-300">
+              {t('settings.leaveDescription', { defaultValue: 'You have unsaved profile changes. Leaving this page will discard your draft.' })}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button ref={stayButtonRef} type="button" className="btn-secondary" onClick={() => blocker.reset()}>
+                {t('settings.keepEditing', { defaultValue: 'Keep editing' })}
+              </button>
+              <button type="button" className="btn-primary" onClick={() => blocker.proceed()}>
+                {t('settings.discardChanges', { defaultValue: 'Discard changes' })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <header>
         <h1 className="page-h1">{t('settings.title')}</h1>
         <p className="page-sub">{t('settings.subtitle')}</p>
@@ -130,7 +255,7 @@ export default function Settings() {
             <label className="label mb-1 block">{t('settings.avatar')}</label>
             <div className="flex flex-wrap gap-1">
               {EMOJIS.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => set('avatar_emoji', emoji)}
+                <button key={emoji} type="button" onClick={() => set('avatar_emoji', emoji)} aria-pressed={form.avatar_emoji === emoji} aria-label={`Avatar ${emoji}`}
                   className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl transition-colors
                     ${form.avatar_emoji === emoji ? 'bg-ink-900 text-cream ring-2 ring-accent-500/30 dark:bg-cream dark:text-ink-900' : 'hover:bg-ink-100 dark:hover:bg-ink-800'}`}>
                   {emoji}
@@ -386,12 +511,14 @@ export default function Settings() {
       <div className="sticky bottom-0 -mx-4 mt-4 border-t border-ink-200 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:rounded-b-2xl dark:border-ink-700 dark:bg-ink-900/95"
            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div className="text-sm text-ink-500" aria-live="polite">
-            {saved ? <span className="inline-flex items-center gap-1 text-accent-600"><Check className="h-4 w-4" />{t('settings.saved')}</span>
+          <div className="min-w-0 pr-3 text-sm text-ink-500" aria-live="polite" aria-atomic="true">
+            {saveError ? <span role="alert" className="text-bad">{saveError}</span>
+              : saving ? t('settings.saving', { defaultValue: 'Saving settings…' })
+              : saved ? <span className="inline-flex items-center gap-1 text-accent-600"><Check className="h-4 w-4" />{t('settings.saved')}</span>
               : dirty ? t('settings.unsaved') : t('settings.noChanges')}
           </div>
-          <button onClick={save} disabled={!dirty} className="btn-primary">
-            <Save className="h-4 w-4" /> {t('common.save')}
+          <button type="button" onClick={() => void save()} disabled={!dirty || saving} className="btn-primary min-h-11 shrink-0">
+            <Save className="h-4 w-4" /> {saving ? t('settings.saving', { defaultValue: 'Saving…' }) : t('common.save')}
           </button>
         </div>
       </div>
@@ -413,7 +540,7 @@ function MoodPreview({ moodClass, glyph, title, desc }: { moodClass: string; gly
 
 function SiteThemeOption({ value, selected, onPick, label }: { value: SiteTheme; selected: boolean; onPick: () => void; label: string }) {
   return (
-    <button type="button" onClick={onPick}
+    <button type="button" onClick={onPick} aria-pressed={selected}
       className={`group relative overflow-hidden rounded-xl border p-2 text-xs font-medium transition-all
         ${selected ? 'border-ink-900 ring-2 ring-accent-500/30 dark:border-cream' : 'border-ink-200 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-600'}`}>
       <div className="relative h-16 overflow-hidden rounded-lg">
@@ -449,7 +576,7 @@ function BoardThemeOption({ value, selected, onPick, label }: { value: BoardThem
     blue:  { l: '#dee3e6', d: '#788a94' },
   }[value];
   return (
-    <button type="button" onClick={onPick}
+    <button type="button" onClick={onPick} aria-pressed={selected}
       className={`group relative overflow-hidden rounded-xl border p-2 text-xs font-medium transition-all
         ${selected ? 'border-ink-900 ring-2 ring-accent-500/30 dark:border-cream' : 'border-ink-200 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-600'}`}>
       <div className="relative">

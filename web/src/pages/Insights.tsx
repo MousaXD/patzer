@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Icons from 'lucide-react';
 import { Activity, BarChart3, Target, TrendingUp, Flame, AlertTriangle, BookOpen, Award, Lock, Sparkles, ChevronRight } from 'lucide-react';
 import { api } from '../api';
+import { useAuth } from '../state/auth';
 
 type Achievement = {
   id: string;
@@ -46,12 +47,18 @@ interface InsightsV2 {
 
 export default function Insights() {
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery({
-    queryKey: ['insights-v2'],
+  const { user } = useAuth();
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['insights-v2', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<InsightsV2>('/api/insights/v2'),
   });
-  const { data: achievementsData } = useQuery({
-    queryKey: ['achievements'],
+  const {
+    data: achievementsData, isPending: achievementsPending,
+    isError: achievementsError, refetch: refetchAchievements,
+  } = useQuery({
+    queryKey: ['achievements', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ achievements: Achievement[] }>('/api/achievements'),
   });
 
@@ -68,6 +75,14 @@ export default function Insights() {
   }, [location.hash, achievementsData]);
 
   if (isLoading) return <Skeleton />;
+  if (isError) return (
+    <div role="alert" className="card mx-auto flex max-w-xl flex-col items-center gap-3 p-8 text-center">
+      <AlertTriangle className="h-7 w-7 text-mistake" aria-hidden="true" />
+      <h1 className="text-base font-semibold">{t('insights.loadFailed', { defaultValue: 'Insights are temporarily unavailable' })}</h1>
+      <p className="text-sm text-chesscom-500">{t('insights.retryHint', { defaultValue: 'Your games are safe. Please retry loading your statistics.' })}</p>
+      <button type="button" onClick={() => void refetch()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </div>
+  );
   if (!data || data.games_total === 0) {
     return (
       <div className="card flex flex-col items-center gap-2 p-10 text-center">
@@ -95,7 +110,8 @@ export default function Insights() {
       </header>
 
       {/* Achievements */}
-      <AchievementsSection sectionRef={achievementsRef} achievements={achievementsData?.achievements ?? null} />
+      <AchievementsSection sectionRef={achievementsRef} achievements={achievementsData?.achievements ?? null}
+        loading={achievementsPending} error={achievementsError} retry={() => void refetchAchievements()} />
 
       {/* Phase accuracy + Time-class breakdown side-by-side */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -332,7 +348,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
 
   return (
     <section className="card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Flame className="h-4 w-4 text-mistake" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.activity', { defaultValue: 'Activity' })}</h2>
@@ -341,8 +357,9 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
           {t('insights.activityFooter', { defaultValue: '{{games}} games · {{wins}} wins in last 12 months', games: totalGames, wins: totalWins })}
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block">
+      <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t('insights.activity', { defaultValue: 'Activity chart' })}>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img"
+          aria-label={t('insights.activityChart', { defaultValue: 'Daily games played during the past year; details for each day appear on hover.' })}>
           {grid.cells.map((c, i) => {
             const col = Math.floor(i / 7);
             const row = i % 7;
@@ -423,7 +440,7 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           <TrendingUp className="h-4 w-4 text-board-dark" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}</h2>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-chesscom-500">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-chesscom-500">
           {series.map((s) => (
             <span key={s.key} className="inline-flex items-center gap-1">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[s.key] }} />
@@ -432,7 +449,8 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        aria-label={t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}>
         {/* y axis labels */}
         {[min, (min + max) / 2, max].map((v, i) => (
           <g key={i}>
@@ -468,7 +486,7 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <Target className="h-4 w-4 text-gold-500" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.accuracyTrend', { defaultValue: 'Accuracy trend' })}</h2>
         </div>
-        <div className="py-6 text-center text-xs text-chesscom-400">—</div>
+        <div className="py-6 text-center text-xs text-chesscom-400">{t('insights.noAccuracyGames', { defaultValue: 'Analyze games to see your accuracy trend.' })}</div>
       </section>
     );
   }
@@ -489,7 +507,8 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
         </div>
         <span className="font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        aria-label={t('insights.accuracyTrend', { defaultValue: 'Accuracy trend across analyzed games' })}>
         {[0, 50, 100].map((v) => (
           <line key={v} x1={padX} x2={W - padX} y1={yScale(v)} y2={yScale(v)} className="stroke-chesscom-200 dark:stroke-chesscom-700" strokeWidth={0.5} strokeDasharray="2 3" />
         ))}
@@ -617,7 +636,10 @@ function OpeningRepertoireCard({ data }: { data: OpeningRow[] }) {
 }
 
 /* ───── Achievements ───────────────────────────────────────────────────── */
-const AchievementsSection = ({ achievements, sectionRef }: { achievements: Achievement[] | null; sectionRef: React.MutableRefObject<HTMLElement | null> }) => {
+const AchievementsSection = ({ achievements, sectionRef, loading, error, retry }: {
+  achievements: Achievement[] | null; sectionRef: React.MutableRefObject<HTMLElement | null>;
+  loading: boolean; error: boolean; retry: () => void;
+}) => {
   const { t } = useTranslation();
   const list = achievements ?? [];
   const order: { key: Achievement['category']; label: string }[] = [
@@ -637,11 +659,20 @@ const AchievementsSection = ({ achievements, sectionRef }: { achievements: Achie
           <Award className="h-4 w-4 text-gold-500" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.achievements', { defaultValue: 'Achievements' })}</h2>
         </div>
-        <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+        {achievements && <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
           {unlocked}/{list.length || '—'} {t('insights.achUnlocked', { defaultValue: 'unlocked' })}
-        </span>
+        </span>}
       </div>
-      {list.length === 0 ? (
+      {!achievements && (loading || error) ? (
+        <div role={loading ? 'status' : 'alert'} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-chesscom-50/70 p-3 text-xs text-chesscom-500 dark:bg-chesscom-900/40">
+          <span>{loading
+            ? t('insights.achLoading', { defaultValue: 'Loading achievements…' })
+            : t('insights.achUnavailable', { defaultValue: 'Achievements could not be loaded.' })}</span>
+          {!loading && <button type="button" onClick={retry} className="btn-secondary text-xs">
+            {t('common.retry', { defaultValue: 'Retry' })}
+          </button>}
+        </div>
+      ) : list.length === 0 ? (
         <div className="py-4 text-center text-xs text-chesscom-400">
           {t('insights.achEmpty', { defaultValue: 'Play and analyze games to start earning badges.' })}
         </div>
