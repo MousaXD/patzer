@@ -302,24 +302,39 @@ export default function GameAnalyzer() {
   // stable across the loading → loaded transition (React error #310).
   const [linesEnabled, setLinesEnabled] = useState(false);
   const [lines, setLines] = useState<EngineLine[]>([]);
+  const [linesFen, setLinesFen] = useState('');
+  const [linesRetry, setLinesRetry] = useState(0);
   const [linesLoading, setLinesLoading] = useState(false);
-  const [linesError, setLinesError] = useState(false);
+  const [linesError, setLinesError] = useState<'busy' | 'unavailable' | null>(null);
   const [linesHover, setLinesHover] = useState<EngineLine | null>(null);
   const [explorerHover, setExplorerHover] = useState<string | null>(null);
   const pos = data ? (positions[ply] ?? positions[0]) : undefined;
   const currentFen = variations.currentFen || pos?.fen || '';
+  const freshLines = linesFen === currentFen ? lines : [];
   useEffect(() => {
     if (!linesEnabled || !currentFen) return;
     let cancelled = false;
-    setLinesError(false);
+    setLinesError(null);
     setLinesLoading(true);
     const handle = window.setTimeout(() => {
       api.post<{ fen: string; depth: number; lines: EngineLine[] }>('/api/analyze/position', { fen: currentFen, depth: 18, lines: 3 })
-        .then((r) => { if (!cancelled) { setLines(r.lines ?? []); setLinesLoading(false); } })
-        .catch(() => { if (!cancelled) { setLinesError(true); setLinesLoading(false); setLines([]); } });
+        .then((r) => {
+          if (cancelled) return;
+          setLines(r.lines ?? []);
+          setLinesFen(currentFen);
+          setLinesLoading(false);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setLinesError((err as { status?: number } | null)?.status === 429 ? 'busy' : 'unavailable');
+          setLines([]);
+          setLinesFen(currentFen);
+          setLinesLoading(false);
+        });
     }, 400);
     return () => { cancelled = true; window.clearTimeout(handle); };
-  }, [linesEnabled, currentFen]);
+  }, [linesEnabled, currentFen, linesRetry]);
+  useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
   if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data) {
@@ -377,9 +392,12 @@ export default function GameAnalyzer() {
     },
   }) : null;
 
-  const bestUci = variationQuality?.best_move_uci ?? move?.best_move_uci;
-  const playedUci = variationQuality?.uci ?? move?.uci;
-  const baseArrow = bestUci && bestUci !== playedUci ? [{
+  // Scores refer to the position before a move. Only the NEXT move's
+  // suggestion (or a fresh live line) is legal on the displayed board.
+  const bestUci = linesEnabled && !linesLoading && !linesError && freshLines.length
+    ? freshLines[0]!.uci
+    : !isVariation ? analysis?.moves[ply]?.best_move_uci : undefined;
+  const baseArrow = bestUci ? [{
     orig: bestUci.slice(0, 2) as never,
     dest: bestUci.slice(2, 4) as never,
     brush: 'paleBlue',
@@ -713,9 +731,10 @@ export default function GameAnalyzer() {
               <LinesPanel
                 enabled={linesEnabled}
                 onToggle={() => setLinesEnabled((s) => !s)}
-                lines={lines}
+                lines={freshLines}
                 loading={linesLoading}
                 error={linesError}
+                 onRetry={() => setLinesRetry((n) => n + 1)}
                 playedUci={!isVariation ? positions[ply + 1]?.uci ?? null : null}
                 onAdvance={forward}
                 onTryMove={onAnalysisMove}
