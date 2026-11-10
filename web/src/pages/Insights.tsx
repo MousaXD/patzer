@@ -340,7 +340,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
 
   return (
     <section className="card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Flame className="h-4 w-4 text-mistake" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.activity', { defaultValue: 'Activity' })}</h2>
@@ -349,8 +349,9 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
           {t('insights.activityFooter', { defaultValue: '{{games}} games · {{wins}} wins in last 12 months', games: totalGames, wins: totalWins })}
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block">
+      <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t('insights.activity', { defaultValue: 'Activity chart' })}>
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img"
+          aria-label={t('insights.activityChart', { defaultValue: 'Daily games played during the past year; details for each day appear on hover.' })}>
           {grid.cells.map((c, i) => {
             const col = Math.floor(i / 7);
             const row = i % 7;
@@ -431,7 +432,7 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           <TrendingUp className="h-4 w-4 text-board-dark" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}</h2>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-chesscom-500">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-chesscom-500">
           {series.map((s) => (
             <span key={s.key} className="inline-flex items-center gap-1">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[s.key] }} />
@@ -440,7 +441,8 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        aria-label={t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}>
         {/* y axis labels */}
         {[min, (min + max) / 2, max].map((v, i) => (
           <g key={i}>
@@ -476,7 +478,7 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <Target className="h-4 w-4 text-gold-500" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.accuracyTrend', { defaultValue: 'Accuracy trend' })}</h2>
         </div>
-        <div className="py-6 text-center text-xs text-chesscom-400">—</div>
+        <div className="py-6 text-center text-xs text-chesscom-400">{t('insights.noAccuracyGames', { defaultValue: 'Analyze games to see your accuracy trend.' })}</div>
       </section>
     );
   }
@@ -497,7 +499,8 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
         </div>
         <span className="font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
+        aria-label={t('insights.accuracyTrend', { defaultValue: 'Accuracy trend across analyzed games' })}>
         {[0, 50, 100].map((v) => (
           <line key={v} x1={padX} x2={W - padX} y1={yScale(v)} y2={yScale(v)} className="stroke-chesscom-200 dark:stroke-chesscom-700" strokeWidth={0.5} strokeDasharray="2 3" />
         ))}
