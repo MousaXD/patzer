@@ -238,3 +238,33 @@ No other source paths were modified. **Last source commit:** `30b009bfef10bb9637
 - **Local TypeScript/Vitest/build/browser:** **not executable** because this user's exact worktree is not mounted. No unverified pass claim.
 - **Integration dependencies:** independent QA must exercise complete saved-game→engine→coach and interactive variation flows, including Black-first setup FENs, longer partial engine analyses, and mobile/light/dark QA. Backend owner must verify cached analysis storage, `force: true` behavior and review SSE completion. Design-system agent owns `.review-workspace` global styling. No other agent branch was merged.
 - **Final state:** source changes pushed, the assigned branch and draft PR #13 unmerged; release certification remains **blocked only on actual exact-head checks and cross-agent acceptance evidence**, not on a confirmed new failing source test. Do not deploy or merge without green gates.
+
+## Continuation — independent local certification (2026-11-10)
+
+### Checkout and boundaries
+
+- The original assigned checkout at `/home/mousa/projects/my-creations/chess/patzer-agent-review` was outside this connector's approved roots and was **not touched**. An **isolated clone** was created instead at `/home/mousa/projects/my-creations/game/.qa/patzer-review-cert-20261110` from the same remote branch.
+- Before dependency installation, `git status --short` was clean; branch was `agent/review-experience-20261110`; original verified source+handoff HEAD was **`c2ab2d6c297548c56550037e44e094ae82e0e57e`**. `gh pr view 13` confirmed the PR remained **open, draft, targeting `main`**.
+- All local checks below ran against `c2ab2d6c297548c56550037e44e094ae82e0e57e` with **Node.js 22.23.2**, **npm 11.18.0**. Local dependencies (`npm ci --no-audit --no-fund`) installed successfully. Playwright and real Stockfish 17 were installed locally for isolated QA. No production database or other agents' worktrees/branches were accessed.
+
+### Actual verification evidence — no inferred passes
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| `npm run typecheck` | **PASS** (exit 0) | Server/web project and server test TypeScript checks |
+| `npx vitest run web/src/components/review web/src/components/GameReportPanel.stream.test.tsx web/src/components/GameReportPanel.test.tsx web/src/components/GameReportCard.test.tsx web/src/components/ThreatPanel.stale.test.tsx web/src/components/MoveList.test.tsx web/src/components/EvalBar.test.tsx web/src/components/ExplorerPanel.test.tsx` | **PASS** (exit 0) | 14 files, **47/47 tests** passed, including the previously failing stream cleanup case |
+| `npm test` | **PASS** (exit 0) | **73/73 files, 612/612 tests**, 0 failures |
+| `npm run build` | **PASS** (exit 0) | Server TS compilation and production Vite frontend build (2,132 modules transformed) |
+| `node --test web/tests/design-system.contract.test.mjs` | **PASS** (exit 0) | **5/5** static design-system contract tests |
+| `GITHUB_SHA=c2ab2d6... PATZER_QA_ARTIFACTS=qa-artifacts/frontend-overhaul-local node qa/agent07/frontend-overhaul-smoke.mjs` | **PASS** (exit 0) | **35/35 browser acceptance checks**, 0 failures using Chromium, real Stockfish, and a disposable SQLite database. Includes saved game/review navigation, keyboard arrows, legal variations, Stockfish scoring and retry-independent paths, authorization, isolation, accessibility, 5 viewport sizes x 2 themes, screenshots, and mobile touch |
+| `node web/tests/design-system.browser.mjs` with local Vite preview | **PASS** (exit 0) | 6 reported light/dark/auto theme combinations plus reduced-motion CSS assertion |
+
+The local Chromium smoke generated a `results.json` and screenshots for 1920x1080, 1440x900, 1366x768, 768x1024, and 390x844 in **both** themes. Evidence is located in the ignored/untracked local `qa-artifacts/frontend-overhaul-local/` folder; no screenshots or fixture database were staged or pushed. The QA uses synthetic/local game fixtures, not production data.
+
+### Remaining acceptance gates
+
+- **GitHub-hosted exact-HEAD workflows remain queued (not green):** `42876970453` Frontend Overhaul QA, `42876970482` design-system certification, `42876970747` CI. All three were queried and remained `queued` for exact SHA `c2ab2d6c297548c56550037e44e094ae82e0e57e`. The CI jobs have not started. This handoff-only commit will itself create a new branch HEAD and requires re-checking the eventual exact-head workflow statuses.
+- **Not yet independently proven by this local QA:** an actual configured LLM's complete successful and interrupted SSE AI report lifecycle (the unit tests cover streaming/abort semantics); a deliberately corrupted analysis cache repaired through a live backend `force: true` request; and backend FEN-started Black-first scoring with production-like data. Coordinate these API contracts with the backend owner, rather than declaring them certified from the frontend unit tests. CI e2e/Docker jobs are still queued.
+- No Game Review runtime/source changes were necessary: the previously observed failing test is now **passing**. No change was made to `main`, no merge/deploy occurred, and all other agents' branches remain untouched.
+
+**Coordinator verdict:** Exact original source is **LOCALLY CERTIFIED for TypeScript, 612 unit tests, builds, and existing browser/design-system QA**, but **PR #13 remains DRAFT / NOT RELEASE-CERTIFIED** until GitHub CI has actually completed and backend/LLM integration dependencies have been confirmed. For the final documentation-only commit SHA, read the pushed remote branch HEAD; the file cannot reference its own new commit SHA.
