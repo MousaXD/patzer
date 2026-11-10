@@ -63,12 +63,23 @@ function gameResult(game: ChessComGame, color: 'white' | 'black' | null): 'win' 
   return 'loss';
 }
 
+/** A game URL is an identifier, not a fetch target. Still validate the true
+ * origin so lookalike domains are never stored as trusted Chess.com links. */
+function validGameUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.host === 'www.chess.com' &&
+      !url.username && !url.password;
+  } catch { return false; }
+}
+
 function gameRow(game: ChessComGame, username: string) {
   // Chess.com payloads are not runtime-typed. Skip corrupt entries instead
   // of rolling back an entire monthly import transaction.
   if (!game || game.rules !== 'chess' || typeof game.pgn !== 'string' ||
       !game.pgn.trim() || game.pgn.length > 1_000_000 ||
-      typeof game.url !== 'string' || !game.url.startsWith('https://www.chess.com/') ||
+      !validGameUrl(game.url) ||
       !Number.isFinite(game.end_time)) return null;
   const endDate = new Date(game.end_time * 1000);
   if (!Number.isFinite(endDate.getTime())) return null;
