@@ -213,6 +213,7 @@ function ContinueRow({ goals, achievements }: {
   goals: PlanGoal[] | null;
   achievements: Achievement[] | null;
 }) {
+  const { t } = useTranslation();
   // Stagger entrance — modest. 60ms between cards, no scale or rotate gimmicks.
   const variants = {
     hidden: { opacity: 0, y: 8 },
@@ -220,8 +221,8 @@ function ContinueRow({ goals, achievements }: {
   };
 
   return (
-    <section aria-label="Continue improving">
-      <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">Continue improving</h2>
+    <section aria-label={t('home.continue', { defaultValue: 'Continue improving' })}>
+      <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">{t('home.continue', { defaultValue: 'Continue improving' })}</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <motion.div initial="hidden" animate="show" custom={0} variants={variants}>
           <LearnTile />
