@@ -6,6 +6,24 @@ export interface ReviewStreamEvent {
   data: string;
 }
 
+export interface ReviewProgressEvent {
+  step: 'opening' | 'phase:opening' | 'phase:middlegame' | 'phase:endgame' | 'summary' | 'moment';
+  done: number;
+  total: number;
+  index?: number;
+}
+
+/** Progress is display data from a streaming response, not trusted layout
+ * input. Reject malformed, negative or over-100% values before rendering. */
+export function parseReviewProgress(value: unknown): ReviewProgressEvent | null {
+  if (!isRecord(value)
+    || !['opening', 'phase:opening', 'phase:middlegame', 'phase:endgame', 'summary', 'moment'].includes(value.step as string)
+    || !Number.isSafeInteger(value.total) || (value.total as number) < 1
+    || !Number.isSafeInteger(value.done) || (value.done as number) < 0 || (value.done as number) > (value.total as number)
+    || (value.index !== undefined && (!Number.isSafeInteger(value.index) || (value.index as number) < 0))) return null;
+  return value as unknown as ReviewProgressEvent;
+}
+
 export function takeReviewEvents(input: string): { events: ReviewStreamEvent[]; rest: string } {
   const events: ReviewStreamEvent[] = [];
   let remaining = input;
@@ -45,7 +63,8 @@ export function isCompleteReviewPayload(value: unknown): value is { review: {
   // save a broken streamed result as the completed report.
   if (v.opening != null && (!isRecord(v.opening)
     || typeof v.opening.name !== 'string'
-    || typeof v.opening.prose !== 'string')) return false;
+    || typeof v.opening.prose !== 'string'
+    || (v.opening.eco != null && typeof v.opening.eco !== 'string'))) return false;
 
   for (const phase of ['opening', 'middlegame', 'endgame']) {
     const item = v.phases[phase];

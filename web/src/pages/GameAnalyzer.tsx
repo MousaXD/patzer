@@ -10,6 +10,9 @@ import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/rev
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
+import { buildSavedReviewTimeline } from '../components/review/reviewTimeline';
+import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
+import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
@@ -108,6 +111,10 @@ export default function GameAnalyzer() {
     () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
     [data?.game.pgn],
   );
+  const timeline = useMemo(
+    () => buildSavedReviewTimeline(positions, analysis?.moves),
+    [positions, analysis?.moves],
+  );
 
   // Decode at most once per fetched analysis record, and use the same verdict
   // for both rendering and deciding whether a retry may safely use cache.
@@ -192,6 +199,7 @@ export default function GameAnalyzer() {
   const qualityKey = branchMove ? `${branchMove.fenBefore}|${branchMove.uci}` : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
   const [qualityError, setQualityError] = useState('');
+  const [qualityRetry, setQualityRetry] = useState(0);
   const variationQuality = qualityKey && qualityMatchesPosition(qualityCache[qualityKey], variations.currentFen)
     ? qualityCache[qualityKey] : null;
   const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
@@ -218,8 +226,12 @@ export default function GameAnalyzer() {
           depth: 12,
           ply: Math.max(1, Math.min(1024, displayedPly)),
         });
-        if (!cancelled && qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
-          setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
+        if (!cancelled) {
+          if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
+            setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
+          } else {
+            setQualityError('The engine response did not match this position. Retry scoring.');
+          }
         }
       } catch (e) {
         if (cancelled) return;
@@ -236,7 +248,7 @@ export default function GameAnalyzer() {
   // qualityKey and fen are the selection identity; avoid replaying a search
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, variations.currentFen, displayedPly]);
+  }, [qualityKey, variations.currentFen, displayedPly, qualityRetry]);
   useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
@@ -315,8 +327,7 @@ export default function GameAnalyzer() {
       setAnalysis(r.analysis);
       await refetch();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unexpected analysis error';
-      setAnalysisError(`Analysis could not finish: ${message}. Retry when the engine is available.`);
+      setAnalysisError(reviewAnalysisErrorMessage(error));
     } finally {
       setAnalyzing(false);
     }
@@ -380,7 +391,11 @@ export default function GameAnalyzer() {
     );
   }
 
-  const move: AnalyzedMove | undefined = isVariation ? undefined : analysis?.moves[ply - 1];
+  // The PGN may contain more moves than a partial/legacy engine result.
+  // Never confuse an unscored played move with the starting position.
+  const evaluatedMove = analysis?.moves[ply - 1];
+  const move: AnalyzedMove | undefined = !isVariation && evaluatedMove?.uci === pos?.uci
+    ? evaluatedMove : undefined;
   const startFen = positions[0]?.fen;
   const reviewedMoveSide = moveSideForPly(ply, startFen);
   const userColor = data.game.user_color ?? 'white';
@@ -554,10 +569,10 @@ export default function GameAnalyzer() {
                 <><span className="font-medium text-amber-600">Variation {branchMove?.san ?? 'starting position'}</span>
                   {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
                 </>
-              ) : move ? (
+              ) : ply > 0 && pos?.san ? (
                 <>
-                  <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{reviewedMoveSide === 'white' ? t('review.sideShort.white') : t('review.sideShort.black')}: {move.san}</span>
-                  {move.best_move_san && move.best_move_san !== move.san && (
+                  <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{reviewedMoveSide === 'white' ? t('review.sideShort.white') : t('review.sideShort.black')}: {pos.san}</span>
+                  {move?.best_move_san && move.best_move_san !== pos.san && (
                     <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: move.best_move_san })}</span>
                   )}
                 </>
@@ -606,7 +621,11 @@ export default function GameAnalyzer() {
             </div>}
             {isVariation && <div role="status" className="mt-2 text-sm">
               <span className="font-mono text-xs text-chesscom-500">{variations.playedVariationMoves.map((m) => m.san).join(' ') || 'Branch point'}</span>
-              {qualityError && <p className="mt-1 text-xs text-amber-600">{qualityError}</p>}
+              {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
+                <span>{qualityError}</span>
+                <button type="button" className="rounded border border-amber-500/40 px-2 py-1 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                  onClick={() => setQualityRetry((previous) => previous + 1)}>Retry scoring</button>
+              </div>}
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
@@ -629,7 +648,7 @@ export default function GameAnalyzer() {
               <div className="card p-2">
                 {isVariation && <p className="mb-2 text-xs text-chesscom-500">Original game timeline · select a move to return to the saved line.</p>}
                 <EvalGraph
-                  evals={analysis.moves.map((m) => ({ ply: m.ply, cp: m.eval_after_cp }))}
+                  evals={timeline.evals}
                   current={isVariation ? undefined : ply}
                   onClick={(p) => setPly(p)}
                   markers={analysis.moves
@@ -685,9 +704,15 @@ export default function GameAnalyzer() {
                       playFrom={playOn ?? undefined}
                     />
                   )}
+                  {tab === 'moves' && ply > 0 && !isVariation && !move && (
+                    <div role="status" className="mb-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-2 text-xs text-chesscom-600 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
+                      This move is saved in the game but has no engine evaluation yet.
+                      <button type="button" className="ml-1 font-semibold underline underline-offset-2" onClick={() => setShowDepthControl(true)}>Reanalyze the full game</button>
+                    </div>
+                  )}
                   {tab === 'moves' && (
                     <MoveList
-                      moves={analysis.moves.map((m) => ({ ply: m.ply, san: m.san, classification: m.classification }))}
+                      moves={timeline.moves}
                       current={isVariation ? -1 : ply}
                       onSelect={setPly}
                       phaseSplit={analysis.phase_split}
@@ -794,6 +819,7 @@ export default function GameAnalyzer() {
               <ExplorerPanel fen={currentFen} onPreview={setExplorerHover} />
 
               <GameMetaToolbar
+                key={gameId}
                 gameId={gameId}
                 bookmarked={!!data.game.bookmarked}
                 notes={data.game.notes ?? ''}
@@ -829,7 +855,11 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  useEffect(() => { setDraft(notes); }, [notes]);
+  const confirmedNotesRef = useRef(notes);
+  useEffect(() => {
+    setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
+    confirmedNotesRef.current = notes;
+  }, [notes]);
 
   const star = useMutation({
     mutationFn: (next: boolean) => api.patch(`/api/games/${gameId}/bookmark`, { bookmarked: next }),
@@ -843,6 +873,9 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
   useEffect(() => { setStarred(bookmarked); }, [bookmarked]);
 
   const saveNotes = useMutation({
+    // Rapid blur/save events may overlap. Serialize them so an older PATCH
+    // cannot overwrite a newer note on the server.
+    scope: { id: `review-notes:${gameId}` },
     mutationFn: (text: string) => api.patch(`/api/games/${gameId}/notes`, { notes: text }),
     onSuccess: () => {
       setSaveError('');
@@ -887,6 +920,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => { if (draft !== notes) saveNotes.mutate(draft); }}
+            maxLength={4000}
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
           />
@@ -896,7 +930,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
               </div>}
               <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
                 <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
-            <span>{savedAt ? t('common.saved', { defaultValue: 'Saved' }) : (draft !== notes ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : '')}</span>
+            <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== notes ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
           </div>
         </div>
       )}

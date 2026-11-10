@@ -268,3 +268,43 @@ The local Chromium smoke generated a `results.json` and screenshots for 1920x108
 - No Game Review runtime/source changes were necessary: the previously observed failing test is now **passing**. No change was made to `main`, no merge/deploy occurred, and all other agents' branches remain untouched.
 
 **Coordinator verdict:** Exact original source is **LOCALLY CERTIFIED for TypeScript, 612 unit tests, builds, and existing browser/design-system QA**, but **PR #13 remains DRAFT / NOT RELEASE-CERTIFIED** until GitHub CI has actually completed and backend/LLM integration dependencies have been confirmed. For the final documentation-only commit SHA, read the pushed remote branch HEAD; the file cannot reference its own new commit SHA.
+
+## Goal continuation — Game Review edge-case polish (2026-11-10)
+
+### Isolation and cross-agent conflict review
+
+- Continued only `agent/review-experience-20261110` from known branch HEAD `788a8f87298d3d853533c6c1726b5f46c1b693ca` in the isolated checkout `/home/mousa/projects/my-creations/game/.qa/patzer-review-cert-20261110`. The original assigned worktree was not accessed. No merge, rebase, cherry-pick, deployment, production data access or main write occurred.
+- Fetched the other agents' branches *read-only*, most recently `agent/chess-backend-20261110` at `1c8bc127549e9a803edb9f1268b291f3f740fd64`, `agent/platform-backend-20261110` at `9385b9a9c64b2989c0895b67f6f5490a127f1572` and `agent/product-ui-20261110` at `2f1f3f2b1a065f4a83fd35c6a718fb7f1b88379d`. Their changed files since shared baseline `c8d9e1e00609c30779a3e86542f25f9454e1e911` do **not** overlap the Game Review files changed here.
+- Reviewed the chess-backend's new `429 engine_busy`, `413 pgn_too_large`, `400 invalid_pgn` and sanitized `503` responses. Added user-facing errors and a retry action for variation scoring, without modifying backend routes. Platform-backend pagination/Review library integration is owned by other agents; note that Product UI currently bounds its visible list at 200 despite platform backend's offset pagination (cross-agent follow-up, not modified here).
+
+### Improvements in owned Game Review files
+
+1. **Partial-analysis game integrity:** The saved PGN, not the length of the engine's analyzed prefix, now drives the entire MoveList and EvalGraph timeline. Unevaluated moves stay navigable, display the actual saved SAN instead of “Starting position,” and carry unknown evaluations rather than invented equal scores. `reviewTimeline.ts` checks each analyzed ply/UCI against the saved replay before attaching classification or score. A contextual reanalyze option appears for an unscored saved move.
+2. **AI report reliability and interaction:** Users can cancel a streaming report, including an in-progress regeneration, without destroying a previous completed report. Aborted network results cannot overwrite the current report. Progress events with invalid steps, totals, counts or indices are ignored. The final review validator also rejects incorrectly typed opening ECO metadata that would otherwise reach the React tree.
+3. **Exploratory Stockfish recovery:** If a variation scoring request returns 429/503 or an evaluation for a different FEN, the player receives a visible retry action scoped to the currently selected variation. The backend's bounded concurrent-engine slots are respected.
+4. **Private notes correctness:** Dirty notes survive a stale server refresh, saves are serialized within the review game, input is limited to the server's 4,000-character maximum, pending status is explicit, and toolbar state is keyed to game ID so unsaved notes cannot leak into another game.
+5. **Actionable failure categories:** Engine-busy errors offer retry guidance; invalid or oversize saved PGNs explain why repeated analysis will not help, without exposing backend exception internals.
+
+Owned edits: `web/src/pages/GameAnalyzer.tsx`, `web/src/components/GameReportPanel.tsx`, `web/src/components/GameReportPanel.stream.test.tsx`, `web/src/components/review/reviewStream.ts`, `web/src/components/review/reviewStream.test.ts`; new `web/src/components/review/reviewTimeline.ts` and test, `reviewNotes.ts` and test, `reviewAnalysisErrors.ts` and test; and this handoff only. No backend, shared CSS, auth, database or package-file edits.
+
+### Local executable validation on this exact source tree
+
+| Validation | Observed outcome |
+| --- | --- |
+| `npm run typecheck` | **PASS**, exit 0, server/web/test TypeScript |
+| `npm test` | **PASS**, **76/76 test files and 624/624 tests**, exit 0 |
+| `npm run build` | **PASS**, both server and Vite production builds, exit 0 |
+| `node --test web/tests/design-system.contract.test.mjs` | **PASS**, **5/5** static checks |
+| `GITHUB_SHA=local-review-goal PATZER_QA_ARTIFACTS=qa-artifacts/frontend-overhaul-goal node qa/agent07/frontend-overhaul-smoke.mjs` | **PASS**, **35/35 Chromium checks**, zero failures; real local Stockfish 17, disposable SQLite database, saved games, keyboard, touch, variations, security, and screenshots at five viewports in both themes |
+| `PATZER_PREVIEW_URL=http://127.0.0.1:4177 node web/tests/design-system.browser.mjs` | **PASS**, six reported light/dark/auto combinations plus reduced-motion assertion |
+| `node qa-artifacts/review-edge-smoke.mjs` (untracked local-only script) | **PASS**, real Chromium against a disposable local DB: a six-ply PGN with only two analyzed plies is navigable to the end, and changing game routes does not leak an unsaved notes draft |
+
+Local logs: `/tmp/patzer-review-goal-typecheck.log`, `/tmp/patzer-review-goal-unit.log`, `/tmp/patzer-review-goal-build.log`, `/tmp/patzer-review-goal-browser-20261110.log`, `/tmp/patzer-review-edge-20261110.log`. Browser screenshots and `results.json` remain untracked under `qa-artifacts/frontend-overhaul-goal/`. No QA artifacts, disposable databases or executable binary were staged or pushed. The branch is locally validated despite GitHub Actions' queued jobs; a pending hosted check must not be presented as a pass.
+
+### Integration handoff / remaining limits
+
+- Backend and other-agent branches were only inspected independently, not merged into this checkout. **The eventual combined tree still requires coordinator integration tests**, especially simultaneous analysis-engine 429 handling, API consistency and note/Review list navigation.
+- The local Chromium smoke did not test a *configured live LLM* generating and interrupting a full AI report, nor a live corrupted-analysis `force: true` repair or all FEN-started scoring server cases. Existing frontend unit tests cover failure semantics; backend/QA owner should verify real cross-service behavior.
+- The PR stays **draft, unmerged and undeployed**. New source is ready for the coordinator to review on the resulting pushed SHA (the documentation itself cannot state its resulting commit SHA). No exact-head GitHub Actions pass is claimed while runner jobs remain queued.
+
+**Verdict: Game Review source checks, unit tests, production build, and existing + targeted browser QA passed locally; overall multi-branch release remains gated on integration and backend/LLM acceptance.**

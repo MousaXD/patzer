@@ -59,4 +59,32 @@ describe('Game Review report stream lifecycle', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('busy'));
     expect(screen.getByText('A completed chess report')).toBeTruthy();
   });
+
+  it('lets the user cancel an unfinished report without accepting late data', async () => {
+    const onGenerated = vi.fn();
+    const fetcher = vi.fn((_: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')));
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<GameReportPanel gameId={4} initial={null} onGenerated={onGenerated} />);
+    fireEvent.click(screen.getByText('Write AI report'));
+    await waitFor(() => expect(screen.getByText('Cancel generation')).toBeTruthy());
+    fireEvent.click(screen.getByText('Cancel generation'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('cancelled'));
+    expect(screen.getByText('Write AI report')).toBeTruthy();
+    expect((fetcher.mock.calls[0]?.[1] as RequestInit).signal?.aborted).toBe(true);
+    expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it('preserves the previous report when a regeneration is cancelled', async () => {
+    vi.stubGlobal('fetch', vi.fn((_: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')));
+    })));
+    render(<GameReportPanel gameId={5} initial={review} />);
+    fireEvent.click(screen.getByText('Write it again'));
+    fireEvent.click(screen.getByText('Cancel generation'));
+    expect(screen.getByText('A completed chess report')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('cancelled');
+    expect((screen.getByText('Write it again') as HTMLButtonElement).disabled).toBe(false);
+  });
 });

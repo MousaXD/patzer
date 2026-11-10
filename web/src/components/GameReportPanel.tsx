@@ -7,7 +7,7 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { renderMarkdown, stripReasoning } from '../lib/markdown';
 import type { Language } from '../lib/languages';
 import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
-import { isCompleteReviewPayload, takeReviewEvents } from './review/reviewStream';
+import { isCompleteReviewPayload, parseReviewProgress, takeReviewEvents, type ReviewProgressEvent } from './review/reviewStream';
 
 export interface GameReviewProse {
   version: number;
@@ -43,23 +43,26 @@ interface Props {
   startFen?: string;
 }
 
-interface ProgressEvent {
-  step: 'opening' | 'phase:opening' | 'phase:middlegame' | 'phase:endgame' | 'summary' | 'moment';
-  done: number;
-  total: number;
-  index?: number;
-}
-
 export default function GameReportPanel({ gameId, initial, onMomentJump, onGenerated, userColor, startFen }: Props) {
   const { t } = useTranslation();
   const [review, setReview] = useState<GameReviewProse | null>(initial);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<ProgressEvent | null>(null);
+  const [progress, setProgress] = useState<ReviewProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setReview(initial); }, [initial]);
   useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  function cancelGeneration() {
+    const pending = abortRef.current;
+    if (!pending || pending.signal.aborted) return;
+    pending.abort();
+    abortRef.current = null;
+    setBusy(false);
+    setProgress(null);
+    setError('Report generation cancelled. You can try again.');
+  }
 
   async function generate() {
     abortRef.current?.abort();
@@ -73,6 +76,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'patzer' },
         signal: ac.signal,
       });
+      if (ac.signal.aborted) return;
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}));
         setError((j as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -86,6 +90,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
       let failed = false;
       while (true) {
         const { done, value } = await reader.read();
+        if (ac.signal.aborted) return;
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const parsed = takeReviewEvents(buf);
@@ -93,7 +98,10 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         for (const event of parsed.events) {
           if (ac.signal.aborted) return;
           if (event.type === 'progress') {
-            try { setProgress(JSON.parse(event.data) as ProgressEvent); } catch { /* ignore invalid progress */ }
+            try {
+              const update = parseReviewProgress(JSON.parse(event.data));
+              if (update) setProgress(update);
+            } catch { /* ignore invalid progress */ }
           } else if (event.type === 'done') {
             try {
               const payload: unknown = JSON.parse(event.data);
@@ -116,8 +124,9 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         setError('The AI report connection ended before the report was complete. Please retry.');
       }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+      if (!ac.signal.aborted) setError((e as Error).message);
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       if (!ac.signal.aborted) setBusy(false);
     }
   }
@@ -151,6 +160,9 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
           <div className="h-full bg-gold-500 transition-all duration-200" style={{ width: `${pct}%` }} />
         </div>
         <div className="text-xs text-chesscom-500">{stepLabel} · {progress?.done ?? 0}/{progress?.total ?? '?'}</div>
+        <button type="button" onClick={cancelGeneration} className="btn-ghost self-start px-2 py-1 text-xs">
+          {t('review.cancelGeneration', { defaultValue: 'Cancel generation' })}
+        </button>
       </div>
     );
   }
@@ -212,6 +224,9 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
       )}
       {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">{error}</div>}
       {busy && <p role="status" className="text-xs text-chesscom-500">Updating the AI report…</p>}
+      {busy && <button type="button" onClick={cancelGeneration} className="btn-ghost self-start px-2 py-1 text-xs">
+        {t('review.cancelGeneration', { defaultValue: 'Cancel generation' })}
+      </button>}
       <button onClick={generate} disabled={busy} className="btn-ghost self-start px-2 py-1 text-xs">
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
         {t('review.regenerateReport', { defaultValue: 'Write it again' })}

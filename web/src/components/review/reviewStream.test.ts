@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCompleteReviewPayload, takeReviewEvents } from './reviewStream';
+import { isCompleteReviewPayload, parseReviewProgress, takeReviewEvents } from './reviewStream';
 
 describe('Game Review AI stream framing', () => {
   it('parses full SSE packets with LF and CRLF separators', () => {
@@ -24,6 +24,18 @@ describe('Game Review AI stream framing', () => {
     expect(parsed.events).toEqual([{ type: 'error', data: 'worker\nunavailable' }]);
   });
 
+  it('ignores malformed progress that could distort or overflow the progress bar', () => {
+    const valid = { step: 'moment', done: 2, total: 5, index: 1 };
+    expect(parseReviewProgress(valid)).toEqual(valid);
+    expect(parseReviewProgress({ ...valid, done: 7 })).toBeNull();
+    expect(parseReviewProgress({ ...valid, total: 0 })).toBeNull();
+    expect(parseReviewProgress({ ...valid, done: -1 })).toBeNull();
+    expect(parseReviewProgress({ ...valid, done: Infinity })).toBeNull();
+    expect(parseReviewProgress({ ...valid, step: 'unknown' })).toBeNull();
+    expect(parseReviewProgress({ ...valid, index: -2 })).toBeNull();
+    expect(parseReviewProgress(null)).toBeNull();
+  });
+
   it('requires an actual review rather than trusting any done message', () => {
     expect(isCompleteReviewPayload({ review: {} })).toBe(false);
     expect(isCompleteReviewPayload({ review: null })).toBe(false);
@@ -45,6 +57,9 @@ describe('Game Review AI stream framing', () => {
     } })).toBe(true);
     expect(isCompleteReviewPayload({ review: {
       ...minimal, opening: { name: 'Invalid opening', prose: 123 },
+    } })).toBe(false);
+    expect(isCompleteReviewPayload({ review: {
+      ...minimal, opening: { name: 'Valid opening', prose: 'The opening', eco: { broken: true } },
     } })).toBe(false);
   });
 });
