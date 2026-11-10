@@ -84,6 +84,22 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(fake.quit).toHaveBeenCalledTimes(1);
   });
 
+  it('does not publish a completed score if the request aborts at the final ply', async () => {
+    const controller = new AbortController();
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => {
+      if (fake.evaluateMulti.mock.calls.length === 2) controller.abort();
+      return {
+        cp: 20, mate: null, pv: ['e2e4'], bestMoveUci: 'e2e4', depth: 16,
+        candidates: [{ cp: 20, mate: null, pv: ['e2e4'], multipv: 1 }],
+      };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    await expect(analyzePgnFull('1. e4', 16, perf, controller.signal))
+      .rejects.toThrow('analysis_cancelled');
+    expect(fake.quit).toHaveBeenCalled();
+  });
+
   it('never launches a search on an already-cancelled request', async () => {
     const controller = new AbortController();
     controller.abort();
