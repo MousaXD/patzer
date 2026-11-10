@@ -703,7 +703,10 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
     }
   }
 
-  const middleFrom = openingTo + 1;
+  // A custom FEN can begin in the endgame (or reach one unusually early).
+  // The phases must partition the moves, not count those moves twice.
+  const actualOpeningTo = Math.min(openingTo, endgameFrom - 1);
+  const middleFrom = actualOpeningTo + 1;
   const middleTo = Math.min(totalPlies, endgameFrom - 1);
 
   function summarize(fromPly: number, toPly: number) {
@@ -714,7 +717,9 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
     const bPoints: MoveAccPoint[] = [];
     let wAcpl = 0, wN = 0, bAcpl = 0, bN = 0;
     for (const m of slice) {
-      const isWhite = m.ply % 2 === 1;
+      // Plies are numbered relative to the saved PGN, not necessarily from
+      // White's first turn. A SetUp/FEN game may begin with Black to move.
+      const isWhite = m.fen_before.split(' ')[1] === 'w';
       const isBook = m.classification === 'book';
       const wpBeforeWhite = cpToWinPct(m.eval_before_cp ?? 0);
       const wpAfterWhite = cpToWinPct(m.eval_after_cp ?? 0);
@@ -745,7 +750,7 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
   }
 
   return {
-    opening: summarize(1, openingTo),
+    opening: summarize(1, actualOpeningTo),
     middlegame: summarize(middleFrom, middleTo),
     endgame: endgameFrom <= totalPlies ? summarize(endgameFrom, totalPlies) : null,
   };

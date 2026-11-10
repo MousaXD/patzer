@@ -114,6 +114,48 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(fake.quit).toHaveBeenCalledTimes(1);
   });
 
+  it('attributes phase ACPL to the actual mover for a Black-first FEN game', async () => {
+    const fake = fakeEngine();
+    const scores = [0, 300, -40, 200, -100, 0];
+    fake.evaluateMulti.mockImplementation(async () => {
+      const cp = scores[fake.evaluateMulti.mock.calls.length - 1] ?? 0;
+      return {
+        cp, mate: null, pv: [], bestMoveUci: 'e2e4', depth: 16,
+        candidates: [{ cp, mate: null, pv: [], multipv: 1 }],
+      };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+
+    // A legal, off-book setup with Black to move; ply 1 is Black, not White.
+    const fen = 'rnbqkbnr/2pppppp/pp6/8/7P/1P5R/P1PPPPP1/RNBQKBN1 b Qkq - 1 3';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n\n3... e5 4. Bb2 Nc6 5. c4 Nf6`;
+    const result = await analyzePgnFull(pgn, 16, perf);
+    expect(result.moves).toHaveLength(5);
+    expect(result.moves.every((m) => m.classification !== 'book' && m.classification !== 'forced')).toBe(true);
+
+    const acplFor = (turn: 'w' | 'b') => {
+      const losses = result.moves.filter((m) => m.fen_before.split(' ')[1] === turn)
+        .map((m) => m.centipawn_loss);
+      return Math.round(losses.reduce((sum, value) => sum + value, 0) / losses.length);
+    };
+    expect(acplFor('w')).not.toBe(acplFor('b'));
+    expect(result.phase_split?.opening?.acpl_white).toBe(acplFor('w'));
+    expect(result.phase_split?.opening?.acpl_black).toBe(acplFor('b'));
+  });
+
+  it('does not double-count opening and endgame phases in an endgame-start PGN', async () => {
+    const fake = fakeEngine();
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    const fen = 'k7/8/8/8/8/8/8/4K2R w - - 0 40';
+    const pgn = `[SetUp "1"]\n[FEN "${fen}"]\n\n40. Rh8+ Kb7 41. Rh7+ Kb6 42. Rh6+ Kc5`;
+
+    const result = await analyzePgnFull(pgn, 16, perf);
+    expect(result.moves).toHaveLength(6);
+    expect(result.phase_split?.opening).toBeNull();
+    expect(result.phase_split?.middlegame).toBeNull();
+    expect(result.phase_split?.endgame).toMatchObject({ from_ply: 1, to_ply: 6 });
+  });
+
   it('does not publish a completed score if the request aborts at the final ply', async () => {
     const controller = new AbortController();
     const fake = fakeEngine();

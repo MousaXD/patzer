@@ -1,5 +1,21 @@
 # Chess Backend Agent Handoff — 2026-11-10
 
+## Final continuation: custom-FEN phase scoring regressions (2026-11-10)
+
+**Scope:** Continued only the chess-backend lane from the previously green exact-head revision `1a16d848f120ce29e1b8a52bbf8eccaf19fa8927`. This is not a repeat of the engine lifecycle/CI audit. The three other agent branches were fetched for read-only changed-path comparison; none overlapped `server/src/routes/analyze.ts`, the analysis-agent tests, or this handoff at inspection time. No merge, deployment, real database or production service was involved.
+
+**Two defects reproduced with initially failing regression tests and fixed:**
+
+1. **Incorrect player attribution in Black-first FEN games.** `computePhaseSplit()` inferred White/Black from `m.ply % 2`, although saved PGNs can start with Black to move. The main move scorer already had the correct side. Phase accuracy and ACPL now use the actual turn encoded in each analyzed move's `fen_before`. A five-ply off-book FEN-started game regression compares per-color phase ACPL with the scores attributed to actual movers.
+2. **Overlapping phases for endgame-started games.** The fallback first-12-plies opening boundary could overlap an endgame already present in a custom starting FEN, assigning the same moves to opening and endgame. The effective opening boundary now ends before `endgameFrom`, so the phases partition the move sequence. A six-ply rook endgame PGN regression verifies `opening: null`, `middlegame: null`, and `endgame: 1–6`.
+
+**Modified:** `server/src/routes/analyze.ts` and `server/test/analysis-agent-pgn-lifecycle.test.ts`; handoff documentation only otherwise. No response fields, saved schema, service options, engine scheduling, game database queries or frontend components changed.
+
+**Local validation (Node `v22.23.2`):** `npm test -- --run server/test/analysis-agent-pgn-lifecycle.test.ts server/test/classifier.test.ts` **PASS 41/41**; the broader scoped targeted run including variation scoring **PASS 56/56** before the final test mock typing correction; `npm run typecheck` **PASS** on the final changes; `npm test` **PASS 597/597** across 63 test files; `npm run build` **PASS** for both web/server. The earlier certified real-browser, Docker, and e2e suites were not repeated on the source changes here; obtain exact-head GitHub workflow conclusions for those checks. No throughput benchmark was performed.
+
+**Coordinator:** Keep PR #12 draft and unmerged. The source is locally validated; check the new exact-head CI and independent Chromium QA after this handoff commit. Agent 00 owns integrating the other agents' improvements and any cross-lane API behavior. No other branches were written to.
+
+
 ## 2026-11-10 exact-HEAD GitHub CI follow-up — source `88c364007901c5dba6c274f2e9ee5db2eb625eb8`
 
 **Continuing the completed improvement sprint without reopening its audit.** GitHub runners resumed and executed the source+handoff revision `1c8bc127549e9a803edb9f1268b291f3f740fd64`. [CI #42883721861](https://github.com/MousaXD/patzer/actions/runs/42883721861) failed the **Node 20 and Node 22 typecheck jobs**; the E2E/browser regression and Docker image build/boot jobs **passed**. [Independent Chromium QA #42883722075](https://github.com/MousaXD/patzer/actions/runs/42883722075) failed at the same preliminary TypeScript gate. None of these failures demonstrated a runtime regression.
