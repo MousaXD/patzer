@@ -1,0 +1,101 @@
+import { describe, expect, it } from 'vitest';
+import { decodeStoredReviewJson, needsFreshReviewAnalysis } from './storedReview';
+
+const move = {
+  ply: 1, san: 'e4', uci: 'e2e4',
+  fen_before: 'before', fen_after: 'after',
+  classification: 'best', best_pv: ['e4'],
+  eval_before_cp: null, eval_after_cp: 12,
+  mate_before: null, mate_after: null,
+  best_move_uci: 'e2e4', best_move_san: 'e4',
+  centipawn_loss: 0,
+};
+
+const moment = {
+  ply: 1, side: 'white', san: 'e4', fen_before: 'before',
+  classification: 'best', cp_loss: 0, win_pct_delta: 0,
+  best_san: 'e4', best_pv: ['e4'],
+};
+
+const phase = {
+  from_ply: 1, to_ply: 1,
+  accuracy_white: 100, accuracy_black: 100,
+  acpl_white: 0, acpl_black: 0,
+};
+
+describe('cached review analysis decoder', () => {
+  const valid = {
+    moves_json: JSON.stringify([move]),
+    key_moments_json: '[]',
+    phase_split_json: 'null',
+  };
+
+  it('accepts one valid mainline without overwriting unknown evaluations', () => {
+    expect(decodeStoredReviewJson(valid)).toEqual({
+      moves: [move], key_moments: [], phase_split: null,
+    });
+  });
+
+  it('rejects malformed or structurally inconsistent JSON rather than crashing', () => {
+    expect(decodeStoredReviewJson({ ...valid, moves_json: '{' })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: '{}' })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, ply: 2 }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, best_pv: null }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, key_moments_json: '[' })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, phase_split_json: '[]' })).toBeNull();
+  });
+
+  it('rejects cached fields that could crash components or invent scores', () => {
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, classification: 'unrecognized' }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, centipawn_loss: null }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, eval_after_cp: '12' }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, moves_json: JSON.stringify([{ ...move, best_pv: [null] }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, key_moments_json: JSON.stringify([{ ...moment, classification: 'unrecognized' }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, key_moments_json: JSON.stringify([{ ...moment, win_pct_delta: null }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, key_moments_json: JSON.stringify([{ ...moment, ply: 2 }]) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, phase_split_json: JSON.stringify({ opening: { ...phase, accuracy_white: null } }) })).toBeNull();
+    expect(decodeStoredReviewJson({ ...valid, phase_split_json: JSON.stringify({ opening: { ...phase, from_ply: 3, to_ply: 1 } }) })).toBeNull();
+  });
+
+  it('accepts sound key moments and phase boundaries', () => {
+    const data = {
+      ...valid,
+      key_moments_json: JSON.stringify([moment]),
+      phase_split_json: JSON.stringify({ opening: phase, middlegame: null, endgame: null }),
+    };
+    expect(decodeStoredReviewJson(data)).toEqual({
+      moves: [move],
+      key_moments: [moment],
+      phase_split: { opening: phase, middlegame: null, endgame: null },
+    });
+  });
+
+  it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
+    const expected = [{}, { uci: 'e2e4' }, { uci: 'e7e5' }];
+    expect(decodeStoredReviewJson(valid, expected)?.moves).toEqual([move]);
+    const mismatch = [{}, { uci: 'd2d4' }];
+    expect(decodeStoredReviewJson(valid, mismatch)).toBeNull();
+    expect(decodeStoredReviewJson(valid, [{}])).toBeNull();
+    expect(needsFreshReviewAnalysis(valid, decodeStoredReviewJson(valid, mismatch))).toBe(true);
+  });
+
+  it('handles cached records without optional moment/phase data', () => {
+    const result = decodeStoredReviewJson({
+      moves_json: JSON.stringify([move]),
+      key_moments_json: null, phase_split_json: null,
+    });
+    expect(result?.key_moments).toEqual([]);
+    expect(result?.phase_split).toBeNull();
+  });
+
+  it('forces a new Stockfish analysis only for a damaged cached record', () => {
+    expect(needsFreshReviewAnalysis(null, null)).toBe(false);
+    const decoded = decodeStoredReviewJson(valid);
+    expect(decoded).not.toBeNull();
+    expect(needsFreshReviewAnalysis(valid, decoded)).toBe(false);
+    const corrupted = { ...valid, moves_json: 'broken json' };
+    expect(needsFreshReviewAnalysis(corrupted, decodeStoredReviewJson(corrupted))).toBe(true);
+    const malformed = { ...valid, moves_json: JSON.stringify([{ ...move, classification: 'bad' }]) };
+    expect(needsFreshReviewAnalysis(malformed, decodeStoredReviewJson(malformed))).toBe(true);
+  });
+});

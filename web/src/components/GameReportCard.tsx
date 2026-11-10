@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import AccuracyDonut from './AccuracyDonut';
 import { CLASS_STYLE, GLYPH_SVG } from '../lib/classification';
 import type { AnalyzedMove, Classification, PhaseSplit } from '../types';
+import { moveSideForPly } from './review/moveHistoryModel';
 
 interface Props {
   whiteName: string;
@@ -22,6 +23,7 @@ interface Props {
   moves: AnalyzedMove[];
   phaseSplit?: PhaseSplit | null;
   userColor?: 'white' | 'black' | null;
+  startFen?: string;
   /** Clicking a count picks those moves (the move list then walks them). */
   onPick?: (pick: MovePick) => void;
   picked?: MovePick | null;
@@ -32,11 +34,11 @@ export interface MovePick { classification: Classification; side: 'white' | 'bla
 
 export default function GameReportCard({
   whiteName, blackName, accuracyW, accuracyB,
-  eloW, eloB, perfW, perfB, moves, phaseSplit, userColor, onPick, picked,
+  eloW, eloB, perfW, perfB, moves, phaseSplit, userColor, startFen, onPick, picked,
 }: Props) {
   const { t } = useTranslation();
-  const w = countByCls(moves, 'white');
-  const b = countByCls(moves, 'black');
+  const w = countByCls(moves, 'white', startFen);
+  const b = countByCls(moves, 'black', startFen);
   const isPicked = (c: Classification, side: MovePick['side']) => picked?.classification === c && picked.side === side;
   const cell = (c: Classification, side: 'white' | 'black', n: number) => {
     const base = 'mx-auto flex h-7 w-10 items-center justify-center rounded-md font-mono tabular-nums';
@@ -158,11 +160,10 @@ function PhaseTile({ label, phase, userColor }: { label: string; phase: PhaseSpl
   );
 }
 
-function countByCls(moves: AnalyzedMove[], side: 'white' | 'black'): Record<Classification, number> {
+export function countByCls(moves: AnalyzedMove[], side: 'white' | 'black', startFen?: string): Record<Classification, number> {
   const out = Object.fromEntries(Object.keys(CLASS_STYLE).map((k) => [k, 0])) as Record<Classification, number>;
   for (const m of moves) {
-    const isWhite = m.ply % 2 === 1;
-    if ((side === 'white') !== isWhite) continue;
+    if (moveSideForPly(m.ply, startFen) !== side) continue;
     out[m.classification] = (out[m.classification] ?? 0) + 1;
   }
   return out;

@@ -48,14 +48,16 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
       pickTint(white?.classification, black?.classification),
     )}>
       <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400">{num}.</div>
-      <Half move={white} current={wCur} onSelect={onSelect} t={t} highlight={highlight} />
-      <Half move={black} current={bCur} onSelect={onSelect} t={t} highlight={highlight} />
+      <Half move={white} num={num} side="white" current={wCur} onSelect={onSelect} t={t} highlight={highlight} />
+      <Half move={black} num={num} side="black" current={bCur} onSelect={onSelect} t={t} highlight={highlight} />
     </div>
   );
 }
 
-function Half({ move, current, onSelect, t, highlight }: {
+function Half({ move, num, side, current, onSelect, t, highlight }: {
   move?: Move;
+  num: number;
+  side: 'white' | 'black';
   current: boolean;
   onSelect: (p: number) => void;
   t: (key: string) => string;
@@ -71,10 +73,10 @@ function Half({ move, current, onSelect, t, highlight }: {
       type="button"
       onClick={() => onSelect(move.ply)}
       aria-current={current ? 'step' : undefined}
-      aria-label={label ? `${move.san}: ${label}` : move.san}
+      aria-label={`${num}${side === 'white' ? '.' : '…'} ${t(`review.${side}`)} ${move.san}${label ? `: ${label}` : ''}`}
       title={label ?? undefined}
       className={cn(
-        'group flex items-center justify-between gap-2 px-2 py-1.5 text-left text-sm transition-colors',
+        'group flex min-h-10 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
         current
           ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900'
           : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800',

@@ -37,7 +37,7 @@ function WdlBar({ white, draws, black }: { white: number; draws: number; black: 
   if (total === 0) return null;
   const w = pct(white, total), d = pct(draws, total), b = Math.max(0, 100 - w - d);
   return (
-    <div className="flex h-4 w-full overflow-hidden rounded text-[10px] font-semibold leading-4" title={`${w}% · ${d}% · ${b}%`}>
+    <div role="img" aria-label={`White ${w}%, draws ${d}%, Black ${b}%`} className="flex h-4 w-full overflow-hidden rounded text-[10px] font-semibold leading-4" title={`${w}% · ${d}% · ${b}%`}>
       <div className="bg-chesscom-50 text-chesscom-800 text-center" style={{ width: `${w}%` }}>{w >= 12 ? `${w}%` : ''}</div>
       <div className="bg-chesscom-300 text-chesscom-900 text-center dark:bg-chesscom-500 dark:text-chesscom-100" style={{ width: `${d}%` }}>{d >= 12 ? `${d}%` : ''}</div>
       <div className="bg-chesscom-800 text-chesscom-100 text-center dark:bg-chesscom-950" style={{ width: `${b}%` }}>{b >= 12 ? `${b}%` : ''}</div>
@@ -48,7 +48,10 @@ function WdlBar({ white, draws, black }: { white: number; draws: number; black: 
 export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPreview?: (uci: string | null) => void }) {
   const { t } = useTranslation();
   const [enabled, setEnabled] = useState(false);
-  const [data, setData] = useState<ExplorerResponse | null>(null);
+  // Tie every result to its source FEN. The previous position's master
+  // statistics must never be displayed for the next position while loading.
+  const [snapshot, setSnapshot] = useState<{ fen: string; value: ExplorerResponse } | null>(null);
+  const data = snapshot?.fen === fen ? snapshot.value : null;
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -57,8 +60,8 @@ export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPrevi
     setLoading(true);
     const handle = window.setTimeout(() => {
       api.get<ExplorerResponse>(`/api/openings/explorer?fen=${encodeURIComponent(fen)}`)
-        .then((r) => { if (!cancelled) { setData(r); setLoading(false); } })
-        .catch(() => { if (!cancelled) { setData({ available: false }); setLoading(false); } });
+        .then((r) => { if (!cancelled) { setSnapshot({ fen, value: r }); setLoading(false); } })
+        .catch(() => { if (!cancelled) { setSnapshot({ fen, value: { available: false } }); setLoading(false); } });
     }, 300);
     return () => { cancelled = true; window.clearTimeout(handle); };
   }, [enabled, fen]);
@@ -73,7 +76,7 @@ export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPrevi
           {t('explorer.title', { defaultValue: 'Master games' })}
         </span>
         <button
-          onClick={() => setEnabled((s) => !s)}
+          onClick={() => { onPreview?.(null); setEnabled((s) => !s); }}
           className={`btn-ghost ml-auto px-2 py-1 text-xs ${enabled ? 'text-board-dark' : ''}`}
         >
           {enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('explorer.show', { defaultValue: 'Show master stats' })}
@@ -112,17 +115,22 @@ export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPrevi
                 {(data.moves ?? []).map((m) => {
                   const n = m.white + m.draws + m.black;
                   return (
-                    <div
+                    <button
                       key={m.uci}
+                      type="button"
+                      onClick={() => onPreview?.(m.uci)}
                       onMouseEnter={() => onPreview?.(m.uci)}
                       onMouseLeave={() => onPreview?.(null)}
-                      className="flex items-center gap-2 rounded px-1.5 py-1 hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40"
+                      onFocus={() => onPreview?.(m.uci)}
+                      onBlur={() => onPreview?.(null)}
+                      aria-label={`Preview master move ${m.san}, ${pct(n, total)}% of games`}
+                      className="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-2 text-left transition-colors hover:bg-chesscom-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:hover:bg-chesscom-900/40"
                     >
                       <span className="w-12 shrink-0 font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{m.san}</span>
                       <span className="w-14 shrink-0 tabular-nums text-chesscom-500">{pct(n, total)}% · {n.toLocaleString()}</span>
                       <div className="min-w-0 flex-1"><WdlBar white={m.white} draws={m.draws} black={m.black} /></div>
                       {m.averageRating != null && <span className="w-9 shrink-0 text-right tabular-nums text-chesscom-400">{m.averageRating}</span>}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
