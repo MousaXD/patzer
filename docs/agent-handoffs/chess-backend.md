@@ -1,5 +1,15 @@
 # Chess Backend Agent Handoff — 2026-11-10
 
+## 2026-11-10 exact-HEAD GitHub CI follow-up — source `88c364007901c5dba6c274f2e9ee5db2eb625eb8`
+
+**Continuing the completed improvement sprint without reopening its audit.** GitHub runners resumed and executed the source+handoff revision `1c8bc127549e9a803edb9f1268b291f3f740fd64`. [CI #42883721861](https://github.com/MousaXD/patzer/actions/runs/42883721861) failed the **Node 20 and Node 22 typecheck jobs**; the E2E/browser regression and Docker image build/boot jobs **passed**. [Independent Chromium QA #42883722075](https://github.com/MousaXD/patzer/actions/runs/42883722075) failed at the same preliminary TypeScript gate. None of these failures demonstrated a runtime regression.
+
+- **Proven failure:** `server/test/analysis-agent-pgn-lifecycle.test.ts:108`, `TS2493: Tuple type '[]' of length '0' has no element at index '0'`. A fake engine's `vi.fn(async () => ...)` incorrectly inferred zero parameters, but the FEN-start regression inspects `evaluateMulti.mock.calls[0]?.[0]`. The original local `npm run typecheck` ran before that last regression was added, so the original evidence was insufficient to certify that source revision.
+- **Owned-only minimal correction:** The fake `evaluateMulti` mock now explicitly declares its real `(fen: string, depth: number, n: number)` parameters. This changes only test typings and does not change runtime code, game behavior, API contracts, or cross-agent files.
+- **Corrected local certification on Node `v22.23.2`:** `npm run typecheck` **PASS**; the targeted Stockfish+PGN lifecycle regressions **18/18 PASS**; `npm test` **595/595 PASS** across **63 files**; `npm run build` (server + web) **PASS**; `git diff --check` PASS. The full real-server/browser and Docker suites had already passed on the identical production source `d6f788d...`, and both relevant GitHub-hosted regression/Docker jobs also passed on `1c8bc12...`. Repeating those successful runtime checks was unnecessary for a test-type-only correction.
+- **Gate:** Keep [draft PR #12](https://github.com/MousaXD/patzer/pull/12) unmerged and undeployed. Require exact-new-head CI/QA conclusions or a coordinator-approved exception. Earlier runner queueing is no longer a categorical blocker: the previous runs executed. No throughput benchmark was run.
+
+
 ## 2026-11-10 independent improvement sprint — locally certified source `d6f788dadbae371cdc10e0e1a117203e819f13db`
 
 **Verdict: READY FOR COORDINATOR REVIEW on local evidence; GitHub-hosted checks are still a separate outstanding gate.** This is a targeted follow-up on the already completed backend work, not a redesign. No source/API success contract was removed. PR #12 must remain draft and unmerged until Agent 00 decides integration/release gates.
