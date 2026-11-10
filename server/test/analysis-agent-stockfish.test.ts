@@ -5,6 +5,10 @@ import { join } from 'node:path';
 
 // Importing StockfishEngine must never initialize a real SQLite connection.
 vi.mock('../src/db.js', () => ({ getSetting: () => null }));
+// config.ts otherwise creates a session-secret file at import time.
+vi.mock('../src/config.js', () => ({
+  config: { stockfishPathHint: undefined, projectRoot: '/unused-test-root' },
+}));
 import { StockfishEngine } from '../src/chess/stockfish.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'patzer-fake-uci-'));
@@ -105,9 +109,10 @@ describeUnix('analysis-agent Stockfish subprocess lifecycle', () => {
     const engine = new StockfishEngine(fakeUci('hang-on-go'));
     await engine.start();
     const search = engine.evaluate(START_FEN, 16);
+    const assertion = expect(search).rejects.toThrow();
     await new Promise((resolve) => setTimeout(resolve, 30));
     await engine.quit();
-    await expect(search).rejects.toThrow();
+    await assertion;
     expect(engine.isReady()).toBe(false);
   });
 
