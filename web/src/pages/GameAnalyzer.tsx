@@ -19,6 +19,7 @@ import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
+import MistakePractice from '../components/review/MistakePractice';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
 import KeyMomentsList from '../components/KeyMomentsList';
 import OpeningBanner from '../components/OpeningBanner';
@@ -107,6 +108,7 @@ function GameAnalyzerView() {
   const [showDepthControl, setShowDepthControl] = useState(false);
   const [reviewProse, setReviewProse] = useState<GameReviewProse | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
+  const [practicePly, setPracticePly] = useState<number | null>(null);
   // A category picked in the Game Report table (e.g. Black's misses): those
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
@@ -300,6 +302,8 @@ function GameAnalyzerView() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
+      if (document.querySelector('[data-practice-mode]')) return;
       const target = e.target instanceof Element ? e.target : null;
       // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
       // or a modal/command palette. Arrow/Home/End are native controls there.
@@ -363,7 +367,7 @@ function GameAnalyzerView() {
   const currentFen = variations.currentFen || pos?.fen || '';
   const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
-    if (!linesEnabled || !currentFen) return;
+    if (practicePly !== null || !linesEnabled || !currentFen) return;
     const controller = new AbortController();
     let cancelled = false;
     setLinesError(null);
@@ -389,7 +393,7 @@ function GameAnalyzerView() {
         });
     }, 400);
     return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
-  }, [linesEnabled, currentFen, linesRetry]);
+  }, [linesEnabled, currentFen, linesRetry, practicePly]);
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
@@ -513,6 +517,24 @@ function GameAnalyzerView() {
       }
     });
   };
+
+  // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
+  // blind practice. The original PGN is read-only; attempts use a separate board.
+  if (practicePly !== null) {
+    const selected = analysis?.moves[practicePly - 1];
+    const saved = positions[practicePly];
+    if (selected && saved?.uci === selected.uci && selected.fen_before === positions[practicePly - 1]?.fen) {
+      return <MistakePractice key={`${gameId}:${practicePly}`} fenBefore={selected.fen_before}
+        orientation={moveSideForPly(practicePly, startFen)} onExit={() => { setPly(practicePly); setPracticePly(null); requestAnimationFrame(() => document.getElementById('learn-from-mistake')?.focus()); }} />;
+    }
+    // A stale/corrupt analysis or a background refetch must not silently
+    // drop blind mode and expose the original move or its engine hint.
+    return <section role="alert" className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
+      <h1 className="font-semibold">Practice position unavailable</h1>
+      <p className="mt-2 text-sm">This move no longer matches the saved game analysis. Return to the game and refresh its analysis.</p>
+      <button type="button" className="btn-secondary mt-3" onClick={() => setPracticePly(null)}>Return to saved game</button>
+    </section>;
+  }
 
   const eco = analysis?.opening_eco ?? data.game.eco ?? null;
   const openingName = analysis?.opening_name ?? data.game.opening_name ?? null;
@@ -713,6 +735,13 @@ function GameAnalyzerView() {
                       <button onClick={() => stepPick(-1)} className="btn-ghost p-1" title={t('review.prev')}><ChevronLeft className="h-4 w-4" /></button>
                       <button onClick={() => stepPick(1)} className="btn-ghost p-1" title={t('review.next')}><ChevronRight className="h-4 w-4" /></button>
                       <button onClick={() => setPick(null)} className="btn-ghost p-1" title={t('common.close', { defaultValue: 'Close' })}><X className="h-4 w-4" /></button>
+                    </div>
+                  )}
+                  {tab === 'moves' && move && ['blunder', 'mistake', 'inaccuracy', 'miss'].includes(move.classification) && (
+                    <div className="mb-3 rounded-lg border border-gold-500/40 p-3">
+                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">Can you find a better move before seeing the engine's answer?</p>
+                      <button type="button" className="btn-primary min-h-11 w-full"
+                        id="learn-from-mistake" onClick={() => setPracticePly(ply)}>Learn from this mistake — try blind</button>
                     </div>
                   )}
                   {tab === 'moves' && move && (
