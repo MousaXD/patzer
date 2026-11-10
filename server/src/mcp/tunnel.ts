@@ -113,14 +113,15 @@ export async function getTunnelStatus(): Promise<TunnelStatus> {
   const p = paths();
   const tunnelId = profileTunnelId();
   const runtimeKeySaved = privateFile(p.key);
-  const state = await unitProperty('ActiveState');
-  const enabled = await unitProperty('UnitFileState');
+  const [state, enabled] = await Promise.all([
+    unitProperty('ActiveState'), unitProperty('UnitFileState'),
+  ]);
   const serviceActive = state === 'active';
   const { health, connected } = serviceActive
     ? await liveTunnelHealth(p.client)
     : { health: false, connected: false };
   return {
-    available: config.host === '127.0.0.1' || config.host === 'localhost' || config.host === '::1',
+    available: config.host === '127.0.0.1' || config.host === 'localhost' || config.host === '::1' || config.host === '[::1]',
     tunnelClientInstalled: existsSync(p.client),
     localMcpCredentialsSaved: privateFile(p.mcpEnv) && privateFile(p.patzerPassword),
     tunnelId,
@@ -186,7 +187,15 @@ export async function stopTunnel() {
 }
 
 /** A real MCP tool call: verifies bridge credentials without returning any chess data. */
-export async function testLocalMcp(): Promise<{ ok: boolean; message: string }> {
+// A burst of repeated admin clicks must not spawn a burst of MCP processes.
+let localMcpCheck: Promise<{ ok: boolean; message: string }> | null = null;
+export function testLocalMcp(): Promise<{ ok: boolean; message: string }> {
+  if (!localMcpCheck) {
+    localMcpCheck = runLocalMcpCheck().finally(() => { localMcpCheck = null; });
+  }
+  return localMcpCheck;
+}
+async function runLocalMcpCheck(): Promise<{ ok: boolean; message: string }> {
   const p = paths();
   if (!privateFile(p.mcpEnv)) return { ok: false, message: 'Patzer MCP credentials have not been configured.' };
   return new Promise((resolveTest) => {
@@ -215,7 +224,11 @@ export async function testLocalMcp(): Promise<{ ok: boolean; message: string }> 
           : 'MCP login failed. Update your Patzer credentials.');
       } catch { done(false, 'Patzer MCP returned an invalid response.'); }
     });
-    child.on('exit', () => done(false, 'Patzer MCP stopped before responding.'));
+    // Drain diagnostics without logging or reflecting credential-bearing stderr.
+    child.stderr.on('data', () => {});
+    // 'close' fires after stdout has drained; 'exit' may run before the final
+    // JSON-RPC response reaches the data listener.
+    child.on('close', () => done(false, 'Patzer MCP stopped before responding.'));
     child.stdin.on('error', () => done(false, 'Unable to contact the local MCP bridge.'));
     child.stdin.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_games', arguments: { limit: 1 } } }) + '\n');
   });

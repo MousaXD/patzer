@@ -16,7 +16,10 @@ router.use('*', async (c, next) => {
   await next();
 });
 
-router.get('/status', async (c) => c.json(await getTunnelStatus()));
+router.get('/status', async (c) => {
+  try { return c.json(await getTunnelStatus()); }
+  catch { return c.json({ error: 'mcp_status_unavailable' }, 503); }
+});
 
 const setup = z.object({
   tunnelId: z.string().regex(/^tunnel_[0-9a-f]{32}$/),
@@ -49,6 +52,9 @@ for (const [name, fn] of [['start', startTunnel], ['stop', stopTunnel]] as const
     catch { return c.json({ error: `Unable to ${name} the tunnel. Check the local systemd user service.` }, 500); }
   });
 }
-router.post('/test-local', async (c) => c.json(await testLocalMcp()));
+router.post('/test-local', async (c) => {
+  try { return c.json(await testLocalMcp()); }
+  catch { return c.json({ ok: false, message: 'Unable to check the local MCP bridge.' }); }
+});
 
 export default router;

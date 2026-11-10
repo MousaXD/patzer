@@ -4,8 +4,9 @@
 import { Hono } from 'hono';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
+import { readAnalysisMoves, readPhaseSplit } from './analysisData.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
-import type { AnalyzedMove, Classification, GamePhase, PhaseSplit } from '../types.js';
+import type { Classification, GamePhase, PhaseSplit } from '../types.js';
 
 const router = new Hono();
 router.use('*', requireAuth);
@@ -13,6 +14,7 @@ router.use('*', requireAuth);
 interface AnalysisRow {
   game_id: number;
   user_color: 'white' | 'black' | null;
+  start_fen: string | null;
   moves_json: string;
   phase_split_json: string | null;
 }
@@ -22,7 +24,7 @@ interface PhaseAcc { count: number; pos: number }
 router.get('/', (c) => {
   const me = c.get('user');
   const rows = db.prepare(`
-    SELECT a.game_id, g.user_color, a.moves_json, a.phase_split_json
+    SELECT a.game_id, g.user_color, g.start_fen, a.moves_json, a.phase_split_json
     FROM analyses a JOIN games g ON g.id = a.game_id
     WHERE g.user_id = ? AND a.scoring_version >= ?
     ORDER BY g.end_time DESC, g.id DESC
@@ -43,9 +45,12 @@ router.get('/', (c) => {
   let analyzedCount = 0;
   for (const r of rows) {
     analyzedCount++;
-    const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
-    const split = r.phase_split_json ? (JSON.parse(r.phase_split_json) as PhaseSplit) : null;
-    const userColor = r.user_color ?? 'white';
+    const moves = readAnalysisMoves(r.moves_json);
+    const split = readPhaseSplit(r.phase_split_json);
+    // Legacy imported games can have an unknown player side; never
+    // attribute white's move quality or phase accuracy to that user.
+    if (r.user_color !== 'white' && r.user_color !== 'black') continue;
+    const userColor = r.user_color;
 
     if (split?.opening) {
       const acc = userColor === 'white' ? split.opening.accuracy_white : split.opening.accuracy_black;
@@ -61,7 +66,14 @@ router.get('/', (c) => {
     }
 
     for (const m of moves) {
-      const side = m.ply % 2 === 1 ? 'white' : 'black';
+      // An analysis ply is relative to its PGN: a game opened from a custom
+      // FEN may have Black to move first. The position immediately before the
+      // move is the authoritative player side, unlike odd/even ply parity.
+      // For older standard-start caches that omit fen_before, parity remains
+      // valid; for custom starts without a trustworthy side, skip the move.
+      const fenTurn = typeof m.fen_before === 'string' ? m.fen_before.split(' ')[1] : null;
+      const side = fenTurn === 'w' ? 'white' : fenTurn === 'b' ? 'black'
+        : r.start_fen ? null : (m.ply % 2 === 1 ? 'white' : 'black');
       if (side !== userColor) continue;
       const phase = phaseFor(m.ply, split);
       phaseStats[phase][m.classification]++;
