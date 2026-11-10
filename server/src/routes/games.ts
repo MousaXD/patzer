@@ -41,7 +41,10 @@ router.get('/', (c) => {
   }
   const joined = 'FROM games g LEFT JOIN analyses a ON a.game_id = g.id';
   const where = `WHERE ${filters.join(' AND ')}`;
-  const total = db.prepare(`SELECT COUNT(*) AS n ${joined} ${where}`)
+  // The common unfiltered-by-analysis count needs only the user_id index;
+  // avoid an unnecessary analyses lookup for every saved game.
+  const countFrom = query.analyzed === null ? 'FROM games g' : joined;
+  const total = db.prepare(`SELECT COUNT(*) AS n ${countFrom} ${where}`)
     .get(...params) as { n: number };
   // Never interpolate raw query parameters into ORDER BY.
   const order = query.sort === 'oldest'
