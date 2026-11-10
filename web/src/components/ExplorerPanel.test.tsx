@@ -20,7 +20,7 @@ describe('Game Review master explorer', () => {
     vi.mocked(api.get).mockResolvedValueOnce({
       available: true, total: 10, white: 6, draws: 2, black: 2,
       moves: [{ uci: 'e2e4', san: 'e4', white: 6, draws: 2, black: 2, averageRating: 2300 }],
-    });
+    }).mockResolvedValueOnce({ available: false, total: 0, moves: [] });
     const onPreview = vi.fn();
     const view = render(<ExplorerPanel fen="position-one" onPreview={onPreview} />);
     fireEvent.click(screen.getByText('Show master stats'));
