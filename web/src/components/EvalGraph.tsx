@@ -108,6 +108,10 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
         {paths.map((path, index) => (
           <path key={index} d={path.line} fill="none" stroke="#7d7670" strokeWidth="0.7" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         ))}
+        {/* Scored samples remain visible even when surrounded by missing data. */}
+        {points.filter((point) => point.y !== null).map((point) => (
+          <circle key={'sample-' + point.ply} cx={point.x} cy={point.y!} r="0.65" fill="#7d7670" />
+        ))}
         {/* Mistake / blunder / brilliancy markers */}
         {markers.map((m) => {
           const p = points.find((point) => point.ply === m.ply);
