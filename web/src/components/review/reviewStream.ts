@@ -37,8 +37,31 @@ export function isCompleteReviewPayload(value: unknown): value is { review: {
   const review = (value as { review?: unknown }).review;
   if (!review || typeof review !== 'object') return false;
   const v = review as Record<string, unknown>;
-  return typeof v.summary === 'string'
-    && typeof v.skill_assessment === 'string'
-    && !!v.phases && typeof v.phases === 'object' && !Array.isArray(v.phases)
-    && Array.isArray(v.key_moments);
+  if (typeof v.summary !== 'string' || typeof v.skill_assessment !== 'string') return false;
+  if (!isRecord(v.phases) || !Array.isArray(v.key_moments)) return false;
+
+  // An object-shaped result is not necessarily safe to render: the report
+  // calls phase.accuracy.toFixed() and reads fields from every moment. Never
+  // save a broken streamed result as the completed report.
+  if (v.opening != null && (!isRecord(v.opening)
+    || typeof v.opening.name !== 'string'
+    || typeof v.opening.prose !== 'string')) return false;
+
+  for (const phase of ['opening', 'middlegame', 'endgame']) {
+    const item = v.phases[phase];
+    if (item != null && (!isRecord(item)
+      || typeof item.accuracy !== 'number'
+      || !Number.isFinite(item.accuracy)
+      || typeof item.prose !== 'string')) return false;
+  }
+
+  return v.key_moments.every((moment: unknown) => isRecord(moment)
+    && Number.isSafeInteger(moment.ply)
+    && (moment.ply as number) > 0
+    && typeof moment.title === 'string'
+    && typeof moment.prose === 'string');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
