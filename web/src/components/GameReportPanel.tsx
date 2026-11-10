@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { renderMarkdown, stripReasoning } from '../lib/markdown';
 import type { Language } from '../lib/languages';
+import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
 
 export interface GameReviewProse {
   version: number;
@@ -38,6 +39,7 @@ interface Props {
   onGenerated?: (review: GameReviewProse) => void;
   /** The player's colour — older reports don't say whose move a moment was. */
   userColor?: 'white' | 'black' | null;
+  startFen?: string;
 }
 
 interface ProgressEvent {
@@ -47,7 +49,7 @@ interface ProgressEvent {
   index?: number;
 }
 
-export default function GameReportPanel({ gameId, initial, onMomentJump, onGenerated, userColor }: Props) {
+export default function GameReportPanel({ gameId, initial, onMomentJump, onGenerated, userColor, startFen }: Props) {
   const { t } = useTranslation();
   const [review, setReview] = useState<GameReviewProse | null>(initial);
   const [busy, setBusy] = useState(false);
@@ -184,13 +186,14 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         <div className="space-y-1.5">
           <div className="text-[11px] uppercase tracking-wide text-chesscom-500">{t('review.keyMoments')}</div>
           {review.key_moments.map((m) => {
-            const mine = m.by_user ?? (userColor ? m.side === userColor : true);
+            const side = moveSideForPly(m.ply, startFen);
+            const mine = userColor ? side === userColor : (m.by_user ?? true);
             return (
             <button key={m.ply}
               onClick={() => onMomentJump?.(m.ply)}
               className="block w-full rounded-lg border border-chesscom-200 bg-white px-3 py-2 text-left text-xs hover:border-gold-500/40 hover:bg-gold-50/40 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:bg-chesscom-900/40">
               <div className="flex items-baseline gap-2">
-                <span className="font-mono text-[11px] tabular-nums text-chesscom-500">#{Math.ceil(m.ply / 2)}{m.side === 'black' ? '…' : '.'}</span>
+                <span className="font-mono text-[11px] tabular-nums text-chesscom-500">#{moveNumberForPly(m.ply, startFen)}{side === 'black' ? '…' : '.'}</span>
                 <span className="font-semibold">{m.title}</span>
                 <span className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${mine ? 'bg-gold-500/15 text-gold-700 dark:text-gold-300' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300'}`}>
                   {mine ? t('review.why.yourMove') : t('review.why.opponentMove')}
