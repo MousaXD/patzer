@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import GameReportPanel, { type GameReviewProse } from './GameReportPanel';
 
@@ -29,7 +29,7 @@ function reply(...chunks: string[]) {
   return { ok: true, body: { getReader: () => reader } };
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('Game Review report stream lifecycle', () => {
   it('handles a done event spanning multiple CRLF chunks', async () => {
