@@ -469,7 +469,11 @@ export default function GameAnalyzer() {
 
       {/* Responsive cockpit: center board + rail together on desktop. The page
           can scroll naturally; clipping the workspace hid useful information. */}
-      <div className="review-workspace" data-review-workspace>
+      <div
+        className="review-workspace"
+        data-review-workspace
+        style={{ gridTemplateColumns: 'minmax(0, min(72dvh, 760px, calc(48% - 12px))) minmax(0, min(760px, calc(52% - 12px)))' }}
+      >
         {/* BOARD COLUMN — viewport-aware fluid width; at desktop sizes the
             grid centers this square and the right rail as a single cockpit. */}
         <div className="review-board-column">
