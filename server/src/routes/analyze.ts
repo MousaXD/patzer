@@ -205,6 +205,7 @@ router.post('/position', async (c) => {
       await engine.setOption('Threads', '2');
       await engine.setOption('Hash', '64');
       const result = await engine.evaluateMulti(fen, depth, lines);
+      if (!probe.isGameOver() && !validPositionScore(result)) throw new Error('engine_invalid_score');
       // Build the response: convert UCI → SAN by replaying the PV against a
       // fresh Chess for each candidate. Cap PV at 8 plies — beyond that the
       // engine's projection is noisy and the payload bloats.
@@ -233,7 +234,7 @@ router.post('/position', async (c) => {
       });
       return {
         fen,
-        depth: result.depth || depth,
+        depth: result.depth,
         lines: linesOut,
       } satisfies PositionResult;
     } finally {
@@ -357,6 +358,7 @@ export async function analyzePgnFull(
   // Pre-evaluate starting position with MultiPV=3 so we can detect "Great"
   // (only-good-move) and gap-aware "Brilliant" via the second-best candidate.
   let prevEval = await engine.evaluateMulti(replay.fen(), depth, 3);
+  if (!replay.isGameOver() && !validPositionScore(prevEval)) throw new Error('engine_invalid_score');
   // Depth each search actually reached. The local engine always reaches the
   // requested depth; a time-capped remote one (chess-api.com) stops short.
   const reachedDepths: number[] = [prevEval.depth];
@@ -409,6 +411,7 @@ export async function analyzePgnFull(
     const fenAfter = replay.fen();
 
     const nextEval = await engine.evaluateMulti(fenAfter, depth, 3);
+    if (!replay.isGameOver() && !validPositionScore(nextEval)) throw new Error('engine_invalid_score');
     reachedDepths.push(nextEval.depth);
     const nextWhiteCp = normalizeEval(nextEval.cp, nextEval.mate, replay.turn());
 
@@ -509,8 +512,6 @@ export async function analyzePgnFull(
     prevWhiteCp = nextWhiteCp;
   }
 
-  const engineKind = engine.kind;
-
   // CAPS-style game accuracy (volatility-weighted + harmonic mean).
   const accuracy_white = Math.round(gameAccuracy(whitePoints) * 10) / 10;
   const accuracy_black = Math.round(gameAccuracy(blackPoints) * 10) / 10;
@@ -568,7 +569,7 @@ export async function analyzePgnFull(
     // Record what the engine really did, so the stored depth isn't a claim the
     // remote backend never met — and so switching back to local re-analyzes
     // (the cache only reuses an analysis at >= the requested depth).
-    depth: engineKind === 'local' ? depth : Math.min(depth, medianDepth(reachedDepths)),
+    depth: Math.min(depth, medianDepth(reachedDepths)),
     moves,
     accuracy_white,
     accuracy_black,
@@ -585,6 +586,12 @@ export async function analyzePgnFull(
     signal?.removeEventListener('abort', onAbort);
     await engine.quit();
   }
+}
+
+function validPositionScore(e: { cp: number | null; mate: number | null; depth: number }): boolean {
+  return Number.isInteger(e.depth) && e.depth >= 0
+    && ((e.mate !== null && Number.isFinite(e.mate))
+      || (e.cp !== null && Number.isFinite(e.cp)));
 }
 
 function medianDepth(depths: number[]): number {
