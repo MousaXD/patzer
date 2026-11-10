@@ -46,7 +46,7 @@ interface InsightsV2 {
 
 export default function Insights() {
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['insights-v2'],
     queryFn: () => api.get<InsightsV2>('/api/insights/v2'),
   });
@@ -68,6 +68,14 @@ export default function Insights() {
   }, [location.hash, achievementsData]);
 
   if (isLoading) return <Skeleton />;
+  if (isError) return (
+    <div role="alert" className="card mx-auto flex max-w-xl flex-col items-center gap-3 p-8 text-center">
+      <AlertTriangle className="h-7 w-7 text-mistake" aria-hidden="true" />
+      <h1 className="text-base font-semibold">{t('insights.loadFailed', { defaultValue: 'Insights are temporarily unavailable' })}</h1>
+      <p className="text-sm text-chesscom-500">{t('insights.retryHint', { defaultValue: 'Your games are safe. Please retry loading your statistics.' })}</p>
+      <button type="button" onClick={() => void refetch()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </div>
+  );
   if (!data || data.games_total === 0) {
     return (
       <div className="card flex flex-col items-center gap-2 p-10 text-center">
