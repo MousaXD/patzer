@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import MoveRow from './MoveRow';
+import { buildMovePairs, pairIndexForPly } from './review/moveHistoryModel';
 import type { PhaseSplit } from '../types';
 
 interface Move { ply: number; san: string; classification?: string }
@@ -12,6 +13,8 @@ interface Props {
   /** Optional phase split — when present, inserts OPENING / MIDDLEGAME /
    *  ENDGAME divider rows between move-pairs to match chess.com Game Review. */
   phaseSplit?: PhaseSplit | null;
+  /** Starting game FEN for correct Black-first and fullmove-number pairing. */
+  startFen?: string;
   /** Optional pixel cap; defaults to 420. */
   maxHeight?: number;
   /** Plies to make stand out (the rest is dimmed) — see MoveRow. */
@@ -21,26 +24,23 @@ interface Props {
 // Two-column move-pair-per-row list. The badge sits to the right of each SAN,
 // the current half-move is highlighted, and the row's left edge is tinted by
 // the worst classification in the pair (matching chess.com Game Review).
-export default function MoveList({ moves, current, onSelect, phaseSplit, maxHeight, highlight }: Props) {
+export default function MoveList({ moves, current, onSelect, phaseSplit, startFen, maxHeight, highlight }: Props) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (current === 0) scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [current]);
-  const rows: { num: number; white?: Move; black?: Move }[] = [];
-  for (let i = 0; i < moves.length; i += 2) {
-    rows.push({ num: i / 2 + 1, white: moves[i], black: moves[i + 1] });
-  }
+  const rows = buildMovePairs(moves, startFen);
 
   // Build a map from "move-pair number" to "phase label to insert BEFORE it".
   // The first phase label sits at the top (no insertion above row 1 needed —
   // chess.com renders OPENING as a banner above the list).
   const phaseAtPair: Map<number, 'opening' | 'middlegame' | 'endgame'> = new Map();
   if (phaseSplit?.middlegame?.from_ply) {
-    phaseAtPair.set(Math.ceil(phaseSplit.middlegame.from_ply / 2), 'middlegame');
+    phaseAtPair.set(pairIndexForPly(phaseSplit.middlegame.from_ply, startFen), 'middlegame');
   }
   if (phaseSplit?.endgame?.from_ply) {
-    phaseAtPair.set(Math.ceil(phaseSplit.endgame.from_ply / 2), 'endgame');
+    phaseAtPair.set(pairIndexForPly(phaseSplit.endgame.from_ply, startFen), 'endgame');
   }
 
   return (
@@ -69,7 +69,7 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, maxHeig
         <PhaseDivider label={t('review.opening')} />
       )}
       {rows.map((r) => {
-        const phaseHere = phaseAtPair.get(r.num);
+        const phaseHere = phaseAtPair.get(r.pairIndex);
         return (
           <Fragment key={r.num}>
             {phaseHere && (
