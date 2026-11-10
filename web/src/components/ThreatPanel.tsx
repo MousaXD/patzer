@@ -83,23 +83,24 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
   const [threat, setThreat] = useState<Threat | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'check' | 'ok' | 'unknown'>('idle');
   const [resultFen, setResultFen] = useState<string | null>(null);
+  const [resultCp, setResultCp] = useState<number | null>(null);
   const [retry, setRetry] = useState(0);
-  // A reply for another board must never be visible for this FEN, even on
-  // the first render before the next effect schedules a new engine request.
-  const displayedState = resultFen === fen ? state : 'loading';
-  const displayedThreat = resultFen === fen ? threat : null;
-
   const nullFen = fen ? nullMoveFen(fen) : null;
   const stm = fen.split(' ')[1] === 'b' ? 'black' : 'white';
   const currentCpStm = currentCpWhite === null ? null : (stm === 'white' ? currentCpWhite : -currentCpWhite);
+  // Both position and the evaluation used to describe the threat must match.
+  const fresh = resultFen === fen && resultCp === currentCpStm;
+  const displayedState = fresh ? state : 'loading';
+  const displayedThreat = fresh ? threat : null;
 
   useEffect(() => {
     if (!enabled || !fen) return;
-    if (currentCpStm === null) { setThreat(null); setResultFen(fen); setState('unknown'); return; }
-    if (!nullFen) { setThreat(null); setResultFen(fen); setState('check'); return; }
+    if (currentCpStm === null) { setThreat(null); setResultFen(fen); setResultCp(currentCpStm); setState('unknown'); return; }
+    if (!nullFen) { setThreat(null); setResultFen(fen); setResultCp(currentCpStm); setState('check'); return; }
     let cancelled = false;
     let retryTimer: number | undefined;
     setResultFen(fen);
+    setResultCp(currentCpStm);
     setThreat(null);
     setState('loading');
     // The endpoint is single-flight per user: if the engine-lines panel is
