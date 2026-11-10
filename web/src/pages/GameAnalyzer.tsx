@@ -100,12 +100,19 @@ export default function GameAnalyzer() {
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  // Decode at most once per fetched analysis record, and use the same verdict
+  // for both rendering and deciding whether a retry may safely use cache.
+  const decodedStoredReview = useMemo(
+    () => data?.analysis ? decodeStoredReviewJson(data.analysis) : null,
+    [data?.analysis],
+  );
+  const cachedAnalysisInvalid = Boolean(data?.analysis && !decodedStoredReview);
 
   useEffect(() => {
     if (!data) return;
     if (data.analysis) {
       const a = data.analysis;
-      const stored = decodeStoredReviewJson(a);
+      const stored = decodedStoredReview;
       if (stored) {
         setAnalysis({
           depth: a.depth,
@@ -604,7 +611,7 @@ export default function GameAnalyzer() {
           </section>
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{analysisError}</div>}
           {!analysis && (
-            <button onClick={() => void analyze(requestedDepth, false)} disabled={analyzing} className="btn-primary w-full">
+            <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
               {analyzing
                 ? t('review.analyzing', { progress: '…' })
