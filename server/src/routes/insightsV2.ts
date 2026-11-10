@@ -17,8 +17,9 @@
 import { Hono } from 'hono';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
+import { readAnalysisMoves, readPhaseSplit } from './analysisData.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
-import type { AnalyzedMove, Classification, GamePhase, PhaseSplit, Color } from '../types.js';
+import type { Classification, GamePhase, Color } from '../types.js';
 import { phaseFor, hasBackRankSignature } from '../chess/phases.js';
 
 const router = new Hono();
@@ -48,8 +49,11 @@ const BRILLIANT_LIST = 10;
 router.get('/', (c) => {
   const me = c.get('user');
 
-  const gamesTotal = db.prepare('SELECT count(*) AS total FROM games WHERE user_id = ?')
-    .get(me.id) as { total: number };
+  const gamesTotal = db.prepare(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN start_fen IS NULL THEN 1 ELSE 0 END) AS eligible
+    FROM games WHERE user_id = ?
+  `).get(me.id) as { total: number; eligible: number };
 
   // Activity heatmap — last 365 days. Aggregated server-side so the wire
   // payload is at most ~365 rows even on heavy users.
@@ -82,7 +86,7 @@ router.get('/', (c) => {
   // Per-time-class W/D/L + average accuracy from analyses (player's side).
   interface TcRow {
     time_class: string | null;
-    wins: number; draws: number; losses: number; total: number;
+    wins: number; draws: number; losses: number; total: number; analyzed_games: number;
     avg_acc: number | null;
   }
   const tcRows = db.prepare(`
@@ -91,18 +95,20 @@ router.get('/', (c) => {
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
            COUNT(*) AS total,
+           SUM(CASE WHEN a.scoring_version >= ? THEN 1 ELSE 0 END) AS analyzed_games,
            AVG(CASE WHEN g.user_color='white' AND a.scoring_version >= ? THEN a.accuracy_white
                     WHEN g.user_color='black' AND a.scoring_version >= ? THEN a.accuracy_black
                     ELSE NULL END) AS avg_acc
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.user_id = ? AND g.result IS NOT NULL AND g.start_fen IS NULL
     GROUP BY g.time_class
-  `).all(SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
-  const time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
+  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
+  const time_class_stats: Record<string, { games: number; analyzed_games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
   for (const r of tcRows) {
     const k = r.time_class ?? 'other';
     time_class_stats[k] = {
       games: r.total,
+      analyzed_games: r.analyzed_games,
       wins: r.wins,
       draws: r.draws,
       losses: r.losses,
@@ -143,6 +149,7 @@ router.get('/', (c) => {
            SUM(CASE WHEN g.result='win' THEN 1 ELSE 0 END) AS wins,
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
+           SUM(CASE WHEN a.scoring_version >= ? THEN 1 ELSE 0 END) AS analyzed_games,
            AVG(CASE WHEN a.scoring_version >= ? AND g.user_color='white' THEN a.accuracy_white
                     WHEN a.scoring_version >= ? AND g.user_color='black' THEN a.accuracy_black
                     ELSE NULL END) AS avg_accuracy
@@ -152,9 +159,9 @@ router.get('/', (c) => {
     GROUP BY g.eco, g.user_color
     ORDER BY played DESC, g.eco ASC
     LIMIT 10
-  `).all(SCORING_VERSION, SCORING_VERSION, me.id) as {
+  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as {
     eco: string; name: string; color: Color; played: number;
-    wins: number; draws: number; losses: number; avg_accuracy: number | null;
+    wins: number; draws: number; losses: number; analyzed_games: number; avg_accuracy: number | null;
   }[];
 
   // Phase accuracy avg over the user's side
@@ -173,8 +180,8 @@ router.get('/', (c) => {
   for (const r of rows) {
     analyzedCount++;
     const userColor: Color = r.user_color ?? 'white';
-    const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
-    const split = r.phase_split_json ? (JSON.parse(r.phase_split_json) as PhaseSplit) : null;
+    const moves = readAnalysisMoves(r.moves_json);
+    const split = readPhaseSplit(r.phase_split_json);
 
     if (split?.opening) {
       const acc = userColor === 'white' ? split.opening.accuracy_white : split.opening.accuracy_black;
@@ -235,11 +242,13 @@ router.get('/', (c) => {
   const opening_repertoire = openingRows.map((e) => ({
     eco: e.eco, name: e.name, color: e.color, played: e.played,
     wins: e.wins, draws: e.draws, losses: e.losses,
+    analyzed_games: e.analyzed_games,
     avg_accuracy: e.avg_accuracy != null ? Math.round(e.avg_accuracy * 10) / 10 : null,
   }));
 
   return c.json({
     games_total: gamesTotal.total,
+    games_eligible: gamesTotal.eligible,
     games_analyzed: analyzedCount,
     activity_heatmap: heatmap,
     rating_trajectory: trajectory,
