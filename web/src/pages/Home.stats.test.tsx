@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), learnProgress: vi.fn(), today: '2026-11-10' }));
 // Unit tests only exercise loading, errors and retry. Disable motion wrappers
 // here so happy-dom does not reject pending Web Animations on unmount.
 vi.mock('framer-motion', async () => {
@@ -26,11 +26,11 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('./Learn', () => ({
   useLearnContent: () => ({ cur: null }),
-  fetchLearnProgress: () => Promise.resolve({ lessons: [] }),
+  fetchLearnProgress: mocks.learnProgress,
   suggestedLesson: () => null,
 }));
 vi.mock('../components/learn/LessonPlayer', () => ({ LEARN_QUERY_KEY: ['learn-progress'] }));
-vi.mock('../lib/openingTrainer', () => ({ localDay: () => '2026-11-10' }));
+vi.mock('../lib/openingTrainer', () => ({ localDay: () => mocks.today }));
 
 import Home from './Home';
 
@@ -39,10 +39,11 @@ function mount() {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter><Home /></MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
 }
 
+beforeEach(() => { mocks.today = '2026-11-10'; mocks.learnProgress.mockResolvedValue({ lessons: [] }); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
@@ -100,5 +101,38 @@ describe('Home statistics failure', () => {
     offline.puzzle = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry home.todayPuzzle' }));
     await waitFor(() => expect(screen.queryByText('Progress temporarily unavailable')).toBeNull());
+  });
+
+  it('shows the learning-progress outage and retries without resetting the level to zero', async () => {
+    mocks.learnProgress.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ lessons: [] });
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 5, wins: 2, losses: 2, draws: 1, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    expect(await screen.findByRole('button', { name: 'Retry learn.nav' })).toBeTruthy();
+    expect(screen.queryByText('learn.levelShort')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry learn.nav' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry learn.nav' })).toBeNull());
+  });
+
+  it('fetches a new daily puzzle when the local day changes without reusing old cache', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 5, wins: 3, losses: 2, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: { id: 'daily', rating: 900 }, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    await waitFor(() => expect(mocks.get.mock.calls.some(([url]) => String(url).endsWith('today=2026-11-10'))).toBe(true));
+    mocks.today = '2026-11-11';
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await waitFor(() => expect(mocks.get.mock.calls.some(([url]) => String(url).endsWith('today=2026-11-11'))).toBe(true));
   });
 });

@@ -186,4 +186,39 @@ describe('Settings persistence', () => {
     expect(useAuth.getState().user?.id).toBe(8);
     expect(mocks.patch).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps the newer Saved confirmation when the previous save timeout expires', async () => {
+    const confirmations: Array<() => void> = [];
+    const originalSetTimeout = window.setTimeout.bind(window);
+    const timer = vi.spyOn(window, 'setTimeout').mockImplementation(((handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+      if (delay === 1800 && typeof handler === 'function') {
+        confirmations.push(handler as () => void);
+        return confirmations.length;
+      }
+      return originalSetTimeout(handler, delay, ...args);
+    }) as typeof window.setTimeout);
+    try {
+      mocks.patch.mockImplementation(async (_url: string, payload: Profile) => ({
+        profile: { ...initialProfile, display_name: payload.display_name },
+      }));
+      render(<Settings />);
+
+      fireEvent.change(nameInput(), { target: { value: 'First saved' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+      expect(confirmations).toHaveLength(1);
+
+      fireEvent.change(nameInput(), { target: { value: 'Second saved' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(useAuth.getState().user?.profile.display_name).toBe('Second saved'));
+      expect(confirmations).toHaveLength(2);
+
+      act(() => { confirmations[0]!(); });
+      expect(screen.getByText('Saved')).toBeTruthy();
+      act(() => { confirmations[1]!(); });
+      expect(screen.queryByText('Saved')).toBeNull();
+    } finally {
+      timer.mockRestore();
+    }
+  });
 });

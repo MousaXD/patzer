@@ -15,8 +15,14 @@ type ImportSource = 'chesscom' | 'lichess';
 // cumulative-limit fallback until its API is integrated into main.
 const PAGE_SIZE = 40;
 const LEGACY_MAX_VISIBLE = 200;
+const MAX_SEARCH_LENGTH = 120;
 type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
 type PageRequest = { offset: number; limit: number };
+
+function isOwnGameQuery(queryKey: readonly unknown[], accountId: number | undefined): boolean {
+  return accountId != null && queryKey[0] === 'games' &&
+    (queryKey[1] === 'home' || queryKey[1] === 'library') && queryKey[2] === accountId;
+}
 
 function updateBookmarkInCache(value: unknown, id: number, bookmarked: number): unknown {
   if (!value || typeof value !== 'object') return value;
@@ -38,7 +44,9 @@ export default function Review() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
-  const q = searchParams.get('q') ?? '';
+  // Platform Backend validates the server-side query at 120 characters.
+  // Bound both typed searches and hand-edited/deep-linked URLs consistently.
+  const q = (searchParams.get('q') ?? '').slice(0, MAX_SEARCH_LENGTH);
   const [searchDraft, setSearchDraft] = useState(q);
   const bookmarkedOnly = searchParams.get('bookmarked') === '1';
 
@@ -91,7 +99,7 @@ export default function Review() {
       api.post<{ imported: number; total: number }>(`/api/games/import/${source}`, { limit: 20 }),
     onSuccess: (r) => {
       setImportMsg({ text: t('review.imported', { n: r.imported }) });
-      qc.invalidateQueries({ queryKey: ['games'] });
+      qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, user?.id) });
       setTimeout(() => setImportMsg(null), 3000);
     },
     onError: (e) => {
@@ -160,6 +168,7 @@ export default function Review() {
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             type="search"
+            maxLength={MAX_SEARCH_LENGTH}
             aria-label={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
             placeholder={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
             className="input pl-8 pr-8 text-sm"
@@ -245,7 +254,7 @@ export default function Review() {
 
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid gap-2" aria-busy={isFetching}>
-          {games.map((g) => <GameCard key={g.id} g={g} />)}
+          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} />)}
         </div>
       )}
       {!isLoading && !initialError && isFetchNextPageError && (
@@ -273,7 +282,7 @@ export default function Review() {
   );
 }
 
-function GameCard({ g }: { g: GameRow }) {
+function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [bookmarkError, setBookmarkError] = useState(false);
@@ -281,14 +290,16 @@ function GameCard({ g }: { g: GameRow }) {
     mutationFn: (next: boolean) => api.patch(`/api/games/${g.id}/bookmark`, { bookmarked: next }),
     onMutate: async (next: boolean) => {
       setBookmarkError(false);
-      await qc.cancelQueries({ queryKey: ['games'] });
-      qc.setQueriesData({ queryKey: ['games'] }, (old) => updateBookmarkInCache(old, g.id, next ? 1 : 0));
+      await qc.cancelQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) });
+      qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
+        (old) => updateBookmarkInCache(old, g.id, next ? 1 : 0));
     },
     onError: (_error, next) => {
-      qc.setQueriesData({ queryKey: ['games'] }, (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
+      qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
+        (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
       setBookmarkError(true);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['games'] }),
+    onSettled: () => qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) }),
   });
   const isStarred = !!g.bookmarked;
 
@@ -332,7 +343,7 @@ function GameCard({ g }: { g: GameRow }) {
         title={isStarred ? t('review.unstar', { defaultValue: 'Remove bookmark' }) : t('review.star', { defaultValue: 'Bookmark game' })}
         aria-label={isStarred ? t('review.unstar', { defaultValue: 'Remove bookmark' }) : t('review.star', { defaultValue: 'Bookmark game' })}
         aria-pressed={isStarred}
-        disabled={star.isPending}
+        disabled={star.isPending || accountId == null}
         className={cn(
           'min-h-10 min-w-10 shrink-0 rounded-md p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
           isStarred

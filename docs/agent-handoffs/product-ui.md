@@ -131,3 +131,30 @@ These checks certify the source revision locally; they **do not substitute for r
 - Focused added/changed tests for pagination and error recovery, Settings account switches and Home/Insights failures: **17/17 PASS** during development; full suite result above is authoritative.
 
 **Remaining release conditions:** GitHub Actions hosted jobs were queued/unavailable and do not count as green. This is local certification, not a hosted CI run. The Platform Backend offset implementation must be integrated and jointly exercised by Agent 00 before unrestricted server-side pagination is enabled in production. Keep PR #11 in draft; do not merge autonomously. Cross-agent integration still needs conflict review and final source-plus-backend acceptance.
+
+## Additional Product UI edge-case hardening — November 10, 2026
+
+Continued from `2f1f3f2b1a065f4a83fd35c6a718fb7f1b88379d` without redoing its implementation. Before editing, fetched and inspected the other three current agent branches: Game Review `e006b25`, Chess Backend `1c8bc12`, and Platform Backend `5948833`. This update touches only `Home.tsx`, `Review.tsx`, `Settings.tsx`, their own tests, and this handoff. It does not cherry-pick or modify the other agents' files. `main` and all existing PRs remain unmerged.
+
+### Changes made
+
+1. **Bookmark cache integrity between accounts:** `Review` previously canceled, optimistically rewrote, and invalidated all query keys beginning with `games`, including cached records belonging to a different signed-in account. The mutation now targets only `['games','library',accountId,...]` and `['games','home',accountId]`. A regression constructs two accounts with the same game ID and verifies the other account's saved games remain untouched.
+2. **Server-compatible search input:** The Platform Backend validation limits `q` to 120 characters. Search inputs now have `maxLength=120`, and malformed/hand-edited deep links are bounded before a request is sent. This avoids presenting a validation 400 as a library outage.
+3. **Learning progress recovery and account-scoped Home cache:** A failure fetching lessons no longer masquerades as zero stars or a beginner's first lesson; the Home tile shows an accessible retryable error. Its query uses the shared learning invalidation prefix plus account ID, preserving progress invalidation while preventing another signed-in account's stars from rendering on Home.
+4. **Daily puzzle account/day correctness:** The dashboard puzzle query is keyed by account and local date. A minute-level rollover check plus window focus and visibility handling refreshes the puzzle after midnight or a sleeping tab, without requiring a hard reload. The effect cleans up its timer and listeners on unmount.
+5. **Settings acknowledgement race:** A previous save's delayed "Saved" dismissal can no longer erase a newer save's confirmation after more edits or an account switch. A controlled timer regression exercises both save generations.
+
+### New local verification
+
+- `npm run typecheck`: **PASS** (Node 22).
+- `npm test`: **593 / 593 assertions across 64 test files PASS**. Five new assertions/tests versus the previous 588-test source revision; no test runner unhandled rejections reported.
+- `npm run build`: **PASS** for server and web.
+- `node --test web/tests/design-system.contract.test.mjs`: **5 / 5 PASS**.
+- Chromium design-system browser scenarios: **6 / 6 PASS** (light, dark, and persisted auto/explicit preferences).
+- Independent browser QA: **35 PASS, 0 FAIL** against an isolated disposable database and Stockfish 17. The source QA harness was copied temporarily to an unoccupied localhost port, without modifying tracked QA files; evidence at `/tmp/patzer-productui-edge-browser` and `/tmp/patzer-productui-edge-browser.log`.
+- **Evidence labeling caution:** The QA harness's optional `tested_ref` field was set to the previous branch tip `2f1f3f2` as an execution label, although the tests ran against the **modified Product UI working tree** described in this section. Do not mistake that metadata for a clean checkout of the old commit or exact-SHA CI evidence; the next documentation/source commit records the tested source changes.
+- The local shell wrapper's outer status reported 1 after its `EXIT` trap despite the browser harness printing its own zero exit status. This is reproducible with a minimal successful `exit 0` plus a `kill ... || true` EXIT trap in the terminal connector; it is not a browser assertion failure. The actual harness reports zero failed cases.
+
+**Avoid repeated work:** Earlier local protocol-level PvP/resume/OIDC, Docker build and disposable container startup checks were already passed before this incremental frontend-only change and were not needlessly repeated in this round. The above full unit/browser/build verification covers the changed source. Hosted GitHub jobs remain a separate gate if runner availability is restored.
+
+**Important integration notes for Agent 00:** Platform Backend's offset response contract is compatible with the current `Review` pagination adapter, but browsing beyond the legacy 200 cap requires both branches to be merged into an integration worktree and tested together. `Learn.tsx` and `LessonPlayer.tsx` still use an unscoped shared learning cache key; fixing the whole learning feature's cross-account isolation must be coordinated rather than changing their files from this lane. Settings currently protects browser tab reload/close via `beforeunload`; its unsaved-change warning does not block internal React Router SPA navigation with `BrowserRouter`. Address this separately with a consistent app-level navigation-blocking strategy, not a brittle one-off global click handler. Keep PR #11 in draft until integration review.

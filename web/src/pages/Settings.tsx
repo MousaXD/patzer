@@ -118,7 +118,12 @@ export default function Settings() {
         setForm({ ...profile });
         setDirty(false);
         setSaved(true);
-        window.setTimeout(() => setSaved(false), 1800);
+        window.setTimeout(() => {
+          // A previous save's acknowledgement must not clear a newer save's
+          // message, especially after a user switch or an intervening edit.
+          if (accountRevision.current === submittedAccountRevision &&
+              editRevision.current === submittedRevision) setSaved(false);
+        }, 1800);
       }
       // Language application is separate from persistence. A browser/i18n
       // failure must not falsely report that the server rejected the save.

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -271,8 +272,18 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
 function LearnTile() {
   const { t } = useTranslation();
   const { t: tl } = useTranslation('learn');
+  const { user } = useAuth();
   const { cur } = useLearnContent();
-  const { data } = useQuery({ queryKey: LEARN_QUERY_KEY, queryFn: fetchLearnProgress });
+  // The shared learning invalidation prefix still refreshes this query, but
+  // cached progress from a previous account is never displayed on Home.
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: [...LEARN_QUERY_KEY, user?.id],
+    queryFn: fetchLearnProgress,
+    enabled: user?.id != null,
+  });
+  if ((isPending || isError) && !data) {
+    return <ActivityStatusTile label={t('learn.nav')} loading={isPending} retry={() => void refetch()} Icon={GraduationCap} />;
+  }
   const progress = new Map((data?.lessons ?? []).map((r) => [r.lesson_id, r]));
   const stars = [...progress.values()].reduce((s, r) => s + r.stars, 0);
   const next = cur ? suggestedLesson(cur, progress) : null;
@@ -329,9 +340,31 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
  *  how many days in a row you've done it (server/src/chess/tactics.ts). */
 function DailyPuzzleTile() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  // Include both the player and local calendar day in the cache identity.
+  // Otherwise another account (or tomorrow's session) can see yesterday's
+  // solved status and streak until the old cache is evicted.
+  const [today, setToday] = useState(localDay);
+  useEffect(() => {
+    const refreshDay = () => {
+      const latest = localDay();
+      setToday((previous) => previous === latest ? previous : latest);
+    };
+    // The page may stay open across midnight or resume from a sleeping tab.
+    const interval = window.setInterval(refreshDay, 60_000);
+    window.addEventListener('focus', refreshDay);
+    const onVisible = () => { if (!document.hidden) refreshDay(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshDay);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
   const { data, isPending, isError, refetch } = useQuery({
-    queryKey: ['tactics-daily'],
-    queryFn: () => api.get<DailyPuzzle>(`/api/tactics/daily?today=${localDay()}`),
+    queryKey: ['tactics-daily', user?.id, today],
+    enabled: user?.id != null,
+    queryFn: () => api.get<DailyPuzzle>(`/api/tactics/daily?today=${today}`),
   });
   if ((isPending || isError) && !data) {
     return <ActivityStatusTile label={t('home.todayPuzzle')} loading={isPending} retry={() => void refetch()} Icon={Target} />;

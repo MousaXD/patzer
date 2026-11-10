@@ -44,7 +44,7 @@ function makeGame(id: number) {
 
 function mount(initial = '/review') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initial]}>
         <Routes>
@@ -54,6 +54,7 @@ function mount(initial = '/review') {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 beforeEach(() => {
@@ -133,6 +134,16 @@ describe('Review library with large histories', () => {
     }, { timeout: 3000 });
   });
 
+  it('bounds URL deep links and text entry to the API maximum search length', async () => {
+    mount(`/review?q=${'x'.repeat(180)}`);
+    await screen.findByText(/40 of 1,000 games/);
+    const search = screen.getByRole('searchbox') as HTMLInputElement;
+    expect(search.maxLength).toBe(120);
+    expect(search.value).toHaveLength(120);
+    expect(mocks.get.mock.calls.some(([url]) =>
+      new URLSearchParams(String(url).split('?')[1] ?? '').get('q')?.length === 120)).toBe(true);
+  });
+
   it('shows a recoverable error, never the no-games onboarding state', async () => {
     mocks.get.mockRejectedValue(new Error('offline'));
     mount();
@@ -178,5 +189,31 @@ describe('Review library with large histories', () => {
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove bookmark' }).getAttribute('aria-pressed')).toBe('true'));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not mutate another account cached games when bookmarking an identical game ID', async () => {
+    let persisted = false;
+    mocks.get.mockImplementation(async () => ({
+      games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1,
+    }));
+    mocks.patch.mockImplementation(async () => {
+      persisted = true;
+      return { ok: true };
+    });
+    const { queryClient } = mount();
+    await screen.findByText('1 of 1 games');
+    const otherHomeKey = ['games', 'home', 101];
+    const otherLibraryKey = ['games', 'library', 101, { q: '', bookmarkedOnly: false }];
+    queryClient.setQueryData(otherHomeKey, { games: [makeGame(1)] });
+    queryClient.setQueryData(otherLibraryKey, {
+      pages: [{ games: [makeGame(1)], total: 1 }], pageParams: [{ offset: 0, limit: 40 }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark game' }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove bookmark' })).toBeTruthy());
+
+    expect(queryClient.getQueryData<{ games: { bookmarked: number }[] }>(otherHomeKey)?.games[0]?.bookmarked).toBe(0);
+    expect(queryClient.getQueryData<{ pages: { games: { bookmarked: number }[] }[] }>(otherLibraryKey)?.pages[0]?.games[0]?.bookmarked).toBe(0);
   });
 });
