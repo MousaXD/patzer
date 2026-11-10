@@ -1,5 +1,23 @@
 # Chess Backend Agent Handoff — 2026-11-10
 
+## Local CI recovery and certification — 2026-11-10 (Node 22)
+
+**Verdict: BLOCKED on GitHub-hosted exact-head CI, despite passing local verification.** The backend source revision verified locally was `40262d8e08a4598b21df58a31de53e600eae9286` (the source-code fix is `bf84272c7d61371ac61045ebf55a79d32921bbb0`; the subsequent commit only changed this handoff). This section is the only new change; no runtime sources, tests, API contracts, or other agent files were modified.
+
+- **Environment and isolation:** The dedicated `/home/mousa/projects/my-creations/chess/patzer-agent-chess-backend` directory was visible on the machine but outside this session's permitted command roots, so its contents and local status were not modified or asserted. Used a separate freshly cloned checkout under `/home/mousa/projects/my-creations/game/.patzer-chess-backend-verification-20261110`, checked branch `agent/chess-backend-20261110`, clean baseline and exact remote SHA. This is independent of the dedicated agent worktree. All real-server test scripts used disposable SQLite databases and localhost; the Docker smoke bound only `127.0.0.1:18800`. No production service/database, existing worktree, merge or deployment was touched.
+- **Dependencies:** `npm ci --no-audit --no-fund` PASS; Node `v22.23.2`, npm `11.18.0`. `npm run setup` PASS (Stockfish 17 installed in disposable checkout); Playwright was installed under a separate `/tmp` prefix and Chromium installed without changing project dependency manifests.
+- **Typecheck:** `npm run typecheck` PASS (exit 0).
+- **Targeted regression:** `npm test -- --run server/test/analysis-agent-work.test.ts server/test/analysis-agent-stockfish.test.ts server/test/analysis-agent-pgn-lifecycle.test.ts server/test/variation-scoring.test.ts server/test/classifier.test.ts` PASS; **5 files, 66 tests**.
+- **Cancellation/subprocess repeatability:** The three analysis-agent work/Stockfish/PGN test files were rerun **five additional times**; all **21/21 tests passed on each repetition** (105/105 repeated assertions in aggregate). No observed hang or unhandled rejection in these runs.
+- **Complete unit suite:** `npm test` PASS; **63 files, 591 tests**.
+- **Production build:** `npm run build` PASS (server and web).
+- **Local real-server regressions:** `npm run test:e2e`, `npm run test:resume`, `npm run test:oidc`, `npm run test:ui`, and `npm run test:resume-ui` each PASS (exit 0). These used scratch DBs and isolated browser processes.
+- **Independent Chromium QA:** `PATZER_QA_ARTIFACTS=.verification-logs/frontend-overhaul GITHUB_SHA=40262d8e08a4598b21df58a31de53e600eae9286 node qa/agent07/frontend-overhaul-smoke.mjs` PASS; **35 checks passed, 0 failed, 0 browser errors**.
+- **Docker image and boot smoke:** `docker build -t patzer-chess-backend-verification:20261110 .` PASS; temporary local-only container on `127.0.0.1:18800` responded to `/api/meta` and `/` with HTTP 200; container removed afterward. No image was pushed.
+- **GitHub Actions status at final check:** [CI run #42864894730](https://github.com/MousaXD/patzer/actions/runs/42864894730) and [independent QA #42864894676](https://github.com/MousaXD/patzer/actions/runs/42864894676) were both **queued**, all five jobs without conclusions, at exact SHA `40262d8...`. No GitHub Actions success is claimed, and the cause of GitHub-hosted queueing is not established. Local Node 20 parity has not been separately run; CI still must certify it.
+- **Release gate and dependencies:** Keep PR #12 in draft, unmerged and undeployed. Agent 00 must obtain exact-source GitHub Actions conclusions or explicitly accept the still-pending infrastructure exception before integration. Frontend ownership: stale-navigation cancellation and `429 engine_busy` retry UX. Platform/backend ownership: cross-workload scheduler and remote `ChessApiEngine` cancellation. No Stockfish throughput benchmark was taken.
+
+
 **Owner:** Staff Backend / Analysis Agent  
 **Branch:** `agent/chess-backend-20261110`  
 **Baseline:** `c8d9e1e`  
