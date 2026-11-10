@@ -119,6 +119,15 @@ function GameAnalyzerView() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
+  // Blind practice must not compete with a previously started full-game
+  // reanalysis, whether entered through the library or from normal Review.
+  useEffect(() => {
+    if ((practicePicker || practicePly !== null) && analysisRequestRef.current) {
+      analysisRequestRef.current.abort();
+      analysisRequestRef.current = null;
+      setAnalyzing(false);
+    }
+  }, [practicePicker, practicePly]);
   // Replaying a PGN is work proportional to game length. Rebuild only when
   // its text changes (not when notes/bookmarks or cached analysis refresh).
   // A corrupted PGN is represented as an empty result, not a render-time throw.
@@ -169,11 +178,11 @@ function GameAnalyzerView() {
       setAnalysis(null);
       setAnalysisError('');
     }
-    if (data.analysis_stale && !analyzing) {
+    if (data.analysis_stale && !analyzing && !practicePicker) {
       void analyze(16, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, practicePicker]);
 
   // Load any cached AI prose for this game
   useEffect(() => {
@@ -181,19 +190,24 @@ function GameAnalyzerView() {
     // review text after navigating between library entries.
     let active = true;
     setReviewProse(null);
-    if (Number.isSafeInteger(gameId) && gameId > 0) {
+    // Cached AI prose contains conclusions/engine lines; neither mount nor
+    // request it in the blind exercise. Fetch it only in the full review.
+    if (!practicePicker && Number.isSafeInteger(gameId) && gameId > 0) {
       api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
         .then((r) => { if (active) setReviewProse(isCompleteReviewPayload(r) ? r.review : null); })
         .catch(() => { if (active) setReviewProse(null); });
     }
     return () => { active = false; };
-  }, [gameId]);
+  }, [gameId, practicePicker]);
 
   useEffect(() => {
+    if (practicePicker) { setCoachConfigured(false); return; }
+    let active = true;
     api.get<{ configured: boolean }>('/api/coach/status')
-      .then((s) => setCoachConfigured(s.configured))
-      .catch(() => setCoachConfigured(false));
-  }, []);
+      .then((s) => { if (active) setCoachConfigured(s.configured); })
+      .catch(() => { if (active) setCoachConfigured(false); });
+    return () => { active = false; };
+  }, [practicePicker]);
 
   // Read initial ?ply= from the URL so deep-links to a specific position
   // open at that move on first render. After that we keep them in sync.
@@ -229,7 +243,7 @@ function GameAnalyzerView() {
   // endpoint. A response for a deselected branch is cached but never rendered
   // against another FEN; failed/429 searches never invent a label.
   useEffect(() => {
-    if (!qualityKey || !branchMove || qualityCache[qualityKey]) return;
+    if (practicePicker || practicePly !== null || !qualityKey || !branchMove || qualityCache[qualityKey]) return;
     const controller = new AbortController();
     let cancelled = false;
     let retry: number | undefined;
@@ -261,7 +275,7 @@ function GameAnalyzerView() {
   // qualityKey and fen are the selection identity; avoid replaying a search
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, variations.currentFen, qualityRetry]);
+  }, [qualityKey, variations.currentFen, qualityRetry, practicePicker, practicePly]);
   useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
@@ -424,7 +438,8 @@ function GameAnalyzerView() {
     ? evaluatedMove : undefined;
   const startFen = positions[0]?.fen;
   // A partially imported / still-running game is not an eligible blind drill.
-  const eligiblePractice = data.game.result && data.game.result !== '*' && data.game.result !== 'ongoing'
+  const eligiblePractice = !data.analysis_stale && !cachedAnalysisInvalid
+    && data.game.result && data.game.result !== '*' && data.game.result !== 'ongoing'
     ? practiceCandidates(positions, analysis?.moves) : [];
   const reviewedMoveSide = moveSideForPly(ply, startFen);
   const userColor = data.game.user_color ?? 'white';
@@ -576,7 +591,9 @@ function GameAnalyzerView() {
           ))}
         </div>
       ) : <p role="status" className="rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
-        {analyzing || (data.analysis && !analysis && !analysisError)
+        {data.analysis_stale || cachedAnalysisInvalid
+          ? 'Saved analysis is out of date. Open the full review to refresh it before practicing.'
+          : analyzing || (data.analysis && !analysis && !analysisError)
           ? 'Preparing analyzed mistakes…'
           : 'No practice-ready mistakes are available for this saved game. You can open the full review to analyze it.'}
       </p>}

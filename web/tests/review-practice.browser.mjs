@@ -154,6 +154,79 @@ try {
     assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 3);
   });
 
+  await test('Blind picker does not fetch AI prose, coach config or hidden engine work', async () => {
+    const requests = [];
+    const onRequest = (request) => requests.push({ path: new URL(request.url()).pathname, method: request.method() });
+    page.on('request', onRequest);
+    try {
+      await openPicker(page, standard.id);
+      await sleep(300);
+      const hiddenWork = requests.filter(({ path, method }) =>
+        path === `/api/games/${standard.id}/review`
+        || path === '/api/coach/status'
+        || path === '/api/coach/explain'
+        || (method === 'POST' && path.startsWith('/api/analyze')));
+      assert.deepEqual(hiddenWork, [], 'the blind picker requested answer-bearing or unrelated background work');
+      await page.getByRole('button', { name: /Open full game review/ }).click();
+      await page.locator('[data-analysis-workspace]').waitFor();
+      await page.waitForFunction((id) => performance.getEntriesByType('resource')
+        .some((entry) => entry.name.includes(`/api/games/${id}/review`)), standard.id, { timeout: 8000 });
+      assert.ok(requests.some(({ path }) => path === `/api/games/${standard.id}/review`),
+        'full review did not resume cached AI prose loading');
+    } finally { page.off('request', onRequest); }
+  });
+
+  await test('Stale analysis is never practiced or silently reanalyzed in blind mode', async () => {
+    const sent = [];
+    const onRequest = (request) => sent.push({ path: new URL(request.url()).pathname, method: request.method() });
+    await page.route(`**/api/games/${standard.id}`, async (route) => {
+      const response = await route.fetch();
+      const original = await response.json();
+      await route.fulfill({ response, json: { ...original, analysis_stale: true } });
+    });
+    page.on('request', onRequest);
+    try {
+      await openPicker(page, standard.id);
+      await page.getByText(/Saved analysis is out of date/).waitFor();
+      assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 0);
+      await sleep(300);
+      assert.equal(sent.filter(({ path, method }) => method === 'POST' && path === '/api/analyze').length, 0);
+      assert.equal(sent.filter(({ path }) => path === `/api/games/${standard.id}/review`).length, 0);
+    } finally {
+      page.off('request', onRequest);
+      await page.unroute(`**/api/games/${standard.id}`);
+    }
+  });
+
+  await test('Entering a retry cancels in-flight full-game reanalysis and restores controls', async () => {
+    await page.goto(`${base}/review/${standard.id}?ply=5`);
+    await page.locator('[data-analysis-workspace]').waitFor();
+    // The localized accessible name is "Depth" in English; locate the
+    // unique expansion control within the Review tablist instead of relying
+    // on a fallback translation that is never shown in this locale.
+    await page.locator('[role="tablist"][aria-label="Review detail sections"] button[aria-expanded]').click();
+    const depthCard = page.locator('#review-analysis-depth').locator('..');
+    await page.route('**/api/analyze', async (route) => {
+      await sleep(1200);
+      await route.fulfill({
+        status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'late_engine_failure_negative_control' }),
+      }).catch(() => undefined);
+    });
+    try {
+      await depthCard.getByRole('button').click();
+      await page.locator('#learn-from-mistake').click();
+      await page.locator('[data-practice-mode]').waitFor();
+      await page.getByRole('button', { name: 'Return to saved game' }).click();
+      await page.locator('[data-analysis-workspace]').waitFor();
+      assert.equal(await depthCard.getByRole('button').isEnabled(), true,
+        'abandoned full-game analysis left the Review button locked');
+      await sleep(1300);
+      assert.equal(await page.getByText('Engine analysis could not finish. Retry when Stockfish is available.').count(), 0,
+        'late failure from a canceled analysis surfaced in Review');
+    } finally { await page.unroute('**/api/analyze'); }
+  });
+
   await test('Blind keyboard selector never reveals mate SAN before committing a move', async () => {
     await startBlind(page, mateLeakFixture.id);
     await assertNoSpoilers(page);
