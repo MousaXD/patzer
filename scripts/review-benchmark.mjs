@@ -49,7 +49,7 @@ const main = async () => {
         chess.loadPgn(contents, { strict: true });
         if (!chess.history().length) throw Error('empty_game');
         if (e.result !== (chess.header().Result || 'unknown')) throw Error('result_mismatch');
-        if (e.start_fen && e.start_fen !== new Chess().fen()) throw Error('unsupported_start_fen_for_pgn');
+        if (e.start_fen && e.start_fen !== (chess.header().FEN || new Chess().fen())) throw Error('start_fen_mismatch');
         cases.push({ id: e.fixture_id, checks: ['hash', 'strict_pgn', 'result'], plies: chess.history().length });
       } else {
         const data = JSON.parse(contents);

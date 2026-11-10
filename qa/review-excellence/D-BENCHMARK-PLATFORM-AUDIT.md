@@ -1,5 +1,8 @@
 # Agent D — independent benchmark implementation and hostile-audit handoff
 
+> **Historical Batch 1 snapshot.** The follow-up real-system benchmark and updated release gate are in [BATCH-2-CERTIFICATION.md](BATCH-2-CERTIFICATION.md) and [certification-summary-batch2.json](certification-summary-batch2.json). The original 14-fixture findings below remain as first-wave evidence; their open issues were reassessed in Batch 2.
+
+
 Date: 2026-11-11. Baseline SHA: `51df1d852296e5f0644127a81b5ec31109c8e6c1` (`main` at initial clone). Scoring: v9. No production database accessed.
 
 ## Verified execution

@@ -1,0 +1,16 @@
+{
+  "fen": "4k3/8/8/8/8/2N3N1/8/4K3 w - - 0 1",
+  "request_fen": "4k3/8/8/8/8/2N3N1/8/4K3 w - - 0 1",
+  "request_id": "SYN-POS-NCE4-DISAMBIG",
+  "response_request_id": "SYN-POS-NCE4-DISAMBIG",
+  "actor": "w",
+  "pv": [
+    "c3e4"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "c3e4"
+    }
+  ]
+}

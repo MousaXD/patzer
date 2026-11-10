@@ -1,0 +1,16 @@
+{
+  "fen": "4k3/5p2/8/8/8/8/8/K2QR3 b - - 0 1",
+  "request_fen": "4k3/5p2/8/8/8/8/8/K2QR3 b - - 0 1",
+  "request_id": "SYN-POS-FORCED-REPLY",
+  "response_request_id": "SYN-POS-FORCED-REPLY",
+  "actor": "b",
+  "pv": [
+    "e8f8"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "e8f8"
+    }
+  ]
+}

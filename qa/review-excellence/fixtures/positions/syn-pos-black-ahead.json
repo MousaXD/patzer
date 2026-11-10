@@ -1,0 +1,10 @@
+{
+  "fen": "6k1/8/8/8/8/8/8/4K2q w - - 0 1",
+  "request_fen": "6k1/8/8/8/8/8/8/4K2q w - - 0 1",
+  "request_id": "SYN-POS-BLACK-AHEAD",
+  "response_request_id": "SYN-POS-BLACK-AHEAD",
+  "actor": "w",
+  "pv": [
+    "e1d2"
+  ]
+}
