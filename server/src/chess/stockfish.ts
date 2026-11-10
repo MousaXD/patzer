@@ -66,6 +66,15 @@ export class StockfishEngine {
   private deathHandlers = new Set<(err: Error) => void>();
   private readonly path: string;
   private ready = false;
+  // One UCI process has a single stdin/stdout command stream. Overlapping
+  // searches would consume the same bestmove and corrupt both results.
+  private searchActive = false;
+  // Command/ready handshakes must also be exclusive. A search started while
+  // ucinewgame/isready or setoption is awaiting its write would otherwise
+  // interleave UCI commands even though the search guard itself is held.
+  private controlActive = false;
+  private static readonly SEARCH_TIMEOUT_MS = 120_000;
+  private static readonly HANDSHAKE_TIMEOUT_MS = 10_000;
 
   constructor(path?: string) {
     const p = path ?? discoverStockfishPath();
@@ -88,18 +97,45 @@ export class StockfishEngine {
   }
 
   async start(): Promise<void> {
-    this.proc = spawn(this.path, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-    this.proc.stdout.setEncoding('utf8');
-    this.proc.stdout.on('data', (chunk: string) => this.onData(chunk));
-    this.proc.on('error', (err) => console.error('[stockfish]', err));
-    await this.send('uci');
-    await this.waitFor((l) => l === 'uciok');
-    this.ready = true;
+    if (this.proc) throw new Error('stockfish: already started');
+    const proc = spawn(this.path, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    this.proc = proc;
+    proc.stdout.setEncoding('utf8');
+    proc.stdout.on('data', (chunk: string) => {
+      if (this.proc === proc) this.onData(chunk);
+    });
+    proc.stderr.resume(); // Never block an engine that writes diagnostics.
+    proc.stdin.on('error', (err) => {
+      if (this.proc === proc) this.failWaiters(new Error(`stockfish: ${err.message}`));
+    });
+    proc.on('error', (err) => {
+      if (this.proc === proc) this.failWaiters(new Error(`stockfish: ${err.message}`));
+    });
+    proc.on('exit', () => {
+      if (this.proc !== proc) return; // An old child must not reject a restarted engine.
+      this.proc = null;
+      this.failWaiters(new Error('engine_terminated'));
+    });
+    try {
+      await this.sendAndWait('uci', (line) => line === 'uciok', StockfishEngine.HANDSHAKE_TIMEOUT_MS);
+      this.ready = true;
+    } catch (error) {
+      await this.quit();
+      throw error;
+    }
   }
 
-  private onData(chunk: string) {
+  private failWaiters(error: Error): void {
+    this.ready = false;
+    const handlers = Array.from(this.deathHandlers);
+    this.deathHandlers.clear();
+    this.waiters = [];
+    for (const reject of handlers) reject(error);
+  }
+
+  private onData(chunk: string): void {
     this.buffer += chunk;
-    let idx;
+    let idx: number;
     while ((idx = this.buffer.indexOf('\n')) >= 0) {
       const line = this.buffer.slice(0, idx).replace(/\r$/, '');
       this.buffer = this.buffer.slice(idx + 1);
@@ -107,99 +143,197 @@ export class StockfishEngine {
       this.waiters = [];
       for (const w of waiters) w(line);
     }
+    // Only the un-terminated remainder is bounded; normal batches of many
+    // short UCI lines can exceed this size without being malformed.
+    if (this.buffer.length > 65_536) {
+      this.failWaiters(new Error('stockfish: oversized output line'));
+      void this.quit();
+    }
   }
 
   private send(cmd: string): Promise<void> {
-    return new Promise((res, rej) => {
-      if (!this.proc) return rej(new Error('engine not started'));
-      this.proc.stdin.write(cmd + '\n', (err) => (err ? rej(err) : res()));
+    return new Promise((resolveSend, rejectSend) => {
+      const proc = this.proc;
+      if (!proc || !proc.stdin.writable) return rejectSend(new Error('engine not started'));
+      proc.stdin.write(cmd + '\n', (err) => (err ? rejectSend(err) : resolveSend()));
     });
   }
 
-  private waitFor(predicate: (line: string) => boolean, timeoutMs = 30_000): Promise<string> {
+  private waitFor(predicate: (line: string) => boolean, timeoutMs: number): Promise<string> {
     return new Promise((resolveLine, rejectLine) => {
-      const t = setTimeout(() => rejectLine(new Error('engine timeout')), timeoutMs);
-      const check = (line: string) => {
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.waiters = this.waiters.filter((w) => w !== handler);
+        this.deathHandlers.delete(onDeath);
+      };
+      const onDeath = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        rejectLine(error);
+      };
+      const handler = (line: string) => {
+        if (settled) return;
         if (predicate(line)) {
-          clearTimeout(t);
+          settled = true;
+          cleanup();
           resolveLine(line);
         } else {
-          this.waiters.push(check);
+          this.waiters.push(handler);
         }
       };
-      this.waiters.push(check);
+      const timer = setTimeout(() => onDeath(new Error('engine_timeout')), timeoutMs);
+      this.deathHandlers.add(onDeath);
+      this.waiters.push(handler);
     });
   }
 
-  async setOption(name: string, value: string | number): Promise<void> {
+  private async sendAndWait(
+    cmd: string,
+    predicate: (line: string) => boolean,
+    timeoutMs = StockfishEngine.HANDSHAKE_TIMEOUT_MS,
+  ): Promise<string> {
+    // Register BEFORE writing: fast fake engines can reply inside write().
+    const response = this.waitFor(predicate, timeoutMs);
+    void response.catch(() => undefined); // handled if the write itself fails
+    try {
+      await this.send(cmd);
+      return await response;
+    } catch (error) {
+      // A failed write makes the session unreliable. Remove the registered
+      // waiter immediately rather than leaving it behind for ten seconds.
+      await this.quit();
+      throw error;
+    }
+  }
+
+  private awaitBestmove(onInfo: (line: string) => void): Promise<string | null> {
+    return new Promise((resolveMove, rejectMove) => {
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.waiters = this.waiters.filter((w) => w !== handler);
+        this.deathHandlers.delete(onDeath);
+      };
+      const finish = (error?: Error, move?: string | null) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) rejectMove(error);
+        else resolveMove(move ?? null);
+      };
+      const onDeath = (error: Error) => finish(error);
+      const handler = (line: string) => {
+        if (settled) return;
+        if (line.startsWith('bestmove')) {
+          const move = line.split(' ')[1];
+          finish(undefined, move === '(none)' ? null : (move ?? null));
+          return;
+        }
+        try {
+          if (line.startsWith('info ')) onInfo(line);
+          this.waiters.push(handler);
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+          void this.quit();
+        }
+      };
+      const timer = setTimeout(() => {
+        finish(new Error('engine_timeout'));
+        void this.quit();
+      }, StockfishEngine.SEARCH_TIMEOUT_MS);
+      this.deathHandlers.add(onDeath);
+      this.waiters.push(handler);
+    });
+  }
+
+  private async runSearch(cmd: string, onInfo: (line: string) => void): Promise<string | null> {
+    const result = this.awaitBestmove(onInfo);
+    void result.catch(() => undefined);
+    try {
+      await this.send(cmd);
+      return await result;
+    } catch (error) {
+      await this.quit();
+      throw error;
+    }
+  }
+
+  private assertIdle(): void {
+    if (this.searchActive || this.controlActive) throw new Error('engine_busy');
+  }
+
+  private async withControl<T>(work: () => Promise<T>): Promise<T> {
+    this.assertIdle();
+    if (!this.proc || !this.ready) throw new Error('engine_not_ready');
+    this.controlActive = true;
+    try {
+      return await work();
+    } finally {
+      this.controlActive = false;
+    }
+  }
+
+  private async withSearch<T>(work: () => Promise<T>): Promise<T> {
+    this.assertIdle();
+    if (!this.proc || !this.ready) throw new Error('engine_not_ready');
+    this.searchActive = true; // acquire synchronously, before any awaited write
+    try {
+      return await work();
+    } finally {
+      this.searchActive = false;
+    }
+  }
+
+  private async sendOption(name: string, value: string | number): Promise<void> {
+    assertNoNewline(name, 'option name');
+    assertNoNewline(String(value), 'option value');
     await this.send(`setoption name ${name} value ${value}`);
   }
 
+  async setOption(name: string, value: string | number): Promise<void> {
+    return this.withControl(() => this.sendOption(name, value));
+  }
+
   async newGame(): Promise<void> {
-    await this.send('ucinewgame');
-    await this.send('isready');
-    await this.waitFor((l) => l === 'readyok');
+    return this.withControl(async () => {
+      await this.send('ucinewgame');
+      await this.sendAndWait('isready', (l) => l === 'readyok');
+    });
   }
 
   async name(): Promise<string> {
-    await this.send('uci');
-    const line = await this.waitFor((l) => l.startsWith('id name') || l === 'uciok');
-    if (line.startsWith('id name')) return line.replace('id name ', '');
-    return 'Stockfish';
+    return this.withControl(async () => {
+      const line = await this.sendAndWait('uci', (l) => l.startsWith('id name') || l === 'uciok');
+      if (line.startsWith('id name')) return line.replace('id name ', '');
+      return 'Stockfish';
+    });
   }
 
   async evaluate(fen: string, depth: number): Promise<EngineEval> {
     assertNoNewline(fen, 'fen');
-    await this.send(`position fen ${fen}`);
-    await this.send(`go depth ${depth}`);
+    return this.withSearch(async () => {
+      await this.send(`position fen ${fen}`);
 
-    let lastInfo: { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number } = {
-      cp: null,
-      mate: null,
-      pv: [],
-      depth: 0,
-      seldepth: 0,
-    };
-    let bestMove: string | null = null;
-
-    await new Promise<void>((res, rej) => {
-      const reject = (err: Error) => { this.deathHandlers.delete(reject); rej(err); };
-      this.deathHandlers.add(reject);
-      const handler = (line: string) => {
-        if (line.startsWith('info ')) {
-          const parsed = parseInfoLine(line);
-          // Skip search noise: lines without a real score, lowerbound/upperbound,
-          // currmove progress reports, and `info string` chatter. Accept only
-          // when this depth/seldepth is at least as deep as what we have.
-          if (
-            parsed
+      let lastInfo: { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number } = {
+        cp: null, mate: null, pv: [], depth: 0, seldepth: 0,
+      };
+      const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
+        const parsed = parseInfoLine(line);
+        if (parsed
             && (parsed.cp !== null || parsed.mate !== null)
             && !parsed.bound
             && (parsed.depth > lastInfo.depth
-                || (parsed.depth === lastInfo.depth && parsed.seldepth >= lastInfo.seldepth))
-          ) {
-            lastInfo = parsed;
-          }
-          this.waiters.push(handler);
-        } else if (line.startsWith('bestmove')) {
-          const m = line.split(' ')[1];
-          bestMove = m === '(none)' ? null : (m ?? null);
-          this.deathHandlers.delete(reject);
-          res();
-        } else {
-          this.waiters.push(handler);
+                || (parsed.depth === lastInfo.depth && parsed.seldepth >= lastInfo.seldepth))) {
+          lastInfo = parsed;
         }
+      });
+      return {
+        cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
+        pv: lastInfo.pv, depth: lastInfo.depth,
       };
-      this.waiters.push(handler);
     });
-
-    return {
-      cp: lastInfo.cp,
-      mate: lastInfo.mate,
-      bestMoveUci: bestMove,
-      pv: lastInfo.pv,
-      depth: lastInfo.depth,
-    };
   }
 
   // MultiPV evaluation: returns the engine's top-N candidate moves at the
@@ -208,118 +342,90 @@ export class StockfishEngine {
   // for rank 2 doesn't overwrite a shallower line for rank 1.
   async evaluateMulti(fen: string, depth: number, n: number): Promise<EngineMultiEval> {
     assertNoNewline(fen, 'fen');
-    const numLines = Math.max(1, Math.min(8, n));
-    await this.setOption('MultiPV', numLines);
-    await this.send(`position fen ${fen}`);
-    await this.send(`go depth ${depth}`);
-
-    const perRank = new Map<number, { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number }>();
-    let bestMove: string | null = null;
-    let topDepth = 0;
-
-    await new Promise<void>((res, rej) => {
-      const reject = (err: Error) => { this.deathHandlers.delete(reject); rej(err); };
-      this.deathHandlers.add(reject);
-      const handler = (line: string) => {
-        if (line.startsWith('info ')) {
+    return this.withSearch(async () => {
+      const numLines = Math.max(1, Math.min(8, n));
+      await this.sendOption('MultiPV', numLines);
+      try {
+        await this.send(`position fen ${fen}`);
+        const perRank = new Map<number, { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number }>();
+        const bestMove = await this.runSearch(`go depth ${depth}`, (line) => {
           const parsed = parseInfoLine(line);
-          if (
-            parsed
-            && (parsed.cp !== null || parsed.mate !== null)
-            && !parsed.bound
-          ) {
-            const rank = parsed.multipv ?? 1;
-            const prev = perRank.get(rank);
-            if (!prev
-                || parsed.depth > prev.depth
-                || (parsed.depth === prev.depth && parsed.seldepth >= prev.seldepth)) {
-              perRank.set(rank, parsed);
-              if (rank === 1) topDepth = Math.max(topDepth, parsed.depth);
-            }
+          if (!parsed || (parsed.cp === null && parsed.mate === null) || parsed.bound) return;
+          const rank = parsed.multipv;
+          if (rank < 1 || rank > numLines) return;
+          const prev = perRank.get(rank);
+          if (!prev || parsed.depth > prev.depth
+              || (parsed.depth === prev.depth && parsed.seldepth >= prev.seldepth)) {
+            perRank.set(rank, parsed);
           }
-          this.waiters.push(handler);
-        } else if (line.startsWith('bestmove')) {
-          const m = line.split(' ')[1];
-          bestMove = m === '(none)' ? null : (m ?? null);
-          this.deathHandlers.delete(reject);
-          res();
-        } else {
-          this.waiters.push(handler);
-        }
-      };
-      this.waiters.push(handler);
+        });
+
+        // Only compare candidates at the same completed iteration as rank one.
+        // Mixed-depth rankings can manufacture a false "only good move" verdict.
+        const top = perRank.get(1);
+        const candidates: PvCandidate[] = Array.from(perRank.entries())
+          .filter(([rank, info]) => rank === 1 || (top !== undefined && info.depth === top.depth))
+          .sort(([a], [b]) => a - b)
+          .map(([rank, info]) => ({ cp: info.cp, mate: info.mate, pv: info.pv, multipv: rank }));
+        return {
+          cp: top?.cp ?? null,
+          mate: top?.mate ?? null,
+          bestMoveUci: bestMove,
+          pv: top?.pv ?? [],
+          depth: top?.depth ?? 0,
+          candidates,
+        };
+      } finally {
+        if (this.ready) await this.sendOption('MultiPV', 1);
+      }
     });
-
-    // Restore single-line mode for any later evaluate() callers on this engine.
-    await this.setOption('MultiPV', 1);
-
-    const ranks = Array.from(perRank.keys()).sort((a, b) => a - b);
-    const candidates: PvCandidate[] = ranks.map((r) => {
-      const info = perRank.get(r)!;
-      return { cp: info.cp, mate: info.mate, pv: info.pv, multipv: r };
-    });
-    const top = perRank.get(1);
-
-    return {
-      cp: top?.cp ?? null,
-      mate: top?.mate ?? null,
-      bestMoveUci: bestMove,
-      pv: top?.pv ?? [],
-      depth: top?.depth ?? topDepth,
-      candidates,
-    };
   }
 
   async bestMove(fen: string, opts: { depth?: number; movetimeMs?: number; skill?: number }): Promise<string | null> {
     assertNoNewline(fen, 'fen');
-    if (opts.skill !== undefined) await this.setOption('Skill Level', opts.skill);
-    await this.send(`position fen ${fen}`);
-    if (opts.movetimeMs !== undefined) await this.send(`go movetime ${opts.movetimeMs}`);
-    else await this.send(`go depth ${opts.depth ?? 12}`);
-    let best: string | null = null;
-    await new Promise<void>((res, rej) => {
-      const reject = (err: Error) => { this.deathHandlers.delete(reject); rej(err); };
-      this.deathHandlers.add(reject);
-      const handler = (line: string) => {
-        if (line.startsWith('bestmove')) {
-          const m = line.split(' ')[1];
-          best = m === '(none)' ? null : (m ?? null);
-          this.deathHandlers.delete(reject);
-          res();
-        } else {
-          this.waiters.push(handler);
-        }
-      };
-      this.waiters.push(handler);
+    return this.withSearch(async () => {
+      if (opts.skill !== undefined) await this.sendOption('Skill Level', opts.skill);
+      await this.send(`position fen ${fen}`);
+      return this.runSearch(
+        opts.movetimeMs !== undefined ? `go movetime ${opts.movetimeMs}` : `go depth ${opts.depth ?? 12}`,
+        () => undefined,
+      );
     });
-    return best;
   }
 
-  // Async, idempotent shutdown. Sends `stop` + `quit` so any in-flight `go`
-  // finishes promptly, awaits the `bestmove`, then guarantees the OS process
-  // is gone within ~250 ms. Rejects pending waiters so callers stop hanging.
+  // Async, idempotent shutdown. Reject waiters immediately, ask the child to
+  // stop and quit, then force-kill after a bounded grace period.
   async quit(): Promise<void> {
     const proc = this.proc;
-    if (!proc) return;
+    if (!proc) {
+      this.failWaiters(new Error('engine_terminated'));
+      return;
+    }
     this.proc = null;
-    this.ready = false;
+    this.failWaiters(new Error('engine_terminated'));
     try { proc.stdin.write('stop\nquit\n'); } catch { /* ignore */ }
 
-    const exited = new Promise<void>((res) => {
-      if (proc.exitCode !== null) return res();
-      proc.once('exit', () => res());
+    const exited = new Promise<void>((resolveExit) => {
+      if (proc.exitCode !== null || proc.signalCode !== null) return resolveExit();
+      proc.once('exit', () => resolveExit());
     });
-    const killed = new Promise<void>((res) => setTimeout(() => {
-      if (proc.exitCode === null) { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }
-      res();
-    }, 250));
-    await Promise.race([exited, killed]);
-
-    // Reject every dangling waiter so consumers don't deadlock.
-    const handlers = Array.from(this.deathHandlers);
-    this.deathHandlers.clear();
-    this.waiters = [];
-    for (const h of handlers) h(new Error('engine_terminated'));
+    let killer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        exited,
+        new Promise<void>((resolveKill) => {
+          killer = setTimeout(() => {
+            if (proc.exitCode === null && proc.signalCode === null) {
+              try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+            }
+            resolveKill();
+          }, 500);
+        }),
+      ]);
+    } finally {
+      if (killer) clearTimeout(killer);
+      this.buffer = '';
+    }
   }
 
   isReady(): boolean { return this.ready; }
@@ -355,5 +461,9 @@ function parseInfoLine(line: string): { cp: number | null; mate: number | null; 
       break;
     }
   }
+  if (!Number.isInteger(depth) || depth < 0 || !Number.isFinite(seldepth)
+      || !Number.isInteger(multipv) || multipv < 1 || multipv > 8
+      || (cp !== null && !Number.isFinite(cp))
+      || (mate !== null && !Number.isFinite(mate))) return null;
   return { cp, mate, pv, depth, seldepth, bound, multipv };
 }

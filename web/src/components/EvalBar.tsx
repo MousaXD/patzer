@@ -31,6 +31,7 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
     if (mate != null) return mate > 0 ? 1 : 0;
     return cpToShare(cp ?? 0);
   }, [cp, mate]);
+  const unknown = cp == null && mate == null;
   const whitePct = share * 100;
   const blackPct = 100 - whitePct;
   const whiteAdvantage = mate != null ? mate > 0 : (cp ?? 0) >= 0;
@@ -50,10 +51,14 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
   const ease = [0.22, 1, 0.36, 1] as const;
 
   return (
-    <div className="relative" style={wrapStyle} aria-label={cp === null && mate == null ? 'Evaluation unavailable' : `Evaluation ${label}`} role="img">
+    <div className="relative" style={wrapStyle} aria-label={unknown ? 'Evaluation unavailable' : mate != null ? `Mate in ${Math.abs(mate)} for ${mate > 0 ? 'White' : 'Black'}` : `Evaluation ${label} for White`} role="img">
       <div
         className={`relative flex h-full w-full ${flip ? 'flex-col-reverse' : 'flex-col'} overflow-hidden rounded-l-md border border-chesscom-300 bg-chesscom-200 shadow-soft dark:border-chesscom-700 ${isMate ? 'shadow-glow' : ''}`}
       >
+        {unknown ? (
+          <div className="h-full w-full bg-chesscom-300 dark:bg-chesscom-600" />
+        ) : (
+        <>
         <motion.div
           className={`flex items-start justify-center text-[10px] font-semibold tabular-nums text-white/90 ${
             isMate && !whiteAdvantage ? 'bg-bad' : 'bg-chesscom-900'
@@ -68,14 +73,15 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
           animate={{ height: `${whitePct}%` }}
           transition={{ type: 'tween', duration: 0.28, ease }}
         />
+        </>)}
         {/* 0-tick: thin board-green line at the midpoint so 0.0 is always visible. */}
-        <div
+        {!unknown && <div
           className="pointer-events-none absolute inset-x-0 h-px"
           style={{ top: '50%', backgroundColor: 'rgba(118,150,86,0.55)' }}
-        />
+        />}
       </div>
       {/* Floating score chip on the advantaged side, outside the bar. */}
-      <div
+      {!unknown && <div
         className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-sm px-1 py-0.5 text-[11px] font-bold tabular-nums shadow-soft ${
           whiteAdvantage
             ? 'bg-white text-chesscom-900 ring-1 ring-chesscom-200'
@@ -86,7 +92,7 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
         } as React.CSSProperties}
       >
         {label}
-      </div>
+      </div>}
     </div>
   );
 }

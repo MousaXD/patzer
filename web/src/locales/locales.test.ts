@@ -126,6 +126,16 @@ describe.each([['de', de], ['ru', ru], ['bg', bg], ['es', es]] as const)('%s puz
   });
 });
 
+describe.each([['en', en], ['de', de], ['ru', ru], ['bg', bg], ['es', es]] as const)('%s settings leave guard', (_lang, texts) => {
+  it('has a localized warning and both decisions before discarding unsaved work', () => {
+    const flat = flatten(texts as Tree);
+    for (const key of ['settings.leaveTitle', 'settings.leaveDescription',
+      'settings.keepEditing', 'settings.discardChanges']) {
+      expect(flat[key], key).toBeTruthy();
+    }
+  });
+});
+
 describe('goalText', () => {
   const t = ((key: string, opts?: Record<string, unknown>) => {
     const v = flatten(de as Tree)[key];

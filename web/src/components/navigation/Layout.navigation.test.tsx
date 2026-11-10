@@ -239,4 +239,15 @@ describe('Patzer navigation rail', () => {
     mount();
     expect(document.querySelector('[data-app-shell]')?.className).toContain('bg-white');
   });
+  it('identifies Settings in the workspace header and locks scroll behind the mobile menu', () => {
+    mount('/settings');
+    expect(document.querySelector('[data-current-section]')?.textContent).toBe('Settings');
+    expect(document.body.style.overflow).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Mobile navigation' }))
+      .getByRole('button', { name: 'Close menu' }));
+    expect(document.body.style.overflow).toBe('');
+  });
+
 });
