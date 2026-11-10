@@ -63,7 +63,7 @@ export default function Home() {
     queryKey: ['games', 'home'],
     queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=5'),
   });
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
     queryKey: ['stats', 'me'],
     queryFn: () => api.get<Stats>('/api/stats/me'),
   });
@@ -85,6 +85,8 @@ export default function Home() {
         avatar={user?.profile.avatar_emoji ?? '♟'}
         stats={stats ?? null}
         loading={statsLoading}
+        error={statsError}
+        retry={() => void refetchStats()}
         tagline={t('app.tagline')}
       />
 
@@ -105,8 +107,9 @@ export default function Home() {
 
 /* ───────────────────────────────  HERO  ────────────────────────────────── */
 
-function Hero({ displayName, avatar, stats, tagline, loading }: {
+function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
   displayName: string; avatar: string; stats: Stats | null; tagline: string; loading: boolean;
+  error: boolean; retry: () => void;
 }) {
   const { t } = useTranslation();
   const hour = new Date().getHours();
@@ -153,6 +156,14 @@ function Hero({ displayName, avatar, stats, tagline, loading }: {
           {loading ? (
             <div role="status" aria-label={t('home.loadingStats', { defaultValue: 'Loading your statistics' })} className="mt-5 flex flex-wrap gap-3" >
               {[0, 1, 2].map((i) => <span key={i} className="h-6 w-24 animate-pulse rounded bg-white/15" aria-hidden="true" />)}
+            </div>
+          ) : error ? (
+            <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 text-sm text-white/85">
+              <span>{t('home.statsUnavailable', { defaultValue: 'Your statistics could not be loaded.' })}</span>
+              <button type="button" onClick={retry}
+                className="rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                {t('common.retry', { defaultValue: 'Retry' })}
+              </button>
             </div>
           ) : hasGames ? (
             <div className="mt-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm text-white/75">
