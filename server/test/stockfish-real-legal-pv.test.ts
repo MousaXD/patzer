@@ -155,4 +155,36 @@ withBinary('real Stockfish 17+ (opt-in, depth 8, one thread)', () => {
       await engine.quit();
     }
   }, 20_000);
+
+  it('accepts independent completed searches at different depths without requiring identical best moves', async () => {
+    const engine = new StockfishEngine(enginePath!);
+    const positions = [
+      new Chess().fen(),
+      'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
+      '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1',
+    ];
+    await engine.start();
+    try {
+      await engine.setOption('Threads', 1);
+      await engine.setOption('Hash', 16);
+      for (const fen of positions) {
+        const legal = new Chess(fen).moves({ verbose: true });
+        for (const depth of [6, 8, 10]) {
+          await engine.newGame();
+          const result = await engine.evaluateMulti(fen, depth, 3);
+          expect(result.depth, `${fen} depth ${depth}`).toBeGreaterThanOrEqual(1);
+          expect(result.cp !== null || result.mate !== null, `${fen} depth ${depth}`).toBe(true);
+          expect(legal.some((move) => move.from + move.to + (move.promotion ?? '') === result.bestMoveUci), `${fen} depth ${depth}`).toBe(true);
+          expect(result.candidates.map((candidate) => candidate.multipv), `${fen} depth ${depth}`)
+            .toEqual(result.candidates.map((_, index) => index + 1));
+          for (const candidate of result.candidates) {
+            const position = new Chess(fen);
+            for (const uci of candidate.pv) {
+              expect(() => position.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }), `${fen} depth ${depth}`).not.toThrow();
+            }
+          }
+        }
+      }
+    } finally { await engine.quit(); }
+  }, 20_000);
 });
