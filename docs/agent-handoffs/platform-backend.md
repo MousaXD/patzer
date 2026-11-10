@@ -171,3 +171,47 @@ These results were **actually rerun during this continuation** with local Python
 - **Implemented and independently QA-tested:** game pagination, 20k-game scale route fixtures, owner isolation, Insights metrics, historical import correctness, MCP handling.
 - **Release gate still unresolved:** exact-code main CI across Node 20/22, e2e/browser, and Docker boot smoke, plus coordinator cross-agent integration review.
 - **Status: DRAFT / NOT MERGE READY** until main CI completes successfully. No live Patzer service, real database, or secret/config file was accessed; existing automatic sync remains unchanged (20 most recent games per 15-minute interval).
+
+## Local worktree and GitHub Actions runner recovery — 2026-11-10
+
+### Recovered worktree and exact revision
+
+- Recovered the **original assigned worktree** at `/home/mousa/projects/my-creations/chess/patzer-agent-platform`, already on `agent/platform-backend-20261110`. Its initial local HEAD was `c8d9e1e00609c30779a3e86542f25f9454e1e911` with a clean working tree.
+- Fetched the remote branch and performed a **fast-forward only** to `2afc70beb0063305ba97eb2621231c178bef2f45` (30 commits ahead). No replacement worktree, rebase, merge into `main`, application-code edit, or schema change.
+- The previous agent's report that the worktree did not exist applies to its *former execution environment*, not this recovered local machine.
+
+### CI queue diagnosis and recovery
+
+- Original pending jobs: [main CI #42863966475](https://github.com/MousaXD/patzer/actions/runs/42863966475), [independent Chromium QA #42863966834](https://github.com/MousaXD/patzer/actions/runs/42863966834), both at head `2afc70b`.
+- The GitHub repository was verified public, enabled and not archived; `GET /actions/permissions` returned `enabled:true` and `allowed_actions:all`. The CI and QA workflows specify `ubuntu-latest`, contain no job/workflow concurrency restrictions, and have valid workflow definitions as confirmed by eventual execution. The PR did not require an approval to start these jobs.
+- At investigation time, Patzer had **58 queued repository workflows and none in progress**, and other agent PRs were also queued, ruling out a single-backend-branch problem. The four main CI jobs and Chromium job had no runner assignment. The historic main CI [#42855181187](https://github.com/MousaXD/patzer/actions/runs/42855181187) had already **completed successfully** after being assigned hosted runners, disproving a total runner outage.
+- GitHub's public incident **"Incident with Git Operations and Pull Requests"** began `2026-11-10T16:10:52Z` and was marked resolved `2026-11-10T17:55:03Z`; one update said Actions workflows were recovering. This, together with repository-wide queueing and later successful dispatch without changes, supports a **transient GitHub-hosted workflow dispatch/backlog** explanation. However, GitHub has not provided an exact root-cause statement assigning this specific run to that incident; a definitive runner scheduling root cause is **not independently proven**.
+- GitHub billing usage REST endpoints returned 404 due to missing `user` scope; account billing/spending state could not be independently inspected. This is **not considered the proven blocker**, because the same queued jobs subsequently started and passed without any billing, settings, concurrency, approval, YAML or runner changes. No workflow reruns were requested and no jobs were cancelled.
+- **Recovery confirmed on exact branch head `2afc70b`:** Main CI run #42863966475 **completed/success** with Node 20, Node 22, regression browser E2E and Docker all passing; Chromium QA run #42863966834 **completed/success**. All five checks were actually observed successful in `gh pr view 14 --json statusCheckRollup` and the GitHub jobs API. No checks were weakened.
+
+### Local test evidence (executed on `2afc70b`)
+
+| Command or check | Actual result | Notes |
+| --- | --- | --- |
+| `npm ci` | PASS | 341 packages installed; npm reported 16 existing audit advisories (7 moderate, 5 high, 4 critical); no dependency repair or lockfile edit attempted. |
+| `npm run typecheck` | PASS | Exit 0, server, web and test TypeScript. |
+| `npm test` | PASS | **585/585 tests**, **62/62 files**. |
+| `npm run build` | PASS | Server and Vite web build completed, exit 0. |
+| `npm run test:e2e` | PASS | Isolated temporary SQLite database, localhost port 18999. A background auto-analysis warning about missing Stockfish occurred in this first test; protocol checks themselves passed. |
+| `npm run test:resume` | PASS | First attempt failed solely because Stockfish binary was absent. Ran the repository's `npm run setup` (Stockfish 17 installed to ignored `bin/stockfish`) and retried with fresh isolated DB at port 18997: **all resume checks passed**, exit 0. |
+| `npm run test:oidc` | PASS | Local fake OIDC identity provider at 18994, application at 18993, temporary DB; **all SSO checks passed**. |
+| `npm run test:ui` | PASS | Real Chromium two-player UI, isolated SQLite DB, **all checks passed**. |
+| `npm run test:resume-ui` | PASS | Real Chromium disconnect/reconnect and game recovery, isolated SQLite DB, **all checks passed**. |
+| `docker build --progress=plain --tag patzer-platform-cert-20261110 .` | PASS | Local image only, no push. |
+| Docker isolated boot smoke | PASS | Temporary container bound to `127.0.0.1:18880`, `/api/meta` and `/` returned **HTTP 200**. Container removed afterward. |
+
+- For E2E runs, `CHESSCOM_SYNC_MINUTES=0` was set in the **test process only**, in addition to a fresh temporary database; the production auto-sync configuration and source remain unmodified. Since the temporary database has no Chess.com profiles, no real historical import was performed. All E2E accounts, game data, and OIDC credentials were synthetic.
+- Playwright was installed under `/tmp/patzer-platform-pw-20261110` and symlinked into ignored project `node_modules` (no package or lockfile edits). Browser-generated screenshots were moved to `/tmp/patzer-platform-browser-evidence-20261110`; no untracked files remain in the worktree.
+- Relevant local command output was recorded under `/tmp/patzer-platform-*-20261110.log` and the isolated Docker meta response at `/tmp/patzer-platform-docker-meta-20261110.json`.
+
+### Scope and disposition
+
+- **No application source, schema, database migration, authentication, frontend, CI workflows, secrets, automatic Chess.com synchronization, Stockfish pipeline source, or production service was changed**. No deployment, PR merge, source-branch rebase, or production DB access.
+- The already-existing behavior (20 most recent Chess.com games every 15 minutes) remains unchanged. Test-only environment overrides were not persisted.
+- Five mandatory GitHub checks and all prescribed local suites, including real-browser and isolated Docker, passed on exact tested code/doc revision `2afc70b`. The new handoff-only commit following this section contains documentation and therefore does not alter tested application code; GitHub may generate new PR checks for that documentation commit.
+- **Verification verdict: READY for coordinator review** on the tested application revision. **PR #14 remains draft and MUST NOT be merged** without Agent 00's cross-agent integration approval. Any fresh head check triggered by this documentation update should also be reviewed before merging.
