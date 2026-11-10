@@ -10,6 +10,7 @@ import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/rev
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
+import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -152,7 +153,7 @@ export default function GameAnalyzer() {
     setReviewProse(null);
     if (Number.isSafeInteger(gameId) && gameId > 0) {
       api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
-        .then((r) => { if (active) setReviewProse(r.review); })
+        .then((r) => { if (active) setReviewProse(isCompleteReviewPayload(r) ? r.review : null); })
         .catch(() => { if (active) setReviewProse(null); });
     }
     return () => { active = false; };
