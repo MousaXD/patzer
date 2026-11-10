@@ -401,15 +401,62 @@ describe('POST /explain (regression #37)', () => {
 });
 
 describe('POST /hint', () => {
-  it('points at what matters without naming the move', async () => {
+  it('keeps the model task grounded without disclosing a tactical move', async () => {
     replies = ['Your king has a problem on f7. What can you do about the checkmate threat?'];
     const r = await post('/hint', { fen: SCHOLAR, history: HISTORY });
-    expect(r.text).toContain('checkmate threat');
+    // An unverified coordinate and mate claim must not be forwarded merely
+    // because the model followed much of the prompt.
+    expect(r.text).not.toMatch(/f7|checkmate threat/i);
+    expect(r.text).toContain('checks and captures');
     const { user } = prompts[0]!;
     expect(user).toContain('The opponent threatens checkmate on the next move.');
     expect(user).toContain('What the engine\'s best move does: it stops the checkmate threat');
     expect(user).toContain('allowing a quick checkmate');
     expect(user).not.toContain('pawn to g6');
     expect(user).toContain('Do NOT name the best move');
+  });
+
+  it('buffers whole model responses: a spoiler in the final chunk cannot leak', async () => {
+    replies = ['Consider both sides\' checking moves. The best move is g6.'];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).not.toMatch(/\bg6\b/);
+    expect(result.text).toContain('What would your opponent play next?');
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('accepts a non-spoiling, non-tactical question', async () => {
+    const hint = 'Before you move, compare checks and captures for both sides. How might your opponent reply?';
+    replies = [hint];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).toBe(hint);
+  });
+
+  it('does not reveal a partially generated hint that exceeds the safe buffer', async () => {
+    replies = ['Consider the opponent replies. '.repeat(120)];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).toContain('What would your opponent play next?');
+    expect(result.text.length).toBeLessThan(240);
+  });
+
+  it('falls back locally in each supported language when the model yields no usable content', async () => {
+    for (const language of ['en', 'bg', 'es', 'de', 'ru'] as const) {
+      replies = ['<think>Perhaps g6 is ideal.</think>'];
+      const response = await post('/hint', { fen: SCHOLAR, history: HISTORY, language });
+      expect(response.text.length, language).toBeGreaterThan(55);
+      expect(response.text, language).not.toMatch(/\bg6\b|think/);
+    }
+  });
+
+  it('works offline with no LLM calls and never guesses an opening move', async () => {
+    const dbm = await import('../src/db.js');
+    dbm.setSetting('vllm_url', '');
+    try {
+      const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+      expect(result.text).toContain('checks and captures');
+      expect(prompts).toHaveLength(0);
+      expect(engineCalls).toHaveLength(0);
+    } finally {
+      dbm.setSetting('vllm_url', `http://127.0.0.1:${(llm.address() as AddressInfo).port}`);
+    }
   });
 });

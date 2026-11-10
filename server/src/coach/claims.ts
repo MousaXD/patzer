@@ -1,4 +1,5 @@
 import { Chess, type Color, type PieceSymbol, type Square } from 'chess.js';
+import { createHash } from 'node:crypto';
 import type { Language } from '../types.js';
 
 // Internal coach-evidence contract, not a shared API response or engine score.
@@ -184,8 +185,18 @@ export function momentEvidence(fen: string, playedSan: string, bestSan: string |
   try { before = new Chess(fen); } catch { return base; }
   const actor: Actor = before.turn() === 'w' ? 'white' : 'black';
   base.actor = actor;
-  const make = (kind: ClaimType, extra: Partial<CoachClaimV1> = {}) =>
-    verifyCoachClaim({ claim_id: `${kind}:${playedSan}`, source_fen: fen, actor, played_san: playedSan, evidence_type: kind, ...extra });
+  const make = (kind: ClaimType, extra: Partial<CoachClaimV1> = {}) => {
+    // A single moment may have multiple legal captures or pins. IDs must
+    // distinguish each verified fact and also avoid collisions across games.
+    // The hash covers only synthetic/position metadata; never model prose.
+    const signature = JSON.stringify([
+      COACH_CLAIMS_VERSION, fen, actor, playedSan, kind,
+      extra.variation_san ?? [], extra.target_squares ?? [],
+      extra.piece ?? null, extra.piece_color ?? null, extra.position ?? null,
+    ]);
+    const claim_id = `v1:${kind}:${createHash('sha256').update(signature).digest('hex').slice(0, 20)}`;
+    return verifyCoachClaim({ claim_id, source_fen: fen, actor, played_san: playedSan, evidence_type: kind, ...extra });
+  };
   const legal = make('legal_move');
   base.claims.push(legal);
   if (legal.proof_status !== 'verified') return base;
@@ -331,4 +342,17 @@ export function screenUnanchoredProse(text: unknown, language: Language): boolea
   if (Object.values(motifs).some((r) => r.test(text))) return false;
   // Board-square claims also require a specific FEN not held by the summary.
   return !/(?:[\p{L}]{2,20})\s+(?:on|at|на|en|auf)\s+[a-h][1-8](?=$|[^a-z0-9])/iu.test(text);
+}
+
+/** Hints must not disclose a move or square before the student has tried.
+ * This is intentionally stricter than reviewing completed mistakes: a
+ * claim about tactics cannot be independently verified without a proposed
+ * move. Stream consumers must call this BEFORE releasing any model text. */
+export function screenHintProse(text: unknown, language: Language): boolean {
+  if (!screenUnanchoredProse(text, language)) return false;
+  // All SAN and UCI move notation contains a destination square. Reject even
+  // a bare coordinate: telling the student 'look at g6' may spoil a retry.
+  if (/(?:^|[^a-z0-9])[a-h][1-8](?:[a-h][1-8])?[nbrq]?(?=$|[^a-z0-9])/i.test(text as string)) return false;
+  if (/(?:^|[^a-z0-9])(?:O-O(?:-O)?|0-0(?:-0)?)(?=$|[^a-z0-9])/i.test(text as string)) return false;
+  return true;
 }

@@ -133,4 +133,14 @@ describe('coach_claims_v1: independent legal proof, not plausible prose', () => 
     expect(screenCoachProse('x', { ...scholar, status: 'contradicted' }, 'en').accepted).toBe(false);
     expect(screenCoachProse('x'.repeat(2100), scholar, 'en').accepted).toBe(false);
   });
+
+  it('assigns stable distinct claim IDs when the opponent has multiple captures', () => {
+    const fen = '4k3/8/8/8/2p1p3/3P4/8/4K3 w - - 0 1';
+    const first = momentEvidence(fen, 'Ke2', null);
+    const captureClaims = first.claims.filter((c) => c.evidence_type === 'reply_capture');
+    expect(captureClaims.map((c) => c.variation_san?.[0])).toEqual(expect.arrayContaining(['cxd3+', 'exd3+']));
+    expect(new Set(captureClaims.map((c) => c.claim_id)).size).toBe(captureClaims.length);
+    expect(first.claims.map((c) => c.claim_id)).toEqual(momentEvidence(fen, 'Ke2', null).claims.map((c) => c.claim_id));
+    expect(momentEvidence(fen, 'Kd2', null).claims[0]?.claim_id).not.toBe(first.claims[0]?.claim_id);
+  });
 });

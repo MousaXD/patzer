@@ -1,5 +1,5 @@
 import { chatStream, llmConfigured } from "./llm.js";
-import { momentEvidence, screenCoachProse } from "./claims.js";
+import { momentEvidence, screenCoachProse, screenHintProse } from "./claims.js";
 import { systemPrompt } from "./locales.js";
 import { correctionNote, explainMovePrompt, hintPrompt } from "./facts.js";
 import { contradiction, explainCoaching, fallbackText, hintCoaching, type CoachAction } from "./coaching.js";
@@ -116,8 +116,9 @@ export async function coachExplain(
   return fallback();
 }
 
-/** A hint streams straight through: it names no move and passes no verdict,
- *  so there is nothing for it to contradict. */
+/** Buffer and screen the entire hint before sending even its first token.
+ * The prompt asks for no move, but that is not a safety guarantee; streaming
+ * unverified chess instructions can leak solutions irreversibly. */
 export async function coachHint(
   fen: string,
   history: string[],
@@ -127,13 +128,41 @@ export async function coachHint(
   onChunk: (t: string) => void | Promise<void>,
   opts: RunOpts = {},
 ): Promise<{ actions: CoachAction[] }> {
+  opts.signal?.throwIfAborted();
+  const fallback: Record<Language, string> = {
+    en: 'Before moving, examine the checks and captures available to both sides. What would your opponent play next?',
+    bg: 'Преди да направиш ход, провери възможните шахове и вземания за двете страни. Как би отговорил противникът?',
+    es: 'Antes de mover, revisa los jaques y las capturas de ambos bandos. ¿Qué podría responder tu rival?',
+    de: 'Prüfe vor deinem Zug die möglichen Schachs und Schlagzüge beider Seiten. Wie könnte dein Gegner antworten?',
+    ru: 'Перед ходом проверь возможные шахи и взятия обеих сторон. Как может ответить соперник?',
+  };
+  // An offline generic hint does not need to start Stockfish or query game
+  // memory; those facts are only consumed by the optional model prompt.
+  if (!llmConfigured()) {
+    await onChunk(fallback[lang]);
+    return { actions: [] };
+  }
   const coaching = await hintCoaching(fen, userId, lang, aud);
-  const sys = systemPrompt(aud, lang);
-  const usr = hintPrompt(fen, aud, lang, history, coaching.facts);
-  await chatStream(
-    [{ role: "system", content: sys }, { role: "user", content: usr }],
-    onChunk,
-    { temperature: opts.temperature ?? 0.3, numPredict: opts.numPredict ?? 220, signal: opts.signal },
-  );
+  opts.signal?.throwIfAborted();
+  let answer = fallback[lang];
+  if (llmConfigured()) {
+    const sys = systemPrompt(aud, lang);
+    const usr = hintPrompt(fen, aud, lang, history, coaching.facts);
+    let generated = '';
+    try {
+      await chatStream(
+        [{ role: "system", content: sys }, { role: "user", content: usr }],
+        (chunk) => { generated += chunk; if (generated.length > 1800) throw new Error('hint_exceeds_safe_length'); },
+        { temperature: opts.temperature ?? 0.3, numPredict: opts.numPredict ?? 220, signal: opts.signal },
+      );
+      const candidate = clean(generated);
+      if (screenHintProse(candidate, lang)) answer = candidate;
+    } catch (err) {
+      if (opts.signal?.aborted) throw err;
+      // A partial, failed or overlong model reply must never be revealed.
+    }
+  }
+  opts.signal?.throwIfAborted();
+  await onChunk(answer);
   return { actions: coaching.actions };
 }

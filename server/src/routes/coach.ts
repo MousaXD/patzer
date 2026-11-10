@@ -42,19 +42,27 @@ router.post('/explain', async (c) => {
   const { language: _l, audience: _a, ...params } = parsed.data;
 
   return streamSSE(c, async (stream) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    c.req.raw.signal.addEventListener('abort', abort, { once: true });
+    stream.onAbort(abort);
+    if (c.req.raw.signal.aborted) abort();
     try {
       // Generated in full and checked against the verdict before it is sent
       // (see coach/explain.ts), so it arrives in one piece, not token by token.
       const answer = await coachExplain(
         { ...params, classification: params.classification as Classification },
-        user.id, lang, aud,
+        user.id, lang, aud, { signal: controller.signal },
       );
+      controller.signal.throwIfAborted();
       if (answer.actions.length) await stream.writeSSE({ event: 'actions', data: JSON.stringify(answer.actions) });
       await stream.writeSSE({ data: answer.text });
     } catch (err) {
-      await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+      if (!controller.signal.aborted) await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+    } finally {
+      c.req.raw.signal.removeEventListener('abort', abort);
     }
-    await stream.writeSSE({ event: 'done', data: '' });
+    if (!controller.signal.aborted) await stream.writeSSE({ event: 'done', data: '' });
   });
 });
 
@@ -74,16 +82,25 @@ router.post('/hint', async (c) => {
   const aud: Audience = parsed.data.audience ?? user.profile.audience;
 
   return streamSSE(c, async (stream) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    c.req.raw.signal.addEventListener('abort', abort, { once: true });
+    stream.onAbort(abort);
+    if (c.req.raw.signal.aborted) abort();
     try {
       const { actions } = await coachHint(
         parsed.data.fen, parsed.data.history ?? [], user.id, lang, aud,
         async (chunk) => { await stream.writeSSE({ data: chunk }); },
+        { signal: controller.signal },
       );
+      controller.signal.throwIfAborted();
       if (actions.length) await stream.writeSSE({ event: 'actions', data: JSON.stringify(actions) });
     } catch (err) {
-      await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+      if (!controller.signal.aborted) await stream.writeSSE({ event: 'error', data: err instanceof Error ? err.message : String(err) });
+    } finally {
+      c.req.raw.signal.removeEventListener('abort', abort);
     }
-    await stream.writeSSE({ event: 'done', data: '' });
+    if (!controller.signal.aborted) await stream.writeSSE({ event: 'done', data: '' });
   });
 });
 
