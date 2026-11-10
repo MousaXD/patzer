@@ -1541,7 +1541,7 @@ function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boo
       <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide" title={label}>{label}</span>
       <span
         role="timer"
-        aria-label={label}
+        aria-label={`${label}: ${fmtClock(timeMs)}`}
         className={`shrink-0 font-mono font-bold tabular-nums ${urgent ? 'text-2xl leading-none tracking-tight sm:text-3xl' : 'text-lg'}`}
         aria-live="off"
       >
