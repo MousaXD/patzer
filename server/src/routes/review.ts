@@ -80,7 +80,6 @@ router.post('/:id/review', async (c) => {
     prose_json, prose_version, prose_lang, prose_audience
     FROM analyses WHERE game_id = ?`).get(id) as AnalysisRow | undefined;
   if (!row) return c.json({ error: 'analysis_required' }, 409);
-  if (!llmConfigured()) return c.json({ error: 'llm_not_configured' }, 503);
 
   const analysis = rowToAnalysis(row);
   const userColor = game.user_color ?? 'white';
@@ -91,6 +90,7 @@ router.post('/:id/review', async (c) => {
     try {
       const review = await buildGameReview({
         pgn: game.pgn, analysis, language, audience, userColor, userId: user.id,
+        llmEnabled: llmConfigured(),
         onProgress: async (ev) => {
           await stream.writeSSE({ event: 'progress', data: JSON.stringify(ev) });
         },

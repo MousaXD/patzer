@@ -40,6 +40,8 @@
 import { chatJsonRetry } from './llm.js';
 import { systemPrompt, sanToNatural, pvToNaturalSan, verdictPhrase, boardPiecesNatural } from './prompts.js';
 import { explainCoaching } from './coaching.js';
+import { contradiction } from './coaching.js';
+import { Chess } from 'chess.js';
 import { cpToWinPct } from '../chess/classifier.js';
 import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase, KeyMomentSummary, Language } from '../types.js';
 
@@ -48,7 +50,8 @@ import type { AnalysisResult, AnalyzedMove, Audience, Classification, GamePhase,
 // v2 = chess.com parity pass.
 // v3 = anti-hallucination FACTS pass: piece inventory + win-prob in key moments.
 // v4 = whose move it was; coaching facts in key moments; a summary with content.
-export const REVIEW_PROSE_VERSION = 4;
+// v5 = unknown evaluations stay unknown; custom-FEN move ownership follows FEN.
+export const REVIEW_PROSE_VERSION = 5;
 
 // JSON-mode rule append-on. R10 in the consolidated 10-rule scheme. We use
 // "R10:" numbering to extend prompts.ts's existing rule block cleanly.
@@ -113,7 +116,7 @@ ${MOMENT_SCHEMA}`,
 Do NOT restate accuracy percentages, Elo or the classification counts — the player already sees them. No empty phrases like "control the tempo" or "fight for the initiative" unless FACTS backs them up.
 Schema: { "summary": string (3-5 sentences), "skill_assessment": string (1 sentence: what this game shows about your level and the one habit that would lift it), "opening_prose": string (≤2 sentences on the opening) }`,
     fallbackPhase: (phase, accuracy, plies) => `Your ${phase} accuracy was ${accuracy}% across ${plies} plies.`,
-    fallbackMoment: (move, verdict, cpLoss) => `On move ${move} the game turned: ${verdict}. The cost was about ${(cpLoss / 100).toFixed(1)} pawns.`,
+    fallbackMoment: (move, verdict) => `On move ${move}, your move was classified as ${verdict}. Review the position for checks, captures and threats before choosing an alternative.`,
     fallbackMomentOpponent: (move, verdict) => `On move ${move} the opponent played ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Your accuracy was ${acc}%. You had ${brilliant} brilliant moves, ${mistakes} mistakes, and ${blunders} blunders.`,
     fallbackSkillNone: 'No skill estimate yet.',
@@ -153,7 +156,7 @@ Schema: { "summary": string (3-5 sentences), "skill_assessment": string (1 sente
 НЕ повтаряй проценти точност, Elo или броя ходове по категории — играчът вече ги вижда. Без празни фрази като "контролираш темпото" или "борба за инициатива", освен ако FACTS ги подкрепя.
 Схема: { "summary": string (3-5 изречения), "skill_assessment": string (1 изречение: какво показва партията за нивото ти и единственият навик, който би го вдигнал), "opening_prose": string (≤2 изречения за дебюта) }`,
     fallbackPhase: (phase, accuracy, plies) => `Във фазата ${phase} точността ти беше ${accuracy}% за ${plies} полу-хода.`,
-    fallbackMoment: (move, verdict, cpLoss) => `На ход ${move} играта се обърна: ${verdict}. Загубата беше около ${(cpLoss / 100).toFixed(1)} пешки.`,
+    fallbackMoment: (move, verdict) => `На ход ${move} твоят ход е оценен като ${verdict}. Провери шаховете, вземанията и заплахите, преди да избереш друг ход.`,
     fallbackMomentOpponent: (move, verdict) => `На ход ${move} противникът изигра ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Точността ти беше ${acc}%. Имаше ${brilliant} брилянтни, ${mistakes} грешки и ${blunders} блъндера.`,
     fallbackSkillNone: 'Все още нямаме оценка на нивото.',
@@ -193,7 +196,7 @@ Esquema: { "title": string, "what_happened": string, "why_it_matters": string, "
 NO repitas porcentajes de precisión, Elo ni los recuentos por categoría: el jugador ya los ve. Sin frases vacías como "controlas el ritmo" o "la lucha por la iniciativa" salvo que FACTS lo respalde.
 Esquema: { "summary": string (3-5 frases), "skill_assessment": string (1 frase: qué muestra esta partida de tu nivel y el hábito que lo subiría), "opening_prose": string (≤2 frases sobre la apertura) }`,
     fallbackPhase: (phase, accuracy, plies) => `Tu precisión en la ${phase} fue del ${accuracy}% en ${plies} medias jugadas.`,
-    fallbackMoment: (move, verdict, cpLoss) => `En la jugada ${move} la partida cambió: ${verdict}. El coste fue de unos ${(cpLoss / 100).toFixed(1)} peones.`,
+    fallbackMoment: (move, verdict) => `En la jugada ${move}, tu movimiento se clasificó como ${verdict}. Comprueba jaques, capturas y amenazas antes de elegir otra opción.`,
     fallbackMomentOpponent: (move, verdict) => `En la jugada ${move} el rival jugó ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Tu precisión fue del ${acc}%. Tuviste ${brilliant} jugadas brillantes, ${mistakes} errores y ${blunders} errores graves.`,
     fallbackSkillNone: 'Aún no hay una estimación de nivel.',
@@ -233,7 +236,7 @@ Schema: { "title": string, "what_happened": string, "why_it_matters": string, "w
 Wiederhole KEINE Genauigkeitswerte, Elo oder Zählungen nach Kategorie — der Spieler sieht sie schon. Keine leeren Phrasen wie "das Tempo kontrollieren" oder "Kampf um die Initiative", außer FACTS stützt sie.
 Schema: { "summary": string (3-5 Sätze), "skill_assessment": string (1 Satz: was die Partie über die Spielstärke zeigt und die eine Gewohnheit, die sie heben würde), "opening_prose": string (≤2 Sätze zur Eröffnung) }`,
     fallbackPhase: (phase, accuracy, plies) => `In der Phase „${phase}“ lag deine Genauigkeit bei ${accuracy} % über ${plies} Halbzüge.`,
-    fallbackMoment: (move, verdict, cpLoss) => `Im ${move}. Zug kippte die Partie: ${verdict}. Das kostete etwa ${(cpLoss / 100).toFixed(1)} Bauern.`,
+    fallbackMoment: (move, verdict) => `Im ${move}. Zug wurde dein Zug als ${verdict} eingestuft. Prüfe Schachs, Schlagzüge und Drohungen, bevor du eine Alternative wählst.`,
     fallbackMomentOpponent: (move, verdict) => `Im ${move}. Zug spielte der Gegner ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Deine Genauigkeit lag bei ${acc} %. Du hattest ${brilliant} brillante Züge, ${mistakes} Fehler und ${blunders} Patzer.`,
     fallbackSkillNone: 'Noch keine Einschätzung der Spielstärke.',
@@ -273,7 +276,7 @@ Schema: { "summary": string (3-5 Sätze), "skill_assessment": string (1 Satz: wa
 НЕ повторяй проценты точности, Эло и количество ходов по категориям — игрок их уже видит. Без пустых фраз вроде "контроль темпа" или "борьба за инициативу", если FACTS этого не подтверждает.
 Схема: { "summary": string (3-5 предложений), "skill_assessment": string (1 предложение: что партия говорит об уровне и какая одна привычка его поднимет), "opening_prose": string (≤2 предложения о дебюте) }`,
     fallbackPhase: (phase, accuracy, plies) => `В стадии «${phase}» твоя точность — ${accuracy}% на ${plies} полуходах.`,
-    fallbackMoment: (move, verdict, cpLoss) => `На ${move}-м ходу партия перевернулась: ${verdict}. Цена — около ${(cpLoss / 100).toFixed(1)} пешки.`,
+    fallbackMoment: (move, verdict) => `На ${move}-м ходу твой ход оценён как ${verdict}. Проверь шахи, взятия и угрозы, прежде чем выбирать другой ход.`,
     fallbackMomentOpponent: (move, verdict) => `На ${move}-м ходу соперник сыграл: ${verdict}.`,
     fallbackSummary: (acc, brilliant, mistakes, blunders) => `Твоя точность — ${acc}%. Блестящих ходов: ${brilliant}, ошибок: ${mistakes}, зевков: ${blunders}.`,
     fallbackSkillNone: 'Оценки уровня пока нет.',
@@ -326,6 +329,8 @@ export interface BuildReviewArgs {
   userId?: number;
   onProgress?: (ev: ProgressEvent) => void;
   signal?: AbortSignal;
+  /** Produce deterministic facts-only text; never attempt a network LLM call. */
+  llmEnabled?: boolean;
 }
 
 function totalSteps(args: BuildReviewArgs): number {
@@ -342,14 +347,48 @@ function joinSlots(...parts: (string | undefined | null)[]): string {
   return parts.map((s) => (s ?? '').trim()).filter(Boolean).join(' ');
 }
 
+/** Reject concrete mate claims that have no legal, local proof. A legal line
+ * proves that mate occurred in that line, NOT that it was forced; quantified
+ * "mate in N" requires extra engine evidence and is never licensed here. */
+export function unsupportedMateClaim(text: string, moment: KeyMomentSummary, moves: AnalyzedMove[]): boolean {
+  if (!/(?:\bmate\s+in\s+\d+\b|\bmat(?:e|t)\s+en\s+\d+\b|\bmatt\s+in\s+\d+\b|мат\s+в\s+\d+|мат\s+за\s+\d+)/i.test(text)
+      && !/(?:\bcheckmate\b|\bschachmatt\b|\bjaque\s+mate\b|\bmate\b|\bmat\b|шахмат|шах\s+и\s+мат|мат(?![а-яё]))/i.test(text)) return false;
+  if (/(?:\bmate\s+in\s+\d+\b|\bmat(?:e|t)\s+en\s+\d+\b|\bmatt\s+in\s+\d+\b|мат\s+в\s+\d+|мат\s+за\s+\d+)/i.test(text)) return true;
+  try {
+    const after = new Chess(moment.fen_before);
+    after.move(moment.san);
+    if (after.isCheckmate()) return false;
+    const answer = moves.find((m) => m.ply === moment.ply + 1 && m.fen_before === after.fen());
+    if (answer) {
+      const response = new Chess(after.fen());
+      response.move(answer.san);
+      if (response.isCheckmate()) return false;
+    }
+    const alternative = new Chess(moment.fen_before);
+    for (const san of moment.best_pv.slice(0, 8)) {
+      alternative.move(san);
+      if (alternative.isCheckmate()) return false;
+    }
+  } catch { /* An incomplete or invalid line proves nothing. */ }
+  return true;
+}
+
 const sideOf = (ply: number): 'white' | 'black' => (ply % 2 === 1 ? 'white' : 'black');
+/** A custom-FEN game can begin with Black. Use the recorded board, not ply parity. */
+function moverOf(m: Pick<AnalyzedMove, 'ply' | 'fen_before'>): 'white' | 'black' {
+  const turn = m.fen_before?.split(' ')[1];
+  return turn === 'w' ? 'white' : turn === 'b' ? 'black' : sideOf(m.ply);
+}
 const moveNumber = (ply: number) => Math.ceil(ply / 2);
 
 /** Win chance (0-100) before and after a move, for the side that played it. */
-function moverWinPct(m: Pick<AnalyzedMove, 'ply' | 'eval_before_cp' | 'eval_after_cp'>): { before: number; after: number } {
-  const white = sideOf(m.ply) === 'white';
-  const pov = (cp: number | null) => (white ? cpToWinPct(cp ?? 0) : 100 - cpToWinPct(cp ?? 0));
-  return { before: Math.round(pov(m.eval_before_cp)), after: Math.round(pov(m.eval_after_cp)) };
+function moverWinPct(m: Pick<AnalyzedMove, 'ply' | 'fen_before' | 'eval_before_cp' | 'eval_after_cp'>): { before: number; after: number } | null {
+  // Unknown engine evaluation is not a 50% win chance. In particular, a
+  // missing score must never become an invented turning point in prose.
+  if (!Number.isFinite(m.eval_before_cp) || !Number.isFinite(m.eval_after_cp)) return null;
+  const white = moverOf(m) === 'white';
+  const pov = (cp: number) => (white ? cpToWinPct(cp) : 100 - cpToWinPct(cp));
+  return { before: Math.round(pov(m.eval_before_cp!)), after: Math.round(pov(m.eval_after_cp!)) };
 }
 
 const BAD: Classification[] = ['inaccuracy', 'mistake', 'blunder', 'miss'];
@@ -361,7 +400,7 @@ function describeMove(m: AnalyzedMove, userColor: 'white' | 'black', language: L
   const better = m.best_move_san && m.best_move_san !== m.san ? sanToNatural(m.best_move_san, m.fen_before, language, audience) : null;
   return {
     move_number: moveNumber(m.ply),
-    by: sideOf(m.ply) === userColor ? text.you : text.opponent,
+    by: moverOf(m) === userColor ? text.you : text.opponent,
     played: sanToNatural(m.san, m.fen_before, language, audience),
     verdict: verdictPhrase(m.classification, language),
     ...(better && BAD.includes(m.classification) ? { better_move: better } : {}),
@@ -385,9 +424,11 @@ async function callPhase(
   audience: Audience,
   userColor: 'white' | 'black',
   signal?: AbortSignal,
+  llmEnabled = true,
 ): Promise<PhaseProse> {
   const userAcc = userColor === 'white' ? data.accuracy_white : data.accuracy_black;
   const userAcpl = userColor === 'white' ? data.acpl_white : data.acpl_black;
+  if (!llmEnabled) return { from_ply: data.from_ply, to_ply: data.to_ply, accuracy: userAcc, acpl: userAcpl, prose: fallbackPhase(phase, userAcc, moves.filter((m) => m.ply >= data.from_ply && m.ply <= data.to_ply).length, language) };
   const oppAcc = userColor === 'white' ? data.accuracy_black : data.accuracy_white;
   const text = reviewText(language);
   const phaseLabelLocal = text.phase[phase];
@@ -395,7 +436,7 @@ async function callPhase(
 
   // The moves that tell the phase's story: the player's notable ones (good
   // finds and costly ones) and the opponent's bigger errors, in game order.
-  const notable = (m: AnalyzedMove) => sideOf(m.ply) === userColor
+  const notable = (m: AnalyzedMove) => moverOf(m) === userColor
     ? ['brilliant', 'great', ...BAD].includes(m.classification)
     : COSTLY.includes(m.classification);
   const interesting = slice.filter(notable).slice(0, 8).map((m) => describeMove(m, userColor, language, audience));
@@ -450,7 +491,7 @@ export async function keyMomentFacts(
   // must always be the player's.
   const board = boardPiecesNatural(moment.fen_before, userColor, language, audience);
   const move = moves.find((m) => m.ply === moment.ply);
-  const wp = move ? moverWinPct(move) : null;
+  const wp = move && moverOf(move) === moment.side ? moverWinPct(move) : null;
 
   // The coach's deterministic facts: what the move did or allowed, the best
   // answer to it, the better move and what that does. Engine-backed; if the
@@ -506,6 +547,7 @@ async function callKeyMoment(
   const { language, audience, userColor, signal } = args;
   const text = reviewText(language);
   const byUser = moment.side === userColor;
+  if (args.llmEnabled === false) return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
   try {
     const facts = await keyMomentFacts(moment, moves, userColor, language, audience, args.userId);
     const sys = systemPrompt(audience, language) + text.jsonHard;
@@ -517,6 +559,9 @@ async function callKeyMoment(
     const title = (result.title ?? '').trim() || text.keyMoment;
     // Slot-fill OR legacy `prose` field — accept both for backward compat.
     const prose = result.prose?.trim() || joinSlots(result.what_happened, result.why_it_matters, result.what_to_learn) || fallbackMoment(moment, byUser, language);
+    if (unsupportedMateClaim(`${title} ${prose}`, moment, moves) || (byUser && contradiction(result.what_happened ?? prose, moment.classification, language))) {
+      return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
+    }
     return { ...moment, title, prose, by_user: byUser };
   } catch {
     return { ...moment, title: text.keyMoment, prose: fallbackMoment(moment, byUser, language), by_user: byUser };
@@ -545,20 +590,21 @@ export function summaryFacts(
     brilliant: 0, great: 0, best: 0, excellent: 0, good: 0, book: 0,
     forced: 0, inaccuracy: 0, mistake: 0, blunder: 0, miss: 0,
   };
-  const mine = analysis.moves.filter((m) => sideOf(m.ply) === userColor);
-  const theirs = analysis.moves.filter((m) => sideOf(m.ply) !== userColor);
+  const mine = analysis.moves.filter((m) => moverOf(m) === userColor);
+  const theirs = analysis.moves.filter((m) => moverOf(m) !== userColor);
   for (const m of mine) counts[m.classification]++;
 
-  const swing = (m: AnalyzedMove) => { const w = moverWinPct(m); return w.before - w.after; };
+  const swing = (m: AnalyzedMove) => { const w = moverWinPct(m); return w ? w.before - w.after : null; };
   const describe = (m: AnalyzedMove) => describeMove(m, userColor, language, audience);
 
   // The turning point: the move that swung the win chance the most, either side.
-  const turning = [...analysis.moves].filter((m) => BAD.includes(m.classification)).sort((a, b) => swing(b) - swing(a))[0];
-  const costliest = mine.filter((m) => COSTLY.includes(m.classification) || (m.classification === 'inaccuracy' && swing(m) >= 8))
-    .sort((a, b) => swing(b) - swing(a)).slice(0, 3)
-    .map((m) => ({ ...describe(m), win_pct_before: moverWinPct(m).before, win_pct_after: moverWinPct(m).after }));
+  const byEvidence = (a: AnalyzedMove, b: AnalyzedMove) => (swing(b) ?? -Infinity) - (swing(a) ?? -Infinity);
+  const turning = [...analysis.moves].filter((m) => BAD.includes(m.classification) && swing(m) != null && swing(m)! > 0).sort(byEvidence)[0];
+  const costliest = mine.filter((m) => swing(m) != null && swing(m)! > 0 && (COSTLY.includes(m.classification) || (m.classification === 'inaccuracy' && swing(m)! >= 8)))
+    .sort(byEvidence).slice(0, 3)
+    .map((m) => ({ ...describe(m), win_pct_before: moverWinPct(m)!.before, win_pct_after: moverWinPct(m)!.after }));
   const bestFinds = mine.filter((m) => m.classification === 'brilliant' || m.classification === 'great').slice(0, 2).map(describe);
-  const gifts = theirs.filter((m) => COSTLY.includes(m.classification)).sort((a, b) => swing(b) - swing(a)).slice(0, 2).map((m) => {
+  const gifts = theirs.filter((m) => COSTLY.includes(m.classification) && swing(m) != null && swing(m)! > 0).sort(byEvidence).slice(0, 2).map((m) => {
     const answer = analysis.moves.find((x) => x.ply === m.ply + 1);
     return { ...describe(m), your_answer: answer ? describe(answer) : null };
   });
@@ -600,6 +646,11 @@ async function callSummary(args: BuildReviewArgs): Promise<{ summary: string; sk
   const { analysis, userColor, language, audience, signal } = args;
   const { facts, counts, userAcc, userElo } = summaryFacts(analysis, args.pgn, userColor, language, audience);
   const text = reviewText(language);
+  if (args.llmEnabled === false) return {
+    summary: fallbackSummary(userAcc, counts, language),
+    skill_assessment: fallbackSkill(userElo, language),
+    opening_prose: analysis.opening_name ? fallbackOpening(analysis.opening_name, language) : '',
+  };
   const sys = systemPrompt(audience, language) + text.jsonHard;
   const task = `FACTS:\n${JSON.stringify(facts, null, 2)}\n\n${text.taskSummary}`;
 
@@ -648,15 +699,15 @@ export async function buildGameReview(args: BuildReviewArgs): Promise<GameReview
   const phases: GameReview['phases'] = { opening: null, middlegame: null, endgame: null };
   const phaseSplit = args.analysis.phase_split;
   if (phaseSplit?.opening) {
-    phases.opening = await callPhase('opening', phaseSplit.opening, args.analysis.moves, args.language, args.audience, args.userColor, args.signal);
+    phases.opening = await callPhase('opening', phaseSplit.opening, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
     done++; fire('phase:opening');
   }
   if (phaseSplit?.middlegame) {
-    phases.middlegame = await callPhase('middlegame', phaseSplit.middlegame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal);
+    phases.middlegame = await callPhase('middlegame', phaseSplit.middlegame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
     done++; fire('phase:middlegame');
   }
   if (phaseSplit?.endgame) {
-    phases.endgame = await callPhase('endgame', phaseSplit.endgame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal);
+    phases.endgame = await callPhase('endgame', phaseSplit.endgame, args.analysis.moves, args.language, args.audience, args.userColor, args.signal, args.llmEnabled);
     done++; fire('phase:endgame');
   }
 
