@@ -155,4 +155,35 @@ describe('Settings persistence', () => {
     expect(nameInput().value).toBe('Local draft');
     expect(screen.getByText('Unsaved changes')).toBeTruthy();
   });
+
+  it('ignores an old account save failure after switching accounts and allows the new account to save', async () => {
+    let rejectOld!: (reason: Error) => void;
+    mocks.patch.mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject; }))
+      .mockResolvedValueOnce({ profile: { ...initialProfile, user_id: 8, display_name: 'Second saved' } });
+    render(<Settings />);
+
+    fireEvent.change(nameInput(), { target: { value: 'First pending' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(mocks.patch).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useAuth.setState({
+        user: {
+          id: 8, username: 'second', role: 'user', created_at: '2026-01-02T00:00:00.000Z',
+          profile: { ...initialProfile, user_id: 8, display_name: 'Second account' },
+        },
+      });
+    });
+    expect(nameInput().value).toBe('Second account');
+    fireEvent.change(nameInput(), { target: { value: 'Second saved' } });
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(useAuth.getState().user?.profile.display_name).toBe('Second saved'));
+
+    await act(async () => { rejectOld(new Error('offline')); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(nameInput().value).toBe('Second saved');
+    expect(useAuth.getState().user?.id).toBe(8);
+    expect(mocks.patch).toHaveBeenCalledTimes(2);
+  });
 });

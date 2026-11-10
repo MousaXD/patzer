@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Download, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -11,9 +11,26 @@ import type { GameRow } from '../types';
 
 type ImportSource = 'chesscom' | 'lichess';
 
-// The games API caps limit at 200 and lacks offset/cursor pagination.
+// The platform branch supports stable offset pagination; keep the legacy
+// cumulative-limit fallback until its API is integrated into main.
 const PAGE_SIZE = 40;
-const MAX_VISIBLE = 200;
+const LEGACY_MAX_VISIBLE = 200;
+type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
+type PageRequest = { offset: number; limit: number };
+
+function updateBookmarkInCache(value: unknown, id: number, bookmarked: number): unknown {
+  if (!value || typeof value !== 'object') return value;
+  if ('pages' in value && Array.isArray(value.pages)) {
+    return { ...value, pages: value.pages.map((page) => updateBookmarkInCache(page, id, bookmarked)) };
+  }
+  if ('games' in value && Array.isArray(value.games)) {
+    return {
+      ...value,
+      games: (value.games as GameRow[]).map((game) => game.id === id ? { ...game, bookmarked } : game),
+    };
+  }
+  return value;
+}
 
 export default function Review() {
   const { t } = useTranslation();
@@ -23,7 +40,6 @@ export default function Review() {
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const q = searchParams.get('q') ?? '';
   const [searchDraft, setSearchDraft] = useState(q);
-  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
   const bookmarkedOnly = searchParams.get('bookmarked') === '1';
 
   // URL state survives navigating into a game and back; network search is
@@ -34,19 +50,39 @@ export default function Review() {
     const timer = window.setTimeout(() => {
       const next = new URLSearchParams(searchParams);
       if (searchDraft.trim()) next.set('q', searchDraft.trim()); else next.delete('q');
-      setVisibleLimit(PAGE_SIZE);
       setSearchParams(next, { replace: true });
     }, 300);
     return () => window.clearTimeout(timer);
   }, [searchDraft, q, searchParams, setSearchParams]);
 
-  const { data, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ['games', { bookmarkedOnly, q, visibleLimit }],
-    queryFn: () => {
-      const params = new URLSearchParams({ limit: String(visibleLimit) });
+  const {
+    data, isLoading, isFetching, isError, isFetchingNextPage,
+    isFetchNextPageError, hasNextPage, fetchNextPage, refetch,
+  } = useInfiniteQuery({
+    // Never reuse another account's cached library after a logout/login.
+    queryKey: ['games', 'library', user?.id, { bookmarkedOnly, q }],
+    enabled: user?.id != null,
+    initialPageParam: { offset: 0, limit: PAGE_SIZE } satisfies PageRequest,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(pageParam.limit) });
+      if (pageParam.offset) params.set('offset', String(pageParam.offset));
       if (bookmarkedOnly) params.set('bookmarked', '1');
       if (q.trim()) params.set('q', q.trim());
-      return api.get<{ games: GameRow[]; total: number }>(`/api/games?${params.toString()}`);
+      return api.get<GamePage>(`/api/games?${params.toString()}`);
+    },
+    getNextPageParam: (lastPage, _pages, lastRequest): PageRequest | undefined => {
+      if (typeof lastPage.has_more === 'boolean') {
+        if (!lastPage.has_more || lastPage.games.length === 0) return undefined;
+        const nextOffset = (lastPage.offset ?? lastRequest.offset) + lastPage.games.length;
+        return nextOffset <= 1_000_000 ? { offset: nextOffset, limit: PAGE_SIZE } : undefined;
+      }
+      // Older servers ignore offset and expose neither offset nor has_more.
+      // Grow only the requested limit, never append duplicate pages or imply
+      // that older results past the 200-record cap are accessible.
+      if (lastRequest.limit >= LEGACY_MAX_VISIBLE ||
+          lastPage.games.length < lastRequest.limit ||
+          lastPage.games.length >= lastPage.total) return undefined;
+      return { offset: 0, limit: Math.min(LEGACY_MAX_VISIBLE, lastRequest.limit + PAGE_SIZE) };
     },
   });
 
@@ -70,12 +106,16 @@ export default function Review() {
   ];
   const linked = sources.filter((s) => s.username);
 
-  const games = data?.games ?? [];
-  const total = data?.total ?? 0;
-  const hasMore = !isError && games.length < total && visibleLimit < MAX_VISIBLE && games.length >= visibleLimit;
+  const pages = data?.pages ?? [];
+  const paginated = typeof pages[0]?.has_more === 'boolean';
+  const lastPage = pages[pages.length - 1];
+  const games = paginated
+    ? [...new Map(pages.flatMap((page) => page.games).map((game) => [game.id, game])).values()]
+    : (lastPage?.games ?? []);
+  const total = lastPage?.total ?? 0;
+  const initialError = isError && games.length === 0;
 
   function toggleBookmarkedOnly() {
-    setVisibleLimit(PAGE_SIZE);
     const next = new URLSearchParams(searchParams);
     if (bookmarkedOnly) next.delete('bookmarked'); else next.set('bookmarked', '1');
     setSearchParams(next);
@@ -137,6 +177,7 @@ export default function Review() {
         </div>
         <button
           onClick={toggleBookmarkedOnly}
+          aria-pressed={bookmarkedOnly}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors',
             bookmarkedOnly
@@ -149,14 +190,14 @@ export default function Review() {
           {bookmarkedOnly ? t('review.starredFilterOn', { defaultValue: 'Starred only' }) : t('review.starredFilterOff', { defaultValue: 'All games' })}
         </button>
         <span className="text-xs text-chesscom-500" aria-live="polite" aria-atomic="true">
-          {isLoading ? t('common.loading', { defaultValue: 'Loading games…' }) : isError
+          {isLoading ? t('common.loading', { defaultValue: 'Loading games…' }) : initialError
             ? t('review.loadError', { defaultValue: 'Could not load games' })
             : `${games.length.toLocaleString()} of ${total.toLocaleString()} ${t('review.games', { defaultValue: 'games' })}`}
           {isFetching && !isLoading && <span className="sr-only"> · Updating</span>}
         </span>
       </div>
 
-      {isError && (
+      {initialError && (
         <div role="alert" className="card flex flex-wrap items-center justify-between gap-3 border-bad/30 p-4">
           <p className="text-sm text-bad">{t('review.loadError', { defaultValue: 'Your game library could not be loaded. Please try again.' })}</p>
           <button type="button" onClick={() => void refetch()} className="btn-secondary text-sm">
@@ -164,7 +205,7 @@ export default function Review() {
           </button>
         </div>
       )}
-      {isLoading && !isError && (
+      {isLoading && !initialError && (
         <div role="status" aria-label={t('common.loading', { defaultValue: 'Loading games' })} className="grid gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="card flex h-16 animate-pulse items-center gap-3 p-3">
@@ -178,7 +219,7 @@ export default function Review() {
         </div>
       )}
 
-      {!isLoading && !isError && games.length === 0 && (
+      {!isLoading && !initialError && games.length === 0 && (
         <div className="card flex flex-col items-center justify-center gap-3 p-12 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-chesscom-100 text-chesscom-400 dark:bg-chesscom-800">
             <Inbox className="h-6 w-6" />
@@ -202,20 +243,28 @@ export default function Review() {
         </div>
       )}
 
-      {!isLoading && !isError && games.length > 0 && (
+      {!isLoading && !initialError && games.length > 0 && (
         <div className="grid gap-2" aria-busy={isFetching}>
           {games.map((g) => <GameCard key={g.id} g={g} />)}
         </div>
       )}
-      {!isLoading && !isError && hasMore && (
-        <div className="flex justify-center">
-          <button type="button" className="btn-secondary min-h-11 px-5 text-sm"
-            onClick={() => setVisibleLimit((n) => Math.min(n + PAGE_SIZE, MAX_VISIBLE))}>
-            {t('review.loadMore', { defaultValue: 'Load more games' })}
+      {!isLoading && !initialError && isFetchNextPageError && (
+        <div role="alert" className="card flex flex-wrap items-center justify-center gap-3 border-bad/30 p-3">
+          <span className="text-sm text-bad">{t('review.moreFailed', { defaultValue: 'Could not load more games. Your loaded games are still available.' })}</span>
+          <button type="button" className="btn-secondary text-sm" onClick={() => void fetchNextPage()}>
+            {t('common.retry', { defaultValue: 'Retry' })}
           </button>
         </div>
       )}
-      {!isLoading && !isError && total > games.length && visibleLimit >= MAX_VISIBLE && (
+      {!isLoading && !initialError && hasNextPage && !isFetchNextPageError && (
+        <div className="flex justify-center">
+          <button type="button" className="btn-secondary min-h-11 px-5 text-sm" disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}>
+            {isFetchingNextPage ? t('common.loading', { defaultValue: 'Loading games…' }) : t('review.loadMore', { defaultValue: 'Load more games' })}
+          </button>
+        </div>
+      )}
+      {!isLoading && !initialError && !paginated && total > games.length && games.length >= LEGACY_MAX_VISIBLE && (
         <p className="text-center text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-400">
           {t('review.searchOlderGames', { defaultValue: 'Showing the 200 most recent matches. Search by player, opening, or notes to find older games across your entire library.' })}
         </p>
@@ -227,12 +276,17 @@ export default function Review() {
 function GameCard({ g }: { g: GameRow }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const [bookmarkError, setBookmarkError] = useState(false);
   const star = useMutation({
     mutationFn: (next: boolean) => api.patch(`/api/games/${g.id}/bookmark`, { bookmarked: next }),
-    onMutate: (next: boolean) => {
-      // Optimistic update.
-      qc.setQueriesData<{ games: GameRow[] }>({ queryKey: ['games'] }, (old) =>
-        old ? { games: old.games.map((row) => (row.id === g.id ? { ...row, bookmarked: next ? 1 : 0 } : row)) } : old);
+    onMutate: async (next: boolean) => {
+      setBookmarkError(false);
+      await qc.cancelQueries({ queryKey: ['games'] });
+      qc.setQueriesData({ queryKey: ['games'] }, (old) => updateBookmarkInCache(old, g.id, next ? 1 : 0));
+    },
+    onError: (_error, next) => {
+      qc.setQueriesData({ queryKey: ['games'] }, (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
+      setBookmarkError(true);
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ['games'] }),
   });
@@ -251,7 +305,7 @@ function GameCard({ g }: { g: GameRow }) {
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-chesscom-500">
-            <span>{new Date(g.end_time).toLocaleDateString()}</span>
+            <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
             <span>·</span>
             <span>{t(`review.source.${g.source}`, { defaultValue: g.source })}</span>
             {!!g.from_position && <span className="rounded-full bg-chesscom-100 px-2 py-0.5 text-[11px] dark:bg-chesscom-800">{t('review.fromPosition')}</span>}
@@ -288,6 +342,11 @@ function GameCard({ g }: { g: GameRow }) {
       >
         <Star className={cn('h-4 w-4', isStarred && 'fill-gold-500')} />
       </button>
+      {bookmarkError && (
+        <span role="alert" className="absolute bottom-0 right-12 rounded bg-cream px-2 text-xs text-bad dark:bg-chesscom-900">
+          {t('review.bookmarkFailed', { defaultValue: 'Bookmark could not be saved. Try again.' })}
+        </span>
+      )}
     </div>
   );
 }
@@ -295,5 +354,7 @@ function GameCard({ g }: { g: GameRow }) {
 function ResultIcon({ r }: { r: string }) {
   if (r === 'win') return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-board-dark/15 text-board-dark"><Trophy className="h-4 w-4" /></div>;
   if (r === 'loss') return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mistake/15 text-mistake"><Frown className="h-4 w-4" /></div>;
-  return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300"><Equal className="h-4 w-4" /></div>;
+  return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+    {r === 'draw' ? <Equal className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+  </div>;
 }

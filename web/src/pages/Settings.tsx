@@ -14,6 +14,9 @@ export default function Settings() {
   const { t, i18n } = useTranslation();
   const { user, setUser } = useAuth();
   const editRevision = useRef(0);
+  // A save started under one account must never update the next account's
+  // error, saving state or language after sign-out / account switching.
+  const accountRevision = useRef(0);
   const previousUserId = useRef<number | null>(null);
   const [form, setForm] = useState<Profile | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -27,9 +30,13 @@ export default function Settings() {
 
   useEffect(() => {
     if (!user) {
+      if (previousUserId.current !== null) accountRevision.current += 1;
       previousUserId.current = null;
       setForm(null);
       setDirty(false);
+      setSaving(false);
+      setSaved(false);
+      setSaveError(null);
       return;
     }
     const accountChanged = previousUserId.current !== user.id;
@@ -38,8 +45,10 @@ export default function Settings() {
     // edited. Never replace an unsaved draft for the same signed-in account.
     if (!accountChanged && dirty) return;
     if (accountChanged) {
+      accountRevision.current += 1;
       editRevision.current = 0;
       setDirty(false);
+      setSaving(false);
       setSaved(false);
       setSaveError(null);
     }
@@ -74,6 +83,7 @@ export default function Settings() {
     const submitted = form;
     const submittedRevision = editRevision.current;
     const submittedUserId = user.id;
+    const submittedAccountRevision = accountRevision.current;
     setSaving(true);
     setSaveError(null);
     try {
@@ -101,7 +111,8 @@ export default function Settings() {
       // PATCH returns the persisted profile. Updating auth locally avoids a
       // second GET that could fail or overwrite a newer unsaved edit.
       const currentUser = useAuth.getState().user;
-      if (currentUser?.id !== submittedUserId || profile.user_id !== submittedUserId) return;
+      if (accountRevision.current !== submittedAccountRevision ||
+          currentUser?.id !== submittedUserId || profile.user_id !== submittedUserId) return;
       setUser({ ...currentUser, profile });
       if (editRevision.current === submittedRevision) {
         setForm({ ...profile });
@@ -114,9 +125,11 @@ export default function Settings() {
       void i18n.changeLanguage(profile.language).catch(() => undefined);
     } catch {
       // A rejected PATCH keeps the unsaved draft and retry action available.
-      setSaveError(t('settings.saveFailed', { defaultValue: 'Unable to save settings. Check your connection and try again.' }));
+      if (accountRevision.current === submittedAccountRevision) {
+        setSaveError(t('settings.saveFailed', { defaultValue: 'Unable to save settings. Check your connection and try again.' }));
+      }
     } finally {
-      setSaving(false);
+      if (accountRevision.current === submittedAccountRevision) setSaving(false);
     }
   }
 

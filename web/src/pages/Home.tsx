@@ -60,19 +60,23 @@ export default function Home() {
   const { user } = useAuth();
 
   const { data: gamesData, isLoading: gamesLoading, isError: gamesError, refetch: refetchGames } = useQuery({
-    queryKey: ['games', 'home'],
+    queryKey: ['games', 'home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=5'),
   });
   const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
-    queryKey: ['stats', 'me'],
+    queryKey: ['stats', 'me', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<Stats>('/api/stats/me'),
   });
-  const { data: planData } = useQuery({
-    queryKey: ['plan-home'],
+  const { data: planData, isPending: planPending, isError: planError, refetch: refetchPlan } = useQuery({
+    queryKey: ['plan-home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ goals: PlanGoal[] }>('/api/plan'),
   });
-  const { data: achievementsData } = useQuery({
-    queryKey: ['achievements-home'],
+  const { data: achievementsData, isPending: achievementsPending, isError: achievementsError, refetch: refetchAchievements } = useQuery({
+    queryKey: ['achievements-home', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ achievements: Achievement[] }>('/api/achievements'),
   });
 
@@ -95,6 +99,12 @@ export default function Home() {
           <ContinueRow
             goals={planData?.goals ?? null}
             achievements={achievementsData?.achievements ?? null}
+            planLoading={planPending}
+            planError={planError}
+            retryPlan={() => void refetchPlan()}
+            achievementsLoading={achievementsPending}
+            achievementsError={achievementsError}
+            retryAchievements={() => void refetchAchievements()}
           />
         </div>
         <div className="min-w-0 lg:order-1">
@@ -220,9 +230,15 @@ function StatInline({ value, label, glow }: { value: string; label: string; glow
 
 /* ───────────────────────  CONTINUE YOUR JOURNEY  ───────────────────────── */
 
-function ContinueRow({ goals, achievements }: {
+function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, achievementsLoading, achievementsError, retryAchievements }: {
   goals: PlanGoal[] | null;
   achievements: Achievement[] | null;
+  planLoading: boolean;
+  planError: boolean;
+  retryPlan: () => void;
+  achievementsLoading: boolean;
+  achievementsError: boolean;
+  retryAchievements: () => void;
 }) {
   const { t } = useTranslation();
   // Stagger entrance — modest. 60ms between cards, no scale or rotate gimmicks.
@@ -242,10 +258,10 @@ function ContinueRow({ goals, achievements }: {
           <DailyPuzzleTile />
         </motion.div>
         <motion.div initial="hidden" animate="show" custom={2} variants={variants}>
-          <PlanTile goals={goals} />
+          <PlanTile goals={goals} loading={planLoading} error={planError} retry={retryPlan} />
         </motion.div>
         <motion.div initial="hidden" animate="show" custom={3} variants={variants}>
-          <AchievementsTile achievements={achievements} />
+          <AchievementsTile achievements={achievements} loading={achievementsLoading} error={achievementsError} retry={retryAchievements} />
         </motion.div>
       </div>
     </section>
@@ -285,14 +301,41 @@ interface DailyPuzzle {
   streak: number;
 }
 
+function ActivityStatusTile({ label, loading, retry, Icon }: {
+  label: string; loading: boolean; retry: () => void; Icon: React.ElementType;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-3 p-4">
+      <Pill tone="muted" Icon={Icon} />
+      <div className="min-w-0 flex-1">
+        <Kicker>{label}</Kicker>
+        <Title>{loading
+          ? t('home.tileLoading', { defaultValue: 'Loading your progress…' })
+          : t('home.tileUnavailable', { defaultValue: 'Progress temporarily unavailable' })}</Title>
+        {!loading && (
+          <button type="button" onClick={retry}
+            aria-label={`${t('common.retry', { defaultValue: 'Retry' })} ${label}`}
+            className="mt-2 rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
+            {t('common.retry', { defaultValue: 'Retry' })}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The puzzle of the day: one puzzle near your rating, the same all day, and
  *  how many days in a row you've done it (server/src/chess/tactics.ts). */
 function DailyPuzzleTile() {
   const { t } = useTranslation();
-  const { data } = useQuery({
+  const { data, isPending, isError, refetch } = useQuery({
     queryKey: ['tactics-daily'],
     queryFn: () => api.get<DailyPuzzle>(`/api/tactics/daily?today=${localDay()}`),
   });
+  if ((isPending || isError) && !data) {
+    return <ActivityStatusTile label={t('home.todayPuzzle')} loading={isPending} retry={() => void refetch()} Icon={Target} />;
+  }
   const done = data?.done ?? null;
   const title = !data ? t('home.todayPuzzle')
     : !data.puzzle ? t('train.puzzles.allDone')
@@ -318,8 +361,14 @@ function DailyPuzzleTile() {
   );
 }
 
-function PlanTile({ goals }: { goals: PlanGoal[] | null }) {
+function PlanTile({ goals, loading, error, retry }: {
+  goals: PlanGoal[] | null; loading: boolean; error: boolean; retry: () => void;
+}) {
   const { t } = useTranslation();
+  if ((loading || error) && !goals) {
+    return <ActivityStatusTile label={t('home.planLabel', { defaultValue: "This week's plan" })}
+      loading={loading} retry={retry} Icon={ListChecks} />;
+  }
   const list = goals ?? [];
   const active = list.filter((g) => g.status === 'active');
   const imminent = active.length
@@ -375,8 +424,14 @@ function PlanTile({ goals }: { goals: PlanGoal[] | null }) {
   );
 }
 
-function AchievementsTile({ achievements }: { achievements: Achievement[] | null }) {
+function AchievementsTile({ achievements, loading, error, retry }: {
+  achievements: Achievement[] | null; loading: boolean; error: boolean; retry: () => void;
+}) {
   const { t } = useTranslation();
+  if ((loading || error) && !achievements) {
+    return <ActivityStatusTile label={t('home.achievementsLabel', { defaultValue: 'Achievements' })}
+      loading={loading} retry={retry} Icon={Award} />;
+  }
   const list = achievements ?? [];
   const unlocked = list.filter((a) => a.unlocked);
   const recent = [...unlocked]
@@ -497,7 +552,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                   )}
                 </div>
                 <div className="text-xs text-chesscom-500">
-                  <span>{new Date(g.end_time).toLocaleDateString()}</span>
+                  <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
                   <span className="mx-1.5 text-chesscom-400">·</span>
                   <span>{fmtTimeControl(g.time_control, t)}</span>
                   {g.opening_name && (
@@ -572,6 +627,7 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
 }
 
 function ResultGlyph({ r }: { r: string }) {
+  const { t } = useTranslation();
   if (r === 'win') {
     return (
       <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
@@ -586,6 +642,11 @@ function ResultGlyph({ r }: { r: string }) {
       </span>
     );
   }
+  if (r !== 'draw') return (
+    <span aria-label={t('review.inProgress', { defaultValue: 'In progress' })} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+      •
+    </span>
+  );
   return (
     <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
       D

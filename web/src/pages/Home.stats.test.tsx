@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -17,7 +17,7 @@ vi.mock('framer-motion', async () => {
 });
 vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../state/auth', () => ({
-  useAuth: () => ({ user: { profile: { display_name: 'Player', avatar_emoji: '♟' } } }),
+  useAuth: () => ({ user: { id: 7, profile: { display_name: 'Player', avatar_emoji: '♟' } } }),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -71,5 +71,34 @@ describe('Home statistics failure', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('42')).toBeTruthy();
     expect(screen.queryByText('Your statistics could not be loaded.')).toBeNull();
+  });
+
+  it('does not disguise failed plan, achievement or daily-puzzle requests as first-time onboarding', async () => {
+    const offline = { plan: true, achievements: true, puzzle: true };
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 9, wins: 5, losses: 2, draws: 2, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return offline.plan ? Promise.reject(new Error('offline')) : Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return offline.achievements ? Promise.reject(new Error('offline')) : Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return offline.puzzle ? Promise.reject(new Error('offline')) : Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+
+    mount();
+    await waitFor(() => expect(screen.getAllByText('Progress temporarily unavailable')).toHaveLength(3));
+    expect(screen.queryByText('Build your first improvement plan')).toBeNull();
+    expect(screen.queryByText('Earn your first badge')).toBeNull();
+
+    offline.plan = false;
+    fireEvent.click(screen.getByRole('button', { name: "Retry This week's plan" }));
+    expect(await screen.findByText('Build your first improvement plan')).toBeTruthy();
+
+    offline.achievements = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Achievements' }));
+    expect(await screen.findByText('Earn your first badge')).toBeTruthy();
+
+    offline.puzzle = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry home.todayPuzzle' }));
+    await waitFor(() => expect(screen.queryByText('Progress temporarily unavailable')).toBeNull());
   });
 });

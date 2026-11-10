@@ -104,3 +104,30 @@ Checked out the existing isolated branch into an additional local clone under `/
 - Chromium design-system browser checks: passed for light, dark, explicit theme preference, auto theme and reduced-motion settings, using an isolated Vite preview port 4175.
 
 These checks certify the source revision locally; they **do not substitute for required GitHub Actions checks on the final documentation commit**. At the start of this verification, GitHub Actions runs `42863746234` (CI), `42863745963` (Frontend Overhaul QA), and `42863746097` (design system) remained queued without runners. Keep PR #11 in draft pending exact-HEAD GitHub checks and Agent 00 integration review. No application, API, or database changes were needed.
+
+## Product UI deep-polish pass — 2026-11-10
+
+**Scope and conflict audit:** Read the other active agent branches before touching source: `agent/review-experience-20261110` owns `GameAnalyzer` and its analysis components; `agent/chess-backend-20261110` owns Stockfish analysis; `agent/platform-backend-20261110` owns API pagination, history, Insights endpoints and MCP. This follow-up changes **only** `web/src/pages/{Home,Review,Insights,Settings}.tsx`, their owned regression tests, and this handoff. It does not touch Play mechanics, shared Game Review components, backend, DB, or the other agents' branches. No main merge/deploy.
+
+### New production improvements
+
+1. **Complete library pagination integration readiness.** Review now uses an incremental `useInfiniteQuery` with 40-game pages, stable offset parameters and `has_more` from the separate Platform Backend branch. This allows browsing beyond game 200 after Agent 00 integrates the API branch. While the legacy backend is active, the UI automatically uses bounded cumulative-limit fetching up to 200, retains its honest limitation notice, and never invents additional games. New test covers 240 unique visible games, exact offsets, and a failed later page with partial-results preservation and retry. Client-side de-duplication guards against repeated rows if records change between offset requests.
+2. **Bookmark failure correctness.** Optimistic bookmark changes now update both ordinary and infinite-query caches, revert the affected game on failure, show an accessible error and invalidate affected game lists after completion. Previous implementation had no failure rollback or feedback. The starred-only filter now exposes `aria-pressed`.
+3. **Independent Home progress recovery.** Plan, achievements and daily puzzle no longer turn network failures into empty/new-user recommendations. Each card has its own loading state, error notice and retry, independently of Home games and statistics.
+4. **Independent Insights achievements recovery.** A failed achievements request no longer appears as zero earned badges when other analytics load successfully. Its section supports loading, error and retry without hiding the rest of Insights.
+5. **Account-scoped data.** Home statistics/games/plan/achievements, Review game library, and Insights statistics/achievements use account-specific query keys. A subsequent login cannot reuse the previous account's React Query content.
+6. **Settings account transition guard.** In-flight saves are scoped to the account revision, so an old account's PATCH cannot produce an error/success, stale language change or save-button lock in a newly signed-in account. The newer account remains editable and can save immediately. Added regression coverage for old PATCH failure after account switch.
+7. **Unfinished-game presentation.** Home and Review do not render a missing end time as a 1970 date or treat every non-win/loss result as a draw; unfinished games show a neutral state.
+
+### Local CI replacement evidence
+
+- Node 22 `npm run typecheck`: **PASS**.
+- `npm test`: **64 files / 588 assertions PASS**, with no unhandled promise rejection in the test output.
+- `npm run build` (server + web): **PASS**.
+- `node --test web/tests/design-system.contract.test.mjs`: **5/5 PASS**.
+- Chromium design-system browser certification: **PASS** across light/dark/auto and reduced motion.
+- Independent Chromium QA: **35/35 PASS**, zero failures. Uses a temporary port-8881 copy of the existing harness solely to avoid other agents' occupied ports; temporary copy removed after use. Screenshots/results at `/tmp/patzer-product-ui-qa-polish`, outside tracked source.
+- Local `docker build --tag patzer:product-ui-polish-local .`: **PASS**. Disposable container smoke: `/api/meta` returned 200 with Patzer version 7.19.0, web root returned HTTP 200; disposable container stopped and removed.
+- Focused added/changed tests for pagination and error recovery, Settings account switches and Home/Insights failures: **17/17 PASS** during development; full suite result above is authoritative.
+
+**Remaining release conditions:** GitHub Actions hosted jobs were queued/unavailable and do not count as green. This is local certification, not a hosted CI run. The Platform Backend offset implementation must be integrated and jointly exercised by Agent 00 before unrestricted server-side pagination is enabled in production. Keep PR #11 in draft; do not merge autonomously. Cross-agent integration still needs conflict review and final source-plus-backend acceptance.

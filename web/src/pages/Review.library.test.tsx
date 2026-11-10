@@ -14,7 +14,7 @@ vi.mock('../api', () => ({
   api: { get: mocks.get, post: mocks.post, patch: mocks.patch },
 }));
 vi.mock('../state/auth', () => ({
-  useAuth: () => ({ user: { profile: { chesscom_username: null, lichess_username: null } } }),
+  useAuth: () => ({ user: { id: 7, profile: { chesscom_username: null, lichess_username: null } } }),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -80,6 +80,50 @@ describe('Review library with large histories', () => {
     expect(mocks.get.mock.calls.every(([url]) => Number(new URLSearchParams(String(url).split('?')[1]).get('limit')) <= 200)).toBe(true);
   });
 
+  it('walks past game 200 without repeats when the platform API supports offset pagination', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      const query = new URLSearchParams(url.split('?')[1] ?? '');
+      const offset = Number(query.get('offset') ?? 0);
+      const limit = Number(query.get('limit') ?? 40);
+      const games = Array.from({ length: Math.min(limit, 1000 - offset) }, (_, i) => makeGame(offset + i + 1));
+      return { games, total: 1000, offset, limit, has_more: offset + games.length < 1000 };
+    });
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    for (const count of [80, 120, 160, 200, 240]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Load more games' }));
+      await screen.findByText(new RegExp(`${count} of 1,000 games`));
+    }
+    expect(document.querySelectorAll('a[href^="/review/"]')).toHaveLength(240);
+    expect(document.querySelectorAll('a[href="/review/240"]')).toHaveLength(1);
+    expect(screen.queryByText(/Search by player, opening, or notes to find older games/)).toBeNull();
+    const requests = mocks.get.mock.calls.map(([url]) => new URLSearchParams(String(url).split('?')[1] ?? ''));
+    expect(requests.map((params) => Number(params.get('offset') ?? 0))).toEqual([0, 40, 80, 120, 160, 200]);
+    expect(requests.every((params) => Number(params.get('limit')) === 40)).toBe(true);
+  });
+
+  it('preserves loaded games when a later page fails and retries only that page', async () => {
+    let failSecondPage = true;
+    mocks.get.mockImplementation(async (url: string) => {
+      const query = new URLSearchParams(url.split('?')[1] ?? '');
+      const offset = Number(query.get('offset') ?? 0);
+      if (offset === 40 && failSecondPage) throw new Error('offline');
+      const games = Array.from({ length: 40 }, (_, i) => makeGame(offset + i + 1));
+      return { games, total: 200, offset, has_more: offset + games.length < 200 };
+    });
+    mount();
+    await screen.findByText(/40 of 200 games/);
+    fireEvent.click(screen.getByRole('button', { name: 'Load more games' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/40 of 200 games/)).toBeTruthy();
+    expect(document.querySelectorAll('a[href^="/review/"]')).toHaveLength(40);
+
+    failSecondPage = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText(/80 of 200 games/);
+    expect(document.querySelectorAll('a[href^="/review/"]')).toHaveLength(80);
+  });
+
   it('searches the full library server-side with a debounced and accessible input', async () => {
     mount();
     await screen.findByText(/40 of 1,000 games/);
@@ -105,5 +149,34 @@ describe('Review library with large histories', () => {
     expect(bookmark.getAttribute('aria-pressed')).toBe('false');
     expect(bookmark.className).toContain('text-chesscom-400');
     expect(bookmark.className).toContain('md:opacity-0');
+  });
+
+  it('labels unfinished games instead of rendering a fake 1970 date or a draw', async () => {
+    mocks.get.mockResolvedValue({
+      games: [{ ...makeGame(1), result: '*', end_time: null }], total: 1,
+    });
+    mount();
+    expect(await screen.findByText('In progress')).toBeTruthy();
+    expect(screen.queryByText(/1970/)).toBeNull();
+  });
+
+  it('restores the bookmark and shows an actionable error after a failed save', async () => {
+    let persisted = false;
+    mocks.get.mockImplementation(async () => ({
+      games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1,
+    }));
+    mocks.patch.mockRejectedValueOnce(new Error('offline')).mockImplementationOnce(async () => {
+      persisted = true;
+      return { ok: true };
+    });
+    mount();
+    await screen.findByText('1 of 1 games');
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark game' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    const retry = screen.getByRole('button', { name: 'Bookmark game' });
+    expect(retry.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove bookmark' }).getAttribute('aria-pressed')).toBe('true'));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
