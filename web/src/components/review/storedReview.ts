@@ -15,6 +15,14 @@ export interface DecodedReviewJson {
   phase_split: PhaseSplit | null;
 }
 
+/** A broken cache must not be served again by a normal cached analysis call. */
+export function needsFreshReviewAnalysis(
+  cached: StoredReviewJson | null | undefined,
+  decoded: DecodedReviewJson | null,
+): boolean {
+  return cached != null && decoded === null;
+}
+
 export function decodeStoredReviewJson(data: StoredReviewJson): DecodedReviewJson | null {
   try {
     const moves: unknown = JSON.parse(data.moves_json);
