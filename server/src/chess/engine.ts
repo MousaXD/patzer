@@ -79,6 +79,12 @@ export function parseChessApiResponse(body: unknown, fen: string): EngineMultiEv
   if (j.type === 'error') throw new Error(`chessapi: ${String(j.text ?? 'error')}`);
   const move = typeof j.move === 'string' ? j.move : '';
   if (!UCI_RE.test(move)) throw new Error('chessapi: no best move');
+  const position = new Chess(fen);
+  try {
+    position.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] });
+  } catch {
+    throw new Error('chessapi: illegal best move');
+  }
 
   const sign = fen.split(' ')[1] === 'b' ? -1 : 1;
   const rawMate = j.mate == null ? null : Number(j.mate);
@@ -87,8 +93,18 @@ export function parseChessApiResponse(body: unknown, fen: string): EngineMultiEv
   const cp = mate === null && rawCp !== null && Number.isFinite(rawCp) ? rawCp * sign : null;
   if (cp === null && mate === null) throw new Error('chessapi: no score');
 
-  const cont = Array.isArray(j.continuationArr) ? j.continuationArr.filter((u): u is string => typeof u === 'string' && UCI_RE.test(u)) : [];
-  const pv = [move, ...cont];
+  const pv = [move];
+  if (Array.isArray(j.continuationArr)) {
+    for (const u of j.continuationArr.slice(0, 64)) {
+      if (typeof u !== 'string' || !UCI_RE.test(u)) break;
+      try {
+        position.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+      } catch {
+        break; // Never expose a fabricated or inconsistent continuation.
+      }
+      pv.push(u);
+    }
+  }
   const depth = Number(j.depth) || 0;
   return { cp, mate, bestMoveUci: move, pv, depth, candidates: [{ cp, mate, pv, multipv: 1 }] };
 }
@@ -101,6 +117,13 @@ export function parseChessApiResponse(body: unknown, fen: string): EngineMultiEv
 function terminalEval(fen: string): EngineMultiEval | null {
   let pos: Chess;
   try { pos = new Chess(fen); } catch { return null; }
+  // A dead material draw (e.g. K vs K or K+B vs K) still has legal moves.
+  // It cannot turn into a win, so never replace that known result with a
+  // non-zero or otherwise inconsistent score from the hosted provider.
+  if (pos.isInsufficientMaterial()) {
+    return { cp: 0, mate: null, bestMoveUci: null, pv: [], depth: 0,
+      candidates: [{ cp: 0, mate: null, pv: [], multipv: 1 }] };
+  }
   if (pos.moves().length > 0) return null;
   const mate = pos.isCheckmate() ? 0 : null;
   const cp = mate === null ? 0 : null;
@@ -110,9 +133,8 @@ function terminalEval(fen: string): EngineMultiEval | null {
 // chess-api.com parses FEN strictly: it requires all six fields and rejects
 // any en-passant square — even a legal one. chess.js emits a legal en-passant
 // square right after a double pawn push, and some callers send a 4/5-field FEN,
-// so normalize both before the request. Clearing en-passant is a tiny, rare
-// accuracy trade (the engine just won't consider that one capture) and is far
-// better than falling back to the local engine for the whole game.
+// so normalize both before the request. Callers MUST use local Stockfish when
+// an en-passant capture is legal: dropping it changes the legal move set.
 export function strictFen(fen: string): string {
   const parts = fen.trim().split(/\s+/);
   if (parts.length < 4) return fen;
@@ -157,6 +179,9 @@ export class ChessApiEngine implements AnalysisEngine {
   async evaluateMulti(fen: string, depth: number, n: number): Promise<EngineMultiEval> {
     const terminal = terminalEval(fen);
     if (terminal) return terminal;
+    // The hosted API rejects every en-passant target. Never analyze a different
+    // position when an en-passant capture is actually available.
+    if (!this.fallback && hasLegalEnPassant(fen)) await this.startFallback();
     if (!this.fallback) {
       try {
         return await this.query(fen, depth, n);
@@ -205,4 +230,10 @@ export class ChessApiEngine implements AnalysisEngine {
     await e.newGame();
     this.fallback = e;
   }
+}
+
+export function hasLegalEnPassant(fen: string): boolean {
+  const parts = fen.trim().split(/\s+/);
+  if (parts[3] === '-' || !parts[3]) return false;
+  return new Chess(fen).moves({ verbose: true }).some((move) => move.flags.includes('e'));
 }

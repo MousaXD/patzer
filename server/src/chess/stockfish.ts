@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Chess } from 'chess.js';
 import { config } from '../config.js';
 import { getSetting } from '../db.js';
 
@@ -33,6 +34,27 @@ function discoverStockfishPath(): string | null {
 // can't regress us into the bug.
 function assertNoNewline(s: string, label: string): void {
   if (/[\r\n]/.test(s)) throw new Error(`stockfish: ${label} contains newline`);
+}
+
+const UCI_MOVE_RE = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
+
+// Engine PVs are advisory until legally replayed. A truncated UCI iteration
+// can contain an impossible continuation, and an illegal rank-two first move
+// must never be mistaken for evidence that rank one is uniquely good.
+function legalPvPrefix(fen: string, pv: readonly string[]): string[] {
+  const board = new Chess(fen);
+  const accepted: string[] = [];
+  for (const uci of pv) {
+    if (!UCI_MOVE_RE.test(uci)) break;
+    try {
+      const move = board.move({
+        from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4],
+      });
+      if (!move || (move.promotion ?? '') !== (uci[4] ?? '')) break;
+      accepted.push(uci);
+    } catch { break; }
+  }
+  return accepted;
 }
 
 export interface EngineEval {
@@ -329,9 +351,10 @@ export class StockfishEngine {
           lastInfo = parsed;
         }
       });
+      const legalPv = legalPvPrefix(fen, lastInfo.pv);
       return {
         cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
-        pv: lastInfo.pv, depth: lastInfo.depth,
+        pv: legalPv[0] === bestMove ? legalPv : [], depth: lastInfo.depth,
       };
     });
   }
@@ -363,15 +386,30 @@ export class StockfishEngine {
         // Only compare candidates at the same completed iteration as rank one.
         // Mixed-depth rankings can manufacture a false "only good move" verdict.
         const top = perRank.get(1);
-        const candidates: PvCandidate[] = Array.from(perRank.entries())
-          .filter(([rank, info]) => rank === 1 || (top !== undefined && info.depth === top.depth))
-          .sort(([a], [b]) => a - b)
-          .map(([rank, info]) => ({ cp: info.cp, mate: info.mate, pv: info.pv, multipv: rank }));
+        const topPv = top ? legalPvPrefix(fen, top.pv) : [];
+        // A final bestmove that differs from the last rank-one PV proves the
+        // candidate snapshot is incomplete/inconsistent. Keep the root score,
+        // but do not expose candidate gaps as "only good move" evidence.
+        const candidates: PvCandidate[] = [];
+        if (bestMove !== null && topPv[0] === bestMove) {
+          const seenMoves = new Set<string>();
+          let expectedRank = 1;
+          for (const [rank, info] of [...perRank.entries()].sort(([a], [b]) => a - b)) {
+            // Rank 3 cannot stand in for an absent or invalid rank 2. The
+            // classifier consumes these as ordered alternatives for a gap.
+            if (rank !== expectedRank || (rank !== 1 && info.depth !== top!.depth)) break;
+            const pv = rank === 1 ? topPv : legalPvPrefix(fen, info.pv);
+            if (!pv[0] || seenMoves.has(pv[0])) break;
+            seenMoves.add(pv[0]);
+            candidates.push({ cp: info.cp, mate: info.mate, pv, multipv: rank });
+            expectedRank++;
+          }
+        }
         return {
           cp: top?.cp ?? null,
           mate: top?.mate ?? null,
           bestMoveUci: bestMove,
-          pv: top?.pv ?? [],
+          pv: candidates[0]?.pv ?? [],
           depth: top?.depth ?? 0,
           candidates,
         };
