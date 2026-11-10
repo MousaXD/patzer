@@ -507,6 +507,11 @@ export default function GameAnalyzer() {
               )}
             </div>
           </div>
+          {bestUci && (
+            <p className="mb-1 text-[11px] text-chesscom-500" role="note">
+              Blue arrow: best continuation from the displayed board position.
+            </p>
+          )}
           <PlayerHeader
             name={orientation === 'white' ? data.game.white : data.game.black}
             accuracy={orientation === 'white' ? analysis?.accuracy_white : analysis?.accuracy_black}
