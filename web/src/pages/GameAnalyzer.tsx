@@ -12,6 +12,7 @@ import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
 import { buildSavedReviewTimeline } from '../components/review/reviewTimeline';
+import { practiceCandidates } from '../components/review/practiceCandidates';
 import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
 import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
@@ -117,6 +118,7 @@ function GameAnalyzerView() {
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const practicePicker = searchParams.get('practice') === '1';
   // Replaying a PGN is work proportional to game length. Rebuild only when
   // its text changes (not when notes/bookmarks or cached analysis refresh).
   // A corrupted PGN is represented as an empty result, not a render-time throw.
@@ -303,7 +305,7 @@ function GameAnalyzerView() {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
-      if (document.querySelector('[data-practice-mode]')) return;
+      if (document.querySelector('[data-practice-mode], [data-practice-picker]')) return;
       const target = e.target instanceof Element ? e.target : null;
       // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
       // or a modal/command palette. Arrow/Home/End are native controls there.
@@ -367,7 +369,7 @@ function GameAnalyzerView() {
   const currentFen = variations.currentFen || pos?.fen || '';
   const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
-    if (practicePly !== null || !linesEnabled || !currentFen) return;
+    if (practicePly !== null || practicePicker || !linesEnabled || !currentFen) return;
     const controller = new AbortController();
     let cancelled = false;
     setLinesError(null);
@@ -393,7 +395,7 @@ function GameAnalyzerView() {
         });
     }, 400);
     return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
-  }, [linesEnabled, currentFen, linesRetry, practicePly]);
+  }, [linesEnabled, currentFen, linesRetry, practicePly, practicePicker]);
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
@@ -421,6 +423,9 @@ function GameAnalyzerView() {
   const move: AnalyzedMove | undefined = !isVariation && evaluatedMove?.uci === pos?.uci
     ? evaluatedMove : undefined;
   const startFen = positions[0]?.fen;
+  // A partially imported / still-running game is not an eligible blind drill.
+  const eligiblePractice = data.game.result && data.game.result !== '*' && data.game.result !== 'ongoing'
+    ? practiceCandidates(positions, analysis?.moves) : [];
   const reviewedMoveSide = moveSideForPly(ply, startFen);
   const userColor = data.game.user_color ?? 'white';
   // "Play from here" (in the move card): the position on the board, at any
@@ -523,17 +528,60 @@ function GameAnalyzerView() {
   if (practicePly !== null) {
     const selected = analysis?.moves[practicePly - 1];
     const saved = positions[practicePly];
-    if (selected && saved?.uci === selected.uci && selected.fen_before === positions[practicePly - 1]?.fen) {
-      return <MistakePractice key={`${gameId}:${practicePly}`} fenBefore={selected.fen_before}
-        orientation={moveSideForPly(practicePly, startFen)} onExit={() => { setPly(practicePly); setPracticePly(null); requestAnimationFrame(() => document.getElementById('learn-from-mistake')?.focus()); }} />;
+    if (eligiblePractice.some((candidate) => candidate.ply === practicePly)
+      && selected && saved?.uci === selected.uci && saved.fen === selected.fen_after
+      && selected.fen_before === positions[practicePly - 1]?.fen) {
+      return <MistakePractice key={`${gameId}:${practicePly}:${selected.fen_before}`} fenBefore={selected.fen_before}
+        orientation={moveSideForPly(practicePly, startFen)}
+        boardTheme={user?.profile.board_theme ?? 'green'}
+        exitLabel={practicePicker ? 'Back to practice choices' : 'Return to saved game'}
+        onExit={() => { setPly(practicePly); setPracticePly(null);
+          requestAnimationFrame(() => document.getElementById(practicePicker ? `practice-move-${practicePly}` : 'learn-from-mistake')?.focus()); }} />;
     }
     // A stale/corrupt analysis or a background refetch must not silently
     // drop blind mode and expose the original move or its engine hint.
     return <section role="alert" className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
       <h1 className="font-semibold">Practice position unavailable</h1>
       <p className="mt-2 text-sm">This move no longer matches the saved game analysis. Return to the game and refresh its analysis.</p>
-      <button type="button" className="btn-secondary mt-3" onClick={() => setPracticePly(null)}>Return to saved game</button>
+      <button type="button" className="btn-secondary mt-3" onClick={() => setPracticePly(null)}>
+        {practicePicker ? 'Back to practice choices' : 'Return to saved game'}
+      </button>
     </section>;
+  }
+
+  // This route is linked directly from the saved-game library. No chessboard,
+  // SAN, PV, engine arrow, move list or report is ever mounted before choosing
+  // a blind attempt, including during slow/stale engine analysis.
+  if (practicePicker) {
+    const openReview = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('practice');
+      setSearchParams(next, { replace: true });
+    };
+    return <main data-practice-picker="true" className="mx-auto w-full max-w-2xl space-y-4 rounded-xl bg-white p-4 shadow-soft dark:bg-chesscom-800 sm:p-6">
+      <Link to="/review" className="btn-ghost text-sm"><ChevronLeft className="h-4 w-4" />Back to saved games</Link>
+      <h1 className="text-xl font-bold">Practice without spoilers</h1>
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+        Pick a moment to retry. The original move, engine answer and evaluation remain hidden until after your attempt.
+      </p>
+      {eligiblePractice.length > 0 ? (
+        <div className="grid gap-2 sm:grid-cols-2" aria-label="Mistakes to practice">
+          {eligiblePractice.map((candidate, index) => (
+            <button key={candidate.ply} type="button" id={`practice-move-${candidate.ply}`}
+              className="min-h-12 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-3 text-left text-sm font-medium hover:border-gold-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900"
+              onClick={() => setPracticePly(candidate.ply)}>
+              Practice moment {index + 1} · {candidate.side === 'white' ? 'White' : 'Black'} move {candidate.moveNumber}
+              <span className="block text-xs font-normal text-chesscom-500">Answer hidden</span>
+            </button>
+          ))}
+        </div>
+      ) : <p role="status" className="rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
+        {analyzing || (data.analysis && !analysis && !analysisError)
+          ? 'Preparing analyzed mistakes…'
+          : 'No practice-ready mistakes are available for this saved game. You can open the full review to analyze it.'}
+      </p>}
+      <button type="button" className="btn-secondary min-h-11" onClick={openReview}>Open full game review (reveals answers)</button>
+    </main>;
   }
 
   const eco = analysis?.opening_eco ?? data.game.eco ?? null;
@@ -737,11 +785,11 @@ function GameAnalyzerView() {
                       <button onClick={() => setPick(null)} className="btn-ghost p-1" title={t('common.close', { defaultValue: 'Close' })}><X className="h-4 w-4" /></button>
                     </div>
                   )}
-                  {tab === 'moves' && move && ['blunder', 'mistake', 'inaccuracy', 'miss'].includes(move.classification) && (
+                  {tab === 'moves' && move && eligiblePractice.some((candidate) => candidate.ply === ply) && (
                     <div className="mb-3 rounded-lg border border-gold-500/40 p-3">
-                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">Can you find a better move before seeing the engine's answer?</p>
+                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">Retry with hints hidden. For a first attempt without seeing the answer, choose Practice first from your saved games.</p>
                       <button type="button" className="btn-primary min-h-11 w-full"
-                        id="learn-from-mistake" onClick={() => setPracticePly(ply)}>Learn from this mistake — try blind</button>
+                        id="learn-from-mistake" onClick={() => setPracticePly(ply)}>Learn from this mistake — retry</button>
                     </div>
                   )}
                   {tab === 'moves' && move && (

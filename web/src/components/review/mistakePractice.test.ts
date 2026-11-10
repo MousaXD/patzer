@@ -7,6 +7,7 @@ const start = new Chess().fen();
 const attempt = createPracticeAttempt(start, 'e2e4')!;
 const quality = {
   source: 'variation', fen_before: start, fen_after: attempt.fenAfter, uci: 'e2e4',
+  san: 'e4', from: 'e2', to: 'e4', best_move_uci: 'e2e4',
   centipawn_loss: 0, win_pct_drop: 0, eval_before_cp: 10, eval_after_cp: 20,
   depth_before: 12, scoring_version: 9, classification: 'good',
   best_move_san: 'e4', best_pv: ['e4'], is_best: true,
@@ -17,6 +18,8 @@ describe('blind practice attempt boundary', () => {
     expect(createPracticeAttempt(start, 'e2e5')).toBeNull();
     expect(createPracticeAttempt(start, 'e7e5')).toBeNull();
     expect(attempt.san).toBe('e4');
+    expect(createPracticeAttempt(start, 'e4')).toEqual(attempt);
+    expect(createPracticeAttempt(start, 'Nf3')?.uci).toBe('g1f3');
     expect(attempt.fenBefore).toBe(start);
     expect(start).toBe(new Chess().fen());
     expect(createPracticeAttempt('8/8/8/8/8/8/8/K6k b - - 0 12', 'h1h2')?.san).toBe('Kh2');
@@ -27,6 +30,12 @@ describe('blind practice attempt boundary', () => {
     expect(verifiedPracticeQuality({ ...quality, fen_after: start }, attempt)).toBeNull();
     expect(verifiedPracticeQuality({ ...quality, uci: 'd2d4' }, attempt)).toBeNull();
     expect(verifiedPracticeQuality({ ...quality, win_pct_drop: NaN }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, san: 'd4' }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, best_move_uci: 'e7e5' }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, best_move_san: 'Qh5' }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, best_pv: ['e4', 'Qh5'] }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, best_move_uci: 'd2d4', best_move_san: 'd4' }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, depth_before: 2.5 }, attempt)).toBeNull();
     expect(verifiedPracticeQuality(null, attempt)).toBeNull();
   });
 });

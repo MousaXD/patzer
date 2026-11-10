@@ -370,6 +370,13 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
           </span>
         )}
       </Link>
+      {g.analyzed && g.end_time && g.result !== '*' && g.result !== 'ongoing' ? (
+        <Link to={`/review/${g.id}?practice=1`}
+          aria-label={`Practice mistakes in ${g.white} versus ${g.black} without spoilers`}
+          className="btn-secondary min-h-11 shrink-0 px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 sm:px-3">
+          Practice first
+        </Link>
+      ) : null}
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); star.mutate(!isStarred); }}
         title={isStarred ? t('review.unstar', { defaultValue: 'Remove bookmark' }) : t('review.star', { defaultValue: 'Bookmark game' })}
