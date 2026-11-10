@@ -39,7 +39,8 @@ type HistoryDeps = {
 
 function retryable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /(?:chesscom_(?:429|500|502|503|504)|timeout|network|fetch failed|ECONNRESET|ENOTFOUND)/i.test(message);
+  return /(?:chesscom_(?:408|425|429|500|502|503|504)|timeout|timed out|abort|network|fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT)/i.test(message) ||
+    (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'));
 }
 
 export async function retryChessCom<T>(
@@ -63,10 +64,17 @@ function gameResult(game: ChessComGame, color: 'white' | 'black' | null): 'win' 
 }
 
 function gameRow(game: ChessComGame, username: string) {
-  if (game.rules !== 'chess' || !game.pgn?.trim() || !game.url?.startsWith('https://www.chess.com/') || !Number.isFinite(game.end_time)) return null;
+  // Chess.com payloads are not runtime-typed. Skip corrupt entries instead
+  // of rolling back an entire monthly import transaction.
+  if (!game || game.rules !== 'chess' || typeof game.pgn !== 'string' ||
+      !game.pgn.trim() || game.pgn.length > 1_000_000 ||
+      typeof game.url !== 'string' || !game.url.startsWith('https://www.chess.com/') ||
+      !Number.isFinite(game.end_time)) return null;
+  const endDate = new Date(game.end_time * 1000);
+  if (!Number.isFinite(endDate.getTime())) return null;
   const white = game.white?.username;
   const black = game.black?.username;
-  if (!white || !black) return null;
+  if (typeof white !== 'string' || typeof black !== 'string' || !white || !black) return null;
   const lc = username.toLowerCase();
   const userColor: 'white' | 'black' | null = white.toLowerCase() === lc ? 'white' : black.toLowerCase() === lc ? 'black' : null;
   if (!userColor) return null;
@@ -82,7 +90,7 @@ function gameRow(game: ChessComGame, username: string) {
     result: gameResult(game, userColor),
     timeControl: game.time_control ?? null,
     timeClass: ['bullet', 'blitz', 'rapid', 'daily'].includes(game.time_class) ? game.time_class : null,
-    endTime: new Date(game.end_time * 1000).toISOString(),
+    endTime: endDate.toISOString(),
     userColor,
     eco,
     openingName,
@@ -106,13 +114,18 @@ export async function importChessComHistory(
   const archives = await retryChessCom(() => (deps.archives ?? listArchives)(username), delay);
   if (!archives.length) throw new Error('no_archives');
   // Source URLs must be authentic even when an injected client is used.
-  const safeArchives = archives.map((url) => {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.host !== 'api.chess.com' || !/^\/pub\/player\/[A-Za-z0-9_-]+\/games\/\d{4}\/\d{2}$/.test(parsed.pathname)) {
+  const safeArchives = [...new Set(archives.map((url) => {
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { throw new Error('invalid_archive_url'); }
+    const match = /^\/pub\/player\/([A-Za-z0-9_-]+)\/games\/(\d{4})\/(\d{2})$/.exec(parsed.pathname);
+    if (parsed.protocol !== 'https:' || parsed.host !== 'api.chess.com' ||
+        parsed.username || parsed.password || parsed.search || parsed.hash ||
+        !match || match[1]!.toLowerCase() !== username.toLowerCase() ||
+        Number(match[3]) < 1 || Number(match[3]) > 12) {
       throw new Error('invalid_archive_url');
     }
     return url;
-  });
+  }))];
   const result: HistoryResult = {
     archives: safeArchives.length, completed: 0, gamesFetched: 0, imported: 0,
     duplicates: 0, skippedNonStandardOrInvalid: 0,
