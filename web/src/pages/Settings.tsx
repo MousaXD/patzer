@@ -17,6 +17,8 @@ export default function Settings() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [audioTheme, setTheme] = useState<AudioTheme>(() => getAudioTheme());
   const [volume, setVolume] = useState(() => getAudioVolume());
   const [audioWarning, setAudioWarning] = useState(false);
@@ -31,17 +33,29 @@ export default function Settings() {
     setVolume(getAudioVolume());
   }, [user]);
   useEffect(() => onVoicesReady(() => setVoices(getVoices())), []);
+  useEffect(() => {
+    if (!dirty) return;
+    const preventLoss = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', preventLoss);
+    return () => window.removeEventListener('beforeunload', preventLoss);
+  }, [dirty]);
 
   if (!form) return null;
 
   function set<K extends keyof Profile>(k: K, v: Profile[K]) {
     setForm((f) => f ? { ...f, [k]: v } : f);
-    setSaved(false); setDirty(true);
+    setSaved(false); setDirty(true); setSaveError(null);
   }
 
   async function save() {
-    if (!form) return;
-    await api.patch('/api/settings/profile', {
+    if (!form || saving || !dirty) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.patch('/api/settings/profile', {
       display_name: form.display_name,
       avatar_emoji: form.avatar_emoji,
       language: form.language,
@@ -62,10 +76,17 @@ export default function Settings() {
       blunder_warning: !!form.blunder_warning,
       kid_piece_emotions: !!form.kid_piece_emotions,
     });
-    await i18n.changeLanguage(form.language);
-    await refresh();
-    setSaved(true); setDirty(false);
-    setTimeout(() => setSaved(false), 1800);
+      await i18n.changeLanguage(form.language);
+      await refresh();
+      setSaved(true);
+      setDirty(false);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch {
+      // Keep the draft and Save enabled; never report success on a failed PATCH.
+      setSaveError(t('settings.saveFailed', { defaultValue: 'Unable to save settings. Check your connection and try again.' }));
+    } finally {
+      setSaving(false);
+    }
   }
 
   const langVoices = voices.filter((v) => v.lang.toLowerCase().startsWith(form.language));
@@ -130,7 +151,7 @@ export default function Settings() {
             <label className="label mb-1 block">{t('settings.avatar')}</label>
             <div className="flex flex-wrap gap-1">
               {EMOJIS.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => set('avatar_emoji', emoji)}
+                <button key={emoji} type="button" onClick={() => set('avatar_emoji', emoji)} aria-pressed={form.avatar_emoji === emoji} aria-label={`Avatar ${emoji}`}
                   className={`flex h-10 w-10 items-center justify-center rounded-lg text-xl transition-colors
                     ${form.avatar_emoji === emoji ? 'bg-ink-900 text-cream ring-2 ring-accent-500/30 dark:bg-cream dark:text-ink-900' : 'hover:bg-ink-100 dark:hover:bg-ink-800'}`}>
                   {emoji}
@@ -386,12 +407,14 @@ export default function Settings() {
       <div className="sticky bottom-0 -mx-4 mt-4 border-t border-ink-200 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:rounded-b-2xl dark:border-ink-700 dark:bg-ink-900/95"
            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div className="text-sm text-ink-500" aria-live="polite">
-            {saved ? <span className="inline-flex items-center gap-1 text-accent-600"><Check className="h-4 w-4" />{t('settings.saved')}</span>
+          <div className="min-w-0 pr-3 text-sm text-ink-500" aria-live="polite" aria-atomic="true">
+            {saveError ? <span role="alert" className="text-bad">{saveError}</span>
+              : saving ? t('settings.saving', { defaultValue: 'Saving settings…' })
+              : saved ? <span className="inline-flex items-center gap-1 text-accent-600"><Check className="h-4 w-4" />{t('settings.saved')}</span>
               : dirty ? t('settings.unsaved') : t('settings.noChanges')}
           </div>
-          <button onClick={save} disabled={!dirty} className="btn-primary">
-            <Save className="h-4 w-4" /> {t('common.save')}
+          <button type="button" onClick={() => void save()} disabled={!dirty || saving} className="btn-primary min-h-11 shrink-0">
+            <Save className="h-4 w-4" /> {saving ? t('settings.saving', { defaultValue: 'Saving…' }) : t('common.save')}
           </button>
         </div>
       </div>
@@ -413,7 +436,7 @@ function MoodPreview({ moodClass, glyph, title, desc }: { moodClass: string; gly
 
 function SiteThemeOption({ value, selected, onPick, label }: { value: SiteTheme; selected: boolean; onPick: () => void; label: string }) {
   return (
-    <button type="button" onClick={onPick}
+    <button type="button" onClick={onPick} aria-pressed={selected}
       className={`group relative overflow-hidden rounded-xl border p-2 text-xs font-medium transition-all
         ${selected ? 'border-ink-900 ring-2 ring-accent-500/30 dark:border-cream' : 'border-ink-200 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-600'}`}>
       <div className="relative h-16 overflow-hidden rounded-lg">
@@ -449,7 +472,7 @@ function BoardThemeOption({ value, selected, onPick, label }: { value: BoardThem
     blue:  { l: '#dee3e6', d: '#788a94' },
   }[value];
   return (
-    <button type="button" onClick={onPick}
+    <button type="button" onClick={onPick} aria-pressed={selected}
       className={`group relative overflow-hidden rounded-xl border p-2 text-xs font-medium transition-all
         ${selected ? 'border-ink-900 ring-2 ring-accent-500/30 dark:border-cream' : 'border-ink-200 hover:border-ink-300 dark:border-ink-700 dark:hover:border-ink-600'}`}>
       <div className="relative">
