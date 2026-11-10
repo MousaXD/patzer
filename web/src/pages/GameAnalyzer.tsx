@@ -8,7 +8,7 @@ import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
 import { visibleEngineLines, bestMoveForDisplayedBoard } from '../components/review/reviewPosition';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
-import { decodeStoredReviewJson } from '../components/review/storedReview';
+import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
@@ -106,7 +106,7 @@ export default function GameAnalyzer() {
     () => data?.analysis ? decodeStoredReviewJson(data.analysis) : null,
     [data?.analysis],
   );
-  const cachedAnalysisInvalid = Boolean(data?.analysis && !decodedStoredReview);
+  const cachedAnalysisInvalid = needsFreshReviewAnalysis(data?.analysis, decodedStoredReview);
 
   useEffect(() => {
     if (!data) return;
