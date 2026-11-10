@@ -33,6 +33,8 @@ No merge, rebase, deployment, dependency installation, backend edit or user-data
 - web/src/components/Layout.tsx
 - web/src/pages/Review.library.test.tsx (new)
 - web/src/pages/Insights.states.test.tsx (new)
+- web/src/pages/Settings.persistence.test.tsx (new; continuation)
+- web/src/pages/Home.stats.test.tsx (new; continuation)
 - web/src/components/navigation/Layout.navigation.test.tsx (expanded)
 - docs/agent-handoffs/product-ui.md (this file)
 
@@ -52,4 +54,28 @@ Global CSS was audited. Baseline already has local font assets, light/dark token
 1. **Backend owner: real pagination for 1,000+ games.** Extend GET /api/games with stable cursor or offset pagination applied after user, search and bookmark filters. Preserve deterministic order by end_time DESC NULLS LAST, id DESC. Expose next_cursor/has_more and total; add database integration tests. The frontend intentionally cannot show result 201 without a narrower server-side search until this contract exists.
 2. **Agent 00: integration.** Preserve GameAnalyzer/review-only ownership when integrating these shared pages. This branch does not edit any backend, analysis, database or other agent files.
 3. **QA: mobile and browser verification.** Exercise 320, 375, 768 and 1280px widths, light/dark, touch keyboard interactions, Settings PATCH failure, Insights charts and large-library filters. Existing CI browsers may not visit every new state.
-4. **Nonblocking next work.** Expand Settings persistence tests for server validation and network reconnection; consider result/time-class server filters; continue Play mobile ergonomics using real bot/PvP sessions before making live gameplay changes.
+4. **Nonblocking next work.** Exercise Settings server validation (HTTP 400) and offline/online recovery in a real browser, consider result/time-class server filters, and continue Play mobile ergonomics using real bot/PvP sessions before making live gameplay changes.
+
+
+## Remote continuation — 2026-11-10
+
+**Latest source-code and test commit:** `ae7c2679da54a265a66c28caadf4568603254e7a` on the same `agent/product-ui-20261110` branch. The final handoff documentation commit necessarily advances the branch tip; review draft PR #11 for the latest tip SHA.
+
+Changes made after the original `0cc6d87bdc9b27d7db21bc4d5bd269cc3fa538ed` handoff:
+
+- **Settings save consistency:** Record a revision for each form edit. A PATCH persists a snapshot; its successful response updates the authenticated user's profile without an additional fallible refresh. If the player edits during the request, keep their newer draft, leave Save enabled, and allow a follow-up save. External profile updates no longer silently replace dirty drafts for the same account. Account switching still resets the form. A browser language-application rejection is separate from server persistence success.
+- **Settings regression tests:** New `Settings.persistence.test.tsx` covers editing during a pending PATCH, blocking duplicate submits, saving the newer edit afterward, offline PATCH rejection/retry, unsuccessful language activation after a successful save, and external auth refresh without draft loss.
+- **Home statistics failures:** Stats fetch errors now render a readable retry control in the hero rather than falling through to the no-games tagline. New `Home.stats.test.tsx` asserts failure then recovery through Retry.
+
+### Exact-head verification and release gates
+
+- At the earlier fully exercised commit `2fe7b4e14357a369546acbf20d3e751c7fa4405d`, GitHub CI, Frontend Overhaul QA, and design-system certification were successful.
+- At `0cc6d87bdc9b27d7db21bc4d5bd269cc3fa538ed`, Frontend Overhaul QA and design-system certification succeeded; CI was still queued at the last check.
+- After the continuation changes, the GitHub Actions API had not yet reported workflows for the newest source SHA `ae7c2679da54a265a66c28caadf4568603254e7a`. The continuation's new tests, typecheck and build are therefore **not yet independently certified**. Do not substitute earlier green checks for exact-head validation.
+- The branch is committed through the GitHub connector, with no local worktree, package installation, local npm runs, browser screenshots or production access. No backend, analysis, main, deployment, or other agents' files were changed.
+
+### Outstanding integration requirements
+
+- **Backend owner:** Implement true stable cursor/offset pagination beyond the current 200-record API limit. The frontend cannot provide older arbitrary rows until that API contract lands.
+- **Agent 00:** Integrate shared Home/Review/Insights/Settings/Play/Layout changes only after exact-HEAD tests and conflicts with the independent review/analysis agent are reviewed; do not automatically merge another agent's files.
+- **QA:** Run GitHub CI and all relevant UI gates on the final branch SHA. Include 320px/375px touch layouts, dark/light, keyboard/reader interaction, authenticated Settings saves (including concurrent edits) and deep-library searches.
