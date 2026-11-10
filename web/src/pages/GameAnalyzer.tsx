@@ -101,11 +101,19 @@ export default function GameAnalyzer() {
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  // Replaying a PGN is work proportional to game length. Rebuild only when
+  // its text changes (not when notes/bookmarks or cached analysis refresh).
+  // A corrupted PGN is represented as an empty result, not a render-time throw.
+  const positions = useMemo(
+    () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
+    [data?.game.pgn],
+  );
+
   // Decode at most once per fetched analysis record, and use the same verdict
   // for both rendering and deciding whether a retry may safely use cache.
   const decodedStoredReview = useMemo(
-    () => data?.analysis ? decodeStoredReviewJson(data.analysis) : null,
-    [data?.analysis],
+    () => data?.analysis ? decodeStoredReviewJson(data.analysis, positions) : null,
+    [data?.analysis, positions],
   );
   const cachedAnalysisInvalid = needsFreshReviewAnalysis(data?.analysis, decodedStoredReview);
 
@@ -164,14 +172,6 @@ export default function GameAnalyzer() {
       .then((s) => setCoachConfigured(s.configured))
       .catch(() => setCoachConfigured(false));
   }, []);
-
-  // Replaying a PGN is work proportional to game length. Rebuild only when
-  // its text changes (not when notes/bookmarks or cached analysis refresh).
-  // A corrupted PGN is represented as an empty result, not a render-time throw.
-  const positions = useMemo(
-    () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
-    [data?.game.pgn],
-  );
 
   // Read initial ?ply= from the URL so deep-links to a specific position
   // open at that move on first render. After that we keep them in sync.
