@@ -67,7 +67,7 @@ export default function GameAnalyzer() {
   const queryClient = useQueryClient();
   const gameId = Number(id);
 
-  const { data, refetch, isLoading } = useQuery({
+  const { data, refetch, isLoading, isError, error: loadError } = useQuery({
     queryKey: ['game', gameId],
     queryFn: () => api.get<GameDetail>(`/api/games/${gameId}`),
     enabled: !!gameId,
@@ -253,7 +253,7 @@ export default function GameAnalyzer() {
   shortcutActions.current = { backward, forward, first, last, shareCurrentPosition };
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       const target = e.target instanceof Element ? e.target : null;
       // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
       // or a modal/command palette. Arrow/Home/End are native controls there.
@@ -321,7 +321,23 @@ export default function GameAnalyzer() {
     return () => { cancelled = true; window.clearTimeout(handle); };
   }, [linesEnabled, currentFen]);
 
-  if (isLoading || !data) return <AnalyzerSkeleton />;
+  if (isLoading) return <AnalyzerSkeleton />;
+  if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data) {
+    return (
+      <div role="alert" className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-white p-6 text-chesscom-900 shadow-soft dark:bg-chesscom-800 dark:text-chesscom-100">
+        <h1 className="text-lg font-semibold">Game Review unavailable</h1>
+        <p className="mt-2 text-sm text-chesscom-500">
+          {!Number.isSafeInteger(gameId) || gameId <= 0
+            ? 'The game link is invalid.'
+            : loadError instanceof Error ? loadError.message : 'This game could not be loaded.'}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {Number.isSafeInteger(gameId) && gameId > 0 && <button type="button" className="btn-primary" onClick={() => void refetch()}>Retry loading</button>}
+          <Link to="/review" className="btn-secondary">Back to games</Link>
+        </div>
+      </div>
+    );
+  }
 
   const move: AnalyzedMove | undefined = isVariation ? undefined : analysis?.moves[ply - 1];
   const userColor = data.game.user_color ?? 'white';
