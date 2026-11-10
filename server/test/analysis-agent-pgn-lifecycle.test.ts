@@ -180,6 +180,40 @@ describe('analysis-agent PGN lifecycle', () => {
     expect(fake.evaluateMulti).toHaveBeenCalledTimes(9);
   });
 
+  it('rejects missing final engine evidence after an unclaimed threefold repetition', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => {
+      if (fake.evaluateMulti.mock.calls.length === 9) {
+        return { cp: null, mate: null, bestMoveUci: null, pv: [], depth: 0, candidates: [] };
+      }
+      return { cp: 250, mate: null, bestMoveUci: 'g1f3', pv: ['g1f3'], depth: 16,
+        candidates: [{ cp: 250, mate: null, pv: ['g1f3'], multipv: 1 }] };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    // A third repetition may be claimed, but the game explicitly remains
+    // unfinished. No score is evidence of engine failure, NOT a 0cp draw.
+    const pgn = '1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 *';
+    await expect(analyzePgnFull(pgn, 16, perf)).rejects.toThrow('engine_invalid_score');
+    expect(fake.evaluateMulti).toHaveBeenCalledTimes(9);
+    expect(fake.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('never reinterprets a missing checkmate-terminal score as a drawn game', async () => {
+    const fake = fakeEngine();
+    fake.evaluateMulti.mockImplementation(async () => {
+      if (fake.evaluateMulti.mock.calls.length === 5) {
+        return { cp: null, mate: null, bestMoveUci: null, pv: [], depth: 0, candidates: [] };
+      }
+      return { cp: 25, mate: null, bestMoveUci: 'e2e4', pv: [], depth: 16,
+        candidates: [{ cp: 25, mate: null, pv: [], multipv: 1 }] };
+    });
+    mocks.createAnalysisEngine.mockReturnValue(fake.engine);
+    await expect(analyzePgnFull('1. f3 e5 2. g4 Qh4# 0-1', 16, perf))
+      .rejects.toThrow('engine_invalid_score');
+    expect(fake.evaluateMulti).toHaveBeenCalledTimes(5);
+    expect(fake.quit).toHaveBeenCalledTimes(1);
+  });
+
   it('honors a claimed 50-move-rule draw at the end of a custom-FEN game', async () => {
     const fake = fakeEngine();
     fake.evaluateMulti.mockImplementation(async () => ({

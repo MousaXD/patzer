@@ -209,7 +209,9 @@ router.post('/position', async (c) => {
       await engine.setOption('Threads', '2');
       await engine.setOption('Hash', '64');
       const result = await engine.evaluateMulti(fen, depth, lines);
-      if (!probe.isGameOver() && !validPositionScore(result)) throw new Error('engine_invalid_score');
+      // Terminal checkmates/stalemates must carry mate 0 / cp 0, not a blank
+      // score that the client could mistake for an evaluated 0.00 position.
+      if (!validPositionScore(result)) throw new Error('engine_invalid_score');
       // Build the response: convert UCI → SAN by replaying the PV against a
       // fresh Chess for each candidate. Cap PV at 8 plies — beyond that the
       // engine's projection is noisy and the payload bloats.
@@ -372,7 +374,10 @@ export async function analyzePgnFull(
   // Pre-evaluate starting position with MultiPV=3 so we can detect "Great"
   // (only-good-move) and gap-aware "Brilliant" via the second-best candidate.
   let prevEval = await engine.evaluateMulti(replay.fen(), depth, 3);
-  if (!replay.isGameOver() && !validPositionScore(prevEval)) throw new Error('engine_invalid_score');
+  // isGameOver() also includes claimable repetition/50-move positions; it
+  // does not authorize inventing 0cp when an engine returns no evaluation.
+  // True terminals must supply a factual cp 0 or mate 0 as well.
+  if (!validPositionScore(prevEval)) throw new Error('engine_invalid_score');
   // Depth each search actually reached. The local engine always reaches the
   // requested depth; a time-capped remote one (chess-api.com) stops short.
   const reachedDepths: number[] = [prevEval.depth];
@@ -444,7 +449,7 @@ export async function analyzePgnFull(
     const nextEval = claimedDraw
       ? { cp: 0, mate: null, bestMoveUci: null, pv: [], depth: 0, candidates: [] }
       : await engine.evaluateMulti(fenAfter, depth, 3);
-    if (!replay.isGameOver() && !validPositionScore(nextEval)) throw new Error('engine_invalid_score');
+    if (!validPositionScore(nextEval)) throw new Error('engine_invalid_score');
     reachedDepths.push(nextEval.depth);
     const nextWhiteCp = normalizeEval(nextEval.cp, nextEval.mate, replay.turn());
 
