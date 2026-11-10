@@ -277,7 +277,7 @@ router.post('/variation-move', async (c) => {
   if (signal.aborted) return c.json({ error: 'analysis_cancelled' }, 503);
   const release = engineSlots.tryAcquire();
   if (!release) return c.json({ error: 'engine_busy' }, 429);
-  let removeAbort = () => undefined;
+  let removeAbort: () => void = () => {};
   const work = scoreVariationMove(parsed.data, () => {
     const engine = createAnalysisEngine();
     // The scorer still owns the final quit and the 30-second timeout. This
