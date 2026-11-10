@@ -174,3 +174,25 @@ npm run build
 **Next verifiable step:** obtain successful statuses and logs for the latest head's full unit tests, TypeScript, production build, Chromium QA and theme certification. Do not infer success from the eliminated test failure or the previous 608 passes. The independent QA owner should also verify the installed app and review workflows; other agents own backend contracts and shared design-system CSS.
 
 The branch remains `agent/review-experience-20261110`, PR #13 remains **draft**, and no main-branch edit, deployment, merge, database access or out-of-scope source change was made.
+
+
+## Continuation — nested AI report payload safety (2026-11-10)
+
+The assigned local worktree remains unavailable, so all work again used the existing remote `agent/review-experience-20261110` branch via the connected GitHub repository action. The existing draft PR #13 and handoff were read before changing source. Neither main nor another agent's file ownership was modified.
+
+### Production fix and regression coverage
+
+- **Source commit:** `4f2e94df8d3641e38f2ef81b6d7846c8bd9d1acc` (`web/src/components/review/reviewStream.ts`). The previous streamed `done` guard checked only top-level keys and allowed malformed nested phases and key moments. GameReportPanel subsequently calls `phase.accuracy.toFixed()` and reads each `moment.ply`, which can throw on a malformed streamed payload. The guard now validates non-null phase objects, numeric finite accuracy and prose, optional opening content, and each key-moment object before treating the stream as successfully completed.
+- **Test commit:** `e2394851d1f8b2a13ff2bd2de906f2e55dbb6095` (`web/src/components/review/reviewStream.test.ts`). Regression assertions cover valid minimal and phase/moment-bearing reviews, invalid phase accuracy, null key moments, and malformed opening prose.
+- Both files are owned review-specific files and the fix does not alter server API behavior, other agents' branches, shared CSS or global components.
+
+### Exact verification
+
+- The prior explicit test-cleanup fix remains `d0c26c0625c598cec7ffac967c30a5274de2ffba`; no repeated changes were made to that test.
+- At last lookup the **exact source commit** `e2394851d1f8b2a13ff2bd2de906f2e55dbb6095` had newly queued GitHub workflows: Frontend Overhaul QA `42870763222`, CI `42870763327`, design-system certification `42870763419`. Their conclusion was **not available**; do not claim success.
+- The earlier source HEAD `f8a3c27cefcd194295fbe746cb23ae44fb8721c4` also still showed queued jobs when checked.
+- Local typecheck, full unit tests, builds and manual browser checks remain **unrun** because the exact assigned worktree path is absent in this session. Tests are committed and awaiting GitHub Actions.
+
+### Remaining dependencies
+
+Independent QA must confirm the final exact-head typecheck, full Vitest suite, browser regression and theme checks. Backend ownership must confirm forced analysis cache repair, SSE completion semantics and Black-first imported-game scoring. The PR must remain **draft, unmerged and undeployed** until those acceptance gates are actually green.
