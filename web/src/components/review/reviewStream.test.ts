@@ -27,8 +27,24 @@ describe('Game Review AI stream framing', () => {
   it('requires an actual review rather than trusting any done message', () => {
     expect(isCompleteReviewPayload({ review: {} })).toBe(false);
     expect(isCompleteReviewPayload({ review: null })).toBe(false);
+    const minimal = { summary: 'Summary', skill_assessment: '', phases: {}, key_moments: [] };
+    expect(isCompleteReviewPayload({ review: minimal })).toBe(true);
+    // Bad nested shapes previously passed the guard and could throw inside
+    // GameReportPanel's accuracy.toFixed() and key-moment rendering.
     expect(isCompleteReviewPayload({ review: {
-      summary: 'Summary', skill_assessment: '', phases: {}, key_moments: [],
+      ...minimal, phases: { opening: { accuracy: null, prose: 'opening' } },
+    } })).toBe(false);
+    expect(isCompleteReviewPayload({ review: {
+      ...minimal, phases: { opening: { accuracy: 85.5, prose: 'Good opening' } },
     } })).toBe(true);
+    expect(isCompleteReviewPayload({ review: {
+      ...minimal, key_moments: [null],
+    } })).toBe(false);
+    expect(isCompleteReviewPayload({ review: {
+      ...minimal, key_moments: [{ ply: 2, title: 'A key moment', prose: 'Explained' }],
+    } })).toBe(true);
+    expect(isCompleteReviewPayload({ review: {
+      ...minimal, opening: { name: 'Invalid opening', prose: 123 },
+    } })).toBe(false);
   });
 });
