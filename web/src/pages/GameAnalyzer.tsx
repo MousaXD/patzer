@@ -696,22 +696,6 @@ export default function GameAnalyzer() {
                 </div>
               </div>
 
-              <GameReportCard
-                whiteName={data.game.white}
-                blackName={data.game.black}
-                accuracyW={analysis.accuracy_white}
-                accuracyB={analysis.accuracy_black}
-                eloW={analysis.estimated_elo_white}
-                eloB={analysis.estimated_elo_black}
-                perfW={analysis.performance_white}
-                perfB={analysis.performance_black}
-                moves={analysis.moves}
-                phaseSplit={analysis.phase_split}
-                userColor={userColor}
-                onPick={onPick}
-                picked={pick}
-              />
-
               {showDepthControl && (
                 <div className="card p-4">
                   <div className="mb-2 flex items-center justify-between">
@@ -746,11 +730,27 @@ export default function GameAnalyzer() {
                 lines={freshLines}
                 loading={linesLoading}
                 error={linesError}
-                 onRetry={() => setLinesRetry((n) => n + 1)}
+                onRetry={() => setLinesRetry((n) => n + 1)}
                 playedUci={!isVariation ? positions[ply + 1]?.uci ?? null : null}
                 onAdvance={forward}
                 onTryMove={onAnalysisMove}
                 onHover={setLinesHover}
+              />
+
+              <GameReportCard
+                whiteName={data.game.white}
+                blackName={data.game.black}
+                accuracyW={analysis.accuracy_white}
+                accuracyB={analysis.accuracy_black}
+                eloW={analysis.estimated_elo_white}
+                eloB={analysis.estimated_elo_black}
+                perfW={analysis.performance_white}
+                perfB={analysis.performance_black}
+                moves={analysis.moves}
+                phaseSplit={analysis.phase_split}
+                userColor={userColor}
+                onPick={onPick}
+                picked={pick}
               />
 
               <ThreatPanel fen={currentFen} currentCpWhite={currentEvalCp} />
