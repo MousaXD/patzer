@@ -27,7 +27,7 @@
 
 Files: `server/src/routes/games.ts`, `server/src/routes/platformQueries.ts`.
 
-- Added strict integer input parsing: `limit` defaults to 50 and caps at 200; `offset` defaults to 0 and caps at 1,000,000. Negative, zero, fractional and non-numeric limits return `400 { "error": "invalid_input" }`; unsupported filters are rejected.
+- Added strict integer input parsing: `limit` defaults to 50 and caps at 200; `offset` defaults to 0 and caps at 1,000,000. Negative, fractional and non-numeric limits return `400 { "error": "invalid_input" }`; `limit=0` retains the pre-existing count-only behavior (no game rows). Unsupported filters are rejected.
 - Added `offset`, `sort=newest|oldest`, `source=chesscom|lichess|played|imported|pvp`, `time_class=bullet|blitz|rapid|daily`, `result=win|draw|loss` and `analyzed=0|1` filters. `analyzed` follows the **current** scoring version, including stale-analysis detection.
 - Preserved `games` and `total` response fields. Added `limit`, `offset` and `has_more`, all additive.
 - Replaced wildcard substring search with literal `instr(LOWER(...), ?)` predicates for the user-scoped scan. Search length is capped at 120 code units. SQL values remain bound; ORDER BY is selected from two fixed SQL constants.
@@ -79,7 +79,7 @@ Clients currently consuming `games` and `total` require no changes. For actual p
 
 ### Automated tests added (not executed in this runtime)
 
-- `server/test/platform-backend.test.ts`: **1,200** synthetic owned games plus **55** games for a second user in an isolated temporary test database. Covers first, last, empty and oldest-sorted pages, 200-row cap, invalid and non-finite query values, structured filters, stale-vs-current analysis, literal percent search, 401/404 ownership boundaries, and Insights coverage.
+- `server/test/platform-backend.test.ts`: **1,200** synthetic owned games plus **55** games for a second user in an isolated temporary test database. Covers first, last, empty, count-only and oldest-sorted pages, 200-row cap, invalid and non-finite query values, structured filters, stale-vs-current analysis, literal percent search, 401/404 ownership boundaries, and Insights coverage.
 - `server/test/chesscom-history.test.ts`: added cross-account/query/invalid-month archive rejection, archive deduplication, invalid date isolation, and transient HTTP/timeout retry cases.
 - New pure decoder test cases verify invalid cached move JSON and phase JSON are handled without throwing.
 
