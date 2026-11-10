@@ -200,7 +200,11 @@ router.post('/position', async (c) => {
 
   const work = (async () => {
     const engine = createAnalysisEngine();
+    const signal = c.req.raw.signal;
+    const onAbort = () => { void engine.quit().catch(() => undefined); };
+    signal.addEventListener('abort', onAbort, { once: true });
     try {
+      if (signal.aborted) throw new Error('analysis_cancelled');
       await engine.start();
       await engine.setOption('Threads', '2');
       await engine.setOption('Hash', '64');
@@ -238,6 +242,7 @@ router.post('/position', async (c) => {
         lines: linesOut,
       } satisfies PositionResult;
     } finally {
+      signal.removeEventListener('abort', onAbort);
       await engine.quit();
     }
   })();
