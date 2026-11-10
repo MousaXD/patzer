@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { CheckCircle2, AlertCircle, Save, Sparkles, Cpu, Loader2, FlaskConical, Mail, UserPlus, Send } from 'lucide-react';
 import { api } from '../../api';
+import AppUpdates from '../../components/admin/AppUpdates';
 
 interface SysSettings {
   llm_provider?: 'ollama' | 'vllm' | 'deepseek';
@@ -248,6 +249,8 @@ export default function AdminSystem() {
         <p className="mt-1 text-sm text-ink-500">{t('admin.system_intro')}</p>
       </header>
 
+      <AppUpdates />
+
       <section className="card overflow-hidden">
         <div className="flex items-center gap-3 border-b border-ink-100 bg-ink-50/60 px-5 py-3 dark:border-ink-700 dark:bg-ink-900/40">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-500/15 text-accent-600">
@@ -425,8 +428,8 @@ export default function AdminSystem() {
         </div>
         <div className="space-y-4 p-5">
           <ToggleRow checked={mail.update_check_enabled} onChange={(v) => setMail({ ...mail, update_check_enabled: v })}
-            label={t('update.checkTitle', { defaultValue: 'Check for updates' })}
-            hint={t('update.checkHelp', { defaultValue: 'Once every six hours, Patzer asks GitHub whether a newer release exists.' })} />
+            label={t('admin.upstreamReleaseNotifications', { defaultValue: 'Upstream release notifications' })}
+            hint={t('admin.upstreamReleaseNotificationsHelp', { defaultValue: 'Checks upstream Patzer releases separately from your local GitHub deployment updates.' })} />
           <fieldset>
             <legend className="text-sm font-medium">{t('admin.signupMode')}</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">

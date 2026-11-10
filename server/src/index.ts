@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import settingsRoutes from './routes/settings.js';
 import adminRoutes from './routes/admin.js';
 import mcpRoutes from './routes/mcp.js';
+import localUpdatesRoutes from './routes/localUpdates.js';
 import gamesRoutes from './routes/games.js';
 import analyzeRoutes from './routes/analyze.js';
 import coachRoutes from './routes/coach.js';
@@ -95,6 +96,7 @@ app.route('/api/auth', authRoutes);
 app.route('/api/settings', settingsRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/admin/mcp', mcpRoutes);
+app.route('/api/admin/local-updates', localUpdatesRoutes);
 app.route('/api/games', gamesRoutes);
 // Game Review (AI prose) lives under /api/games/:id/review — mount the review
 // router on the same prefix so it shares URL space.
