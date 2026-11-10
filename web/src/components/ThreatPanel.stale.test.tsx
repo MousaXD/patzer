@@ -35,6 +35,12 @@ describe('Game Review threat response ownership', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(420); });
     expect(screen.getByText('d4')).toBeTruthy();
 
+    // Re-evaluating the same board at a different score also invalidates
+    // the old threat description before the replacement response arrives.
+    view.rerender(<ThreatPanel fen={previousFen} currentCpWhite={80} />);
+    expect(screen.queryByText('d4')).toBeNull();
+    expect(screen.getByText('fetching…')).toBeTruthy();
+
     chess.move('e5');
     view.rerender(<ThreatPanel fen={chess.fen()} currentCpWhite={20} />);
     expect(screen.queryByText('d4')).toBeNull();
