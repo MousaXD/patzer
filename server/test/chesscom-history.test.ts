@@ -155,6 +155,21 @@ describe('one-time Chess.com history', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({ n: 1 });
   });
 
+  it('skips unknown Chess.com results instead of counting them as losses', async () => {
+    const db = testDb();
+    const result = await importChessComHistory(db, 1, 'testuser', {
+      archives: async () => [archives[0]],
+      month: async () => [
+        sample(1, { white: { username: 'testuser', rating: 1000, result: 'future_result_code' } }),
+        sample(2),
+      ],
+      delay: async () => {},
+    });
+    expect(result).toMatchObject({ imported: 1, skippedNonStandardOrInvalid: 1 });
+    const saved = db.prepare('SELECT result FROM games').all() as { result: string }[];
+    expect(saved).toEqual([{ result: 'win' }]);
+  });
+
   it('retries network timeouts and transient HTTP 408 without swallowing permanent errors', async () => {
     const delays: number[] = [];
     let attempts = 0;
