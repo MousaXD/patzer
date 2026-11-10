@@ -70,6 +70,15 @@ describe('cached review analysis decoder', () => {
     });
   });
 
+  it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
+    const expected = [{}, { uci: 'e2e4' }, { uci: 'e7e5' }];
+    expect(decodeStoredReviewJson(valid, expected)?.moves).toEqual([move]);
+    const mismatch = [{}, { uci: 'd2d4' }];
+    expect(decodeStoredReviewJson(valid, mismatch)).toBeNull();
+    expect(decodeStoredReviewJson(valid, [{}])).toBeNull();
+    expect(needsFreshReviewAnalysis(valid, decodeStoredReviewJson(valid, mismatch))).toBe(true);
+  });
+
   it('handles cached records without optional moment/phase data', () => {
     const result = decodeStoredReviewJson({
       moves_json: JSON.stringify([move]),
