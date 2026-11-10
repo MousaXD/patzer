@@ -8,7 +8,8 @@
 
 import { db } from './db.js';
 import { llmConfigured } from './coach/llm.js';
-import { buildGameReview, REVIEW_PROSE_VERSION } from './coach/review.js';
+import { buildGameReview } from './coach/review.js';
+import { saveReviewIfFresh } from './coach/reviewCache.js';
 import { rowToAnalysis, type AnalysisRow } from './routes/analyze.js';
 import type { Audience, Language } from './types.js';
 
@@ -17,6 +18,8 @@ interface ReviewRow extends AnalysisRow {
   pgn: string;
   user_id: number;
   user_color: 'white' | 'black' | null;
+  scoring_version: number;
+  prose_json: string | null;
 }
 
 let running = false;
@@ -54,7 +57,8 @@ async function sweep(): Promise<void> {
            a.estimated_elo_white, a.estimated_elo_black,
            a.performance_white, a.performance_black,
            a.opening_eco, a.opening_name,
-           a.key_moments_json, a.phase_split_json, a.moves_json
+           a.key_moments_json, a.phase_split_json, a.moves_json,
+           a.scoring_version, a.prose_json
       FROM analyses a
       JOIN games g ON g.id = a.game_id
      WHERE a.prose_json IS NULL
@@ -77,10 +81,8 @@ async function sweep(): Promise<void> {
         userColor,
         userId: row.user_id,
       });
-      db.prepare(`
-        UPDATE analyses SET prose_json = ?, prose_version = ?, prose_lang = ?, prose_audience = ?
-        WHERE game_id = ?
-      `).run(JSON.stringify(review), REVIEW_PROSE_VERSION, language, audience, row.game_id);
+      const saved = saveReviewIfFresh(db, row.game_id, row, row, review, language, audience);
+      if (!saved) console.warn('[auto-review] discarded stale review for game', row.game_id);
     } catch (err) {
       // One bad game must not sink the sweep — log and move on. It'll be
       // retried the next time a game finishes (or on the next server start).

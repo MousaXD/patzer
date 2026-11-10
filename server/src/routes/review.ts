@@ -3,26 +3,16 @@ import { streamSSE } from 'hono/streaming';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { llmConfigured } from '../coach/llm.js';
-import { buildGameReview, isMarkedReviewScoringStale, reviewCacheKey, type GameReview, REVIEW_PROSE_VERSION } from '../coach/review.js';
+import { buildGameReview, isMarkedReviewScoringStale, reviewCacheKey, type GameReview } from '../coach/review.js';
+import { saveReviewIfFresh, type ReviewCacheSource } from '../coach/reviewCache.js';
 import type { AnalysisResult, AnalyzedMove, KeyMomentSummary, PhaseSplit } from '../types.js';
 
 const router = new Hono();
 router.use('*', requireAuth);
 
-interface AnalysisRow {
-  depth: number;
+interface AnalysisRow extends ReviewCacheSource {
   accuracy_white: number;
   accuracy_black: number;
-  estimated_elo_white: number | null;
-  estimated_elo_black: number | null;
-  performance_white: number | null;
-  performance_black: number | null;
-  opening_eco: string | null;
-  opening_name: string | null;
-  key_moments_json: string | null;
-  phase_split_json: string | null;
-  moves_json: string;
-  prose_json: string | null;
   prose_version: number;
   prose_lang: string | null;
   prose_audience: string | null;
@@ -79,7 +69,7 @@ router.post('/:id/review', async (c) => {
   const row = db.prepare(`SELECT depth, accuracy_white, accuracy_black,
     estimated_elo_white, estimated_elo_black, performance_white, performance_black,
     opening_eco, opening_name, key_moments_json, phase_split_json, moves_json,
-    prose_json, prose_version, prose_lang, prose_audience
+    prose_json, prose_version, prose_lang, prose_audience, scoring_version
     FROM analyses WHERE game_id = ?`).get(id) as AnalysisRow | undefined;
   if (!row) return c.json({ error: 'analysis_required' }, 409);
 
@@ -103,10 +93,11 @@ router.post('/:id/review', async (c) => {
         },
       });
       controller.signal.throwIfAborted();
-      // Cache to DB
-      db.prepare(`UPDATE analyses SET prose_json = ?, prose_version = ?, prose_lang = ?, prose_audience = ?
-                  WHERE game_id = ?`)
-        .run(JSON.stringify(review), REVIEW_PROSE_VERSION, language, audience, id);
+      // A re-analysis, score migration, game update or newer report may have
+      // arrived while the model was generating. Never overwrite its cache.
+      if (!saveReviewIfFresh(db, id, row, { ...game, user_id: user.id }, review, language, audience)) {
+        throw new Error('review_source_changed');
+      }
       await stream.writeSSE({ event: 'done', data: JSON.stringify({ review }) });
     } catch (err) {
       if (!controller.signal.aborted) {
