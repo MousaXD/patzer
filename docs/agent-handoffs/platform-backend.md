@@ -100,7 +100,7 @@ These results were **actually rerun during this continuation** with local Python
 ### GitHub Actions verification gate (continuation)
 
 - [Draft PR #14](https://github.com/MousaXD/patzer/pull/14) is open but unmerged and targets `main` only to trigger the repository's PR workflows. The target `main` was verified at starting commit `c8d9e1e00609c30779a3e86542f25f9454e1e911` during this continuation.
-- The CI and frontend QA workflow runs reported `queued` with null conclusions during the last check. **No GitHub Actions pass is claimed.** The final exact code commit `00e6ca0a846f2a8d50178432e18bb1848fd374c3` must receive fresh checks; older queued runs cannot certify it.
+- The CI and frontend QA workflow runs reported `queued` with null conclusions during the last check. **No GitHub Actions pass is claimed.** The final exact code commit `19e60ce9a838513f0c04db352a26394a97feeb7c` must receive fresh checks; older queued runs cannot certify it.
 - Required next commands in an authorized copy of the exact assigned worktree (or CI): `npm run typecheck`, `npm test -- server/test/platform-backend.test.ts server/test/platform-backend-scale.test.ts server/test/chesscom-history.test.ts server/test/insights-full-history.test.ts server/test/insights-move-quality.test.ts server/test/mcp-connection.test.ts`, `npm run build`. No new dependencies should be installed by this agent.
 - **Worktree blocker:** The original directory `/home/mousa/projects/my-creations/chess/patzer-agent-platform` does not exist in this execution container. Do not mistake GitHub connector writes for a successful local worktree checkout or local test run. No alternative worktree or branch was used.
 
@@ -125,8 +125,18 @@ These results were **actually rerun during this continuation** with local Python
 ## Continuation status and final-code SHA
 
 - Original starting point: `c8d9e1e00609c30779a3e86542f25f9454e1e911`; original continuation head: `d5b59e4cc4d9ef3a924a43a9eca9317fb8086159`.
-- **Final code/test commit:** `00e6ca0a846f2a8d50178432e18bb1848fd374c3`. This commits a new 20,000-game scale API regression suite. The handoff-only commit written after this SHA is an additional documentation commit; its own SHA cannot be embedded within itself.
+- **Final code/test commit as of this continuation:** `19e60ce9a838513f0c04db352a26394a97feeb7c`. This commits a new 20,000-game scale API regression suite. The handoff-only commit written after this SHA is an additional documentation commit; its own SHA cannot be embedded within itself.
 - Additional continuation improvements: empty-account `games_eligible=0` fix; third-user empty-account regression; Chess.com game URL true-host validation; lookalike URL regression; 20,000-game real API fixture tests awaiting CI.
+- **Third continuation:** the one-time history importer now recognizes explicit Chess.com loss/draw/win outcomes and refuses to count unknown or missing outcomes as losses; added a fixture regression with a made-up future outcome code. This preserves historical stats correctness even if Chess.com adds an outcome code. The automatic sync module is unchanged.
 - Actually executed checks: in-memory Python SQLite 10,500-row synthetic fixture with repeat measurements; see above. Not executed: TypeScript, Vitest, builds, browser tests and real MCP/systemd tests.
 - Integration dependency: coordinator must restore the original assigned worktree for local verification or authorize GitHub CI certification on [draft PR #14](https://github.com/MousaXD/patzer/pull/14); check conflicts with other agent branches **without merging them independently**. No changes to the latest-20-every-15-minutes auto-sync, schema, frontend or engine pipeline.
 - **Disposition: NOT MERGE READY.** Wait for exact-head CI results, resolve genuine regressions only in owned files, and obtain integration review. No live database or service was touched.
+
+## Third continuation — 2026-11-10
+
+- Verified original local worktree path is still missing: `/home/mousa/projects/my-creations/chess/patzer-agent-platform`. Container cwd was `/`; there was no local Git worktree or local package tree to build in. GitHub branch `agent/platform-backend-20261110` was confirmed at prior handoff commit `80a29b6cd2a0577b2eefbef5510a2d7d7cebc7ec` before new changes. No alternate worktree was substituted.
+- Reviewed this branch's games/Insights/history/MCP changes and existing handoff. `main` remained at the original base commit when checked.
+- **New changes:** `server/src/chess/chesscomHistory.ts` returns `null` for unrecognized/missing Chess.com outcomes instead of misleadingly treating them as losses, so those rows are skipped; `server/test/chesscom-history.test.ts` now pins that behavior with a synthetic future outcome code. No live history import was executed.
+- **Exact final code/test commit before this report:** `19e60ce9a838513f0c04db352a26394a97feeb7c` (the report-only commit is later; use branch HEAD for its SHA).
+- **CI status:** Draft [PR #14](https://github.com/MousaXD/patzer/pull/14) remains unmerged. GitHub Actions CI and frontend QA for preceding heads were still `queued`, without conclusions; latest code SHA had no published completed checks at last lookup. Other Patzer branches also had queued runs. Neither `npm run typecheck` nor Vitest/build could run without the missing worktree. **No tests were claimed passed** for these new commits.
+- **Coordinator follow-up:** verify CI on exact final head and restore the designated worktree for local checks if required; do not merge until all mandatory gates and cross-agent integration review pass. Nothing in `autoImport.ts`, `analyze.ts`, `stockfish.ts`, auth, database schema/migrations, frontend or secrets was changed.
