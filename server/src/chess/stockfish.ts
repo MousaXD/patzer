@@ -66,6 +66,9 @@ export class StockfishEngine {
   private deathHandlers = new Set<(err: Error) => void>();
   private readonly path: string;
   private ready = false;
+  // One UCI process has a single stdin/stdout command stream. Overlapping
+  // searches would consume the same bestmove and corrupt both results.
+  private searchActive = false;
   private static readonly SEARCH_TIMEOUT_MS = 120_000;
   private static readonly HANDSHAKE_TIMEOUT_MS = 10_000;
 
@@ -94,7 +97,9 @@ export class StockfishEngine {
     const proc = spawn(this.path, [], { stdio: ['pipe', 'pipe', 'pipe'] });
     this.proc = proc;
     proc.stdout.setEncoding('utf8');
-    proc.stdout.on('data', (chunk: string) => this.onData(chunk));
+    proc.stdout.on('data', (chunk: string) => {
+      if (this.proc === proc) this.onData(chunk);
+    });
     proc.stderr.resume(); // Never block an engine that writes diagnostics.
     proc.stdin.on('error', (err) => {
       if (this.proc === proc) this.failWaiters(new Error(`stockfish: ${err.message}`));
@@ -188,8 +193,15 @@ export class StockfishEngine {
     // Register BEFORE writing: fast fake engines can reply inside write().
     const response = this.waitFor(predicate, timeoutMs);
     void response.catch(() => undefined); // handled if the write itself fails
-    await this.send(cmd);
-    return response;
+    try {
+      await this.send(cmd);
+      return await response;
+    } catch (error) {
+      // A failed write makes the session unreliable. Remove the registered
+      // waiter immediately rather than leaving it behind for ten seconds.
+      await this.quit();
+      throw error;
+    }
   }
 
   private awaitBestmove(onInfo: (line: string) => void): Promise<string | null> {
@@ -244,18 +256,40 @@ export class StockfishEngine {
     }
   }
 
-  async setOption(name: string, value: string | number): Promise<void> {
+  private assertIdle(): void {
+    if (this.searchActive) throw new Error('engine_busy');
+  }
+
+  private async withSearch<T>(work: () => Promise<T>): Promise<T> {
+    this.assertIdle();
+    if (!this.proc || !this.ready) throw new Error('engine_not_ready');
+    this.searchActive = true; // acquire synchronously, before any awaited write
+    try {
+      return await work();
+    } finally {
+      this.searchActive = false;
+    }
+  }
+
+  private async sendOption(name: string, value: string | number): Promise<void> {
     assertNoNewline(name, 'option name');
     assertNoNewline(String(value), 'option value');
     await this.send(`setoption name ${name} value ${value}`);
   }
 
+  async setOption(name: string, value: string | number): Promise<void> {
+    this.assertIdle();
+    await this.sendOption(name, value);
+  }
+
   async newGame(): Promise<void> {
+    this.assertIdle();
     await this.send('ucinewgame');
     await this.sendAndWait('isready', (l) => l === 'readyok');
   }
 
   async name(): Promise<string> {
+    this.assertIdle();
     const line = await this.sendAndWait('uci', (l) => l.startsWith('id name') || l === 'uciok');
     if (line.startsWith('id name')) return line.replace('id name ', '');
     return 'Stockfish';
@@ -263,6 +297,7 @@ export class StockfishEngine {
 
   async evaluate(fen: string, depth: number): Promise<EngineEval> {
     assertNoNewline(fen, 'fen');
+    return this.withSearch(async () => {
     await this.send(`position fen ${fen}`);
 
     let lastInfo: { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number } = {
@@ -282,6 +317,7 @@ export class StockfishEngine {
       cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
       pv: lastInfo.pv, depth: lastInfo.depth,
     };
+    });
   }
 
   // MultiPV evaluation: returns the engine's top-N candidate moves at the
@@ -290,8 +326,9 @@ export class StockfishEngine {
   // for rank 2 doesn't overwrite a shallower line for rank 1.
   async evaluateMulti(fen: string, depth: number, n: number): Promise<EngineMultiEval> {
     assertNoNewline(fen, 'fen');
+    return this.withSearch(async () => {
     const numLines = Math.max(1, Math.min(8, n));
-    await this.setOption('MultiPV', numLines);
+    await this.sendOption('MultiPV', numLines);
     try {
       await this.send(`position fen ${fen}`);
       const perRank = new Map<number, { cp: number | null; mate: number | null; pv: string[]; depth: number; seldepth: number }>();
@@ -323,18 +360,21 @@ export class StockfishEngine {
         candidates,
       };
     } finally {
-      if (this.ready) await this.setOption('MultiPV', 1);
+      if (this.ready) await this.sendOption('MultiPV', 1);
     }
+    });
   }
 
   async bestMove(fen: string, opts: { depth?: number; movetimeMs?: number; skill?: number }): Promise<string | null> {
     assertNoNewline(fen, 'fen');
-    if (opts.skill !== undefined) await this.setOption('Skill Level', opts.skill);
-    await this.send(`position fen ${fen}`);
-    return this.runSearch(
-      opts.movetimeMs !== undefined ? `go movetime ${opts.movetimeMs}` : `go depth ${opts.depth ?? 12}`,
-      () => undefined,
-    );
+    return this.withSearch(async () => {
+      if (opts.skill !== undefined) await this.sendOption('Skill Level', opts.skill);
+      await this.send(`position fen ${fen}`);
+      return this.runSearch(
+        opts.movetimeMs !== undefined ? `go movetime ${opts.movetimeMs}` : `go depth ${opts.depth ?? 12}`,
+        () => undefined,
+      );
+    });
   }
 
   // Async, idempotent shutdown. Reject waiters immediately, ask the child to
