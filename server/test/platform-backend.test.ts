@@ -89,13 +89,16 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
   });
 
   it('rejects negative, non-finite, ambiguous and unbounded query parameters', async () => {
-    for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5', 'limit=0',
+    for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',
       'source=other', 'limit=Infinity']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
     }
+    const countOnly = await get('/?limit=0');
+    const countOnlyData = await countOnly.json() as { total: number; games: unknown[] };
+    expect(countOnlyData).toMatchObject({ total: 1200, games: [] });
     const capped = await get('/?limit=201');
     const data = await capped.json() as { limit: number; games: unknown[] };
     expect(data.limit).toBe(200);
