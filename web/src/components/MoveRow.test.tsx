@@ -23,9 +23,11 @@ describe('review move row', () => {
   it('marks exactly the selected ply for keyboard and screen-reader navigation', () => {
     const html = render(14);
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
-    expect(html).toContain('aria-label="Kxf7: mistake"');
-    expect(html).toContain('aria-label="Nxf7+: brilliant"');
+    expect(html).toContain('aria-label="7… review.black Kxf7: mistake"');
+    expect(html).toContain('aria-label="7. review.white Nxf7+: brilliant"');
     expect(html).toContain('type="button"');
+    expect(html).toContain('min-h-10');
+    expect(html).toContain('focus-visible:outline');
   });
 
   it('keeps SVG classification indicators and highlights without Unicode symbols', () => {
@@ -41,6 +43,6 @@ describe('review move row', () => {
       num: 1, white: { ply: 1, san: 'e4' }, current: 1, onSelect: () => undefined,
     }));
     expect(html).not.toContain('<svg');
-    expect(html).toContain('aria-label="e4"');
+    expect(html).toContain('aria-label="1. review.white e4"');
   });
 });
