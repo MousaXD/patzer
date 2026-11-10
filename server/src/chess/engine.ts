@@ -81,14 +81,20 @@ export function parseChessApiResponse(body: unknown, fen: string): EngineMultiEv
   if (!UCI_RE.test(move)) throw new Error('chessapi: no best move');
   const position = new Chess(fen);
   try {
-    position.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] });
+    const applied = position.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] });
+    // chess.js ignores an extraneous `promotion` property on an ordinary
+    // move, but `e2e4q` is not valid UCI. Verify what was actually played.
+    if ((applied.promotion ?? '') !== (move[4] ?? '')) throw new Error('invalid promotion suffix');
   } catch {
     throw new Error('chessapi: illegal best move');
   }
 
   const sign = fen.split(' ')[1] === 'b' ? -1 : 1;
   const rawMate = j.mate == null ? null : Number(j.mate);
-  const mate = rawMate !== null && Number.isFinite(rawMate) ? rawMate * sign : null;
+  // A zero-distance mate can only be a terminal checkmate, already handled by
+  // terminalEval (which returns no best move). Fractional mate lengths are
+  // likewise invalid; neither can be promoted into a winning score.
+  const mate = rawMate !== null && Number.isSafeInteger(rawMate) && rawMate !== 0 ? rawMate * sign : null;
   const rawCp = j.centipawns == null ? null : Number(j.centipawns);
   const cp = mate === null && rawCp !== null && Number.isFinite(rawCp) ? rawCp * sign : null;
   if (cp === null && mate === null) throw new Error('chessapi: no score');
@@ -98,14 +104,16 @@ export function parseChessApiResponse(body: unknown, fen: string): EngineMultiEv
     for (const u of j.continuationArr.slice(0, 64)) {
       if (typeof u !== 'string' || !UCI_RE.test(u)) break;
       try {
-        position.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+        const applied = position.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+        if ((applied.promotion ?? '') !== (u[4] ?? '')) break;
       } catch {
         break; // Never expose a fabricated or inconsistent continuation.
       }
       pv.push(u);
     }
   }
-  const depth = Number(j.depth) || 0;
+  const depth = j.depth == null ? 0 : Number(j.depth);
+  if (!Number.isSafeInteger(depth) || depth < 0) throw new Error('chessapi: invalid depth');
   return { cp, mate, bestMoveUci: move, pv, depth, candidates: [{ cp, mate, pv, multipv: 1 }] };
 }
 

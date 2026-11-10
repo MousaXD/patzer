@@ -352,6 +352,14 @@ export class StockfishEngine {
         }
       });
       const legalPv = legalPvPrefix(fen, lastInfo.pv);
+      // A scored nonterminal root must describe the move ultimately chosen
+      // by the engine. Otherwise the cached score is from a different (or
+      // illegal) PV and can misclassify a played move in live analysis.
+      if ((lastInfo.cp !== null || lastInfo.mate !== null)
+          && new Chess(fen).moves().length > 0
+          && legalPv[0] !== bestMove) {
+        throw new Error('engine_inconsistent_pv');
+      }
       return {
         cp: lastInfo.cp, mate: lastInfo.mate, bestMoveUci: bestMove,
         pv: legalPv[0] === bestMove ? legalPv : [], depth: lastInfo.depth,
@@ -387,9 +395,15 @@ export class StockfishEngine {
         // Mixed-depth rankings can manufacture a false "only good move" verdict.
         const top = perRank.get(1);
         const topPv = top ? legalPvPrefix(fen, top.pv) : [];
-        // A final bestmove that differs from the last rank-one PV proves the
-        // candidate snapshot is incomplete/inconsistent. Keep the root score,
-        // but do not expose candidate gaps as "only good move" evidence.
+        // A final bestmove that contradicts the scored rank-one PV means
+        // neither its score nor its candidate gaps can be trusted. Failing
+        // closed protects the entire game's accuracy from a stale root score.
+        // Terminal checkmates/stalemates legitimately have no legal bestmove.
+        if (top && (top.cp !== null || top.mate !== null)
+            && new Chess(fen).moves().length > 0
+            && topPv[0] !== bestMove) {
+          throw new Error('engine_inconsistent_pv');
+        }
         const candidates: PvCandidate[] = [];
         if (bestMove !== null && topPv[0] === bestMove) {
           const seenMoves = new Set<string>();
@@ -424,10 +438,16 @@ export class StockfishEngine {
     return this.withSearch(async () => {
       if (opts.skill !== undefined) await this.sendOption('Skill Level', opts.skill);
       await this.send(`position fen ${fen}`);
-      return this.runSearch(
+      const best = await this.runSearch(
         opts.movetimeMs !== undefined ? `go movetime ${opts.movetimeMs}` : `go depth ${opts.depth ?? 12}`,
         () => undefined,
       );
+      // Bot moves and live hints bypass scored PV validation. Do not allow an
+      // engine protocol error to escape that boundary as a playable move.
+      if (best !== null && legalPvPrefix(fen, [best])[0] !== best) {
+        throw new Error('engine_illegal_bestmove');
+      }
+      return best;
     });
   }
 

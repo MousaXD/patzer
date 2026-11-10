@@ -39,6 +39,32 @@ describe('hosted engine chess legality', () => {
     expect(() => parseChessApiResponse({ move: 'a7a8', centipawns: 20 }, fen)).toThrow('illegal best move');
   });
 
+  it('rejects promotion suffixes on ordinary moves and truncates such malformed PVs', () => {
+    // chess.js silently ignores promotion: 'q' for an ordinary e2-e4 move;
+    // the UCI suffix itself is still invalid and must be rejected.
+    expect(() => parseChessApiResponse({ move: 'e2e4q', centipawns: 20 }, start))
+      .toThrow('illegal best move');
+    const result = parseChessApiResponse({
+      move: 'e2e4', centipawns: 20, continuationArr: ['e7e5q', 'g1f3'],
+    }, start);
+    expect(result.pv).toEqual(['e2e4']);
+  });
+
+  it('rejects zero/fractional mate claims in positions that have legal moves', () => {
+    for (const mate of [0, -0, 1.5, -2.5, '0', 'Infinity']) {
+      expect(() => parseChessApiResponse({ move: 'e2e4', mate }, start), String(mate))
+        .toThrow('chessapi: no score');
+    }
+  });
+
+  it('rejects malformed declared depths instead of reporting impossible search budgets', () => {
+    for (const depth of [-1, 2.5, 'NaN', 'Infinity', 1e308]) {
+      expect(() => parseChessApiResponse({ move: 'e2e4', centipawns: 30, depth }, start), String(depth))
+        .toThrow('chessapi: invalid depth');
+    }
+    expect(parseChessApiResponse({ move: 'e2e4', centipawns: 30 }, start).depth).toBe(0);
+  });
+
   it('normalizes Black-to-move scores without changing the legal first move', () => {
     const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
     const result = parseChessApiResponse({ move: 'e7e5', centipawns: -120, depth: 16 }, fen);
