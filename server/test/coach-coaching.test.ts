@@ -167,6 +167,32 @@ describe('explainCoaching — the facts behind a blunder', () => {
     expect(c.eval_after_cp).toBe(10000);
   });
 
+  it('does not turn an unknown engine score into a made-up neutral evaluation', async () => {
+    const prev = coaching.setCoachEngine(async () => [{ cp: null, mate: null, pv: [] }]);
+    try {
+      const facts = await coaching.explainCoaching(blunderInput, 'en', 'beginner');
+      expect(facts.eval_before_cp).toBeNull();
+      expect(facts.eval_after_cp).toBeNull();
+    } finally {
+      coaching.setCoachEngine(prev);
+    }
+  });
+
+  it('does not label unscored engine candidates near-equal alternatives', async () => {
+    const prev = coaching.setCoachEngine(async (fen) => fen === SCHOLAR ? [
+      { cp: null, mate: null, pv: ['g7g6'] },
+      { cp: null, mate: null, pv: ['d8e7'] },
+    ] : null);
+    try {
+      const facts = await coaching.explainCoaching(blunderInput, 'en', 'beginner');
+      expect(facts.facts.other_good_moves).toEqual([]);
+      const hint = await coaching.hintCoaching(SCHOLAR, 1, 'en', 'beginner');
+      expect(hint.facts.evaluation_state).toBeNull();
+    } finally {
+      coaching.setCoachEngine(prev);
+    }
+  });
+
   it('keeps the opponent\'s moves and other players out of "your history"', async () => {
     const theirs = await coaching.explainCoaching({ ...blunderInput, ownMove: false }, 'en', 'beginner');
     expect(theirs.facts.player_history).toEqual([]);
@@ -325,6 +351,18 @@ const explainBody = {
 };
 
 describe('POST /explain (regression #37)', () => {
+  it.each([
+    ['wrong actor', { player: 'White' }],
+    ['illegal move', { played_san: 'Nf3' }],
+    ['invalid FEN', { fen: 'not-a-fen' }],
+  ])('does not run engine or model for an unverified %s', async (_, override) => {
+    const result = await post('/explain', { ...explainBody, ...override });
+    expect(result.text).toMatch(/cannot verify|check whose turn/i);
+    expect(result.actions).toBeNull();
+    expect(engineCalls).toEqual([]);
+    expect(prompts).toHaveLength(0);
+  });
+
   it('gives the opponent\'s answer as a short line, not just one move', async () => {
     const prev = coaching.setCoachEngine(async (fen) => (fen === AFTER_NF6 ? [{ cp: 300, mate: null, pv: ['c4f7', 'e8e7', 'f7b3', 'a7a6'] }] : ENGINE[fen] ?? null));
     try {
@@ -369,23 +407,119 @@ describe('POST /explain (regression #37)', () => {
     expect(user).toContain('"win_pct_after": 0');
   });
 
+  it('does not let stale client evaluations override position-verified engine evidence', async () => {
+    replies = [GOOD_ANSWER];
+    await post('/explain', { ...explainBody, eval_before_cp: -10000, eval_after_cp: -10000 });
+    expect(prompts).toHaveLength(1);
+    const facts = JSON.parse(prompts[0]!.user.split('FACTS:\n')[1]!.split('\n\nTASK:')[0]!) as {
+      win_pct_before: number | null; win_pct_after: number | null;
+    };
+    // Black was around equal before Nf6, then White obtained mate. The
+    // untrusted client claimed Black was winning 100% both before and after.
+    expect(facts.win_pct_before).toBeGreaterThan(20);
+    expect(facts.win_pct_before).toBeLessThan(80);
+    expect(facts.win_pct_after).toBe(0);
+  });
+
+  it('preserves an unknown before-score when only the after-score is available', async () => {
+    const { factsForExplain } = await import('../src/coach/facts.js');
+    const facts = factsForExplain({
+      ...explainBody, player: 'Black', classification: 'blunder',
+      eval_before_cp: null, eval_after_cp: 10000,
+    }, 'en', 'beginner');
+    expect(facts.win_pct_before).toBeNull();
+    expect(facts.win_pct_after).toBe(0);
+    expect(facts.win_pct_delta).toBeNull();
+  });
+
   it('lets a correct answer through on the first try', async () => {
     replies = [GOOD_ANSWER];
     await post('/explain', explainBody);
     expect(prompts).toHaveLength(1);
   });
+
+  it('retries a made-up pin and never exposes it even if the model repeats it', async () => {
+    const invented = 'A blunder. The bishop on a3 pins the queen, and this wins material.';
+    replies = [invented, GOOD_ANSWER];
+    const good = await post('/explain', explainBody);
+    expect(good.text).toBe(GOOD_ANSWER);
+    expect(prompts).toHaveLength(2);
+    replies = [invented, invented];
+    const safe = await post('/explain', explainBody);
+    expect(safe.text).not.toContain('a3');
+    expect(safe.text).toContain('checkmate at once');
+  });
+
+  it('returns evidence-grounded text when the LLM is not configured', async () => {
+    const dbm = await import('../src/db.js');
+    dbm.setSetting('vllm_url', '');
+    try {
+      const r = await post('/explain', explainBody);
+      expect(r.text).toContain('checkmate at once');
+      expect(prompts).toHaveLength(0);
+    } finally {
+      dbm.setSetting('vllm_url', `http://127.0.0.1:${(llm.address() as AddressInfo).port}`);
+    }
+  });
 });
 
 describe('POST /hint', () => {
-  it('points at what matters without naming the move', async () => {
+  it('keeps the model task grounded without disclosing a tactical move', async () => {
     replies = ['Your king has a problem on f7. What can you do about the checkmate threat?'];
     const r = await post('/hint', { fen: SCHOLAR, history: HISTORY });
-    expect(r.text).toContain('checkmate threat');
+    // An unverified coordinate and mate claim must not be forwarded merely
+    // because the model followed much of the prompt.
+    expect(r.text).not.toMatch(/f7|checkmate threat/i);
+    expect(r.text).toContain('checks and captures');
     const { user } = prompts[0]!;
     expect(user).toContain('The opponent threatens checkmate on the next move.');
     expect(user).toContain('What the engine\'s best move does: it stops the checkmate threat');
     expect(user).toContain('allowing a quick checkmate');
     expect(user).not.toContain('pawn to g6');
     expect(user).toContain('Do NOT name the best move');
+  });
+
+  it('buffers whole model responses: a spoiler in the final chunk cannot leak', async () => {
+    replies = ['Consider both sides\' checking moves. The best move is g6.'];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).not.toMatch(/\bg6\b/);
+    expect(result.text).toContain('What would your opponent play next?');
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('accepts a non-spoiling, non-tactical question', async () => {
+    const hint = 'Before you move, compare checks and captures for both sides. How might your opponent reply?';
+    replies = [hint];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).toBe(hint);
+  });
+
+  it('does not reveal a partially generated hint that exceeds the safe buffer', async () => {
+    replies = ['Consider the opponent replies. '.repeat(120)];
+    const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+    expect(result.text).toContain('What would your opponent play next?');
+    expect(result.text.length).toBeLessThan(240);
+  });
+
+  it('falls back locally in each supported language when the model yields no usable content', async () => {
+    for (const language of ['en', 'bg', 'es', 'de', 'ru'] as const) {
+      replies = ['<think>Perhaps g6 is ideal.</think>'];
+      const response = await post('/hint', { fen: SCHOLAR, history: HISTORY, language });
+      expect(response.text.length, language).toBeGreaterThan(55);
+      expect(response.text, language).not.toMatch(/\bg6\b|think/);
+    }
+  });
+
+  it('works offline with no LLM calls and never guesses an opening move', async () => {
+    const dbm = await import('../src/db.js');
+    dbm.setSetting('vllm_url', '');
+    try {
+      const result = await post('/hint', { fen: SCHOLAR, history: HISTORY });
+      expect(result.text).toContain('checks and captures');
+      expect(prompts).toHaveLength(0);
+      expect(engineCalls).toHaveLength(0);
+    } finally {
+      dbm.setSetting('vllm_url', `http://127.0.0.1:${(llm.address() as AddressInfo).port}`);
+    }
   });
 });

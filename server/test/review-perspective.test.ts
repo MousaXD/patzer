@@ -104,4 +104,89 @@ describe('Game Review: whose move', () => {
     const { facts } = review.summaryFacts(analysisOf(moves), '[Result "1-0"]', 'black', 'bg', 'intermediate');
     expect(facts.result).toBe('ти загуби');
   });
+
+  it('does not fabricate a 50% win chance or turning point from missing evaluations', async () => {
+    const moves = buildMoves();
+    const blackMistake = { ...moves[5]!, eval_before_cp: null, eval_after_cp: null };
+    const incomplete = moves.map((m) => ({ ...m, eval_before_cp: null, eval_after_cp: null }));
+    const facts = await review.keyMomentFacts(momentOf(blackMistake), incomplete, 'white', 'en', 'beginner');
+    expect(facts.moment.win_pct_before).toBeNull();
+    expect(facts.moment.win_pct_after).toBeNull();
+    const { facts: summary } = review.summaryFacts(analysisOf(incomplete), '[Result "1-0"]', 'white', 'en', 'beginner');
+    expect(summary.turning_point).toBeNull();
+    expect(summary.your_costliest_moves).toEqual([]);
+    expect(summary.opponent_gifts).toEqual([]);
+  });
+
+  it('attributes Black-first custom-FEN moves using board turn, not odd/even ply', async () => {
+    const c = new Chess();
+    c.move('e4');
+    const fen = c.fen(); // Black is to move
+    c.move('e5');
+    const blackFirst = {
+      ...buildMoves()[1]!, ply: 1, san: 'e5', fen_before: fen,
+      fen_after: c.fen(), classification: 'mistake' as Classification,
+      eval_before_cp: 20, eval_after_cp: 120,
+    };
+    const { facts } = review.summaryFacts(analysisOf([blackFirst]), '', 'white', 'en', 'beginner');
+    expect(facts.turning_point).toMatchObject({ by: 'the opponent' });
+    expect(facts.your_costliest_moves).toEqual([]);
+    expect(facts.opponent_gifts).toHaveLength(1);
+    const player = await review.keyMomentFacts({ ...momentOf(blackFirst), side: 'black' }, [blackFirst], 'white', 'en', 'beginner');
+    expect(player.moment.who_moved).toBe('the opponent');
+    expect(player.moment.win_pct_after).toBeLessThan(player.moment.win_pct_before!);
+  });
+
+  it('generates a usable review with no LLM configured and without model calls', async () => {
+    const moves = buildMoves();
+    const progress: string[] = [];
+    const result = await review.buildGameReview({
+      pgn: '[Result "1-0"]', analysis: {
+        ...analysisOf(moves), key_moments: [momentOf(moves[5]!)],
+        phase_split: { opening: { from_ply: 1, to_ply: 7, accuracy_white: 91, accuracy_black: 40, acpl_white: 10, acpl_black: 100 }, middlegame: null, endgame: null },
+      },
+      language: 'de', audience: 'beginner', userColor: 'white', llmEnabled: false,
+      onProgress: (p) => progress.push(p.step),
+    });
+    expect(result.summary.length).toBeGreaterThan(10);
+    expect(result.phases.opening?.prose).toMatch(/Eröffnung/);
+    expect(result.key_moments[0]).toMatchObject({ by_user: false });
+    expect(result.key_moments[0]?.prose.length).toBeGreaterThan(10);
+    expect(progress).toEqual(['opening', 'phase:opening', 'moment', 'summary']);
+  });
+
+  it('stops immediately when a streamed review is canceled, before summary/cache data exists', async () => {
+    const controller = new AbortController();
+    const observed: string[] = [];
+    await expect(review.buildGameReview({
+      pgn: '[Result "1-0"]',
+      analysis: analysisOf(buildMoves()), language: 'en', audience: 'beginner',
+      userColor: 'white', llmEnabled: false, signal: controller.signal,
+      onProgress: ({ step }) => { observed.push(step); controller.abort(); },
+    })).rejects.toThrow();
+    expect(observed).toEqual(['opening']);
+  });
+
+  it('does not reuse a PR #17-tagged v9 AI report beside re-scored v10 analysis', () => {
+    expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('6|en|beginner');
+    expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('7|en|beginner');
+    expect(review.reviewCacheKey({ language: 'en', audience: 'beginner' })).not.toBe('8|en|beginner');
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 9 }, 10)).toBe(true);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: 10 }, 10)).toBe(false);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION }, 10)).toBe(false);
+    expect(review.isMarkedReviewScoringStale({ version: review.REVIEW_PROSE_VERSION, accuracy_model_version: '9' }, 10)).toBe(true);
+  });
+
+  it('fails closed on fabricated mate and quantified mate claims', () => {
+    const moves = buildMoves();
+    const moment = momentOf(moves[2]!); // 2.Qh5: no mate in the next move
+    expect(review.unsupportedMateClaim('You forced checkmate by playing Qh5.', moment, moves)).toBe(true);
+    expect(review.unsupportedMateClaim('You have mate in 2.', moment, moves)).toBe(true);
+    expect(review.unsupportedMateClaim('Look for checks before moving.', moment, moves)).toBe(false);
+    const real = momentOf(moves[5]!); // 3...Nf6?? 4.Qxf7# is actually legal
+    expect(review.unsupportedMateClaim('White replies with checkmate.', real, moves)).toBe(false);
+    expect(review.unsupportedMateClaim('White has a forced mate in 2.', real, moves)).toBe(true);
+    expect(review.unsupportedMateClaim('Das ist Schachmatt.', moment, moves)).toBe(true);
+    expect(review.unsupportedMateClaim('Это мат.', moment, moves)).toBe(true);
+  });
 });
