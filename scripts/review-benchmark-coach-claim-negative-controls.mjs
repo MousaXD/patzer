@@ -14,7 +14,7 @@ const moves=end.history({verbose:true});
 const replay=new Chess();
 const before=[];
 for(const m of moves){before.push(replay.fen());replay.move(m);}
-const moment={ply:3,fen_before:before[2],san:moves[2].san,title:'Synthetic moment'};
+const moment={ply:3,side:'white',fen_before:before[2],san:moves[2].san,title:'Synthetic moment'};
 const make=(summary,prose)=>({
  summary,key_moments:[{...moment,prose}],phases:{opening:null,middlegame:null,endgame:null},
  opening:null,skill_assessment:'Insufficient data to infer playing strength.',version:9,language:'en',audience:'beginner'

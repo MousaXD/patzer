@@ -11,7 +11,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, realpathSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { Chess } from 'chess.js';
@@ -22,6 +22,9 @@ const root=resolve(import.meta.dirname,'..');
 const resultsDir=join(root,'qa/review-excellence/results');
 mkdirSync(resultsDir,{recursive:true});
 const args=Object.fromEntries(process.argv.slice(2).map(x=>{const i=x.indexOf('=');return i<0?[x.slice(2),true]:[x.slice(2,i),x.slice(i+1)];}));
+const runId=args['run-id']||randomUUID();
+assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId),
+ 'invalid local benchmark run identifier');
 const appRoot=realpathSync(args['app-root']??join(resultsDir,'worktree-coach'));
 if(!appRoot.startsWith(join(resultsDir,'worktree-')+'/') && !appRoot.startsWith(join(resultsDir,'worktree-')))
  throw Error('Candidate must be a detached QA worktree');
@@ -92,6 +95,7 @@ let db=null,restoreCoachEngine=null;
 const began=Date.now();
 const report={
  schema_version:1,
+ benchmark_run_id:runId,
  scope:'real buildGameReview + llm.ts with controlled local JSON provider, real analyzer Stockfish, disposable SQLite',
  at_utc:new Date().toISOString(),
  benchmark_sha:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),
@@ -185,7 +189,7 @@ try{
 }
 const filename=join(resultsDir,'real-coach-faults.json');
 writeFileSync(filename,JSON.stringify(report,null,2)+'\n');
-console.log(JSON.stringify({file:filename,source:report.candidate_sha,accepted_false_claims:report.accepted_false_claims,
+console.log(JSON.stringify({file:filename,benchmark_run_id:runId,source:report.candidate_sha,accepted_false_claims:report.accepted_false_claims,
   request_count:report.requests,ms:report.elapsed_ms,failures:report.failures,output:report.attack_output},null,2));
 // This diagnostic returns 0 if the *false claim injection test succeeds*;
 // report.accepted_false_claims is evidence of a product defect, not a pass.
