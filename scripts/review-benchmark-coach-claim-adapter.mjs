@@ -55,6 +55,30 @@ function isQuotedOrDisavowed(text,claimStart){
  const context=prefix.slice(at).replace(/^[^\p{L}\p{N}]+/u,'').trimStart();
  return /^(?:(?:It\s+(?:is|was)\s+(?:false|wrong|incorrect)\s+that)|(?:It\s+would\s+be\s+(?:false|wrong|incorrect)\s+to\s+say(?:\s+that)?)|(?:Do\s+not\s+(?:say|claim|write)(?:\s+that)?)|(?:Never\s+(?:say|claim)(?:\s+that)?))\s*$/i.test(context);
 }
+function isHypotheticalOrConditional(text,claimStart,claimEnd){
+ // An explicitly conditional/questioned chess claim is not an assertion
+ // about the played PGN. This is a *conservative abstention* from a handful
+ // of lexical forms, not natural-language entailment or modal parsing.
+ // Constrain the scan to the current sentence: a prior hypothetical should
+ // never shield a separate later direct contradiction.
+ const before=text.slice(0,claimStart);
+ const boundaries=[...before.matchAll(/[.!?]\s+|\n/g)];
+ const preceding=boundaries.at(-1);
+ const start=preceding?preceding.index+preceding[0].length:0;
+ const currentPrefix=text.slice(start,claimStart);
+ const rest=text.slice(claimEnd);
+ const ending=rest.search(/[.!?](?:\s|$)|\n/);
+ const currentSuffix=ending<0?rest:rest.slice(0,ending);
+ // Exact immediate antecedent, including clause-introducing parentheses.
+ if(/(?:^|[\s,(])(?:if|what\s+if|suppose|imagine|assume|assuming|pretend|hypothetically|provided|consider|maybe|perhaps|possibly|allegedly)\s+(?:that\s+)?$/i.test(currentPrefix))return true;
+ if(/(?:^|[\s,(])were\s+it\s+true\s+that\s+$/i.test(currentPrefix))return true;
+ // If a question, hypothetical, or conditional prefix governs this whole
+ // sentence, even a second literal in that sentence is not proven asserted.
+ if(/^\s*(?:if|what\s+if|suppose|imagine|assume|pretend|assuming|hypothetically|maybe|perhaps|possibly|allegedly)\b/i.test(currentPrefix))return true;
+ if(/^\s*(?:[,;:—–-]\s*|\(\s*)?(?:if|only\s+if|even\s+if|unless|provided\s+that|assuming\s+that)\b/i.test(currentSuffix))return true;
+ if(/^\s*\?/.test(rest))return true;
+ return false;
+}
 export function validateWrittenGameReview({pgn, review, userColor='white'}){
  const findings=[],verified=[],unassessed=[];
  if(!bounded(pgn)||!review||!['white','black'].includes(userColor))return {status:'invalid_input',findings:[{reason:'invalid_review_input'}],verified,unassessed,full_factuality_certified:false};
@@ -116,6 +140,10 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
   const actorPhrases=[...text.matchAll(/\b(White|Black)\s+(won|lost)\s+(?:the|this)\s+game\b/gi)];
   for(const m of actorPhrases) {
    register(m);
+   if(isHypotheticalOrConditional(text,m.index,m.index+m[0].length)){
+    unassessed.push({field:part,reason:'hypothetical_or_conditional_result_not_assessed',claim:m[0]});
+    continue;
+   }
    if(isQuotedOrDisavowed(text,m.index)){
     unassessed.push({field:part,reason:'quoted_or_disavowed_result_not_assessed',claim:m[0]});
     continue;
@@ -129,6 +157,10 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
   const userPhrases=[...text.matchAll(/\b(You|Your opponent)\s+(won|lost)\s+(?:the|this)\s+game\b/gi)];
   for(const m of userPhrases){
    register(m);
+   if(isHypotheticalOrConditional(text,m.index,m.index+m[0].length)){
+    unassessed.push({field:part,reason:'hypothetical_or_conditional_result_not_assessed',claim:m[0]});
+    continue;
+   }
    if(isQuotedOrDisavowed(text,m.index)){
     unassessed.push({field:part,reason:'quoted_or_disavowed_result_not_assessed',claim:m[0]});
     continue;
@@ -146,6 +178,10 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
   const pieceStatements=[...text.matchAll(/\b(White|Black)(?:['’]s)?\s+(king|queen|rook|bishop|knight|pawn)\s+(?:(?:is|was|stands|stood|sits|sat|remains|remained|currently|still|located|positioned)\s+){0,4}(?:on|at)\s+([a-h][1-8])\b/gi)];
   for(const m of pieceStatements) {
    register(m);
+   if(isHypotheticalOrConditional(text,m.index,m.index+m[0].length)){
+    unassessed.push({field:part,reason:'hypothetical_or_conditional_piece_not_assessed',claim:m[0]});
+    continue;
+   }
    if(isQuotedOrDisavowed(text,m.index)){
     unassessed.push({field:part,reason:'quoted_or_disavowed_piece_not_assessed',claim:m[0]});
     continue;
@@ -185,6 +221,6 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  return {status:findings.length?'rejected':verified.length?
   (unassessed.length?'partial_claims_verified':'limited_claims_passed'):'not_evaluated',
   findings,verified,unassessed,
-   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Partial/unrecognized prose is NOT certified.',
+   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Quoted, denied, hypothetical and conditional contexts are not evaluated. Partial/unrecognized prose is NOT certified.',
    result_proven_by_mate:!!forcedWinner,full_factuality_certified:false};
 }
