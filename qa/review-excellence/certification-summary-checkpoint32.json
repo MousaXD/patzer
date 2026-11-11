@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T06:48:14.003Z",
+  "branch": "agent/review-benchmark-20261111",
+  "prior_checkpoint": "5566180bd6196880a64f6a3cc71938b13769f7d7",
+  "benchmark_checkout_sha": "5566180bd6196880a64f6a3cc71938b13769f7d7",
+  "pinned_candidate_b": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "source_run_id": "c7063fb7-7ed4-4e47-9267-4639ab8c40e4",
+  "independent_evidence": {
+    "real_authenticated_review_and_game_routes_exercised": true,
+    "source_PGN_changed_between_opposite_winners": true,
+    "stale_unmarked_read_reproduced": true,
+    "stale_scoring_marked_read_reproduced": true,
+    "stale_color_perspective_read_reproduced_under_controlled_mutation": true,
+    "game_detail_kept_old_analysis_after_PGN_update": true,
+    "CAS_guard_blocked_outdated_new_write": true,
+    "positive_metadata_and_ownership_controls_passed": true,
+    "independent_candidate_file_sha256": {
+      "server/src/routes/review.ts": "21e0a25f00418d7c1749b6089ed6d685ad1cb4f752e28bf5af16f9fa752442d0",
+      "server/src/routes/games.ts": "576863e5a1fdc9125d7f23ed7d88fe08d744a84ff456ca69e5639261f83ce5eb",
+      "server/src/coach/reviewCache.ts": "72aba2c3883feb2534fd8fd252f0eed9189eaccc46911141ac3943256019912b",
+      "server/src/ws/play.ts": "7d17d20aa58dba2684d40acab1d7f42f8b5a2f54f38b38a329555f5fb3ae9839"
+    },
+    "synthetic_test_only": true,
+    "product_cache_certified": false,
+    "release_approved": false
+  },
+  "script_sha256": {
+    "scripts/review-benchmark-coach-pgn-read-race.mjs": "c929a6ed9b0d2bf56cdf82aa09462ca916c3c6c9cf9e8852272aeab913c87ee5",
+    "scripts/review-benchmark-coach-pgn-read-proof.mjs": "8f6b82222795f98a28ebcd988a473267e5c53f07dccb3a2436f89432b9b2beed",
+    "scripts/review-benchmark-coach-pgn-read-negatives.mjs": "4b9cfcc1c0719d137e084e74f8d2a804582f8bb4188509372f856a35a1f7b410",
+    "scripts/review-benchmark-coach-pgn-read-boundary.mjs": "fb9de51098961e4e8a165f1aa796f7b29d8fd7006ac64dacf0042edfd7c22407"
+  },
+  "scoped_failure": "read_endpoint_does_not_invalidate_old_prose_when_game_pgn_changes",
+  "advisory_only": true,
+  "external_model_calls": 0,
+  "stockfish_calls": 0,
+  "no_owner_product_source_mutated": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limits": [
+    "One synthetic PvP-style game and one isolated non-owner, not production incidence measurement",
+    "The PGN update executes production-equivalent SQL on disposable SQLite, not a live websocket",
+    "Game-source edits do not prove every live game already has a review before a move arrives",
+    "Existing scoring-marked prose still escapes PGN change; no accepted product source fix was applied",
+    "No private customer games, hosted model, Stockfish workload, migrations or production configuration"
+  ]
+}
