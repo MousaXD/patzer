@@ -3,8 +3,7 @@ import { Chess } from 'chess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
 import { analysisMatchesGame } from '../chess/analysisSource.js';
 
-/** Coach-owned cache attestation, NOT a replacement for the engine's future
- * canonical PGN/analysis source ID. Uses existing columns; no DB migration. */
+/** Coach cache attestation built on the canonical engine source provenance. */
 // v2 binds the report to the engine's monotonic game revision and analysis
 // generation. A -> B -> A must not resurrect prose from the first A.
 const CACHE_SOURCE_SCHEME = 'coach-evidence-v2';
@@ -55,6 +54,9 @@ export function checkReviewAnalysisSource(
   analysis: ReviewEvidenceAnalysis,
 ): ReviewSourceIssue | null {
   if (analysis.scoring_version !== SCORING_VERSION) return 'analysis_scoring_stale';
+  if (!game.pgn || game.pgn.length > MAX_PGN_LENGTH || analysis.moves_json.length > 4_000_000) {
+    return 'analysis_malformed';
+  }
   // The legal PGN replay below cannot detect a source that changed A -> B -> A.
   // Use Agent A's authoritative source/hash/revision instead of trusting the
   // present move sequence alone; legacy NULL provenance is never fresh.
@@ -74,9 +76,6 @@ export function checkReviewAnalysisSource(
       source_revision: analysis.source_revision ?? null,
       moves_json: analysis.moves_json,
     })) return 'analysis_source_stale';
-  if (!game.pgn || game.pgn.length > MAX_PGN_LENGTH || analysis.moves_json.length > 4_000_000) {
-    return 'analysis_malformed';
-  }
   try {
     const chess = new Chess();
     chess.loadPgn(game.pgn, { strict: false });

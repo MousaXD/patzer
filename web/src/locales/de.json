@@ -309,6 +309,7 @@
     "generationFailed": "Der KI-Bericht konnte nicht erstellt werden. Bitte erneut versuchen.",
     "generating": "KI-Bericht wird geschrieben…",
     "runEngine": "Engine-Analyse starten",
+    "legacyEvidence": "Diese gespeicherte Analyse muss aktualisiert werden. Starte die Engine-Analyse, wenn du bereit bist. Dabei werden die gespeicherte Analyse und der KI-Bericht ersetzt.",
     "gameReport": "KI-Bericht",
     "keyMoments": "Schlüsselmomente",
     "coachIdleHint": "Wähle einen Zug aus, um zu hören, was der Coach dazu sagt.",

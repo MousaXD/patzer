@@ -52,6 +52,7 @@ interface GameDetail {
     moves_json: string;
   } | null;
   analysis_stale?: boolean;
+  analysis_unverified?: boolean;
 }
 
 interface EngineLine {
@@ -285,7 +286,7 @@ function GameAnalyzerView() {
   // stale analysis. Deliberately exclude 'analyzing': a failed request must
   // not create an immediate retry loop on the same stale snapshot.
   useEffect(() => {
-    if (!data?.analysis_stale || analyzing || practicePicker || practicePly !== null) return;
+    if (!data?.analysis_stale || data.analysis_unverified || analyzing || practicePicker || practicePly !== null) return;
     void analyze(16, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, practicePicker, practicePly]);
@@ -879,6 +880,7 @@ function GameAnalyzerView() {
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{analysisError}</div>}
+          {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
           {!analysis && (
             <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />

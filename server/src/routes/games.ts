@@ -33,7 +33,9 @@ router.get('/', (c) => {
   if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
   if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
   if (query.analyzed !== null) {
-    filters.push(`COALESCE((${usableAnalysisSql}), 0) = ${query.analyzed ? 1 : 0}`);
+    // Keep the positive predicates visible to SQLite's join planner. Wrapping
+    // both cases in COALESCE forces a full games-side LEFT JOIN for the count.
+    filters.push(query.analyzed ? `(${usableAnalysisSql})` : `COALESCE((${usableAnalysisSql}), 0) = 0`);
     params.push(SCORING_VERSION);
   }
   if (query.q) {
@@ -185,8 +187,10 @@ router.get('/:id', (c) => {
   const analysis = db.prepare('SELECT * FROM analyses WHERE game_id = ?').get(id) as
     | { scoring_version: number; source_hash: string | null; source_revision: number | null; analysis_generation: number; moves_json: string }
     | undefined;
-  // If the analysis was made at an older scoring_version, hide it — UI will
-  // show the Analyze CTA (and we set a flag so the frontend can auto-fire it).
+  // Legacy cached prose is retained until the user explicitly reanalyzes.
+  // Opening a migrated game must not silently replace its historical cache.
+  const unverified = !!analysis && (!analysis.source_hash || analysis.source_revision === null
+    || analysis.analysis_generation < 1);
   const stale = !!(analysis && (analysis.scoring_version < SCORING_VERSION ||
     analysis.analysis_generation < 1 ||
     !analysisMatchesGame(game, analysis)));
@@ -194,6 +198,7 @@ router.get('/:id', (c) => {
     game,
     analysis: stale ? null : analysis,
     analysis_stale: stale,
+    analysis_unverified: unverified,
   });
 });
 

@@ -309,6 +309,7 @@
     "generationFailed": "Could not generate the AI report. Please try again.",
     "generating": "Writing AI report…",
     "runEngine": "Run engine analysis",
+    "legacyEvidence": "This saved analysis needs updating. Run engine analysis when ready; doing so replaces its cached analysis and AI report.",
     "gameReport": "AI report",
     "keyMoments": "Key moments",
     "coachIdleHint": "Step into a move to see what the coach has to say.",

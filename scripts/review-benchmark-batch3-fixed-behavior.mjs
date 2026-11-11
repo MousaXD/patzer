@@ -169,11 +169,19 @@ try {
   const { loadAnalysisGameSource } = await mod('server/src/chess/analysisSource.ts');
   const { buildGameReview } = await mod('server/src/coach/review.ts');
   const { saveReviewIfFresh } = await mod('server/src/coach/reviewCache.ts');
-  const sameGame = db.prepare('SELECT pgn,user_color,user_id,result FROM games WHERE id=2').get();
+  const sameGame = db.prepare(`SELECT pgn,user_color,user_id,result,start_fen,
+    opponent_rating_before,user_rd_before,source_revision AS current_source_revision
+    FROM games WHERE id=2`).get();
   const sameSource = loadAnalysisGameSource(db, 2);
   const sameAnalysis = await analyzePgn(Q, 8);
   const oldProse = await buildGameReview({ pgn: Q, analysis: sameAnalysis,
     language: 'en', audience: 'beginner', userColor: 'white', llmEnabled: false });
+  // Establish that this complete snapshot is admitted before the race. Without
+  // this control a missing game field could make every CAS return false.
+  const admitted = db.prepare('SELECT * FROM analyses WHERE game_id=2').get();
+  assert.equal(saveReviewIfFresh(db, 2, admitted, sameGame, oldProse, 'en', 'beginner', true), true);
+  assert((await report(2)).json?.review, 'Positive CAS control must be readable');
+  assert.equal(saveAnalysis(2, sameAnalysis, sameSource), true);
   let beforeGeneration;
   let afterGeneration;
   let equalTimestamp = false;
@@ -196,6 +204,10 @@ try {
       generation_after: afterGeneration.analysis_generation,
       same_second: equalTimestamp, old_generation_accepted: oldGenerationAccepted,
       old_prose_visible: !!generationRead.json?.review });
+  db.prepare('UPDATE analyses SET source_hash=NULL,source_revision=NULL,analysis_generation=0 WHERE game_id=2').run();
+  check('legacy NULL engine provenance cannot generate or expose a report',
+    (await detail(2)).json?.analysis_stale === true &&
+    (await report(2)).json?.stale === true && (await generate(2)).status === 409);
   const output = {
     schema_version: 1,
     candidate_sha: candidateSha,

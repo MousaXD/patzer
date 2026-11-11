@@ -1,5 +1,9 @@
 # Patzer Batch 3 + PR #17 — single consolidated candidate
 
+> Historical handoff, preserved as the recovery record. Its unexecuted-test
+> status is superseded by [final certification](FINAL-INTEGRATION-CERTIFICATION-20261111.md)
+> and [migration safety evidence](FINAL-MIGRATION-SAFETY-20261111.md).
+
 **Release verdict: NO-GO until tests actually execute.** This is a local, uncommitted integration worktree. It is not a statement that the fixes pass.
 
 ## Candidate identity and locations

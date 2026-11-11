@@ -647,6 +647,13 @@ try {
     assert.match(await page.getByRole('alert').textContent(), /not legal/);
     await openPicker(page, partial.id);
     await assertNoSpoilers(page);
+    assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 0,
+      'a truncated analysis must fail the complete source-evidence gate');
+    assert.equal((await api(`/api/games/${partial.id}`, { cookie })).json?.analysis_stale, true);
+    const switched = seed(user.id, 'immutable-switch', ['d4', 'd5', 'c4', 'e6'],
+      ['good', 'mistake', 'good', 'good']);
+    await openPicker(page, switched.id);
+    await assertNoSpoilers(page);
     assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 1);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
   });

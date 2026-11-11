@@ -84,6 +84,18 @@ jobs:
       - name: Resume in a browser (test:resume-ui)
         run: npm run test:resume-ui
 
+      - name: Review source integrity, real engine, browser and migration certification
+        run: PATZER_TEST_STOCKFISH="$PWD/bin/stockfish" bash scripts/verify-review-integration.sh
+
+      - name: Upload Game Review browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-browser-${{ github.run_id }}
+          path: qa/review-excellence/results/release-browser/
+          if-no-files-found: warn
+          retention-days: 14
+
   docker:
     runs-on: ubuntu-latest
     name: Docker image builds

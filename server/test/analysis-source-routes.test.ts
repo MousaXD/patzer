@@ -123,7 +123,7 @@ suite('actual authenticated Hono engine-source cache, bounded Stockfish depth 8'
   it('legacy NULL source identity never counts as a cache hit', async () => {
     db.prepare('UPDATE analyses SET source_hash = NULL, source_revision = NULL WHERE game_id = 2').run();
     const staleGame = await games('/2', { headers: { Cookie: cookie } });
-    expect((await staleGame.json() as { analysis_stale: boolean }).analysis_stale).toBe(true);
+    expect(await staleGame.json()).toMatchObject({ analysis_stale: true, analysis_unverified: true, analysis: null });
     const repaired = await post(2);
     expect(repaired.status).toBe(200);
     expect(await repaired.json()).toMatchObject({ cached: false });

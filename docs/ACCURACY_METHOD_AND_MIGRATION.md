@@ -74,6 +74,24 @@ cached AI report prose (without deleting it); the Review page warns that
 existing text may contain old values and offers a one-game regeneration action.
 No bulk LLM generation is triggered by the migration.
 
+### Source provenance in the combined November 11 release
+
+The combined release also adds a monotonic game source revision and engine
+analysis generation. Existing analyses have NULL provenance and generation 0.
+Reaggregating their v9 scores to v10 does **not** establish provenance: they
+remain unavailable as current engine evidence or AI-report inputs until a new
+engine analysis. Their saved PGNs, move history and report text remain stored.
+Library/insights/profile accuracy excludes this unverified evidence.
+
+Opening such a legacy game does not automatically reanalyze it. The page
+explains that the explicit **Run engine analysis** action replaces its cached
+analysis and report. Back up any historical cache that must be retained before
+choosing this action; the application cache is not an archival history store.
+No mass engine or AI-report regeneration is part of deployment.
+
+See [the migration and rollout report](review-excellence/FINAL-MIGRATION-SAFETY-20261111.md)
+for verified rehearsals, deployment hold and rollback instructions.
+
 **Release verification:** check game/analysis counts and SQLite quick_check,
 verify known sample games, check no original saved move or review has been
 lost, and verify that the local MCP service still connects. The live database

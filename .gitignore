@@ -1,5 +1,5 @@
 # Dependencies
-node_modules/
+node_modules
 .pnp
 .pnp.js
 
@@ -47,3 +47,4 @@ integrations/mcp/.patzer-password
 
 # Independent review certification runtime artifacts
 qa/review-excellence/results/
+qa-artifacts/
