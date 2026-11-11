@@ -6,6 +6,12 @@ import type { Classification } from '../types.js';
 // or estimateElo curve changes — analyses cached at an older version will be
 // silently re-run on next view.
 //
+// v10 — Corrected game-accuracy aggregation: removes the third-worst harmonic
+//   floor and positive score shift; includes own-move win-chance loss in
+//   volatility weighting. Classification labels and per-ply evals are unchanged.
+//   Legacy v9 analyses can be migrated using stored move evals without engine
+//   re-analysis; see scripts/recalculate-accuracy.mjs.
+//
 // v9 — Brilliant was unreachable. The sacrifice test compared the player's
 //   material before vs after *their own move*, which can never drop (only
 //   captures change material, and you can't capture your own pieces). 4,482
@@ -30,7 +36,7 @@ import type { Classification } from '../types.js';
 //   survive recapture); cpLossForAcpl caps ACPL at 300.
 // v6 — chess.com Game Review parity pass. See `.claude/specs/chess-math.md`.
 // ─────────────────────────────────────────────────────────────────────────────
-export const SCORING_VERSION = 9;
+export const SCORING_VERSION = 10;
 
 // Soft ceiling for ply-based book fallback when no ECO lookup is provided.
 // With ECO-based detection (the analyzer passes `inBook` per ply), this is

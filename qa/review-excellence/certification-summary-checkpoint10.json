@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T00:45:03.901Z",
+  "parent_checkpoint_commit": "8a8a7489c6410da9412d9de0c61234da25ad1198",
+  "own_qa_git_sha": "8a8a7489c6410da9412d9de0c61234da25ad1198",
+  "source_candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "synthetic_only": true,
+  "experiment": {
+    "real_aborted_post_not_cached": true,
+    "real_successful_post_cached": true,
+    "source_provenance_valid": true,
+    "model_requests": 4,
+    "comprehensive_release_certification": false
+  },
+  "outcome": {
+    "tested_cancellation_path_passed": true,
+    "broader_product_cancellation_certified": false,
+    "release_approved": false
+  },
+  "source_hashes": {
+    "runner": "f83bc6d783045efe7fceebadeb71c23f06c366c5739464bf828e761f9b63c573",
+    "proof": "068662e9aeee07ac2e997e8b451142d3467762fc7d91e889a513e222d6c7c1f7"
+  },
+  "remaining_risks": [
+    "One aborted synthetic request followed by one successful request; no load/parallel test",
+    "Mock provider and Hono in-process SSE only; not a real reverse proxy/client-network disconnect",
+    "No public-user or production SQLite data; no external model",
+    "A canceled request at a different stage (final write, another model, cache invalidation) requires independent tests",
+    "Stockfish 16 not shown equivalent to deployed Stockfish 17"
+  ]
+}

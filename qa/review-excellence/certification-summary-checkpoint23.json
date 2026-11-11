@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T03:48:06.521Z",
+  "prior_checkpoint_commit": "702bc4469e99b865990d576984a03464fcedb977",
+  "own_branch": "agent/review-benchmark-20261111",
+  "qa_checkout_sha": "702bc4469e99b865990d576984a03464fcedb977",
+  "product_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "backend_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "chrome_version": "Google Chrome 157.0.8103.38",
+  "positive_run_id": "6cd96990-6962-4a88-9b44-fd1c576b45b7",
+  "negative_run_id": "15b247a6-b67c-43b1-a864-af743925d790",
+  "expected_exits": {
+    "positive": 0,
+    "negative": 1
+  },
+  "observed": {
+    "positive": {
+      "real_browser_stale_report_reproduced": true,
+      "two_signed_sessions_used": true,
+      "authenticated_patch_proven": true,
+      "stale_get_recognizes_profile_mismatch": true,
+      "auto_review_queue_misses_stale_cache": true,
+      "manual_spanish_advanced_recovery_proven": true,
+      "spanish_UI_declares_english_root_language": true,
+      "model_calls_closed": 9,
+      "product_gate_passed": false,
+      "release_approved": false
+    },
+    "negative": {
+      "real_http_bad_stale_response_detected": true,
+      "expected_test_failure": true,
+      "release_approved": false
+    }
+  },
+  "source_hashes": {
+    "browser_driver": "64de770ed9c51fb80f8d56f0f2a75e87bd0986bfc11e94ec5bd95bccbab06f18",
+    "runner": "690afebc8311f9c9ebfa7a0637e1080d41f47bfcd3717f8594d2393ac31d6918",
+    "proof": "fedc74a2d3e0c85f8563bc04d59a90bbd444f155e452e13c59b81cddab1267c4"
+  },
+  "raw_evidence_uncommitted": true,
+  "profile_fault_only_in_disposable_QA_host": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "One synthetic account with two signed sessions and one legal four-ply PGN",
+    "Real Chrome React app with Vite development proxy and authentic Hono settings/review endpoints",
+    "Second session changes language/audience using authenticated PATCH rather than clicking Settings UI",
+    "LLM is local fake, no production browser/account/network/deployed model",
+    "The stale report and root-language mismatch are reproducible in this pinned source, not release claims",
+    "No sealed gold holdout, representative performance or full accessibility assessment"
+  ]
+}

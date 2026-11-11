@@ -24,6 +24,28 @@ function flatten(tree: Tree, prefix = ''): Record<string, string> {
 
 const placeholders = (s: string) => (s.match(/{{\s*\w+\s*}}/g) ?? []).sort();
 
+// Practice is a safety-sensitive, accessible journey: missing translations
+// otherwise silently display English controls in a non-English exercise.
+// Validate all five supported locales and the interpolated move metadata.
+describe.each([['de', de], ['ru', ru], ['bg', bg], ['es', es]] as const)(
+  '%s blind-practice locale',
+  (lang, resource) => {
+    const enPractice = flatten({ practice: en.practice } as Tree);
+    const localized = flatten({ practice: resource.practice } as Tree);
+    it('has complete keys with matching interpolations and localized instructions', () => {
+      expect(Object.keys(localized).sort()).toEqual(Object.keys(enPractice).sort());
+      for (const [key, englishText] of Object.entries(enPractice)) {
+        expect(localized[key]?.trim().length, key).toBeGreaterThan(0);
+        expect(placeholders(localized[key] ?? ''), key).toEqual(placeholders(englishText));
+      }
+      for (const key of ['practice.entry', 'practice.pickerHeading', 'practice.learnHeading',
+        'practice.boardLabel', 'practice.piece.p']) {
+        expect(localized[key], `${lang}: ${key}`).not.toEqual(enPractice[key]);
+      }
+    });
+  },
+);
+
 // i18next silently falls back to English for a missing key, so a gap in a
 // locale never shows up as an error — only as an English word in the middle
 // of a German screen. Pin German to full parity with English.

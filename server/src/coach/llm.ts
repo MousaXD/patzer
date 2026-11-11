@@ -173,10 +173,12 @@ interface ChatOpts {
 // Hard timeout (default 120s) and idle timeout (default 30s) ensure silent
 // failures (model loading forever, network hung) become loud errors.
 export async function chatStream(messages: ChatMessage[], onChunk: (text: string) => void, opts: ChatOpts = {}): Promise<void> {
+  opts.signal?.throwIfAborted();
   if (!llmConfigured()) throw new Error('llm_not_configured');
   const url = llmUrl()!;
   const provider = llmProvider();
   const model = (opts.fallback === false) ? (opts.model ?? llmModel()) : await resolveModel(opts.model);
+  opts.signal?.throwIfAborted();
   lastModelUsed = model;
   const _started = Date.now();
   const hardMs = opts.hardTimeoutMs ?? 120_000;
@@ -212,6 +214,23 @@ export async function chatStream(messages: ChatMessage[], onChunk: (text: string
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
+      let sawCompletion = false;
+      let truncatedByLimit = false;
+      const acceptEvent = (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line || !line.startsWith('data:')) return;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') { sawCompletion = true; return; }
+        if (sawCompletion) throw new Error('llm_frame_after_completion');
+        let obj: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string } };
+        try { obj = JSON.parse(payload) as typeof obj; }
+        catch { throw new Error('llm_bad_stream_frame'); }
+        if (obj.error) throw new Error(`llm_${obj.error.message ?? 'error'}`);
+        const choice = obj.choices?.[0];
+        if (choice?.finish_reason === 'stop') sawCompletion = true;
+        if (choice?.finish_reason === 'length') truncatedByLimit = true;
+        if (choice?.delta?.content) onChunk(choice.delta.content);
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -219,22 +238,13 @@ export async function chatStream(messages: ChatMessage[], onChunk: (text: string
         buf += decoder.decode(value, { stream: true });
         let nl;
         while ((nl = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, nl).trim();
+          const line = buf.slice(0, nl);
           buf = buf.slice(nl + 1);
-          if (!line || !line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (payload === '[DONE]') continue;
-          try {
-            const obj = JSON.parse(payload) as { choices?: { delta?: { content?: string } }[]; error?: { message?: string } };
-            if (obj.error) throw new Error(`llm_${obj.error.message ?? 'error'}`);
-            const text = obj.choices?.[0]?.delta?.content;
-            if (text) onChunk(text);
-          } catch (err) {
-            if ((err as Error).message?.startsWith('llm_')) throw err;
-            // ignore malformed JSON lines
-          }
+          acceptEvent(line);
         }
       }
+      if (buf.trim()) acceptEvent(buf);
+      if (!sawCompletion || truncatedByLimit) throw new Error('llm_incomplete_stream');
     } else {
       const res = await fetch(`${url}/api/chat`, {
         method: 'POST',
@@ -260,6 +270,20 @@ export async function chatStream(messages: ChatMessage[], onChunk: (text: string
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
+      let sawCompletion = false;
+      let truncatedByLimit = false;
+      const acceptLine = (rawLine: string) => {
+        const line = rawLine.trim();
+        if (!line) return;
+        if (sawCompletion) throw new Error('llm_frame_after_completion');
+        let obj: { message?: { content?: string }; done?: boolean; done_reason?: string; error?: string };
+        try { obj = JSON.parse(line) as typeof obj; }
+        catch { throw new Error('llm_bad_stream_frame'); }
+        if (obj.error) throw new Error(`llm_${obj.error}`);
+        if (obj.done) sawCompletion = true;
+        if (obj.done_reason === 'length') truncatedByLimit = true;
+        if (obj.message?.content) onChunk(obj.message.content);
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -267,20 +291,13 @@ export async function chatStream(messages: ChatMessage[], onChunk: (text: string
         buf += decoder.decode(value, { stream: true });
         let nl;
         while ((nl = buf.indexOf('\n')) >= 0) {
-          const line = buf.slice(0, nl).trim();
+          const line = buf.slice(0, nl);
           buf = buf.slice(nl + 1);
-          if (!line) continue;
-          try {
-            const obj = JSON.parse(line) as { message?: { content?: string }; done?: boolean; error?: string };
-            if (obj.error) throw new Error(`llm_${obj.error}`);
-            const text = obj.message?.content;
-            if (text) onChunk(text);
-          } catch (err) {
-            if ((err as Error).message?.startsWith('llm_')) throw err;
-            // ignore malformed JSON lines
-          }
+          acceptLine(line);
         }
       }
+      if (buf.trim()) acceptLine(buf);
+      if (!sawCompletion || truncatedByLimit) throw new Error('llm_incomplete_stream');
     }
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
@@ -302,10 +319,12 @@ export async function chatJson<T = unknown>(
   messages: ChatMessage[],
   opts: { model?: string; temperature?: number; numPredict?: number; signal?: AbortSignal; timeoutMs?: number; fallback?: boolean } = {},
 ): Promise<T> {
+  opts.signal?.throwIfAborted();
   if (!llmConfigured()) throw new Error('llm_not_configured');
   const url = llmUrl()!;
   const provider = llmProvider();
   const model = (opts.fallback === false) ? (opts.model ?? llmModel()) : await resolveModel(opts.model);
+  opts.signal?.throwIfAborted();
   lastModelUsed = model;
   const _started = Date.now();
   const timeoutMs = opts.timeoutMs ?? 180_000;

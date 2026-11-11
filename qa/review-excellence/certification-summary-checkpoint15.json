@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T01:51:26.914Z",
+  "prior_qa_branch_head": "389b9b5b2a539bb6be7f6e041786ba0bc953a99d",
+  "checkout_sha": "389b9b5b2a539bb6be7f6e041786ba0bc953a99d",
+  "own_branch": "agent/review-benchmark-20261111",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "source_sha256": {
+    "runner": "505a242879aac2453164cbbadd20bbd924bf94c0056663fd2773135334793cbd",
+    "hostile_controls": "f5a33599ec92b9040c8b62298bf967b85b66f10726a823268e6b756a16cc4a40",
+    "compiler": "e6a11e0f4dc2fb76df226f02f5c98945db2e32734978d04acc8e0ff8aacaec42"
+  },
+  "synthetic_only": true,
+  "source_result": {
+    "schema_version": 1,
+    "created_utc": "2026-11-11T01:51:26.839Z",
+    "benchmark_sha": "389b9b5b2a539bb6be7f6e041786ba0bc953a99d",
+    "fixture_manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+    "scope": "benchmark selection fail-closed and synthetic input/output symlink containment",
+    "controls": [
+      {
+        "name": "empty_holdout_must_fail",
+        "expected_exit": 1,
+        "observed_exit": 1,
+        "fixture_count": 0,
+        "checks_passed": 0,
+        "error_reasons": [
+          "empty_requested_split"
+        ]
+      },
+      {
+        "name": "unknown_split_must_fail",
+        "expected_exit": 1,
+        "observed_exit": 1,
+        "fixture_count": 0,
+        "checks_passed": 0,
+        "error_reasons": [
+          "invalid_requested_split",
+          "empty_requested_split"
+        ]
+      },
+      {
+        "name": "unvalued_split_must_fail",
+        "expected_exit": 1,
+        "observed_exit": 1,
+        "fixture_count": 0,
+        "checks_passed": 0,
+        "error_reasons": [
+          "invalid_requested_split",
+          "empty_requested_split"
+        ]
+      },
+      {
+        "name": "development_cases_must_run",
+        "expected_exit": 0,
+        "observed_exit": 0,
+        "fixture_count": 15,
+        "checks_passed": 15,
+        "error_reasons": []
+      },
+      {
+        "name": "stress_cases_must_run",
+        "expected_exit": 0,
+        "observed_exit": 0,
+        "fixture_count": 10,
+        "checks_passed": 10,
+        "error_reasons": []
+      },
+      {
+        "name": "all_cases_must_run",
+        "expected_exit": 0,
+        "observed_exit": 0,
+        "fixture_count": 25,
+        "checks_passed": 25,
+        "error_reasons": []
+      },
+      {
+        "name": "nested_output_inside_results_allowed",
+        "expected_exit": 0,
+        "observed_exit": 0,
+        "fixture_count": 15,
+        "checks_passed": 15,
+        "error_reasons": []
+      },
+      {
+        "name": "fixture_symlink_outside_corpus_must_fail",
+        "expected_exit": 1,
+        "observed_exit": 1,
+        "fixture_count": 1,
+        "checks_passed": 0,
+        "error_reasons": [
+          "unsafe_fixture_path"
+        ]
+      },
+      {
+        "name": "output_file_symlink_must_not_overwrite_canary",
+        "expected_exit": 2,
+        "observed_exit": 2,
+        "error_reasons": [
+          "unsafe_output_path"
+        ]
+      },
+      {
+        "name": "output_parent_symlink_must_not_escape",
+        "expected_exit": 2,
+        "observed_exit": 2,
+        "error_reasons": [
+          "unsafe_output_path"
+        ]
+      },
+      {
+        "name": "existing_output_hardlink_must_not_overwrite_source",
+        "expected_exit": 0,
+        "observed_exit": 0,
+        "fixture_count": 15,
+        "checks_passed": 15,
+        "error_reasons": []
+      }
+    ],
+    "valid_positive_splits": 4,
+    "adversarial_inputs_rejected": 6,
+    "safe_existing_hardlink_replacement_verified": true,
+    "user_data_used": false,
+    "holdout_curated": false,
+    "release_certified": false
+  },
+  "controlled_verdict": {
+    "positive_controls": 5,
+    "negative_controls": 6,
+    "zero_case_false_green_blocked": true,
+    "untrusted_fixture_symlink_blocked": true,
+    "output_symlink_escape_blocked": true,
+    "hardlink_destination_does_not_truncate_original": true,
+    "holdout_certified": false,
+    "release_approved": false
+  },
+  "known_remaining_gaps": [
+    "Not a sealed holdout or real-app scoring correctness gate",
+    "Output and fixture containment tested with local synthetic paths, not a hostile concurrent filesystem actor",
+    "Hard-link proof uses a disposable in-repo canary, not any live database",
+    "Symlink test creation may require additional permissions on Windows",
+    "The benchmark selection runner itself is not a Stockfish or real-model performance test"
+  ],
+  "release_approved": false,
+  "integration_approved": false
+}

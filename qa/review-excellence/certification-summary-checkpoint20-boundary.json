@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:54:17.772Z",
+  "parent_agent_d_commit": "7cb32dc50b860467bab361f3728c65dad91ed881",
+  "candidate_product_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "candidate_backend_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "chrome_version": "Google Chrome 157.0.8103.38",
+  "clean_browser_run_id": "4c5a9369-35e6-4b81-987c-d9c3bd00ab78",
+  "faulty_browser_run_id": "4b1ffb35-e741-492a-9cac-feb3ae17cd3c",
+  "clean_exit": 0,
+  "broken_exit": 1,
+  "actual_application_stale_report_written_under_fault": true,
+  "independent_verifier_rejected_forged_green": true,
+  "test_only_fault": "browser fetch AbortSignal removed only for the normal game-1 review POST",
+  "no_product_source_modified": true,
+  "only_synthetic_disposable_data_used": true,
+  "source_hashes": {
+    "browser_harness": "a9aac0168d680485d2f0a9b0c1b882c2d60e53cc667d053678278af047c458c8",
+    "independent_proof": "ca259043197f6d0ec80b766af68f3c24cd2fa5766c09726e54834b428dc39822",
+    "adversarial_boundary": "9d67e444834f3b04e59674a6e33bbedcde65f081c04fddef2b89dcffd58cdd73"
+  },
+  "no_full_browser_security_certification": true,
+  "release_approved": false,
+  "limits": [
+    "Only a fresh isolated Chrome 157 profile, local Vite proxy and Hono route subset",
+    "Browser-side fault exists only inside QA session; not present in Patzer frontend source",
+    "This proves the test detects one actual incorrect cancellation, not every browser/network failure",
+    "No production SQLite, remote model, actual account or sealed human-adjudicated holdout"
+  ]
+}

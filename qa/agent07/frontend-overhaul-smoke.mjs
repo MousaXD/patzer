@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { Chess } from 'chess.js';
+import { analysisSourceHash, loadAnalysisGameSource } from '../../server/dist/chess/analysisSource.js';
 
 const port = 8894;
 const base = 'http://127.0.0.1:' + port;
@@ -72,8 +73,14 @@ function seed(db, userId, {name, moves=[], fen, classifications=[]}) {
 }
 function presentationOnly(db, scoringVersion, game) {
   // Never treat synthetic classifications as proof that Stockfish is correct.
-  db.prepare('INSERT INTO analyses (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version) VALUES (?,12,?,83,85,?)')
-    .run(game.id, JSON.stringify(game.analyzed), scoringVersion);
+  // Presentation fixtures still need a complete canonical source snapshot;
+  // unversioned rows now intentionally exercise the legacy-reanalysis UI.
+  const source = loadAnalysisGameSource(db, game.id);
+  const hash = source && analysisSourceHash(source);
+  assert.ok(hash, 'presentation fixture needs a valid canonical source');
+  db.prepare(`INSERT INTO analyses (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation) VALUES (?,12,?,83,85,?,?,?,1)`)
+    .run(game.id, JSON.stringify(game.analyzed), scoringVersion, hash, source.source_revision);
 }
 async function setTheme(cookie, site_theme) {
   const r = await api('/api/settings/profile', {method:'PATCH',cookie,body:{site_theme}});

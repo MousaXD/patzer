@@ -1,0 +1,19 @@
+{
+  "request_id": "SYN-POS-MATE",
+  "response_request_id": "SYN-POS-MATE",
+  "request_fen": "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
+  "actor": "b",
+  "fen": "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2",
+  "pv": [
+    "d8h4"
+  ],
+  "mate_claim": {
+    "winner": "b"
+  },
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "d8h4"
+    }
+  ]
+}

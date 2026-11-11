@@ -38,8 +38,9 @@ beforeAll(async () => {
       bookmarked,notes,rated
     ) VALUES (?, ?, 'chesscom', ?, '1. e4 e5 *', ?, 'opponent', ?, ?, ?, 'white', ?, ?, 0)`);
   const analysis = db.prepare(`INSERT INTO analyses (
-      game_id,depth,moves_json,scoring_version,accuracy_white
-    ) VALUES (?,16,'[]',?,80)`);
+      game_id,depth,moves_json,scoring_version,accuracy_white,
+      source_hash,source_revision,analysis_generation
+    ) VALUES (?,16,'[]',?,80,'synthetic-list-provenance',0,1)`);
   db.transaction(() => {
     for (let i = 1; i <= 1_200; i++) {
       game.run(i, 1, `https://www.chess.com/game/live/${i}`, 'owner',
@@ -216,7 +217,8 @@ describe('platform backend edge-case protection', () => {
       VALUES (5, 'imported', '1. e4 e5 *', 'unknown_side', 'opponent', 'loss',
         '2026-01-01T00:00:00Z', NULL)`).run().lastInsertRowid);
     db.prepare(`INSERT INTO analyses (game_id, depth, scoring_version, accuracy_white,
-      accuracy_black, moves_json, phase_split_json) VALUES (?, 16, ?, 42, 77, ?, ?)`).run(
+      accuracy_black, moves_json, phase_split_json, source_hash, source_revision, analysis_generation)
+      VALUES (?, 16, ?, 42, 77, ?, ?, 'synthetic-unknown-side', 0, 1)`).run(
       gameId, SCORING_VERSION,
       JSON.stringify([{ ply: 1, san: 'e4', fen_after: '8/8/8/8/8/8/8/8', classification: 'blunder', centipawn_loss: 400 }]),
       JSON.stringify({ opening: { from_ply: 1, to_ply: 14, accuracy_white: 42, accuracy_black: 77 } }),
@@ -355,7 +357,9 @@ describe('Black-first position analytics regression', () => {
         centipawn_loss: index % 2 === 0 ? 250 : 0,
       };
     });
-    db.prepare('INSERT INTO analyses (game_id, depth, scoring_version, moves_json) VALUES (?, 16, ?, ?)')
+    db.prepare(`INSERT INTO analyses
+      (game_id, depth, scoring_version, moves_json, source_hash, source_revision, analysis_generation)
+      VALUES (?, 16, ?, ?, 'synthetic-black-first', 0, 1)`)
       .run(gameId, SCORING_VERSION, JSON.stringify(moves));
 
     const cookie7 = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(7))}`;

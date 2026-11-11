@@ -11,6 +11,8 @@ import { isCompleteReviewPayload, parseReviewProgress, takeReviewEvents, type Re
 
 export interface GameReviewProse {
   version: number;
+  /** Historic prose was written using the old, inflated accuracy model. */
+  accuracy_model_version?: number;
   language: Language;
   audience: string;
   opening: { eco: string; name: string; prose: string } | null;
@@ -34,6 +36,10 @@ interface Props {
   gameId: number;
   /** Existing cached review, if any. */
   initial: GameReviewProse | null;
+  /** Whether saved engine evidence has been verified against this PGN. */
+  sourceReady?: boolean;
+  /** Source changed while this review workspace was open. */
+  sourceChanged?: boolean;
   /** Reports back when a moment is clicked so the parent can move the board. */
   onMomentJump?: (ply: number) => void;
   /** Called when prose is freshly generated; parent caches in component state. */
@@ -43,7 +49,7 @@ interface Props {
   startFen?: string;
 }
 
-export default function GameReportPanel({ gameId, initial, onMomentJump, onGenerated, userColor, startFen }: Props) {
+export default function GameReportPanel({ gameId, initial, sourceReady = true, sourceChanged = false, onMomentJump, onGenerated, userColor, startFen }: Props) {
   const { t } = useTranslation();
   const [review, setReview] = useState<GameReviewProse | null>(initial);
   const [busy, setBusy] = useState(false);
@@ -51,7 +57,7 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => { setReview(initial); }, [initial]);
+  useEffect(() => { setReview(sourceReady ? initial : null); }, [initial, sourceReady]);
   useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   function cancelGeneration() {
@@ -61,10 +67,14 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
     abortRef.current = null;
     setBusy(false);
     setProgress(null);
-    setError('Report generation cancelled. You can try again.');
+    setError(t('review.generationCancelled', { defaultValue: 'Report generation cancelled. You can try again.' }));
   }
 
   async function generate() {
+    if (!sourceReady) {
+      setError(t('review.reanalysisRequired', { defaultValue: 'The engine analysis no longer matches this game. Reanalyze the game before writing a report.' }));
+      return;
+    }
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -77,10 +87,13 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'patzer' },
         signal: ac.signal,
       });
-      if (ac.signal.aborted) return;
+      if (ac.signal.aborted || abortRef.current !== ac) return;
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}));
-        setError((j as { error?: string }).error ?? `HTTP ${res.status}`);
+        const code = (j as { error?: string }).error;
+        setError(code === 'review_source_changed' || code === 'analysis_required' || code === 'analysis_stale'
+          ? t('review.reanalysisRequired', { defaultValue: 'The game changed. Reanalyze it before generating a report.' })
+          : t('review.generationFailed', { defaultValue: 'Could not generate the AI report. Please try again.' }));
         setBusy(false);
         return;
       }
@@ -91,13 +104,13 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
       let failed = false;
       while (true) {
         const { done, value } = await reader.read();
-        if (ac.signal.aborted) return;
+        if (ac.signal.aborted || abortRef.current !== ac) return;
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const parsed = takeReviewEvents(buf);
         buf = parsed.rest;
         for (const event of parsed.events) {
-          if (ac.signal.aborted) return;
+          if (ac.signal.aborted || abortRef.current !== ac) return;
           if (event.type === 'progress') {
             try {
               const update = parseReviewProgress(JSON.parse(event.data));
@@ -113,11 +126,13 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
               complete = true;
             } catch (err) {
               failed = true;
-              setError(`Report returned an invalid result: ${(err as Error).message}. Please retry.`);
+              setError(t('review.generationFailed', { defaultValue: 'Could not generate the AI report. Please try again.' }));
             }
           } else if (event.type === 'error') {
             failed = true;
-            setError(event.data || 'The report generator failed. Please retry.');
+            setError(event.data.includes('review_source_changed')
+              ? t('review.reanalysisRequired', { defaultValue: 'The game changed. Reanalyze it before generating a report.' })
+              : t('review.generationFailed', { defaultValue: 'Could not generate the AI report. Please try again.' }));
           }
         }
         // A valid terminal SSE event is sufficient. Waiting for a proxy to
@@ -125,16 +140,16 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
         if (complete || failed) break;
       }
       if (!complete && !failed && !ac.signal.aborted) {
-        setError('The AI report connection ended before the report was complete. Please retry.');
+        setError(t('review.generationFailed', { defaultValue: 'Could not generate the AI report. Please try again.' }));
       }
     } catch (e) {
-      if (!ac.signal.aborted) setError((e as Error).message);
+      if (!ac.signal.aborted && abortRef.current === ac) setError(t('review.generationFailed', { defaultValue: 'Could not generate the AI report. Please try again.' }));
     } finally {
       // Close the response body even when it ends with an error or a valid
       // `done` event; otherwise an SSE connection can keep a server slot open.
       if (reader) void reader.cancel().catch(() => undefined);
       if (abortRef.current === ac) abortRef.current = null;
-      if (!ac.signal.aborted) setBusy(false);
+      if (!ac.signal.aborted && abortRef.current === null) setBusy(false);
     }
   }
 
@@ -145,7 +160,10 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
     return (
       <div className="flex flex-col gap-3">
         <p className="text-xs text-chesscom-500">{t('review.gameReportDesc', { defaultValue: 'A written breakdown of the game by the AI coach. Highlights phases, key moments, and a skill estimate.' })}</p>
-        <button onClick={generate} className="btn-primary w-full text-sm">
+        {(sourceChanged || !sourceReady) && <p role="status" className="rounded-lg border border-amber-500/40 p-2 text-sm">{sourceReady
+          ? t('review.gameChanged', { defaultValue: 'The game changed. Reanalyze it to generate an updated report.' })
+          : t('review.reanalysisRequired', { defaultValue: 'The engine analysis no longer matches this game. Reanalyze the game before writing a report.' })}</p>}
+        <button onClick={generate} disabled={!sourceReady} className="btn-primary w-full text-sm">
           <Sparkles className="h-4 w-4" />
           {t('review.generateReport', { defaultValue: 'Write AI report' })}
         </button>
@@ -178,6 +196,16 @@ export default function GameReportPanel({ gameId, initial, onMomentJump, onGener
 
   return (
     <div className="flex flex-col gap-3">
+      {review.accuracy_model_version !== undefined && review.accuracy_model_version < 10 && (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-chesscom-800 dark:text-chesscom-200">
+          <p>This AI report uses the old accuracy formula, so the percentages in its text may be outdated. Your game analysis is preserved.</p>
+          <button type="button" className="btn-secondary self-start text-xs" disabled={busy} onClick={() => void generate()}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Regenerate this report
+          </button>
+          {error && <p role="alert" className="text-bad">{error}</p>}
+        </div>
+      )}
       <div
         className="coach-md text-sm text-chesscom-800 dark:text-chesscom-100"
         dangerouslySetInnerHTML={{ __html: renderMarkdown(stripReasoning(review.summary)) }}

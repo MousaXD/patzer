@@ -1,0 +1,16 @@
+{
+  "fen": "8/8/5k2/8/8/8/5P2/6K1 w - - 99 1",
+  "request_fen": "8/8/5k2/8/8/8/5P2/6K1 w - - 99 1",
+  "request_id": "SYN-POS-50-MOVE",
+  "response_request_id": "SYN-POS-50-MOVE",
+  "actor": "w",
+  "pv": [
+    "g1g2"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "g1g2"
+    }
+  ]
+}

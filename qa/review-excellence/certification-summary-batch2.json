@@ -1,0 +1,513 @@
+{
+  "schema_version": 1,
+  "report_type": "synthetic_offline_certification_snapshot",
+  "manifest_v1_sha256": "79300b25e5602a72c6781bc0106bd43da73db1c4cfb1d119c8950d9649ac454b",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_total": 25,
+  "holdout": {
+    "exists": false,
+    "certified": false
+  },
+  "baseline": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+  "reference_engine": {
+    "name": "Stockfish 16",
+    "binary_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+    "thread_count": 1,
+    "hash_mib": 16,
+    "multipv": 3,
+    "game_analysis_depth": 8
+  },
+  "app_comparisons": {
+    "main": {
+      "source_sha": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+      "scoring_version": 9,
+      "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+      "checked_games": 5,
+      "checked_plies": 18,
+      "validation_failures": 0,
+      "negative_controls_rejected": 8,
+      "wall_ms": 2210,
+      "game_scores": [
+        {
+          "id": "SYN-GAME-FOOLS-MATE",
+          "accuracy_white": 31.8,
+          "accuracy_black": 97.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-SCHOLARS-MATE",
+          "accuracy_white": 92.8,
+          "accuracy_black": 11.4,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-BLACK-FIRST",
+          "accuracy_white": 98.1,
+          "accuracy_black": 96,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-UNDERPROMOTION",
+          "accuracy_white": 38.8,
+          "accuracy_black": 99.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-FORCED-REPLY",
+          "accuracy_white": 0,
+          "accuracy_black": 0,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        }
+      ]
+    },
+    "engine": {
+      "source_sha": "edc1b2e2ad81acf4a13a10e1d6e4340064513c69",
+      "scoring_version": 9,
+      "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+      "checked_games": 5,
+      "checked_plies": 18,
+      "validation_failures": 0,
+      "negative_controls_rejected": 8,
+      "wall_ms": 2368,
+      "game_scores": [
+        {
+          "id": "SYN-GAME-FOOLS-MATE",
+          "accuracy_white": 31.8,
+          "accuracy_black": 97.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-SCHOLARS-MATE",
+          "accuracy_white": 92.8,
+          "accuracy_black": 11.4,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-BLACK-FIRST",
+          "accuracy_white": 98.1,
+          "accuracy_black": 96,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-UNDERPROMOTION",
+          "accuracy_white": 38.8,
+          "accuracy_black": 99.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-FORCED-REPLY",
+          "accuracy_white": 0,
+          "accuracy_black": 0,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        }
+      ]
+    },
+    "coach": {
+      "source_sha": "6fde1ea2f2bd800da2e2feb0f0b3960252566f40",
+      "scoring_version": 9,
+      "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+      "checked_games": 5,
+      "checked_plies": 18,
+      "validation_failures": 0,
+      "negative_controls_rejected": 8,
+      "wall_ms": 2063,
+      "game_scores": [
+        {
+          "id": "SYN-GAME-FOOLS-MATE",
+          "accuracy_white": 31.8,
+          "accuracy_black": 97.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-SCHOLARS-MATE",
+          "accuracy_white": 92.8,
+          "accuracy_black": 11.4,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-BLACK-FIRST",
+          "accuracy_white": 98.1,
+          "accuracy_black": 96,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-UNDERPROMOTION",
+          "accuracy_white": 38.8,
+          "accuracy_black": 99.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-FORCED-REPLY",
+          "accuracy_white": 0,
+          "accuracy_black": 0,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        }
+      ]
+    },
+    "product": {
+      "source_sha": "326e8256c073072a4ca88716903310c0b67a5c01",
+      "scoring_version": 9,
+      "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+      "checked_games": 5,
+      "checked_plies": 18,
+      "validation_failures": 0,
+      "negative_controls_rejected": 8,
+      "wall_ms": 1943,
+      "game_scores": [
+        {
+          "id": "SYN-GAME-FOOLS-MATE",
+          "accuracy_white": 31.8,
+          "accuracy_black": 97.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-SCHOLARS-MATE",
+          "accuracy_white": 92.8,
+          "accuracy_black": 11.4,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-BLACK-FIRST",
+          "accuracy_white": 98.1,
+          "accuracy_black": 96,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-UNDERPROMOTION",
+          "accuracy_white": 38.8,
+          "accuracy_black": 99.2,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-FORCED-REPLY",
+          "accuracy_white": 0,
+          "accuracy_black": 0,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        }
+      ]
+    },
+    "v10": {
+      "source_sha": "02bfe983c14bf521e05ec4f463f5e4c70ef3f7bd",
+      "scoring_version": 10,
+      "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+      "checked_games": 5,
+      "checked_plies": 18,
+      "validation_failures": 0,
+      "negative_controls_rejected": 8,
+      "wall_ms": 1978,
+      "game_scores": [
+        {
+          "id": "SYN-GAME-FOOLS-MATE",
+          "accuracy_white": 27.9,
+          "accuracy_black": 97.2,
+          "delta_vs_main_white": -3.9,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-SCHOLARS-MATE",
+          "accuracy_white": 92.6,
+          "accuracy_black": 8.9,
+          "delta_vs_main_white": -0.2,
+          "delta_vs_main_black": -2.5
+        },
+        {
+          "id": "SYN-GAME-BLACK-FIRST",
+          "accuracy_white": 98.1,
+          "accuracy_black": 95.9,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": -0.1
+        },
+        {
+          "id": "SYN-GAME-UNDERPROMOTION",
+          "accuracy_white": 17.6,
+          "accuracy_black": 99.2,
+          "delta_vs_main_white": -21.2,
+          "delta_vs_main_black": 0
+        },
+        {
+          "id": "SYN-GAME-FORCED-REPLY",
+          "accuracy_white": 0,
+          "accuracy_black": 0,
+          "delta_vs_main_white": 0,
+          "delta_vs_main_black": 0
+        }
+      ]
+    }
+  },
+  "uci_experiment": {
+    "sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+    "name": "Stockfish 16",
+    "depth": 12,
+    "trial_count": 9,
+    "summary": {
+      "searches": 9,
+      "per_position": {
+        "black_to_move_advantage": {
+          "n": 3,
+          "score_range": 0,
+          "distinct_best_moves": [
+            "h7h6"
+          ],
+          "mean_elapsed_ms": 26
+        },
+        "forced_king_reply": {
+          "n": 3,
+          "score_range": 0,
+          "distinct_best_moves": [
+            "e8f8"
+          ],
+          "mean_elapsed_ms": 1
+        },
+        "promotion": {
+          "n": 3,
+          "score_range": 0,
+          "distinct_best_moves": [
+            "a7a8q"
+          ],
+          "mean_elapsed_ms": 18
+        }
+      },
+      "failures": 0
+    },
+    "samples": [
+      {
+        "id": "black_to_move_advantage",
+        "trial": 1,
+        "depth": 12,
+        "nodes": 68845,
+        "score_kind": "cp",
+        "score": -421,
+        "elapsed_ms": 26,
+        "engine_cpu_ms": 30,
+        "engine_peak_rss_bytes": 155742208
+      },
+      {
+        "id": "black_to_move_advantage",
+        "trial": 2,
+        "depth": 12,
+        "nodes": 68845,
+        "score_kind": "cp",
+        "score": -421,
+        "elapsed_ms": 24,
+        "engine_cpu_ms": 20,
+        "engine_peak_rss_bytes": 155750400
+      },
+      {
+        "id": "black_to_move_advantage",
+        "trial": 3,
+        "depth": 12,
+        "nodes": 68845,
+        "score_kind": "cp",
+        "score": -421,
+        "elapsed_ms": 28,
+        "engine_cpu_ms": 30,
+        "engine_peak_rss_bytes": 155754496
+      },
+      {
+        "id": "forced_king_reply",
+        "trial": 1,
+        "depth": 12,
+        "nodes": 422,
+        "score_kind": "mate",
+        "score": -3,
+        "elapsed_ms": 0,
+        "engine_cpu_ms": 0,
+        "engine_peak_rss_bytes": 155754496
+      },
+      {
+        "id": "forced_king_reply",
+        "trial": 2,
+        "depth": 12,
+        "nodes": 422,
+        "score_kind": "mate",
+        "score": -3,
+        "elapsed_ms": 1,
+        "engine_cpu_ms": 0,
+        "engine_peak_rss_bytes": 155754496
+      },
+      {
+        "id": "forced_king_reply",
+        "trial": 3,
+        "depth": 12,
+        "nodes": 422,
+        "score_kind": "mate",
+        "score": -3,
+        "elapsed_ms": 1,
+        "engine_cpu_ms": 0,
+        "engine_peak_rss_bytes": 155754496
+      },
+      {
+        "id": "promotion",
+        "trial": 1,
+        "depth": 12,
+        "nodes": 60488,
+        "score_kind": "cp",
+        "score": 3434,
+        "elapsed_ms": 16,
+        "engine_cpu_ms": 10,
+        "engine_peak_rss_bytes": 155762688
+      },
+      {
+        "id": "promotion",
+        "trial": 2,
+        "depth": 12,
+        "nodes": 60488,
+        "score_kind": "cp",
+        "score": 3434,
+        "elapsed_ms": 20,
+        "engine_cpu_ms": 20,
+        "engine_peak_rss_bytes": 155762688
+      },
+      {
+        "id": "promotion",
+        "trial": 3,
+        "depth": 12,
+        "nodes": 60488,
+        "score_kind": "cp",
+        "score": 3434,
+        "elapsed_ms": 18,
+        "engine_cpu_ms": 20,
+        "engine_peak_rss_bytes": 155766784
+      }
+    ]
+  },
+  "lifecycle": {
+    "successful": 8,
+    "failed": 0,
+    "cases": [
+      {
+        "name": "aborted_before_engine_start",
+        "ok": true,
+        "ms": 9,
+        "detail": null
+      },
+      {
+        "name": "abort_active_analysis",
+        "ok": true,
+        "ms": 68,
+        "detail": {
+          "aborted_within_ms": 68
+        }
+      },
+      {
+        "name": "same_engine_concurrent_search_rejected",
+        "ok": true,
+        "ms": 240,
+        "detail": {
+          "first_depth": 12
+        }
+      },
+      {
+        "name": "missing_engine_binary",
+        "ok": true,
+        "ms": 6,
+        "detail": null
+      },
+      {
+        "name": "engine_crash_during_search",
+        "ok": true,
+        "ms": 29,
+        "detail": null
+      },
+      {
+        "name": "library_size_2000",
+        "ok": true,
+        "ms": 13,
+        "detail": {
+          "read_ms": 0.608,
+          "rows": 2000
+        }
+      },
+      {
+        "name": "library_size_10000",
+        "ok": true,
+        "ms": 63,
+        "detail": {
+          "read_ms": 3.682,
+          "rows": 10000
+        }
+      },
+      {
+        "name": "synthetic_library_2000_10000",
+        "ok": true,
+        "ms": 82,
+        "detail": {
+          "scope": "SQLite indexed pagination microprobe, not HTTP/React UI"
+        }
+      }
+    ]
+  },
+  "long_game": {
+    "source_sha": "45445d3e4c136db66f678091667f0c646676be59",
+    "plies": 96,
+    "app_elapsed_ms": 681,
+    "reference_elapsed_ms": 241,
+    "failures": 0
+  },
+  "adversarial_engine_faults": {
+    "reference_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+    "controls": 3,
+    "rejected": 3,
+    "results": [
+      {
+        "mode": "bad-eval",
+        "expected": "reference_evaluation_side_mismatch",
+        "verified": true,
+        "observed": [
+          "reference_evaluation_side_mismatch"
+        ]
+      },
+      {
+        "mode": "illegal-pv",
+        "expected": "missing_best_move_with_reference",
+        "verified": true,
+        "observed": [
+          "missing_best_move_with_reference",
+          "reference_evaluation_side_mismatch",
+          "missing_best_move_with_reference"
+        ]
+      },
+      {
+        "mode": "fake-mate",
+        "expected": "false_mate_in_one",
+        "verified": true,
+        "observed": [
+          "false_mate_in_one",
+          "reference_evaluation_side_mismatch",
+          "false_mate_in_one",
+          "false_mate_in_one"
+        ]
+      }
+    ],
+    "evidence_method": "scripts/review-benchmark-engine-fault-controls.mjs: external fake UCI vs separately pinned real UCI"
+  },
+  "release_readiness": false,
+  "why_not_certified": [
+    "No sealed holdout",
+    "No human adjudicated calibration labels",
+    "Coach natural-language truth not evaluated",
+    "Game Review browser task success not independently measured",
+    "No HTTP authentication/CSRF or admission/load certification",
+    "Single-machine short budget and synthetic corpus; engine 16 does not establish Stockfish 17 equivalence"
+  ]
+}

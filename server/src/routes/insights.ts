@@ -27,6 +27,8 @@ router.get('/', (c) => {
     SELECT a.game_id, g.user_color, g.start_fen, a.moves_json, a.phase_split_json
     FROM analyses a JOIN games g ON g.id = a.game_id
     WHERE g.user_id = ? AND a.scoring_version >= ?
+      AND a.source_hash IS NOT NULL AND a.source_revision = g.source_revision
+      AND a.analysis_generation > 0
     ORDER BY g.end_time DESC, g.id DESC
   `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
 

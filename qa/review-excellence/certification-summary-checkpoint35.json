@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T07:50:21.026Z",
+  "branch": "agent/review-benchmark-20261111",
+  "prior_checkpoint": "7e569cd2e93147e20e210fa9806d179e0344fed3",
+  "checkout_sha": "7e569cd2e93147e20e210fa9806d179e0344fed3",
+  "pinned_backend_candidate": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "new_source_run_id": "28e48179-8a40-462b-acfc-4997ca991b93",
+  "positive_fix_control_run_id": "f6151ada-cddf-4873-be9a-b6cccdcd6556",
+  "independent_genuine_route_evidence": {
+    "real_authenticated_analysis_route_cache_accepted_old_source": true,
+    "new_game_pgn_opposite_checkmate_and_seven_plies": true,
+    "stale_engine_four_plies_returned_after_new_game": true,
+    "freshly_requested_review_sse_done_and_cached": true,
+    "fresh_report_moments_proven_from_wrong_PGN": true,
+    "matching_source_both_controls_valid": true,
+    "outdated_analysis_not_modified_during_generation": true,
+    "no_external_model": true,
+    "release_approved": false
+  },
+  "independent_counterfactual_control": {
+    "corrected_analysis_before_admission_prevents_source_mix": true,
+    "deliberate_safe_control_caused_expected_benchmark_failure": true,
+    "source_mismatched_product_report_not_accepted_as_green": true,
+    "release_approved": false
+  },
+  "owner_source_sha256": {
+    "server/src/routes/analyze.ts": "ccfe50080f298fc0cdc25848b1f62f77f2bcb28bd36947af5b874b504d6f4b3d",
+    "server/src/routes/review.ts": "21e0a25f00418d7c1749b6089ed6d685ad1cb4f752e28bf5af16f9fa752442d0",
+    "server/src/coach/reviewCache.ts": "72aba2c3883feb2534fd8fd252f0eed9189eaccc46911141ac3943256019912b",
+    "server/src/ws/play.ts": "7d17d20aa58dba2684d40acab1d7f42f8b5a2f54f38b38a329555f5fb3ae9839"
+  },
+  "qa_scripts_sha256": {
+    "scripts/review-benchmark-coach-admission-source.mjs": "8202ccf637b951fdb7f75a5a0309787f671b993e53cd15b59eee5a55cc1ad39e",
+    "scripts/review-benchmark-coach-admission-proof.mjs": "4dc94daf82be3df186528c9f5771e9506ce34294595d9f471aceb49fe1fa3ab5",
+    "scripts/review-benchmark-coach-admission-negatives.mjs": "a9c98effe1e15524495d6cf655552ef1ed16c6685f01952a48e42f186b495f1e",
+    "scripts/review-benchmark-coach-admission-boundary.mjs": "4b722c913b6aa0f551557a76929e71be86527350ba919a844157bf2fd445dbcd"
+  },
+  "verified_defect": "fresh POST /review admits source-inconsistent, pre-existing analysis because POST /analyze reused cache on depth/scoring only",
+  "unrelated_safety": "POST review CAS protects changes DURING generation; this regression occurs BEFORE generator admission",
+  "source_provenance": "two self-authored FIDE-legal checkmates with opposite winners, genuine Stockfish depth8, signed Hono routes, disposable SQLite",
+  "total_stockfish_searches_per_run": 2,
+  "engine_threads": 1,
+  "engine_hash_mib": 16,
+  "no_external_model": true,
+  "private_data_used": false,
+  "no_product_source_changes": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limits": [
+    "Direct QA mutation of games.pgn via isolated SQLite; no production websocket timing claim",
+    "Synthetic Fool and Scholar checkmates; source analysis correctness checked by independent chess.js replay",
+    "New report uses product deterministic fallback prose (no real LLM), actual SSE and production CAS",
+    "A correct analysis-source correlation requires approved source identity schema and migration design",
+    "No real customer data, mass engine runs, owner source changes or release certification"
+  ]
+}

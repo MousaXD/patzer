@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T05:49:32.871Z",
+  "own_branch": "agent/review-benchmark-20261111",
+  "preceding_head": "8175071497ae695c4d876f02079a2c16ff7187f8",
+  "checkout_sha": "8175071497ae695c4d876f02079a2c16ff7187f8",
+  "pinned_candidate_b": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "current_run_id": "e541b4c8-626b-477f-a3c5-a4af99cea435",
+  "earlier_real_coach_run_id": "d574a930-5aaf-4e19-ad9f-aab85be00255",
+  "independent_evidence": {
+    "synthetic_PGNs_replayed": 33,
+    "case_count": 99,
+    "strict_loader_accepted_invalid_FEN_sources": 20,
+    "invalid_prose_verdicts_blocked": 60,
+    "valid_starts_not_over_rejected": 39,
+    "separately_adjudicated_source_fixtures": 33,
+    "source_inputs_sha256": "50d2810a1ba4d8909e7d3fa31a35ccf776c10b533053bfb8fb6d6ac2a55476e3",
+    "source_outcomes_sha256": "64414e1e11dc843afd128c0b2472f59b93c899826796066394dbd35b4de8e6a4",
+    "source_identity_sha256": "7084b080296fd0ff9bb5de9ffc1deca0b015cb7e107e946a11960594d5ba1402",
+    "complete_retrograde_legality_proven": false,
+    "product_factuality_certified": false,
+    "release_approved": false
+  },
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "d164a24d562a6f82662f6ee8db8da17a88ea6f3363f92e95e86d1f506b486dcc",
+    "scripts/review-benchmark-start-fen-matrix.mjs": "b27ac0001d99502746a0e75321a42e9d81782e6959cfbba5aaf009585b8994f9",
+    "scripts/review-benchmark-start-fen-proof.mjs": "7762ec9030c5460fda2490939619efd1c70c5bf86a5d45ee27e02873048a872e",
+    "scripts/review-benchmark-start-fen-negatives.mjs": "665bee01ee9862fc8fba6383d8c06a877fa0a7304e13782e15dfe5b862c54a87",
+    "scripts/review-benchmark-start-fen-boundary.mjs": "d4bd9c9936820fefc12ebd3c33b07f0924c529c3db76cba4d7a37f1e1ba76afb"
+  },
+  "model_requests_this_checkpoint": 0,
+  "engine_searches_this_checkpoint": 0,
+  "no_product_source_mutated": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "Only necessary starting-FEN legality invariants; no complete historical reachability proof",
+    "Synthetic source configurations were intentionally impossible and accepted by chess.js strict PGN syntax",
+    "Positive FEN examples are not independently proven reachable from standard initial chess",
+    "No sealed human-labeled games, real LLM calls, production credentials, database or deployment changes",
+    "Prior coach false local-model statements and profile-cache/accessibility blockers remain separate product issues"
+  ]
+}

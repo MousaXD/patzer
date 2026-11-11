@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-10T23:55:50.856Z",
+  "parent_checkpoint_commit": "bb10992feb14d8105b9d443f81b2979f6342dee0",
+  "benchmark_current_commit": "bb10992feb14d8105b9d443f81b2979f6342dee0",
+  "fixture_manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "source_kind": "self-authored synthetic",
+  "holdout_count": 0,
+  "pinned_engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine": "Stockfish 16",
+  "depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "multipv": 3,
+  "baseline_sha": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+  "agent_a_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+  "source_hashes": {
+    "scripts/review-benchmark-app-adapter.mjs": "1dc10b7d29d11b3af2912c04907d23b380cd82b70fcc99c6f11d7418d9fb5566",
+    "scripts/review-benchmark-real-app.mjs": "8d91f8d08475551564f5dcdb678450f71047ff6628e454d042bca3628818de82",
+    "scripts/review-benchmark-gated-smoke.mjs": "5a1820e31d5b61826f2f401bcbf6ae04714321ceff04e13a9d21e29bfb7d87f3"
+  },
+  "findings": {
+    "original_false_green": "best UCI move g7g6 relabeled mistake, previously accepted",
+    "best_move_label_mutant_detected_in_three_cohorts": true,
+    "mutation_scheduling_uses_first_applicable_game_across_cohort": true,
+    "forced_only_cohort_unverified_and_rejected": 3,
+    "main_has_verified_no_evidence_elo_defect": true,
+    "raw_uci_controls_still_reject_bad_evidence": true
+  },
+  "gated_results": {
+    "default": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": true,
+      "checked_games": [
+        "SYN-GAME-BLACK-FIRST",
+        "SYN-GAME-FORCED-REPLY"
+      ],
+      "application_controls_rejected": 12,
+      "application_unverified": 0,
+      "app_failures": 0,
+      "raw_pvs": 112,
+      "raw_failures": 0,
+      "failure_reasons": []
+    },
+    "special": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": true,
+      "checked_games": [
+        "SYN-GAME-UNDERPROMOTION",
+        "SYN-GAME-EN-PASSANT"
+      ],
+      "application_controls_rejected": 10,
+      "application_unverified": 0,
+      "app_failures": 0,
+      "raw_pvs": 240,
+      "raw_failures": 0,
+      "failure_reasons": []
+    },
+    "mates": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": true,
+      "checked_games": [
+        "SYN-GAME-FOOLS-MATE",
+        "SYN-GAME-SCHOLARS-MATE"
+      ],
+      "application_controls_rejected": 10,
+      "application_unverified": 0,
+      "app_failures": 0,
+      "raw_pvs": 264,
+      "raw_failures": 0,
+      "failure_reasons": []
+    },
+    "forced": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": false,
+      "checked_games": [
+        "SYN-GAME-FORCED-REPLY"
+      ],
+      "application_controls_rejected": 9,
+      "application_unverified": 3,
+      "app_failures": 0,
+      "raw_pvs": 32,
+      "raw_failures": 0,
+      "failure_reasons": [
+        "unverified_boundary_negative_control"
+      ]
+    },
+    "extra": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": false,
+      "checked_games": [
+        "SYN-GAME-BLACK-FIRST",
+        "SYN-GAME-FORCED-REPLY"
+      ],
+      "application_controls_rejected": 12,
+      "application_unverified": 0,
+      "app_failures": 0,
+      "raw_pvs": 113,
+      "raw_failures": 0,
+      "failure_reasons": [
+        "raw_uci_fixture_positions_mismatch"
+      ]
+    },
+    "illegal": {
+      "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+      "scope_passed": false,
+      "checked_games": [
+        "SYN-GAME-BLACK-FIRST",
+        "SYN-GAME-FORCED-REPLY"
+      ],
+      "application_controls_rejected": 12,
+      "application_unverified": 0,
+      "app_failures": 0,
+      "raw_pvs": 112,
+      "raw_failures": 1,
+      "failure_reasons": [
+        "raw_uci_evidence_failed",
+        "insufficient_raw_uci_coverage"
+      ]
+    },
+    "main": {
+      "candidate_sha": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+      "scope_passed": false,
+      "checked_games": [
+        "SYN-GAME-BLACK-FIRST",
+        "SYN-GAME-FORCED-REPLY"
+      ],
+      "application_controls_rejected": 10,
+      "application_unverified": 0,
+      "app_failures": 2,
+      "raw_pvs": 112,
+      "raw_failures": 0,
+      "failure_reasons": [
+        "actual_application_output_failed"
+      ]
+    }
+  },
+  "integration_approved": false,
+  "release_approved": false,
+  "remaining_gaps": [
+    "No sealed holdout",
+    "No independently rated model accuracy improvement",
+    "No live coach natural language factuality evidence",
+    "No real browser learning/accessibility tasks",
+    "No authenticated service or multi-user load certification",
+    "Stockfish 16 only"
+  ]
+}

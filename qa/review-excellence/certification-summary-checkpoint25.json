@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T04:27:21.159Z",
+  "assigned_branch": "agent/review-benchmark-20261111",
+  "previous_head": "b8d50abc528a9b61ac243dfc4f351cfcc43a88bd",
+  "qa_checkout_sha": "b8d50abc528a9b61ac243dfc4f351cfcc43a88bd",
+  "candidate_b_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "scope_run_id": "6b19506a-a052-470a-a6c5-b44431ec4c47",
+  "real_coach_run_id": "6578b03b-395c-4069-9c4f-7289109f7414",
+  "original_i18n_local_model_requests": 30,
+  "new_model_requests_for_scope_matrix": 0,
+  "scope_evidence": {
+    "independently_named_gold_cases": 30,
+    "sample_count": 59,
+    "scoped_verified_count": 6,
+    "explicit_contradictions_rejected": 11,
+    "partial_with_uncertainty_reported": 27,
+    "not_evaluated": 15,
+    "five_actual_model_output_locales_included": true,
+    "certified_supported_language_only": "en",
+    "full_factuality_certified": false,
+    "release_approved": false
+  },
+  "real_candidate_false_claims_remain": 2,
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "62bf13efb80657de4fdd90dedde97bd77607619fb4f8811e9486b0c21de74438",
+    "scripts/review-benchmark-coach-claim-negative-controls.mjs": "535a7dce8802ebfa2eb2364a7168a267389b9e3fdeeb6940ae96cc13a4ff3999",
+    "scripts/review-benchmark-coach-provenance-negatives.mjs": "30327c4f683b01d3c06c156b85c3829b20b19620066b9f96b858594bc0c75efc",
+    "scripts/review-benchmark-coach-provenance-proof.mjs": "79aedc387a7fcbae3b919b96a86cee8518c4c8ce81d0b2111f5a002fd48b5d4c",
+    "scripts/review-benchmark-coach-scope-matrix.mjs": "8930cd46f4279a05f900cc6b5783e619b5fc8caa3ac7eb933f0de0b4b8789418",
+    "scripts/review-benchmark-coach-scope-proof.mjs": "e82429e317e71d942579e2a4f6f07a8c12ce0b897029139de896fb9a96b2e63b",
+    "scripts/review-benchmark-coach-scope-negatives.mjs": "2131a7305a8e131d02df50b15de7b35dab8caba2e05d08d93505e3528ff92ecb",
+    "scripts/review-benchmark-coach-scope-boundary.mjs": "e78c92113f8de24b05553e1889dbfc1f662f4cce36407d6730f2a849c37fc90a",
+    "scripts/review-benchmark-real-coach-faults.mjs": "dcab8da9ba01480d73712b5576f02a22ed1d9b6f932d4827812d374001176c0c"
+  },
+  "result": {
+    "qa_scope_false_green_closed": true,
+    "qa_negation_quote_false_rejection_closed_for_recognized_patterns": true,
+    "non_english_output_explicitly_abstained": true,
+    "all_generated_coaching_prose_certified": false,
+    "product_coach_factuality_certified": false,
+    "release_approved": false,
+    "integration_approved": false
+  },
+  "limitations": [
+    "Recognized English exact-result and owner/piece-square claims only",
+    "Partial verdict explicitly identifies unchecked prose; it cannot prove the prose true/false",
+    "Meta-language abstention covers only specific quotes and denial templates, not open-ended syntax",
+    "Multilingual tests reuse QA-authored synthetic strings and previously pinned local model output",
+    "No independent native-speaker adjudication, representative LLM model, sealed holdout or real user games",
+    "Other agents source and production credentials, SQLite and releases untouched"
+  ]
+}

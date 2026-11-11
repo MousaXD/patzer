@@ -27,7 +27,9 @@ beforeAll(async () => {
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
 
   const game = db.prepare(`INSERT INTO games (id, user_id, source, pgn, white, black, result, end_time, user_color) VALUES (?, ?, 'played', '', ?, ?, ?, ?, ?)`);
-  const analysis = db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version) VALUES (?, 18, ?, ?)`);
+  const analysis = db.prepare(`INSERT INTO analyses
+    (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+    VALUES (?, 18, ?, ?, 'synthetic-quality-provenance', 0, 1)`);
   // Game 1 (older): you are White — plies 1, 3, 5 are yours.
   game.run(1, 1, 'me', 'Bot', 'win', '2026-09-01 10:00:00', 'white');
   analysis.run(1, JSON.stringify([mv(1, 'e4', 'book'), mv(2, 'e5', 'brilliant'), mv(3, 'Nf3', 'best'), mv(4, 'f6', 'blunder'), mv(5, 'Nxe5', 'brilliant')]), SCORING_VERSION);

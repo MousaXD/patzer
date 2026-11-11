@@ -30,8 +30,9 @@ beforeAll(async () => {
       ?, ?, 'white', 0, ?)
   `);
   const analysis = db.prepare(`
-    INSERT INTO analyses (game_id,depth,moves_json,scoring_version,accuracy_white)
-    VALUES (?,16,'[]',?,83)
+    INSERT INTO analyses (game_id,depth,moves_json,scoring_version,accuracy_white,
+      source_hash,source_revision,analysis_generation)
+    VALUES (?,16,'[]',?,83,'synthetic-scale-provenance',0,1)
   `);
   const origin = Date.UTC(2025, 0, 1);
   db.transaction(() => {

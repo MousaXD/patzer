@@ -1,0 +1,11 @@
+[Event "Synthetic self-authored benchmark"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "QA White"]
+[Black "QA Black"]
+[Result "*"]
+[SetUp "1"]
+[FEN "6k1/5ppp/8/8/8/8/5PPP/3Q2K1 b - - 0 1"]
+
+1. ... g6 2. Qd8+ Kg7 *

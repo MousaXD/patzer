@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T04:06:38.008Z",
+  "parent_agent_d_commit": "f52f3ff3a1f1882984ef35458b90a34fa8a9dcc0",
+  "own_branch": "agent/review-benchmark-20261111",
+  "current_checkout_sha": "f52f3ff3a1f1882984ef35458b90a34fa8a9dcc0",
+  "candidate_b_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "source_game_result": "0-1",
+  "source_white_king_square": "e1",
+  "tested_ply": 3,
+  "tested_played_move": "g4",
+  "source_kind": "self-authored synthetic",
+  "llm_kind": "loopback controlled fake JSON vLLM",
+  "real_coach_run_id": "c6e89317-bda1-4379-9392-5d929027632d",
+  "real_coach_model_requests": 6,
+  "independent_verification": {
+    "verifier_reads_recorded_real_pipeline_evidence": true,
+    "real_pipeline_false_winner_in_output": true,
+    "real_pipeline_false_king_location_in_output": true,
+    "two_true_model_controls_verified": true,
+    "fabricated_legal_other_game_board_rejected": true,
+    "false_before_move_assertion_rejected": true,
+    "source_replayed_without_trusting_report_fen": true,
+    "supported_claim_count_only": 2,
+    "full_factuality_certified": false,
+    "release_approved": false
+  },
+  "adversarial_claim_controls": 58,
+  "original_claim_controls": 18,
+  "candidate_owner_tests_passed": 27,
+  "owner_log_sha256": "53dae40e93854774f0ffe6d69408e92cb3b4271e614aa2b07fb070c791e41af1",
+  "qa_source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "aa76e02f41d4815ff197e545aa1f111ab734e6f143687c93f565b531462373d2",
+    "scripts/review-benchmark-coach-claim-negative-controls.mjs": "de69eb96eb42849b03d92b5a01a3311a0d9cf25b386c1cdbdaf3806ae4f98ba5",
+    "scripts/review-benchmark-coach-provenance-negatives.mjs": "ea2e65084a3d745db947e7bedd333418abc16dc6e5e7f3b1d4e2907150cb5345",
+    "scripts/review-benchmark-real-coach-faults.mjs": "dcab8da9ba01480d73712b5576f02a22ed1d9b6f932d4827812d374001176c0c",
+    "scripts/review-benchmark-coach-provenance-proof.mjs": "d92c6bf87b052b760fda7aba63c8c5efc0c8f8ffd0e6e8b70b1c6064c3ae632d"
+  },
+  "result": {
+    "qa_false_green_proven_closed": true,
+    "model_output_escapes_still_detected": 2,
+    "candidate_factuality_certified": false,
+    "full_coach_factuality_certified": false,
+    "integration_approved": false,
+    "release_approved": false
+  },
+  "limits": [
+    "Checker assesses only narrow English result and owner/piece/square claims",
+    "Other-language output, tactical causal claims and nuanced temporal paraphrases remain unassessed",
+    "Do not interpret controlled fake LLM text as real hallucination frequency",
+    "One self-authored synthetic checkmate; no sealed human-reviewed benchmark",
+    "Stockfish 16 depth 8, not a production engine resource/accuracy parity test",
+    "No Agent B, C, A, PR #17, production SQLite or deployed model changed"
+  ]
+}

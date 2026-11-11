@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:07:29.247Z",
+  "previous_agent_d_head": "122b1fae66840a1d46940be81c4e004ac63a4beb",
+  "current_qa_checkout_sha": "122b1fae66840a1d46940be81c4e004ac63a4beb",
+  "branch": "agent/review-benchmark-20261111",
+  "source_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine_version": "Stockfish 16",
+  "threads": 1,
+  "hash_mib": 16,
+  "depth": 8,
+  "fixture_manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "synthetic_only": true,
+  "tests_real_authenticated_logout_route": true,
+  "observed_result": {
+    "logout_completed": true,
+    "revoked_cookie_rejected_for_new_requests": true,
+    "previously_admitted_review_completed_after_logout": true,
+    "persisted_review_access_requires_new_session": true,
+    "policy_for_canceling_inflight_request": "not determined",
+    "release_approved": false
+  },
+  "evidence_sha256": {
+    "runner": "1cbfbba78ca824cb3af8f240a22acd74f5d2f4d29d121348a18e204ff70eba88",
+    "verifier": "93833fc664fbf5b833c25ae8e28bc2c185499a641c4d733dbb0f59750e2f004c"
+  },
+  "no_release_approval": true,
+  "security_cancellation_policy_unresolved": true,
+  "scope_limitations": [
+    "One fake account and one in-process Hono flow, not a browser session",
+    "After logout, original admitted request continues; no requirement that it must abort was found in the route",
+    "No real proxy timing, third-party model, production data, or sealed holdout"
+  ]
+}

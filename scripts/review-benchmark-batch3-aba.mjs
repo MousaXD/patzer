@@ -1,0 +1,55 @@
+#!/usr/bin/env node
+// Independent QA: a prior source revision must never resurrect stale prose.
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {Hono} from 'hono';
+const candidate=resolve(process.argv[2]);
+const scratch=mkdtempSync(join(tmpdir(),'patzer-b3-aba-'));
+process.env.DB_PATH=join(scratch,'test.sqlite');
+process.env.SESSION_SECRET='qa-test-throwaway-not-production';
+process.env.OIDC_ENABLED='false';
+process.env.NODE_ENV='test';
+process.env.ENGINE_BACKEND='local';
+process.env.STOCKFISH_PATH=process.env.PATZER_TEST_STOCKFISH;
+process.env.STOCKFISH_THREADS='1';
+process.env.STOCKFISH_HASH='16';
+const mod=(p)=>import(pathToFileURL(join(candidate,p)).href);
+let db;
+try {
+ ({db}=await mod('server/src/db.ts'));
+ const {createSession}=await mod('server/src/auth/sessions.ts');
+ const {analyzePgn,saveAnalysis}=await mod('server/src/routes/analyze.ts');
+ const reviews=(await mod('server/src/routes/review.ts')).default;
+ const games=(await mod('server/src/routes/games.ts')).default;
+ db.prepare("INSERT INTO users(id,username,password_hash,role) VALUES(1,'qaowner','synthetic','user')").run();
+ db.prepare("INSERT INTO profiles(user_id,display_name,language,audience) VALUES(1,'QA','en','beginner')").run();
+ const pgnA='1. f3 e5 2. g4 Qh4# 0-1';
+ const pgnB='1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
+ db.prepare("INSERT INTO games(id,user_id,source,pgn,user_color,result) VALUES(1,1,'imported',?,'white','loss')").run(pgnA);
+ const {loadAnalysisGameSource}=await mod('server/src/chess/analysisSource.ts');
+ const source=loadAnalysisGameSource(db,1);
+ const analysis=await analyzePgn(pgnA,8);
+ assert.equal(saveAnalysis(1,analysis,source),true);
+ const api=new Hono();api.route('/api/games',games);api.route('/api/games',reviews);
+ const cookie='chess_session='+createSession(1);
+ const get=async(s)=>{const r=await api.request('http://localhost/api/games/1'+s,{headers:{Cookie:cookie}});return {status:r.status,data:await r.json()};};
+ const stream=await api.request('http://localhost/api/games/1/review',{method:'POST',headers:{Cookie:cookie,'X-Requested-With':'patzer'}});
+ const raw=await stream.text();assert.equal(stream.status,200,raw);assert.match(raw,/event: done/);
+ const fresh=await get('/review');assert(fresh.data.review,'initial report not cached');
+ const before=db.prepare('SELECT source_revision FROM games WHERE id=1').get().source_revision;
+ db.prepare('UPDATE games SET pgn=?,result=? WHERE id=1').run(pgnB,'win');
+ const during=await get('/review');assert.equal(during.data.review,null);
+ db.prepare('UPDATE games SET pgn=?,result=? WHERE id=1').run(pgnA,'loss');
+ const afterRevision=db.prepare('SELECT source_revision FROM games WHERE id=1').get().source_revision;
+ assert.equal(afterRevision,before+2);
+ const engine=await get('');
+ const resurrected=await get('/review');
+ const outcome={candidate,source_revision_before:before,source_revision_after:afterRevision,engine_analysis_stale:engine.data.analysis_stale,report_stale:resurrected.data.stale===true,report_resurrected:!!resurrected.data.review,report_status:resurrected.status};
+ console.log(JSON.stringify(outcome));
+ assert.equal(engine.data.analysis_stale,true,'engine must reject A-B-A analysis');
+ assert.equal(resurrected.data.review,null,'RELEASE BLOCKER: obsolete report revived after A-B-A despite stale analysis');
+ assert.equal(resurrected.data.stale,true);
+} finally {try{db?.close()}catch{}rmSync(scratch,{recursive:true,force:true});}

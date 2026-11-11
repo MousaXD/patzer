@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-10T23:46:31.063Z",
+  "base_benchmark_commit": "7e53145152593a5ef82878f6b63c45299450d951",
+  "gate_source_sha256": "d56301d6e164221fae68e9427a7457eecbdab479b44a93775d0f3356d412b104",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixtures": 2,
+  "source_license": "self-authored",
+  "holdout_cases": 0,
+  "engine_binary_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine": "Stockfish 16",
+  "depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "multipv": 3,
+  "baseline_sha": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+  "candidate_sha": "7178e2624fb9a9a35bd84bc2dcb796a46e0f1c1e",
+  "positive_runs": 3,
+  "broken_controls_detected": 4,
+  "known_baseline_failures": 2,
+  "parallel_isolation_verified": true,
+  "evidence": {
+    "none": {
+      "scope_passed": true,
+      "application_errors": 0,
+      "raw_errors": 0,
+      "expected_searches": 6,
+      "observed_searches": 6,
+      "test_only_corruption": null,
+      "failures": []
+    },
+    "drop-trace": {
+      "scope_passed": false,
+      "application_errors": 0,
+      "raw_errors": null,
+      "expected_searches": 6,
+      "observed_searches": 0,
+      "test_only_corruption": "drop-trace",
+      "failures": [
+        "raw_uci_evidence_failed",
+        "raw_uci_fixture_positions_mismatch"
+      ]
+    },
+    "corrupt-raw-pv": {
+      "scope_passed": false,
+      "application_errors": 0,
+      "raw_errors": 1,
+      "expected_searches": 6,
+      "observed_searches": 6,
+      "test_only_corruption": "corrupt-raw-pv",
+      "failures": [
+        "raw_uci_evidence_failed",
+        "insufficient_raw_uci_coverage"
+      ]
+    },
+    "extra-legal-search": {
+      "scope_passed": false,
+      "application_errors": 0,
+      "raw_errors": 0,
+      "expected_searches": 6,
+      "observed_searches": 7,
+      "test_only_corruption": "extra-legal-search",
+      "failures": [
+        "raw_uci_fixture_positions_mismatch"
+      ]
+    },
+    "force-analysis-timeout": {
+      "scope_passed": false,
+      "application_errors": null,
+      "raw_errors": null,
+      "expected_searches": 6,
+      "observed_searches": 0,
+      "test_only_corruption": "force-analysis-timeout",
+      "failures": [
+        "actual_application_output_failed",
+        "raw_uci_evidence_failed",
+        "missing_or_escaped_boundary_negative_control",
+        "raw_uci_fixture_positions_mismatch"
+      ]
+    },
+    "main": {
+      "scope_passed": false,
+      "application_errors": 2,
+      "raw_errors": 0,
+      "expected_searches": 6,
+      "observed_searches": 6,
+      "test_only_corruption": null,
+      "failures": [
+        "actual_application_output_failed"
+      ]
+    },
+    "concurrent-A": {
+      "scope_passed": true,
+      "application_errors": 0,
+      "raw_errors": 0,
+      "expected_searches": 6,
+      "observed_searches": 6,
+      "test_only_corruption": null,
+      "failures": []
+    },
+    "concurrent-B": {
+      "scope_passed": true,
+      "application_errors": 0,
+      "raw_errors": 0,
+      "expected_searches": 6,
+      "observed_searches": 6,
+      "test_only_corruption": null,
+      "failures": []
+    }
+  },
+  "integration_approved": false,
+  "release_approved": false,
+  "remaining_gates": [
+    "No independent sealed holdout",
+    "No natural-language coaching claim validation",
+    "No actual browser accessibility/usability study",
+    "No HTTP auth/isolation or multi-user load certification",
+    "Stockfish 16 does not establish Stockfish 17 parity"
+  ]
+}

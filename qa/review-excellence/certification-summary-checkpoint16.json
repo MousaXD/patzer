@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T01:56:15.236Z",
+  "previous_qa_checkpoint": "710381f2c6ec047a0947cc999825c53afd6ddb16",
+  "current_qa_checkout_sha": "710381f2c6ec047a0947cc999825c53afd6ddb16",
+  "branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine_version": "Stockfish 16",
+  "threads": 1,
+  "hash_mib": 16,
+  "depth": 8,
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "fixture_manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "synthetic_only": true,
+  "holdout_games_used": 0,
+  "scope": "authenticated real Game Review SSE concurrent user ownership, separate game rows",
+  "independent_verdict": {
+    "both_tenant_sse_payloads_correct": true,
+    "per_tenant_cached_review_isolated": true,
+    "model_prompt_perspectives_isolated": true,
+    "cross_tenant_access_denied": true,
+    "local_model_requests": 6,
+    "whole_application_security_certified": false
+  },
+  "test_result": {
+    "source_isolation_passed": true,
+    "real_model_calls": 6,
+    "full_product_releasability": false
+  },
+  "source_sha256": {
+    "harness": "552ec96bbb87aae3ab55a633931e0d8bcc5dcd13391f0c498b73e21034158b97",
+    "verifier": "2b730771ddbe307d316310fa8a256c62eb152afc842808b88bf678541d7a64de"
+  },
+  "uncommitted_raw_evidence": true,
+  "integration_approved": false,
+  "release_approved": false,
+  "limitations": [
+    "Two users, one synthetic Fool's Mate PGN and a single in-process Hono route",
+    "No real browser login, reverse proxy, 10,000-game library or cross-process worker",
+    "The fake model is controlled to make per-user contamination visible; this does not measure real LLM reliability",
+    "All other endpoints and actual production sessions remain untested"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T01:03:33.635Z",
+  "parent_checkpoint_commit": "2ca55efe3635deb4dc66590d201cc6c0be85bba7",
+  "qa_checkout_sha": "2ca55efe3635deb4dc66590d201cc6c0be85bba7",
+  "own_branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine": "Stockfish 16",
+  "threads": 1,
+  "hash_mib": 16,
+  "depth": 8,
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "source_rights": "self-authored synthetic",
+  "holdout_cases_used": 0,
+  "real_application_scope": "two overlapping authenticated POST /api/games/:id/review SSE requests; atomic cached-prose writer",
+  "controlled_race": "B provider response completed before A even though A started first",
+  "conclusions": {
+    "independent_source_and_game_checks_passed": true,
+    "stale_write_blocked": true,
+    "two_full_model_pipelines_proven": true,
+    "avoidable_duplicate_generation_observed": true,
+    "full_release_certified": false
+  },
+  "observed_provider_calls": 6,
+  "minimum_nonduplicated_calls": 3,
+  "duplicate_generation_factor_in_this_experiment": 2,
+  "observed_latency_ms": 997,
+  "source_hashes": {
+    "harness": "4c9edd2a52de7638c6845d2ef5064d2232d399c14415e5f4651d84e4a9a64ee1",
+    "verifier": "1844845689024b17db64f8dd8bc82d319ceb46d41dcb48a8f0481d6ecb182e95"
+  },
+  "product_release_certified": false,
+  "integration_approved": false,
+  "risks": [
+    "This is one in-process two-request race, not a production throughput or load estimate",
+    "Overlapping same-game generation uses twice the tested model calls but only one review is retained",
+    "A single-flight/deduplication fix must not weaken CAS safety, authentication or cancel behavior",
+    "Previous stale-analysis cache read and natural-language truth defects are unaffected",
+    "HTTP reverse proxy/browser cancellation and Stockfish 17 parity are not tested"
+  ]
+}

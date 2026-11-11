@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:54:17.824Z",
+  "previous_agent_d_commit": "7cb32dc50b860467bab361f3728c65dad91ed881",
+  "current_qa_checkout_sha": "7cb32dc50b860467bab361f3728c65dad91ed881",
+  "own_branch": "agent/review-benchmark-20261111",
+  "qa_run_id": "4c5a9369-35e6-4b81-987c-d9c3bd00ab78",
+  "product_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "backend_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "chrome_version": "Google Chrome 157.0.8103.38",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine_version": "Stockfish 16",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "controlled_real_browser_scenario_count": 4,
+  "source_paths": {
+    "product": "web/src/components/GameReportPanel.tsx",
+    "analyzer": "web/src/pages/GameAnalyzer.tsx",
+    "layout": "web/src/components/Layout.tsx",
+    "backend": "server/src/routes/review.ts"
+  },
+  "source_hashes": {
+    "browser_harness": "a9aac0168d680485d2f0a9b0c1b882c2d60e53cc667d053678278af047c458c8",
+    "chrome_cdp_driver": "d76161eb294315cadf1a49f73f9d56650b8780d8faaa347cbc51608d342d0650",
+    "evidence_verifier": "ca259043197f6d0ec80b766af68f3c24cd2fa5766c09726e54834b428dc39822"
+  },
+  "verified_results": {
+    "browser_report_navigation_abort_proven": true,
+    "browser_explicit_cancel_button_abort_proven": true,
+    "browser_logout_abort_proven": true,
+    "no_persisted_report_after_normal_unmount": true,
+    "real_browser_abort_fault_reached_cache": true,
+    "browser_runtime_exceptions": 0,
+    "local_mock_model_requests": 12,
+    "product_releasable": false
+  },
+  "raw_chrome_profile_and_database_removed": true,
+  "raw_event_evidence_uncommitted": true,
+  "full_browser_security_certified": false,
+  "integration_approved": false,
+  "release_approved": false,
+  "limitations": [
+    "Real Chrome 157 headless browser, but local Vite dev proxy rather than production static bundle/reverse proxy",
+    "Actual React DOM click triggers are used; full pointer accessibility and screen-reader use are separate",
+    "Only navigation and logout with a held local fake-LLM summary, not real hosted model provider variability",
+    "Cancellation-on-unmount is observed, not a new policy for already-admitted server work after logout",
+    "Synthetic four-ply game and four local game rows; no private data or sealed holdout"
+  ]
+}

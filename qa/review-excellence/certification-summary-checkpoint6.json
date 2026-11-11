@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T00:07:36.193Z",
+  "checkpoint_parent": "1962bf0eda14d48c073ad669df85bc29ef3db858",
+  "qa_branch": "agent/review-benchmark-20261111",
+  "benchmark_checkout_sha": "1962bf0eda14d48c073ad669df85bc29ef3db858",
+  "candidate_b_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "candidate_b_prior_verified_sha": "4f7a2b1039661874eee82bd5bcc1333abbaedb26",
+  "candidate_versions_independently_replayed": 2,
+  "candidate_prose_version": 9,
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine_name": "Stockfish 16",
+  "analyzer_depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "fixture_source": "self-authored synthetic; no user game history",
+  "actual_game_result": "0-1",
+  "actual_white_king_square": "e1",
+  "llm_source": "loopback-only deliberately fabricated JSON responses, NOT a live provider",
+  "llm_requests_accepted": 6,
+  "independent_adapter_checks": 18,
+  "verified_true_controls": 2,
+  "controlled_false_statements_passed_candidate": [
+    {
+      "surface": "game_review.summary",
+      "claim": "White won the game.",
+      "reason": "contradicted_game_winner",
+      "source": "terminal legal replay"
+    },
+    {
+      "surface": "game_review.key_moments[0].prose",
+      "claim": "White's king is on e2.",
+      "reason": "contradicted_piece_location",
+      "source": "FEN + actual played-move replay"
+    }
+  ],
+  "independent_verifier_rejected_false_statements": 2,
+  "existing_agent_b_targeted_tests_passed": 27,
+  "result": {
+    "product_factuality_certified": false,
+    "controlled_escapes_detected": true,
+    "qa_harness_controls_passed": true,
+    "release_approved": false,
+    "integrator_must_block_unqualified_factuality_claims": true
+  },
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "2a3e6456d4a519160cee913f85f12767ccd14707543ae7c7af6673a9f9c28658",
+    "scripts/review-benchmark-real-coach-faults.mjs": "831d61f2a2d8ce25747121fbf74eccc0708b4a81c1c99f6061080fb4126766fc",
+    "scripts/review-benchmark-coach-claim-negative-controls.mjs": "99d7a9763ac24526f674da2917bc1fd79bdb725b2e3de1fcd0c049b2b349fb4b"
+  },
+  "known_limitations": [
+    "Not an actual LLM hallucination frequency measurement; the local mock deliberately supplied false text",
+    "Independent checker validates narrow explicit English winner and owner-piece-square assertions only",
+    "Equivalent paraphrases, arbitrary tactical causality, forced lines beyond direct legal proof, other languages and pedagogy remain unassessed",
+    "Shared chess.js rules library is independently replayed but not a separately implemented chess-rules engine",
+    "Existing agent tests pass despite these missing adversarial examples; no source code in Agent B was modified",
+    "No sealed holdout, human adjudication or production-equivalent Stockfish 17 tests"
+  ]
+}

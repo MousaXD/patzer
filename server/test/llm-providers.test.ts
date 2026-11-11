@@ -53,9 +53,15 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 function openAiChat(res: ServerResponse, body: Record<string, unknown> | undefined): void {
   const jsonMode = (body?.response_format as { type?: string } | undefined)?.type === 'json_object';
   if (body?.stream) {
+    const input = JSON.stringify(body.messages ?? []);
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
     for (const part of ['Develop ', 'your ', 'knight.']) {
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: part } }] })}\n\n`);
+    }
+    if (input.includes('truncated-stream')) return void res.end();
+    if (input.includes('malformed-stream')) return void res.end('data: {not-json}\n\ndata: [DONE]\n\n');
+    if (input.includes('length-stream')) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`);
     }
     res.end('data: [DONE]\n\n');
     return;
@@ -74,8 +80,12 @@ async function startFake(kind: 'ollama' | 'vllm' | 'deepseek'): Promise<Fake> {
       if (req.method === 'GET' && path === '/api/tags') return json(res, 200, { models: [{ name: MODEL.ollama, size: 1 }] });
       if (req.method === 'POST' && path === '/api/chat') {
         if (body?.stream) {
+          const input = JSON.stringify(body.messages ?? []);
           res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
           for (const part of ['Develop ', 'your ', 'knight.']) res.write(JSON.stringify({ message: { content: part }, done: false }) + '\n');
+          if (input.includes('truncated-stream')) return void res.end();
+          if (input.includes('malformed-stream')) return void res.end('{not-json}\n');
+          if (input.includes('length-stream')) return void res.end(JSON.stringify({ message: { content: '' }, done: true, done_reason: 'length' }) + '\n');
           res.end(JSON.stringify({ message: { content: '' }, done: true }) + '\n');
           return;
         }
@@ -294,6 +304,50 @@ describe('switching providers keeps each one\'s settings', () => {
     expect([llm.llmUrl(), llm.llmModel()]).toEqual([fakes.vllm.url, MODEL.vllm]);
     setSetting('llm_provider', 'ollama');
     expect([llm.llmUrl(), llm.llmModel()]).toEqual([fakes.ollama.url, MODEL.ollama]);
+  });
+});
+
+describe('stream completion is evidence, not an assumption', () => {
+  for (const provider of ['ollama', 'vllm', 'deepseek'] as const) {
+    it(`${provider}: refuses partial output when a server closes without a completion marker`, async () => {
+      useProvider(provider, fakes[provider].url);
+      let provisional = '';
+      await expect(llm.chatStream([{ role: 'user', content: 'truncated-stream' }], (t) => {
+        provisional += t;
+      })).rejects.toThrow('llm_incomplete_stream');
+      expect(provisional).toBe('Develop your knight.');
+      // Client callers must buffer until this promise resolves, never forward
+      // provisional text. See coachHint and coachExplain.
+    });
+
+    it(`${provider}: rejects malformed event frames instead of silently skipping them`, async () => {
+      useProvider(provider, fakes[provider].url);
+      await expect(llm.chatStream([{ role: 'user', content: 'malformed-stream' }], () => {}))
+        .rejects.toThrow('llm_bad_stream_frame');
+    });
+
+    it(`${provider}: rejects responses stopped by token limit`, async () => {
+      useProvider(provider, fakes[provider].url);
+      await expect(llm.chatStream([{ role: 'user', content: 'length-stream' }], () => {}))
+        .rejects.toThrow('llm_incomplete_stream');
+    });
+  }
+
+  it('does not swallow application callback errors while decoding streaming JSON', async () => {
+    useProvider('vllm', fakes.vllm.url);
+    await expect(llm.chatStream([{ role: 'user', content: 'hi' }], () => { throw new Error('consumer_stopped'); }))
+      .rejects.toThrow('consumer_stopped');
+  });
+
+  it('does not contact the model when generation was cancelled before it started', async () => {
+    useProvider('vllm', fakes.vllm.url);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(llm.chatStream([{ role: 'user', content: 'hi' }], () => {}, { signal: controller.signal }))
+      .rejects.toThrow();
+    await expect(llm.chatJson([{ role: 'user', content: 'hi' }], { signal: controller.signal }))
+      .rejects.toThrow();
+    expect(fakes.vllm.seen).toEqual([]);
   });
 });
 

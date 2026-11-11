@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T07:29:26.400Z",
+  "branch": "agent/review-benchmark-20261111",
+  "preceding_commit": "a59edb0d1f2ecf645ea01151ad1f5850e2e13482",
+  "local_head": "a59edb0d1f2ecf645ea01151ad1f5850e2e13482",
+  "pinned_backend": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "pinned_product": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "clean_run_id": "d1541f8b-3398-4b12-bf18-f35ce1f17428",
+  "negative_control_run_id": "b5accf08-4e49-41e6-baeb-cbef5b3f9c5c",
+  "independent_chrome_source_conflict_proof": {
+    "actual_chrome_and_authenticated_Hono": true,
+    "same_game_refetch_while_model_summary_held": true,
+    "obsolete_model_connection_remained_active": true,
+    "old_model_result_finished_after_source_change": true,
+    "backend_atomic_source_guard_rejected_old_write": true,
+    "frontend_displayed_raw_source_conflict_error": true,
+    "stale_ai_prose_not_written_or_rendered": true,
+    "control_unchanged_game_stored_report": true,
+    "real_model_calls": 0,
+    "release_approved": false
+  },
+  "independent_manual_abort_control": {
+    "manual_cancel_closed_obsolete_model_connection": true,
+    "deliberate_cancel_provoked_expected_benchmark_failure": true,
+    "would_not_count_clean_as_repaired": true,
+    "release_approved": false
+  },
+  "source_pins": {
+    "web/src/pages/GameAnalyzer.tsx": "17ffb273f13c97444f44141aaa2ca79bf236cfebe4bf09bfc0edf4dbecb1440c",
+    "web/src/components/GameReportPanel.tsx": "c3c033be05df83ef230b85542c906ae6321d88fa5169705cd00e8eaeceb49ddb",
+    "server/src/routes/review.ts": "21e0a25f00418d7c1749b6089ed6d685ad1cb4f752e28bf5af16f9fa752442d0",
+    "server/src/coach/reviewCache.ts": "72aba2c3883feb2534fd8fd252f0eed9189eaccc46911141ac3943256019912b"
+  },
+  "script_sha256": {
+    "scripts/review-benchmark-browser-inflight-source.mjs": "350601bfdeb5629ae42a34ef1fcc3352ce8df6625320473f2b00a525ff15214a",
+    "scripts/review-benchmark-browser-inflight-proof.mjs": "4abb9bcaa2c8b8303127641f20f0d6a804996408857b514948d8d703b3f78589",
+    "scripts/review-benchmark-browser-inflight-negatives.mjs": "abe1b1dff085fea67bb3febf452d3b82458749a068971f9a115739d9e4f6a708",
+    "scripts/review-benchmark-browser-inflight-boundary.mjs": "9246a69bc666ba8787689858b4a3cf6502a69a96146f10bb61788c8ca14c2ba8"
+  },
+  "observed_product_gap": "Same-game source reanalysis does not abort already running frontend model work; eventual error exposes raw review_source_changed",
+  "observed_correct_guard": "Actual Hono CAS prevents old model summary from being persisted or rendered after game PGN/analysis changed",
+  "real_llm_calls": 0,
+  "stockfish_searches_per_browser_run": 2,
+  "engine_depth": 8,
+  "production_data_used": false,
+  "owner_source_modified": false,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "Synthetic same-game PGN replacement and saved analysis via isolated DB, not a live websocket",
+    "Fake local vLLM-compatible provider with final response held; no real model billing",
+    "Two low-depth single-thread Stockfish searches per subprocess; no mass benchmark",
+    "UI triggers actual bookmark/refetch, not proof of real-time PvP state subscription",
+    "No claim of arbitrary SSE events, public production incident frequency, sealed human ground-truth or release readiness"
+  ]
+}

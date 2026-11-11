@@ -1,0 +1,17 @@
+{
+  "request_id": "SYN-POS-EQUIVALENT",
+  "response_request_id": "SYN-POS-EQUIVALENT",
+  "request_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "actor": "w",
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "pv": [
+    "d2d4",
+    "d7d5"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "d2d4"
+    }
+  ]
+}

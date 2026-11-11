@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T04:45:06.706Z",
+  "own_branch": "agent/review-benchmark-20261111",
+  "prior_head": "d75a77c1377b482b39e80b3329fb826ef5938aed",
+  "current_checkout_sha": "d75a77c1377b482b39e80b3329fb826ef5938aed",
+  "candidate_b_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "current_qa_run_id": "ed993b79-59d4-40a6-a209-81585a219234",
+  "prior_real_coach_run_id": "20fa422a-bd50-4bb4-a39b-e5e16dd90550",
+  "source_hashes": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "7fb98d88b1ed6560e442500e6901b2e816a5a8fd1272fa348da15e9738028f77",
+    "scripts/review-benchmark-coach-conditional-matrix.mjs": "cf6324e0e2d2ea162ff7126faac21b84fd448e86c157a68fa18aef64111bef43",
+    "scripts/review-benchmark-coach-conditional-proof.mjs": "dae3b8521ff37492fff3dd54101a17a3b2ab3a69c64b4c3b1f67e799c127cfce",
+    "scripts/review-benchmark-coach-conditional-negatives.mjs": "bcaf53e94f3bfe8ffcdc1b86bc76487d1c588855d513caf545bf39c8a92817b1",
+    "scripts/review-benchmark-coach-conditional-boundary.mjs": "baf4a2abf4b24b5a758dabf1f56c70e78a820e9489955dd5e15105c750559696"
+  },
+  "scope_verification": {
+    "total_cases": 68,
+    "independent_named_gold_cases": 44,
+    "all_test_inputs_sha256": "48b7f801293ecba0aa8e808fe53f9bc8b5dce2a1ff5d83607eb634cad3d6b5f6",
+    "all_scoped_outcomes_sha256": "779f1b61907696f5f73cff6f076f2633741558ae8e700a12b36549de888d74d5",
+    "genuine_direct_assertions_rejected": 6,
+    "hypothetical_modal_claims_abstained": 51,
+    "mixed_verified_and_modal_unassessed": 7,
+    "direct_literal_truth_narrowly_verified": 4,
+    "product_coach_factuality_certified": false,
+    "release_approved": false
+  },
+  "raw_evidence_ignored": true,
+  "full_factuality_certified": false,
+  "product_release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "One four-ply self-authored game; finite explicit English modal claims only",
+    "Only standalone and specified sentence-local conditionals; no general language model or logical entailment",
+    "No new external model, real user games, production database, sealed human holdout or deployment",
+    "Older backend accepts the two previously injected false claims; this checkpoint fixes only QA interpretation"
+  ]
+}

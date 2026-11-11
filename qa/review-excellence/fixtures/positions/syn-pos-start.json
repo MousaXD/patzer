@@ -1,0 +1,26 @@
+{
+  "request_id": "SYN-POS-START",
+  "response_request_id": "SYN-POS-START",
+  "request_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "actor": "w",
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "best_move": "e2e4",
+  "pv": [
+    "e2e4",
+    "e7e5"
+  ],
+  "eval_cp_white": 50,
+  "eval_cp_actor": 50,
+  "classification": "mistake",
+  "win_pct_drop": 12,
+  "cp_loss": 130,
+  "is_best": false,
+  "claims": [
+    {
+      "type": "piece_on_square",
+      "square": "e2",
+      "piece": "p",
+      "color": "w"
+    }
+  ]
+}

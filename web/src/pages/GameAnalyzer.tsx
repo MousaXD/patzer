@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
@@ -12,13 +12,16 @@ import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
 import { parseReviewGamePositions } from '../components/review/reviewGamePositions';
 import { buildSavedReviewTimeline } from '../components/review/reviewTimeline';
+import { practiceCandidates } from '../components/review/practiceCandidates';
 import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
 import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
+import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
+import MistakePractice from '../components/review/MistakePractice';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
 import KeyMomentsList from '../components/KeyMomentsList';
 import OpeningBanner from '../components/OpeningBanner';
@@ -36,8 +39,10 @@ import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPos
 import type { AnalysisResult, AnalyzedMove } from '../types';
 
 interface GameDetail {
-  game: { id: number; pgn: string; white: string; black: string; result: string; user_color: 'white' | 'black' | null; eco?: string | null; opening_name?: string | null; bookmarked?: number | null; notes?: string | null; start_fen?: string | null };
+  game: { id: number; pgn: string; white: string; black: string; result: string; user_color: 'white' | 'black' | null; eco?: string | null; opening_name?: string | null; bookmarked?: number | null; notes?: string | null; start_fen?: string | null; source_revision: number };
   analysis: {
+    scoring_version: number; source_hash: string | null;
+    source_revision: number | null; analysis_generation: number;
     depth: number; accuracy_white: number; accuracy_black: number;
     estimated_elo_white: number | null; estimated_elo_black: number | null;
     performance_white: number | null; performance_black: number | null;
@@ -47,6 +52,7 @@ interface GameDetail {
     moves_json: string;
   } | null;
   analysis_stale?: boolean;
+  analysis_unverified?: boolean;
 }
 
 interface EngineLine {
@@ -76,8 +82,28 @@ export default function GameAnalyzer() {
   return <GameAnalyzerView key={id} />;
 }
 
+/** A failed background refetch can replace the practice board without an
+ * explicit click. Announce the recovery destination to keyboard/screen-reader
+ * users instead of leaving focus on a detached practice control. */
+function PracticeUnavailable({ practicePicker, onExit }: { practicePicker: boolean; onExit: () => void }) {
+  const { t } = useTranslation();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { headingRef.current?.focus(); }, []);
+  return <section role="alert" aria-labelledby="practice-unavailable-heading"
+    className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
+    <h1 id="practice-unavailable-heading" ref={headingRef} tabIndex={-1}
+      className="font-semibold focus:outline-none">{t('practice.unavailableHeading')}</h1>
+    <p className="mt-2 text-sm">{t('practice.unavailableReason')}</p>
+    <button type="button" className="btn-secondary mt-3 min-h-11" onClick={onExit}>
+      {t(practicePicker ? 'practice.backChoices' : 'practice.returnSaved')}
+    </button>
+  </section>;
+}
+
 function GameAnalyzerView() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -105,8 +131,12 @@ function GameAnalyzerView() {
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [requestedDepth, setRequestedDepth] = useState(16);
   const [showDepthControl, setShowDepthControl] = useState(false);
-  const [reviewProse, setReviewProse] = useState<GameReviewProse | null>(null);
+  const [storedProse, setStoredProse] = useState<{ source: string; prose: GameReviewProse } | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
+  // An in-review retry is transient. A blind attempt entered from the
+  // library uses a separate URL history entry so Back returns to its
+  // spoiler-free picker instead of unexpectedly leaving the saved game.
+  const [reviewPracticePly, setReviewPracticePly] = useState<number | null>(null);
   // A category picked in the Game Report table (e.g. Black's misses): those
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
@@ -115,6 +145,22 @@ function GameAnalyzerView() {
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const practicePicker = searchParams.get('practice') === '1';
+  const routeAttempt = searchParams.get('practicePly');
+  const routePracticePly = practicePicker && routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
+    ? Number(routeAttempt) : null;
+  const practicePly = practicePicker
+    ? routePracticePly !== null && Number.isSafeInteger(routePracticePly) ? routePracticePly : null
+    : reviewPracticePly;
+  // Blind practice must not compete with a previously started full-game
+  // reanalysis, whether entered through the library or from normal Review.
+  useEffect(() => {
+    if ((practicePicker || practicePly !== null) && analysisRequestRef.current) {
+      analysisRequestRef.current.abort();
+      analysisRequestRef.current = null;
+      setAnalyzing(false);
+    }
+  }, [practicePicker, practicePly]);
   // Replaying a PGN is work proportional to game length. Rebuild only when
   // its text changes (not when notes/bookmarks or cached analysis refresh).
   // A corrupted PGN is represented as an empty result, not a render-time throw.
@@ -122,6 +168,47 @@ function GameAnalyzerView() {
     () => data ? (parseReviewGamePositions(data.game.pgn) ?? []) : [],
     [data?.game.pgn],
   );
+  // React Router does not automatically hand keyboard/screen-reader focus to
+  // this new page. Focus its heading only on first entry, never after a
+  // background refetch or on return from an attempted move (which restores
+  // focus to the chosen practice moment instead).
+  const pickerHeadingFocusedRef = useRef(false);
+  const lastDirectAttemptRef = useRef<number | null>(null);
+  const returnToChoiceRef = useRef<number | null>(null);
+  const restoringPickerFocusRef = useRef(false);
+  useEffect(() => {
+    const previous = lastDirectAttemptRef.current;
+    lastDirectAttemptRef.current = practicePicker ? practicePly : null;
+    // Browser Back should focus the picker heading; the explicit exit button
+    // returns focus to the selected moment. Never focus a detached board.
+    if (!practicePicker || practicePly !== null || previous === null) return;
+    const id = returnToChoiceRef.current === previous
+      ? `practice-move-${previous}` : 'practice-picker-heading';
+    returnToChoiceRef.current = null;
+    restoringPickerFocusRef.current = true;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(id);
+      if (target) { target.focus(); pickerHeadingFocusedRef.current = true; }
+      restoringPickerFocusRef.current = false;
+    });
+    return () => { cancelAnimationFrame(frame); restoringPickerFocusRef.current = false; };
+  }, [practicePicker, practicePly]);
+  useEffect(() => {
+    if (!practicePicker) {
+      pickerHeadingFocusedRef.current = false;
+      return;
+    }
+    if (practicePly !== null || positions.length === 0
+      || pickerHeadingFocusedRef.current || restoringPickerFocusRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      const heading = document.getElementById('practice-picker-heading');
+      if (heading) {
+        heading.focus();
+        pickerHeadingFocusedRef.current = true;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [practicePicker, practicePly, positions.length]);
   const timeline = useMemo(
     () => buildSavedReviewTimeline(positions, analysis?.moves),
     [positions, analysis?.moves],
@@ -134,6 +221,31 @@ function GameAnalyzerView() {
     [data?.analysis, positions],
   );
   const cachedAnalysisInvalid = needsFreshReviewAnalysis(data?.analysis, decodedStoredReview);
+  // A report must cover this entire saved game. A valid prefix-only legacy
+  // analysis is useful for the Moves tab, but not evidence for an AI summary.
+  const fullEngineEvidence = !!decodedStoredReview
+    && decodedStoredReview.moves.length === positions.length - 1
+    && decodedStoredReview.moves.every((move, index) =>
+      move.fen_before === positions[index]?.fen && move.fen_after === positions[index + 1]?.fen);
+  const sourceKey = !cachedAnalysisInvalid && fullEngineEvidence && data
+    ? reviewSourceKey(gameId, data.game.pgn, data.analysis, data.analysis_stale, data.game.source_revision) : null;
+  // This ref is updated DURING render, not in an effect: a late promise from
+  // the prior commit must never win the race before effect cleanup runs.
+  const currentSourceRef = useRef(sourceKey);
+  currentSourceRef.current = sourceKey;
+  const reviewProse = storedProse?.source === sourceKey ? storedProse.prose : null;
+  // The initial loading state has no source; going from null to the FIRST
+  // verified analysis is not a game update. Preserve the last valid source
+  // through temporary invalid/no-analysis states so A -> null -> B is still
+  // recognized as a change (and never accepts A's cached prose for B).
+  const lastValidSourceRef = useRef<string | null>(null);
+  const sourceChanged = lastValidSourceRef.current !== null
+    && lastValidSourceRef.current !== sourceKey;
+  const [sourceNotice, setSourceNotice] = useState(false);
+  useEffect(() => {
+    if (sourceChanged) setSourceNotice(true);
+    if (sourceKey) lastValidSourceRef.current = sourceKey;
+  }, [sourceKey, sourceChanged]);
 
   useEffect(() => {
     if (!data) return;
@@ -165,31 +277,51 @@ function GameAnalyzerView() {
       setAnalysis(null);
       setAnalysisError('');
     }
-    if (data.analysis_stale && !analyzing) {
-      void analyze(16, true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, decodedStoredReview, setAnalysis]);
 
-  // Load any cached AI prose for this game
+  // Stale data can arrive while a player is trying a mistake (for example,
+  // a bookmark update invalidates the game-detail query). Never start a
+  // hidden full-game Stockfish job during either blind-practice surface.
+  // Re-check on leaving practice so explicit full Review still refreshes
+  // stale analysis. Deliberately exclude 'analyzing': a failed request must
+  // not create an immediate retry loop on the same stale snapshot.
   useEffect(() => {
-    // A slower request for a previous game must never replace this game's
-    // review text after navigating between library entries.
+    if (!data?.analysis_stale || data.analysis_unverified || analyzing || practicePicker || practicePly !== null) return;
+    void analyze(16, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, practicePicker, practicePly]);
+
+  // Load prose only for the source that was observed at request admission.
+  // Game-detail refetches can arrive without remounting the route. Do not
+  // refetch prose for harmless notes/bookmark changes.
+  useEffect(() => {
     let active = true;
-    setReviewProse(null);
-    if (Number.isSafeInteger(gameId) && gameId > 0) {
+    // Cached AI prose contains conclusions/engine lines; neither mount nor
+    // request it in the blind exercise. Fetch it only in the full review.
+    if (!practicePicker && sourceKey && Number.isSafeInteger(gameId) && gameId > 0) {
       api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
-        .then((r) => { if (active) setReviewProse(isCompleteReviewPayload(r) ? r.review : null); })
-        .catch(() => { if (active) setReviewProse(null); });
+        .then((r) => {
+          if (!active || currentSourceRef.current !== sourceKey) return;
+          if (isCompleteReviewPayload(r)) {
+            // A backend without provenance cannot establish that previously
+            // cached prose matches a NEW source. Fail closed on refresh.
+            if (!sourceChanged) setStoredProse((previous) =>
+              previous?.source === sourceKey ? previous : { source: sourceKey, prose: r.review as GameReviewProse });
+          } else setStoredProse(null);
+        })
+        .catch(() => { if (active && currentSourceRef.current === sourceKey) setStoredProse(null); });
     }
     return () => { active = false; };
-  }, [gameId]);
+  }, [gameId, practicePicker, sourceKey]);
 
   useEffect(() => {
+    if (practicePicker) { setCoachConfigured(false); return; }
+    let active = true;
     api.get<{ configured: boolean }>('/api/coach/status')
-      .then((s) => setCoachConfigured(s.configured))
-      .catch(() => setCoachConfigured(false));
-  }, []);
+      .then((s) => { if (active) setCoachConfigured(s.configured); })
+      .catch(() => { if (active) setCoachConfigured(false); });
+    return () => { active = false; };
+  }, [practicePicker]);
 
   // Read initial ?ply= from the URL so deep-links to a specific position
   // open at that move on first render. After that we keep them in sync.
@@ -205,6 +337,36 @@ function GameAnalyzerView() {
   const setPly = useCallback((value: number | ((previous: number) => number)) => {
     selectOriginalPly(typeof value === 'function' ? value(ply) : value);
   }, [selectOriginalPly, ply]);
+  const enterPracticePly = (selected: number) => {
+    if (practicePicker) {
+      const next = new URLSearchParams(searchParams);
+      next.set('practicePly', String(selected));
+      setSearchParams(next, { state: { fromBlindPracticePicker: true } });
+      // Push one history entry for browser Back/Forward and mark its actual
+      // origin. A bookmarked attempt URL has no guaranteed picker to pop to.
+    } else {
+      setReviewPracticePly(selected);
+    }
+  };
+  const leavePractice = (restoreSelectedMove: boolean) => {
+    if (practicePicker) {
+      returnToChoiceRef.current = restoreSelectedMove ? practicePly : null;
+      if ((location.state as { fromBlindPracticePicker?: boolean } | null)?.fromBlindPracticePicker) {
+        navigate(-1); // Return to the actual picker, not a duplicate history entry.
+      } else {
+        // Direct/bookmarked exercise URL with no known picker behind it.
+        const next = new URLSearchParams(searchParams);
+        next.delete('practicePly');
+        setSearchParams(next, { replace: true });
+      }
+    } else {
+      if (restoreSelectedMove && practicePly !== null) setPly(practicePly);
+      setReviewPracticePly(null);
+      requestAnimationFrame(() => document.getElementById(
+        restoreSelectedMove ? 'learn-from-mistake' : 'full-game-review-heading',
+      )?.focus());
+    }
+  };
   const isVariation = variations.activeVariationId !== null;
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
@@ -225,7 +387,7 @@ function GameAnalyzerView() {
   // endpoint. A response for a deselected branch is cached but never rendered
   // against another FEN; failed/429 searches never invent a label.
   useEffect(() => {
-    if (!qualityKey || !branchMove || qualityCache[qualityKey]) return;
+    if (practicePicker || practicePly !== null || !qualityKey || !branchMove || qualityCache[qualityKey]) return;
     const controller = new AbortController();
     let cancelled = false;
     let retry: number | undefined;
@@ -257,7 +419,7 @@ function GameAnalyzerView() {
   // qualityKey and fen are the selection identity; avoid replaying a search
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, variations.currentFen, qualityRetry]);
+  }, [qualityKey, variations.currentFen, qualityRetry, practicePicker, practicePly]);
   useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
@@ -300,6 +462,8 @@ function GameAnalyzerView() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
+      if (document.querySelector('[data-practice-mode], [data-practice-picker]')) return;
       const target = e.target instanceof Element ? e.target : null;
       // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
       // or a modal/command palette. Arrow/Home/End are native controls there.
@@ -363,7 +527,7 @@ function GameAnalyzerView() {
   const currentFen = variations.currentFen || pos?.fen || '';
   const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
-    if (!linesEnabled || !currentFen) return;
+    if (practicePly !== null || practicePicker || !linesEnabled || !currentFen) return;
     const controller = new AbortController();
     let cancelled = false;
     setLinesError(null);
@@ -389,7 +553,7 @@ function GameAnalyzerView() {
         });
     }, 400);
     return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
-  }, [linesEnabled, currentFen, linesRetry]);
+  }, [linesEnabled, currentFen, linesRetry, practicePly, practicePicker]);
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
@@ -417,6 +581,10 @@ function GameAnalyzerView() {
   const move: AnalyzedMove | undefined = !isVariation && evaluatedMove?.uci === pos?.uci
     ? evaluatedMove : undefined;
   const startFen = positions[0]?.fen;
+  // A partially imported / still-running game is not an eligible blind drill.
+  const eligiblePractice = !data.analysis_stale && !cachedAnalysisInvalid
+    && data.game.result && data.game.result !== '*' && data.game.result !== 'ongoing'
+    ? practiceCandidates(positions, analysis?.moves) : [];
   const reviewedMoveSide = moveSideForPly(ply, startFen);
   const userColor = data.game.user_color ?? 'white';
   // "Play from here" (in the move card): the position on the board, at any
@@ -514,11 +682,73 @@ function GameAnalyzerView() {
     });
   };
 
+  // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
+  // blind practice. The original PGN is read-only; attempts use a separate board.
+  if (practicePly !== null) {
+    const selected = analysis?.moves[practicePly - 1];
+    const saved = positions[practicePly];
+    if (eligiblePractice.some((candidate) => candidate.ply === practicePly)
+      && selected && saved?.uci === selected.uci && saved.fen === selected.fen_after
+      && selected.fen_before === positions[practicePly - 1]?.fen) {
+      return <MistakePractice key={`${gameId}:${practicePly}:${selected.fen_before}`} fenBefore={selected.fen_before}
+        orientation={moveSideForPly(practicePly, startFen)}
+        boardTheme={user?.profile.board_theme ?? 'green'}
+        exitLabel={t(practicePicker ? 'practice.backChoices' : 'practice.returnSaved')}
+        onExit={() => leavePractice(true)} />;
+    }
+    // A stale/corrupt analysis or a background refetch must not silently
+    // drop blind mode and expose the original move or its engine hint.
+    return <PracticeUnavailable practicePicker={practicePicker} onExit={() => leavePractice(false)} />;
+  }
+
+  // This route is linked directly from the saved-game library. No chessboard,
+  // SAN, PV, engine arrow, move list or report is ever mounted before choosing
+  // a blind attempt, including during slow/stale engine analysis.
+  if (practicePicker) {
+    const openReview = () => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('practice');
+      next.delete('practicePly');
+      setReviewPracticePly(null);
+      setSearchParams(next, { replace: true });
+      requestAnimationFrame(() => document.getElementById('full-game-review-heading')?.focus());
+    };
+    return <main data-practice-picker="true" className="mx-auto w-full max-w-2xl space-y-4 rounded-xl bg-white p-4 shadow-soft dark:bg-chesscom-800 sm:p-6">
+      <Link to="/review" className="btn-ghost text-sm"><ChevronLeft className="h-4 w-4" />Back to saved games</Link>
+      <h1 id="practice-picker-heading" tabIndex={-1} className="text-xl font-bold focus:outline-none">{t('practice.pickerHeading')}</h1>
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+        {t('practice.pickerDescription')}
+      </p>
+      {eligiblePractice.length > 0 ? (
+        <div className="grid gap-2 sm:grid-cols-2" aria-label="Mistakes to practice">
+          {eligiblePractice.map((candidate, index) => (
+            <button key={candidate.ply} type="button" id={`practice-move-${candidate.ply}`}
+              className="min-h-12 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-3 text-left text-sm font-medium hover:border-gold-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900"
+              onClick={() => enterPracticePly(candidate.ply)}>
+              {t('practice.pickerMoment', { index: index + 1, side: t(`review.${candidate.side}`), move: candidate.moveNumber })}
+              <span className="block text-xs font-normal text-chesscom-500">{t('practice.answerHidden')}</span>
+            </button>
+          ))}
+        </div>
+      ) : <p role="status" className="rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
+        {data.analysis_stale || cachedAnalysisInvalid
+          ? t('practice.staleAnalysis')
+          : analyzing || (data.analysis && !analysis && !analysisError)
+          ? t('practice.preparing')
+          : t('practice.noMistakes')}
+      </p>}
+      <button type="button" className="btn-secondary min-h-11" onClick={openReview}>{t('practice.openFull')}</button>
+    </main>;
+  }
+
   const eco = analysis?.opening_eco ?? data.game.eco ?? null;
   const openingName = analysis?.opening_name ?? data.game.opening_name ?? null;
 
   return (
     <div className="mx-auto w-full max-w-none" data-analysis-workspace="true">
+      <h1 id="full-game-review-heading" tabIndex={-1} className="sr-only focus:outline-none">
+        {t('review.title')} — {data.game.white} versus {data.game.black}
+      </h1>
       <div className="mb-3 flex items-center justify-between gap-3">
         <Link to="/review" className="btn-ghost text-sm shrink-0"><ChevronLeft className="h-4 w-4" />{t('common.back')}</Link>
         <div className="min-w-0 truncate text-right text-sm text-chesscom-500">
@@ -650,6 +880,7 @@ function GameAnalyzerView() {
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{analysisError}</div>}
+          {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
           {!analysis && (
             <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
@@ -715,6 +946,13 @@ function GameAnalyzerView() {
                       <button onClick={() => setPick(null)} className="btn-ghost p-1" title={t('common.close', { defaultValue: 'Close' })}><X className="h-4 w-4" /></button>
                     </div>
                   )}
+                  {tab === 'moves' && move && eligiblePractice.some((candidate) => candidate.ply === ply) && (
+                    <div className="mb-3 rounded-lg border border-gold-500/40 p-3">
+                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">{t('practice.retryDescription')}</p>
+                      <button type="button" className="btn-primary min-h-11 w-full"
+                        id="learn-from-mistake" onClick={() => enterPracticePly(ply)}>{t('practice.retryAction')}</button>
+                    </div>
+                  )}
                   {tab === 'moves' && move && (
                     <MoveExplanation
                       move={move}
@@ -743,11 +981,18 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'report' && (
                     <GameReportPanel
-                      key={gameId}
+                      key={sourceKey ?? `unavailable:${gameId}`}
                       gameId={gameId}
                       initial={reviewProse}
+                      sourceReady={!!sourceKey && !data.analysis_stale && !cachedAnalysisInvalid}
+                      sourceChanged={sourceNotice}
                       onMomentJump={setPly}
-                      onGenerated={setReviewProse}
+                      onGenerated={(prose) => {
+                        if (sourceKey && currentSourceRef.current === sourceKey) {
+                          setStoredProse({ source: sourceKey, prose });
+                          setSourceNotice(false);
+                        }
+                      }}
                       userColor={data.game.user_color}
                       startFen={startFen}
                     />

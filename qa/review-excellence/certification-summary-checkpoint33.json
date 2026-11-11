@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T07:10:16.852Z",
+  "assigned_branch": "agent/review-benchmark-20261111",
+  "prior_checkpoint": "29af85a72963824ba3a9308dd50afed13302a71b",
+  "current_checkout": "29af85a72963824ba3a9308dd50afed13302a71b",
+  "product_candidate_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "backend_candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "clean_browser_run_id": "afd5443e-4c7f-42f1-b97d-21506327f049",
+  "fault_browser_run_id": "4ea596d5-1963-40db-bb1e-e11a072bc563",
+  "independent_real_chrome_evidence": {
+    "actual_react_board_updated_after_query_refetch": true,
+    "distinct_signed_game_detail_GETs": 3,
+    "new_San_move_visible_in_moves_tab": true,
+    "stale_ai_report_still_visible_in_report_tab": true,
+    "backend_report_was_null": true,
+    "full_navigation_cleared_stale_ui": true,
+    "owner_product_fixed": false,
+    "release_approved": false
+  },
+  "independently_rejected_fault": {
+    "fault_correctly_rejected_as_false_green": true,
+    "browser_would_remove_stale_prose_after_forced_remount": true,
+    "release_approved": false
+  },
+  "pinned_owner_source_sha256": {
+    "web/src/pages/GameAnalyzer.tsx": "17ffb273f13c97444f44141aaa2ca79bf236cfebe4bf09bfc0edf4dbecb1440c",
+    "web/src/components/GameReportPanel.tsx": "c3c033be05df83ef230b85542c906ae6321d88fa5169705cd00e8eaeceb49ddb",
+    "server/src/routes/review.ts": "21e0a25f00418d7c1749b6089ed6d685ad1cb4f752e28bf5af16f9fa752442d0",
+    "server/src/routes/analyze.ts": "ccfe50080f298fc0cdc25848b1f62f77f2bcb28bd36947af5b874b504d6f4b3d"
+  },
+  "qa_script_sha256": {
+    "scripts/review-benchmark-browser-source-refresh.mjs": "23f7beb44cdebb7f333aaf9f5fe85c2227e768cc336f641a72910e306f6a9d04",
+    "scripts/review-benchmark-browser-source-proof.mjs": "8ef07b1254a31aa7e7f008288622d75510e144bb9efb77fe8e17b4f18866cffe",
+    "scripts/review-benchmark-browser-source-negatives.mjs": "e6556f3e93af8fb2a5a3ea9b58e5735d9b15396782c4222b1036aea2405ee958",
+    "scripts/review-benchmark-browser-source-boundary.mjs": "91ed9bfb9d6f5262968e658951859634b506c5c528ad6e22c1e413b653e7e1c6"
+  },
+  "product_bug": "already-mounted GameAnalyzer keeps AI prose after same-game React Query refetch with new PGN, new engine analysis and null backend report",
+  "test_scope": "one synthetic game changed to a distinct opposite-winner game, read-only owner React and Hono via real Chrome 157",
+  "stockfish_searches_per_run": 2,
+  "depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "external_llm_calls": 0,
+  "production_database_calls": 0,
+  "real_users": 0,
+  "no_owner_code_modified": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "The visible prose contains a deliberately injected synthetic QA marker; actual review object is built by owner code without external LLM",
+    "Two independently bounded Stockfish depth-8 game analyses per Chrome process, no mass search",
+    "The cache is explicitly cleared by QA SQL after source change; this is a controlled backend-safe state used to isolate the React state bug",
+    "React Query refetch initiated by genuine bookmark mutation, not a production real-time push event",
+    "No inference about live frequency, user demographics, rollout, sealed holdout or final release correctness"
+  ]
+}

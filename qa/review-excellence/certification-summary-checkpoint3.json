@@ -1,0 +1,191 @@
+{
+  "schema_version": 3,
+  "timestamp_utc": "2026-11-10T23:31:33.646Z",
+  "author": "Agent D benchmark QA; no live service or user game data",
+  "own_branch": "agent/review-benchmark-20261111",
+  "base_benchmark_commit": "4f2b2756e1026cc369681816d6e7f19bc7344b9d",
+  "manifests": {
+    "v1_sha256": "79300b25e5602a72c6781bc0106bd43da73db1c4cfb1d119c8950d9649ac454b",
+    "v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+    "fixtures": 25,
+    "plies": 147,
+    "holdout_count": 0,
+    "provenance": "self-authored synthetic"
+  },
+  "engine": {
+    "binary_name": "Stockfish 16",
+    "sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+    "version_does_not_equate_to_deployed_stockfish17": true,
+    "threads": 1,
+    "hash_mib": 16,
+    "requested_depth": 8,
+    "reference_protocol_client": "benchmark_owned_independent_uci"
+  },
+  "tool_hashes": {
+    "scripts/review-benchmark-app-adapter.mjs": "61eab1792043dcf31773bb152fc2366388eb9f8c8cb5280410428fb615460d7e",
+    "scripts/review-benchmark-real-app.mjs": "943aed19646cb415711aa45b7a395a6996af75fa63d5568c08bcba498dcef36d",
+    "scripts/review-benchmark-reference-uci.mjs": "0cdca2835f57daf4a5d1cde94eed3819dc90b0dbf7619f8af2ef7ddae20766c9",
+    "scripts/review-benchmark-engine-fault-controls.mjs": "f20e8a10912ef5f248b44f2d9475bfffa7b72c09ea9b67cb27a8ee0cff21fc2c",
+    "scripts/review-benchmark-uci-proxy.mjs": "0d89a7d00a89a5ff548c0b210f65e8e731dd94f02607eb6b7aa9df9978918a5e",
+    "scripts/review-benchmark-uci-trace.mjs": "373cb6d500c91c8ebd33ab6d2133e84806c84fa1e05eb746b191dcfee63eee55"
+  },
+  "candidate_verdicts": {
+    "main": {
+      "sha": "51df1d852296e5f0644127a81b5ec31109c8e6c1",
+      "scoring_version": 9,
+      "games": 2,
+      "plies": 4,
+      "actual_failures": [
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "rating_without_eligible_moves_black"
+        },
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "performance_without_eligible_moves_black"
+        }
+      ],
+      "negative_rejections": 9,
+      "negative_total": 9,
+      "forced_only_estimated_elo_black": 2880,
+      "forced_only_performance_black": 2880,
+      "elapsed_ms": 914
+    },
+    "engine": {
+      "sha": "edc1b2e2ad81acf4a13a10e1d6e4340064513c69",
+      "scoring_version": 9,
+      "games": 2,
+      "plies": 4,
+      "actual_failures": [],
+      "negative_rejections": 11,
+      "negative_total": 11,
+      "forced_only_estimated_elo_black": null,
+      "forced_only_performance_black": null,
+      "elapsed_ms": 1531
+    },
+    "coach": {
+      "sha": "47b571c03678cb2084f0ac83873fe3ca49f9dfb8",
+      "scoring_version": 9,
+      "games": 2,
+      "plies": 4,
+      "actual_failures": [
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "rating_without_eligible_moves_black"
+        },
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "performance_without_eligible_moves_black"
+        }
+      ],
+      "negative_rejections": 9,
+      "negative_total": 9,
+      "forced_only_estimated_elo_black": 2880,
+      "forced_only_performance_black": 2880,
+      "elapsed_ms": 1670
+    },
+    "product": {
+      "sha": "366bb0d3b863a87736480db0c15f411d915d0d75",
+      "scoring_version": 9,
+      "games": 2,
+      "plies": 4,
+      "actual_failures": [
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "rating_without_eligible_moves_black"
+        },
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "performance_without_eligible_moves_black"
+        }
+      ],
+      "negative_rejections": 9,
+      "negative_total": 9,
+      "forced_only_estimated_elo_black": 2880,
+      "forced_only_performance_black": 2880,
+      "elapsed_ms": 1892
+    },
+    "v10": {
+      "sha": "02bfe983c14bf521e05ec4f463f5e4c70ef3f7bd",
+      "scoring_version": 10,
+      "games": 2,
+      "plies": 4,
+      "actual_failures": [
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "rating_without_eligible_moves_black"
+        },
+        {
+          "fixture_id": "SYN-GAME-FORCED-REPLY",
+          "ply": null,
+          "reason": "performance_without_eligible_moves_black"
+        }
+      ],
+      "negative_rejections": 9,
+      "negative_total": 9,
+      "forced_only_estimated_elo_black": 2880,
+      "forced_only_performance_black": 2880,
+      "elapsed_ms": 2517
+    }
+  },
+  "fake_engine_controls": {
+    "total": 4,
+    "rejected": 4,
+    "hidden_illegal_continuation_dto_passed": true,
+    "results": [
+      {
+        "mode": "bad-eval",
+        "expected": "reference_evaluation_side_mismatch",
+        "application_dto_passed": false,
+        "verified": true
+      },
+      {
+        "mode": "illegal-pv",
+        "expected": "missing_best_move_with_reference",
+        "application_dto_passed": false,
+        "verified": true
+      },
+      {
+        "mode": "fake-mate",
+        "expected": "false_mate_in_one",
+        "application_dto_passed": false,
+        "verified": true
+      },
+      {
+        "mode": "illegal-continuation",
+        "expected": "illegal_raw_uci_pv",
+        "application_dto_passed": true,
+        "verified": true
+      }
+    ]
+  },
+  "raw_uci_positive": {
+    "files": 3,
+    "engine_info": 118,
+    "pv_lines": 112,
+    "legal_pv_lines": 112,
+    "bestmove": 6,
+    "search_commands": 6,
+    "failures": 0
+  },
+  "raw_uci_negative": {
+    "one_good_accepted": true,
+    "malicious_mutations_rejected": 8
+  },
+  "integration_approval": false,
+  "open_gates": [
+    "No sealed holdout or adjudicated accuracy labels",
+    "No actual AI natural-language teaching truth evaluation",
+    "UI browser accessibility and retry end-to-end not certified",
+    "No integrated HTTP/auth/concurrency proof",
+    "Stockfish 16 reference is not Stockfish 17 equivalence",
+    "Raw UCI tee must be included for upstream legality certification"
+  ]
+}

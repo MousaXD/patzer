@@ -15,6 +15,10 @@ import { gameAccuracy, type MoveAccPoint } from '../chess/accuracy.js';
 import { extractKeyMoments } from '../chess/keyMoments.js';
 import { lookupOpeningByEpd, fenToEpd, lookupOpeningFromPgn } from '../chess/openings.js';
 import { startFenOf } from '../chess/startFen.js';
+import {
+  analysisMatchesGame, loadAnalysisGameSource, persistAnalysisIfFresh,
+  type AnalysisGameSource,
+} from '../chess/analysisSource.js';
 import type { AnalysisResult, AnalyzedMove, Color, KeyMomentSummary, PhaseSplit } from '../types.js';
 
 const router = new Hono();
@@ -87,6 +91,8 @@ interface GameRow {
   opponent_rating_before: number | null;
   user_rd_before: number | null;
   result: 'win' | 'loss' | 'draw' | string | null;
+  start_fen: string | null;
+  source_revision: number;
 }
 
 export function rowToAnalysis(row: AnalysisRow): AnalysisResult {
@@ -114,7 +120,7 @@ router.post('/', async (c) => {
   const { game_id, depth, force } = parsed.data;
 
   const game = db.prepare(`
-    SELECT pgn, user_color, opponent_user_id, time_class,
+    SELECT pgn, user_color, opponent_user_id, time_class, start_fen, source_revision,
            user_rating_before, opponent_rating_before, user_rd_before, result
       FROM games WHERE id = ? AND user_id = ?
   `).get(game_id, user.id) as GameRow | undefined;
@@ -123,17 +129,23 @@ router.post('/', async (c) => {
   if (inflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
 
   if (!force) {
-    const existing = db.prepare('SELECT depth, scoring_version FROM analyses WHERE game_id = ?').get(game_id) as
-      | { depth: number; scoring_version: number }
+    const existing = db.prepare('SELECT depth, scoring_version, source_hash, source_revision, analysis_generation, moves_json FROM analyses WHERE game_id = ?').get(game_id) as
+      | { depth: number; scoring_version: number; source_hash: string | null; source_revision: number | null; analysis_generation: number; moves_json: string }
       | undefined;
-    if (existing && existing.depth >= depth && existing.scoring_version >= SCORING_VERSION) {
+    if (existing && existing.depth >= depth && existing.scoring_version >= SCORING_VERSION
+      && existing.analysis_generation > 0
+      && analysisMatchesGame(game as AnalysisGameSource, existing)) {
       const cached = db.prepare(`SELECT depth, accuracy_white, accuracy_black,
                                         estimated_elo_white, estimated_elo_black,
                                         performance_white, performance_black,
                                         opening_eco, opening_name,
                                         key_moments_json, phase_split_json, moves_json
                                    FROM analyses WHERE game_id = ?`).get(game_id) as AnalysisRow;
-      return c.json({ analysis: rowToAnalysis(cached), cached: true });
+      // Snapshot could have changed between SELECTs (e.g. a second SQLite
+      // writer). Re-check provenance immediately before returning cached data.
+      const latest = loadAnalysisGameSource(db, game_id);
+      if (latest && analysisMatchesGame(latest, { ...existing, moves_json: cached.moves_json }))
+        return c.json({ analysis: rowToAnalysis(cached), cached: true });
     }
   }
 
@@ -150,7 +162,7 @@ router.post('/', async (c) => {
       // estimateGamePerformance defaults to RD=350 (low confidence).
       opponentRd: null,
     }, c.req.raw.signal);
-    saveAnalysis(game_id, result);
+    if (!saveAnalysis(game_id, result, game as AnalysisGameSource)) throw new Error('analysis_source_changed');
     return result;
   })();
 
@@ -162,6 +174,7 @@ router.post('/', async (c) => {
     const code = error instanceof Error ? error.message : '';
     if (code === 'pgn_too_large') return c.json({ error: code }, 413);
     if (code === 'invalid_pgn') return c.json({ error: code }, 400);
+    if (code === 'analysis_source_changed') return c.json({ error: code, stale: true }, 409);
     return c.json({ error: 'analysis_failed' }, 503);
   } finally {
     inflight.delete(user.id);
@@ -209,7 +222,9 @@ router.post('/position', async (c) => {
       await engine.setOption('Threads', '2');
       await engine.setOption('Hash', '64');
       const result = await engine.evaluateMulti(fen, depth, lines);
-      if (!probe.isGameOver() && !validPositionScore(result)) throw new Error('engine_invalid_score');
+      // Terminal checkmates/stalemates must carry mate 0 / cp 0, not a blank
+      // score that the client could mistake for an evaluated 0.00 position.
+      if (!validPositionScore(result)) throw new Error('engine_invalid_score');
       // Build the response: convert UCI → SAN by replaying the PV against a
       // fresh Chess for each candidate. Cap PV at 8 plies — beyond that the
       // engine's projection is noisy and the payload bloats.
@@ -372,7 +387,10 @@ export async function analyzePgnFull(
   // Pre-evaluate starting position with MultiPV=3 so we can detect "Great"
   // (only-good-move) and gap-aware "Brilliant" via the second-best candidate.
   let prevEval = await engine.evaluateMulti(replay.fen(), depth, 3);
-  if (!replay.isGameOver() && !validPositionScore(prevEval)) throw new Error('engine_invalid_score');
+  // isGameOver() also includes claimable repetition/50-move positions; it
+  // does not authorize inventing 0cp when an engine returns no evaluation.
+  // True terminals must supply a factual cp 0 or mate 0 as well.
+  if (!validPositionScore(prevEval)) throw new Error('engine_invalid_score');
   // Depth each search actually reached. The local engine always reaches the
   // requested depth; a time-capped remote one (chess-api.com) stops short.
   const reachedDepths: number[] = [prevEval.depth];
@@ -433,8 +451,18 @@ export async function analyzePgnFull(
     replay.move({ from: move.from, to: move.to, promotion: move.promotion });
     const fenAfter = replay.fen();
 
-    const nextEval = await engine.evaluateMulti(fenAfter, depth, 3);
-    if (!replay.isGameOver() && !validPositionScore(nextEval)) throw new Error('engine_invalid_score');
+    // FEN alone contains no repetition history. If the recorded game ends in
+    // an actually claimed threefold/50-move draw, the chess.js replay knows
+    // that history and proves the final score is 0. Do not let a FEN-only
+    // engine search overwrite this fact. A claimable repetition in an
+    // unfinished game is NOT automatically treated as an accepted draw.
+    const claimedDraw = i === history.length - 1
+      && chess.header().Result === '1/2-1/2'
+      && (replay.isThreefoldRepetition() || replay.isDrawByFiftyMoves());
+    const nextEval = claimedDraw
+      ? { cp: 0, mate: null, bestMoveUci: null, pv: [], depth: 0, candidates: [] }
+      : await engine.evaluateMulti(fenAfter, depth, 3);
+    if (!validPositionScore(nextEval)) throw new Error('engine_invalid_score');
     reachedDepths.push(nextEval.depth);
     const nextWhiteCp = normalizeEval(nextEval.cp, nextEval.mate, replay.turn());
 
@@ -505,7 +533,7 @@ export async function analyzePgnFull(
     // not the player's choice, so penalising them is unfair (chess.com same).
     const excludeFromAggregate = isBookMove || isForcedMove;
     const acc = moveAccuracy(playerWinBefore, playerWinBefore - wpDrop);
-    const point: MoveAccPoint = { acc, winPct: playerWinAfter, isBook: excludeFromAggregate };
+    const point: MoveAccPoint = { acc, winPctBefore: playerWinBefore, winPct: playerWinAfter, isBook: excludeFromAggregate };
     if (sideToMove === 'white') {
       whitePoints.push(point);
       if (!excludeFromAggregate) { whiteCplSum += cpLossAcpl; whiteCplN++; }
@@ -535,20 +563,23 @@ export async function analyzePgnFull(
     prevWhiteCp = nextWhiteCp;
   }
 
-  // CAPS-style game accuracy (volatility-weighted + harmonic mean).
+  // Independent Stockfish-based accuracy (volatility-weighted + harmonic mean).
   const accuracy_white = Math.round(gameAccuracy(whitePoints) * 10) / 10;
   const accuracy_black = Math.round(gameAccuracy(blackPoints) * 10) / 10;
   const acplWhite = whiteCplN ? whiteCplSum / whiteCplN : 0;
   const acplBlack = blackCplN ? blackCplSum / blackCplN : 0;
 
-  const estimated_elo_white = whitePoints.length ? estimateElo(accuracy_white, acplWhite) : null;
-  const estimated_elo_black = blackPoints.length ? estimateElo(accuracy_black, acplBlack) : null;
+  // A side may have played book or forced moves without making a single
+  // scorable choice. No eligible moves means no Elo/performance evidence,
+  // regardless of whether it played one move or twenty.
+  const estimated_elo_white = whiteCplN ? estimateElo(accuracy_white, acplWhite) : null;
+  const estimated_elo_black = blackCplN ? estimateElo(accuracy_black, acplBlack) : null;
 
   // Per-game performance rating (chess.com Game Review "Your performance").
   // Only computed on the user's side when we know the score + opponent rating.
   let performance_white: number | null = null;
   let performance_black: number | null = null;
-  if (perf.score !== null) {
+  if (perf.score !== null && (perf.userColor === 'white' ? whiteCplN : blackCplN)) {
     const userPerf = estimateGamePerformance({
       accuracy: perf.userColor === 'white' ? accuracy_white : accuracy_black,
       acpl: perf.userColor === 'white' ? acplWhite : acplBlack,
@@ -560,13 +591,13 @@ export async function analyzePgnFull(
     else performance_black = userPerf;
   }
   // Fallback for the side without a known opponent rating: own-strength estimate.
-  if (performance_white === null && whitePoints.length) {
+  if (performance_white === null && whiteCplN) {
     performance_white = estimateGamePerformance({
       accuracy: accuracy_white, acpl: acplWhite,
       opponentRating: null, opponentRd: null, score: perf.score ?? 0.5,
     });
   }
-  if (performance_black === null && blackPoints.length) {
+  if (performance_black === null && blackCplN) {
     performance_black = estimateGamePerformance({
       accuracy: accuracy_black, acpl: acplBlack,
       opponentRating: null, opponentRd: null, score: perf.score ?? 0.5,
@@ -631,38 +662,10 @@ function medianDepth(depths: number[]): number {
 
 /** Upsert a full analysis row for a game, and backfill the game's opening so
  *  list endpoints can show it without joining `analyses`. */
-export function saveAnalysis(gameId: number, result: AnalysisResult): void {
-  db.prepare(`
-    INSERT INTO analyses (game_id, depth, accuracy_white, accuracy_black,
-      estimated_elo_white, estimated_elo_black,
-      performance_white, performance_black,
-      opening_eco, opening_name,
-      key_moments_json, phase_split_json,
-      moves_json, scoring_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(game_id) DO UPDATE SET
-      depth = excluded.depth,
-      accuracy_white = excluded.accuracy_white, accuracy_black = excluded.accuracy_black,
-      estimated_elo_white = excluded.estimated_elo_white, estimated_elo_black = excluded.estimated_elo_black,
-      performance_white = excluded.performance_white, performance_black = excluded.performance_black,
-      opening_eco = excluded.opening_eco, opening_name = excluded.opening_name,
-      key_moments_json = excluded.key_moments_json, phase_split_json = excluded.phase_split_json,
-      moves_json = excluded.moves_json, scoring_version = excluded.scoring_version,
-      created_at = datetime('now')
-  `).run(
-    gameId, result.depth,
-    result.accuracy_white, result.accuracy_black,
-    result.estimated_elo_white, result.estimated_elo_black,
-    result.performance_white, result.performance_black,
-    result.opening_eco, result.opening_name,
-    JSON.stringify(result.key_moments),
-    result.phase_split ? JSON.stringify(result.phase_split) : null,
-    JSON.stringify(result.moves), SCORING_VERSION,
-  );
-  if (result.opening_eco || result.opening_name) {
-    db.prepare(`UPDATE games SET eco = ?, opening_name = ? WHERE id = ?`)
-      .run(result.opening_eco, result.opening_name, gameId);
-  }
+export function saveAnalysis(
+  gameId: number, result: AnalysisResult, source: AnalysisGameSource,
+): boolean {
+  return persistAnalysisIfFresh(db, gameId, result, source, SCORING_VERSION);
 }
 
 // Phase split: opening = first N plies (ECO depth, fallback BOOK_PLIES);
@@ -732,13 +735,16 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
       const playerEvalAfter = isWhite ? (m.eval_after_cp ?? 0) : -(m.eval_after_cp ?? 0);
       const wpDrop = winDropForPly(playerEvalBefore, playerEvalAfter, wpBefore, wpAfter);
       const acc = moveAccuracy(wpBefore, wpBefore - wpDrop);
-      const point: MoveAccPoint = { acc, winPct: wpAfter, isBook: excludedFromAggregate };
+      const point: MoveAccPoint = { acc, winPctBefore: wpBefore, winPct: wpAfter, isBook: excludedFromAggregate };
       if (isWhite) {
         wPoints.push(point);
-        if (!excludedFromAggregate) { wAcpl += m.centipawn_loss; wN++; }
+        // Full-game ACPL uses cpLossForAcpl (300cp max), while the move's
+        // displayed CPL intentionally retains the 1000cp cap. Match the
+        // full-game reduction instead of averaging the unbounded label CPL.
+        if (!excludedFromAggregate) { wAcpl += Math.min(300, m.centipawn_loss); wN++; }
       } else {
         bPoints.push(point);
-        if (!excludedFromAggregate) { bAcpl += m.centipawn_loss; bN++; }
+        if (!excludedFromAggregate) { bAcpl += Math.min(300, m.centipawn_loss); bN++; }
       }
     }
     return {

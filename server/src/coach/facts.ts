@@ -105,7 +105,9 @@ export function factsForExplain(
   const evaluation =
     wpAfterPlayer != null
       ? {
-          win_pct_before: Math.round(wpBeforePlayer!),
+          // Math.round(null) === 0 in JS. Do not turn a missing pre-move
+          // evaluation into an invented zero-percent win probability.
+          win_pct_before: wpBeforePlayer != null ? Math.round(wpBeforePlayer) : null,
           win_pct_after: Math.round(wpAfterPlayer),
           win_pct_delta: wpDeltaPlayer,
           state: evaluationStateNatural(wpAfterPlayer, language),

@@ -1,0 +1,16 @@
+{
+  "request_id": "SYN-POS-EN-PASSANT",
+  "response_request_id": "SYN-POS-EN-PASSANT",
+  "request_fen": "rnbqkbnr/1pp1pppp/p7/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+  "actor": "w",
+  "fen": "rnbqkbnr/1pp1pppp/p7/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+  "pv": [
+    "e5d6"
+  ],
+  "claims": [
+    {
+      "type": "legal_move",
+      "uci": "e5d6"
+    }
+  ]
+}

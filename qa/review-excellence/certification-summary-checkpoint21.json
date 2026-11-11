@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T03:06:18.809Z",
+  "previous_qa_head": "26f6a486fb12e650af35f4806284cc2dc2937556",
+  "qa_checkout_sha": "26f6a486fb12e650af35f4806284cc2dc2937556",
+  "branch": "agent/review-benchmark-20261111",
+  "product_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "backend_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "clean_run_id": "5565ff70-dc03-43b4-9126-171504454e41",
+  "fault_run_id": "931b4506-4752-4f6e-9920-aa2b6a55a3c3",
+  "late_old_run_id": "cb4dce90-5321-4605-9a62-5ec097750092",
+  "chrome_version": "Google Chrome 157.0.8103.38",
+  "results": {
+    "normal": {
+      "real_Chrome_two_POSTs": true,
+      "model_requests": 6,
+      "first_report_won_cache": false,
+      "valid_retry_persisted": true,
+      "newer_cache_survived_late_old": false,
+      "injected_browser_fault_rejected_as_green": false,
+      "full_release_approved": false
+    },
+    "old_first_fault": {
+      "real_Chrome_two_POSTs": true,
+      "model_requests": 6,
+      "first_report_won_cache": true,
+      "valid_retry_persisted": false,
+      "newer_cache_survived_late_old": false,
+      "injected_browser_fault_rejected_as_green": true,
+      "full_release_approved": false
+    },
+    "old_last_fault": {
+      "real_Chrome_two_POSTs": true,
+      "model_requests": 6,
+      "first_report_won_cache": false,
+      "valid_retry_persisted": false,
+      "newer_cache_survived_late_old": true,
+      "injected_browser_fault_rejected_as_green": true,
+      "full_release_approved": false
+    }
+  },
+  "expected_clean_exit": 0,
+  "expected_fault_exit": 1,
+  "expected_late_old_exit": 1,
+  "source_hashes": {
+    "runner": "72032f2afe25478c497f331573ec78434b643ce28e62f0659592c32072bacf76",
+    "verifier": "4e20f9b4a1f61c115af6a00d5fadb4fdbbe3aaba1ae4c393da44edc47e9afa0b"
+  },
+  "no_production_source_modified": true,
+  "synthetic_only": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "One synthetic game and two overlapping local-model generations per Chrome test",
+    "A deliberately broken fetch is QA-only and not an observed production regression",
+    "No sealed holdout, externally deployed model, browser accessibility or production reverse proxy",
+    "Positive cancellation is not a guarantee that all conceivable network race orders are safe"
+  ]
+}

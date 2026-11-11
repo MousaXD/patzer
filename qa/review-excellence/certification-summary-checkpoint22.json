@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T03:28:23.413Z",
+  "prior_qa_commit": "9ac537f811346eb26842a2971e8e1e1739031a9f",
+  "current_qa_checkout_sha": "9ac537f811346eb26842a2971e8e1e1739031a9f",
+  "branch": "agent/review-benchmark-20261111",
+  "product_sha": "d72eaced6972c8a2ec7d8581365c45788b15a29a",
+  "backend_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "stockfish_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "stockfish_version": "16",
+  "engine_depth": 8,
+  "engine_threads": 1,
+  "engine_hash_mib": 16,
+  "chrome_version": "Google Chrome 157.0.8103.38",
+  "clean_run_id": "2d2419c0-0684-4f0c-825b-4f60a631972f",
+  "fault_run_id": "80ee24d6-0d9f-4472-ad92-6183b0be258f",
+  "expected_process_exits": {
+    "clean": 0,
+    "fault": 1
+  },
+  "verified_findings": {
+    "clean": {
+      "real_chrome_phase_cancel_retry_certified": true,
+      "real_chrome_moment_cancel_retry_certified": true,
+      "broken_first_controller_detected": false,
+      "actual_stale_cache_and_UI_detected": false,
+      "distinct_game_requests": 4,
+      "local_model_requests": 9,
+      "synthetic_only": true,
+      "product_release_approved": false
+    },
+    "negative": {
+      "real_chrome_phase_cancel_retry_certified": false,
+      "real_chrome_moment_cancel_retry_certified": false,
+      "broken_first_controller_detected": true,
+      "actual_stale_cache_and_UI_detected": true,
+      "distinct_game_requests": 4,
+      "local_model_requests": 12,
+      "synthetic_only": true,
+      "product_release_approved": false
+    }
+  },
+  "source_hashes": {
+    "runner": "14ef8e287786538996e48c64da2078c82d16386e65c4f168f7d41e8a64bd5a95",
+    "proof": "9295ceedc01dd6d9252e2acbdcd1d49056857f2c00b08973832083892f0f927d"
+  },
+  "raw_evidence_not_committed": true,
+  "no_product_files_changed": true,
+  "sealed_holdout_used": false,
+  "integration_approved": false,
+  "release_approved": false,
+  "limitations": [
+    "Two early-stage holds of a four-ply self-authored synthetic game",
+    "Original React, Hono and real Chrome but local Vite and a loopback simulated model",
+    "QA-injected abort suppression is not evidence that the default product is broken",
+    "No load, browser accessibility, deployed reverse proxy or actual user history"
+  ]
+}

@@ -7,6 +7,7 @@ import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
 import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
+import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
 import { Chess } from 'chess.js';
 import { clearLiveBotGame, loadLiveBotGame, resumableSummary } from '../chess/liveBotGames.js';
 
@@ -21,12 +22,20 @@ router.get('/', (c) => {
   // Both queries enforce user ownership. Stale analyses are not "analyzed".
   const filters: string[] = ['g.user_id = ?'];
   const params: (string | number)[] = [user.id];
+  // Lightweight revision/provenance gate for paginated summaries. A PGN edit
+  // invalidates the displayed score immediately, even after a v9->v10
+  // aggregation migration. Full source/PGN replay remains in GET /:id.
+  const usableAnalysisSql = `a.game_id IS NOT NULL AND a.scoring_version >= ?
+    AND a.source_hash IS NOT NULL AND a.source_revision = g.source_revision
+    AND a.analysis_generation > 0`;
   if (query.bookmarked) filters.push('g.bookmarked = 1');
   if (query.source !== null) { filters.push('g.source = ?'); params.push(query.source); }
   if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
   if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
   if (query.analyzed !== null) {
-    filters.push(query.analyzed ? 'a.scoring_version >= ?' : '(a.game_id IS NULL OR a.scoring_version < ?)');
+    // Keep the positive predicates visible to SQLite's join planner. Wrapping
+    // both cases in COALESCE forces a full games-side LEFT JOIN for the count.
+    filters.push(query.analyzed ? `(${usableAnalysisSql})` : `COALESCE((${usableAnalysisSql}), 0) = 0`);
     params.push(SCORING_VERSION);
   }
   if (query.q) {
@@ -55,11 +64,11 @@ router.get('/', (c) => {
            g.eco, g.opening_name, g.end_time, g.user_color, g.rated,
            g.user_rating_after, g.opponent_rating_after,
            g.bookmarked, g.notes, g.start_fen IS NOT NULL AS from_position,
-           CASE WHEN a.game_id IS NOT NULL AND a.scoring_version >= ? THEN 1 ELSE 0 END as analyzed,
-           CASE WHEN a.scoring_version >= ? THEN a.accuracy_white ELSE NULL END as accuracy_white,
-           CASE WHEN a.scoring_version >= ? THEN a.accuracy_black ELSE NULL END as accuracy_black,
-           CASE WHEN a.scoring_version >= ? THEN a.performance_white ELSE NULL END as performance_white,
-           CASE WHEN a.scoring_version >= ? THEN a.performance_black ELSE NULL END as performance_black
+           CASE WHEN (${usableAnalysisSql}) THEN 1 ELSE 0 END as analyzed,
+           CASE WHEN (${usableAnalysisSql}) THEN a.accuracy_white ELSE NULL END as accuracy_white,
+           CASE WHEN (${usableAnalysisSql}) THEN a.accuracy_black ELSE NULL END as accuracy_black,
+           CASE WHEN (${usableAnalysisSql}) THEN a.performance_white ELSE NULL END as performance_white,
+           CASE WHEN (${usableAnalysisSql}) THEN a.performance_black ELSE NULL END as performance_black
     ${joined} ${where}
     ORDER BY ${order}
     LIMIT ? OFFSET ?
@@ -173,18 +182,23 @@ router.get('/:id', (c) => {
   const user = c.get('user');
   const id = parseGameId(c.req.param('id'));
   if (id === null) return c.json({ error: 'invalid_input' }, 400);
-  const game = db.prepare('SELECT * FROM games WHERE id = ? AND user_id = ?').get(id, user.id);
+  const game = db.prepare('SELECT * FROM games WHERE id = ? AND user_id = ?').get(id, user.id) as AnalysisGameSource | undefined;
   if (!game) return c.json({ error: 'not_found' }, 404);
   const analysis = db.prepare('SELECT * FROM analyses WHERE game_id = ?').get(id) as
-    | { scoring_version: number }
+    | { scoring_version: number; source_hash: string | null; source_revision: number | null; analysis_generation: number; moves_json: string }
     | undefined;
-  // If the analysis was made at an older scoring_version, hide it — UI will
-  // show the Analyze CTA (and we set a flag so the frontend can auto-fire it).
-  const stale = !!(analysis && analysis.scoring_version < SCORING_VERSION);
+  // Legacy cached prose is retained until the user explicitly reanalyzes.
+  // Opening a migrated game must not silently replace its historical cache.
+  const unverified = !!analysis && (!analysis.source_hash || analysis.source_revision === null
+    || analysis.analysis_generation < 1);
+  const stale = !!(analysis && (analysis.scoring_version < SCORING_VERSION ||
+    analysis.analysis_generation < 1 ||
+    !analysisMatchesGame(game, analysis)));
   return c.json({
     game,
     analysis: stale ? null : analysis,
     analysis_stale: stale,
+    analysis_unverified: unverified,
   });
 });
 

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-11-11T01:27:07.041Z",
+  "prior_checkpoint_commit": "132b462cede69982f0a520cc051e62eb4212a0da",
+  "agent_d_checkout_sha": "132b462cede69982f0a520cc051e62eb4212a0da",
+  "branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "stockfish_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "stockfish_version": "16",
+  "threads": 1,
+  "hash_mib": 16,
+  "depth": 8,
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "holdout_cases": 0,
+  "source_kind": "self-authored synthetic",
+  "test_scope": "real authenticated Hono review SSE + DB cache under in-flight profile audience mutation",
+  "findings": {
+    "positive_no_change_accepted": true,
+    "audience_profile_race_exposed": true,
+    "manual_recovery_works": true,
+    "test_only_model_posts": 9,
+    "product_releasable": false
+  },
+  "root_cause": "atomic cache writer does not confirm current profile audience; null-only auto queue skips stale non-null prose",
+  "prior_language_race_connection": "checkpoint12 same missing profile provenance",
+  "raw_app_sse_records_uncommitted": true,
+  "source_hashes": {
+    "runner": "cbd5042523eaeb279cf5daf105f812158f5eebafea2f4477c1e4ca10c88823bb",
+    "verifier": "d1b8cd26c74d082e80a4a204f64142d4500d1900d70087a18988fd5cfb76b4a0"
+  },
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "One hand-controlled audience transition on an approved four-ply game",
+    "SSE and cache are authentic source paths; profile changed only via disposable DB",
+    "No human pedagogy or multi-user load certification; no external model or production records",
+    "No browser rendering assertion is made from server-only SSE evidence",
+    "Stockfish 16 only; no released Stockfish 17 equivalence"
+  ]
+}
