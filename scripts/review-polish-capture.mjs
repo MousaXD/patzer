@@ -863,10 +863,28 @@ try {
             await title.waitFor({state:'visible',timeout:4000});
             const restore=page.getByRole('button',{name:locale.review.variationReturn});
             assert.ok(await restore.isEnabled());
+            const activeBranch=page.getByRole('button',{
+              name:locale.review.variationOption.replace('{{number}}','1').replace('{{moves}}','1'),
+            });
+            const controls={restore:await restore.boundingBox(),branch:await activeBranch.boundingBox()};
+            console.log(`${lang} 390px variation controls:`,JSON.stringify(controls));
+            assert.ok(controls.restore && controls.branch && controls.restore.height>=44 && controls.branch.height>=44,
+              `Active variation actions must have usable 44px touch heights: ${lang} ${JSON.stringify(controls)}`);
+            assert.equal(await activeBranch.getAttribute('aria-pressed'),'true');
             const variationCopy=await page.getByRole('region',{name:locale.review.variationTitle}).innerText().catch(async()=>
               page.getByLabel(locale.review.variationTitle).innerText());
             assert.ok(variationCopy.includes(locale.review.variationHelp),
               `Active variation instructions must be translated in ${lang}`);
+            await page.getByText(locale.review.variationEngineUnavailable,{exact:true})
+              .waitFor({state:'visible',timeout:15000});
+            const retry=page.getByRole('button',{name:locale.review.variationRetryScoring});
+            const retryBox=await retry.boundingBox();
+            assert.ok(retryBox && retryBox.height>=44,
+              `Variation failure retry must have a usable touch target: ${lang} ${JSON.stringify(retryBox)}`);
+            await Promise.all([
+              page.waitForRequest(request=>request.url().endsWith('/api/analyze/variation-move') && request.method()==='POST'),
+              retry.click(),
+            ]);
             await title.scrollIntoViewIfNeeded();
             await page.screenshot({path:join(output,`review-variation-active-${lang}-390.png`)});
             await restore.click();

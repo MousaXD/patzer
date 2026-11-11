@@ -896,7 +896,8 @@ function GameAnalyzerView() {
                   <div className="text-sm font-semibold">{t('review.variationTitle')}</div>
                   <p className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationHelp')}</p>
                 </div>
-                <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                <button type="button" className="btn-secondary min-h-11 shrink-0 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                  onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
                   {t('review.variationReturn')}
                 </button>
               </div>
@@ -909,7 +910,7 @@ function GameAnalyzerView() {
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
-                  className={`rounded-md px-2 py-1.5 text-xs font-medium ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
+                  className={`inline-flex min-h-11 items-center rounded-md px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
                   onClick={() => variations.selectVariation(branch.id)} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
                   {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
                 </button>
@@ -919,7 +920,7 @@ function GameAnalyzerView() {
               <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
               {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
                 <span>{t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}</span>
-                <button type="button" className="rounded border border-amber-500/40 px-2 py-1 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                <button type="button" className="min-h-11 rounded border border-amber-500/40 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
                   onClick={() => setQualityRetry((previous) => previous + 1)}>{t('review.variationRetryScoring')}</button>
               </div>}
             </div>}
