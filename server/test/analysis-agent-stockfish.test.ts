@@ -14,7 +14,7 @@ import { StockfishEngine } from '../src/chess/stockfish.js';
 const dir = mkdtempSync(join(tmpdir(), 'patzer-fake-uci-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-start' | 'hang-on-go' | 'slow-on-go'): string {
+function fakeUci(mode: 'normal' | 'mixed-depth' | 'mismatched-bestmove' | 'mismatched-single' | 'illegal-root' | 'invalid-second' | 'missing-second' | 'broken-continuation' | 'equal-candidates' | 'bounded-score' | 'forced-reply' | 'nonfinite-score' | 'crash-on-go' | 'crash-on-start' | 'hang-on-go' | 'slow-on-go'): string {
   const path = join(dir, mode + '.cjs');
   const lines = [
     '#!/usr/bin/env node',
@@ -43,6 +43,65 @@ function fakeUci(mode: 'normal' | 'mixed-depth' | 'crash-on-go' | 'crash-on-star
     "          process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
     "          process.stdout.write('bestmove e2e4\\n');",
     "        }, 80);",
+    "        continue;",
+    "      }",
+    "      if (mode === 'mismatched-bestmove') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 260 pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score cp -80 pv d2d4\\n');",
+    "        process.stdout.write('bestmove d2d4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'mismatched-single') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 260 pv e2e4\\n');",
+    "        process.stdout.write('bestmove d2d4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'illegal-root') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 260 pv e2e5\\n');",
+    "        process.stdout.write('bestmove e2e5\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'invalid-second') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 260 pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score cp -80 pv e7e5\\n');",
+    "        process.stdout.write('info depth 16 multipv 3 score cp -120 pv b1c3\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'missing-second') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 260 pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 3 score cp -120 pv b1c3\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'broken-continuation') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4 e7e5 e1e3\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'equal-candidates') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score cp 39 pv d2d4\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'bounded-score') {",
+    "        process.stdout.write('info depth 14 multipv 1 score cp 20 pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 1 score cp 300 lowerbound pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score cp -80 pv d2d4\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'forced-reply') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp -100 pv a8a7\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score cp -100 pv a8a6\\n');",
+    "        process.stdout.write('bestmove a8a7\\n');",
+    "        continue;",
+    "      }",
+    "      if (mode === 'nonfinite-score') {",
+    "        process.stdout.write('info depth 16 multipv 1 score cp NaN pv e2e4\\n');",
+    "        process.stdout.write('info depth 16 multipv 2 score mate Infinity pv d2d4\\n');",
+    "        process.stdout.write('bestmove e2e4\\n');",
     "        continue;",
     "      }",
     "      process.stdout.write('info depth 16 multipv 1 score cp 40 pv e2e4\\n');",
@@ -96,6 +155,129 @@ describeUnix('analysis-agent Stockfish subprocess lifecycle', () => {
     } finally {
       await engine.quit();
     }
+  });
+
+  it('rejects a scored root whose final bestmove contradicts rank-one evidence', async () => {
+    const engine = new StockfishEngine(fakeUci('mismatched-bestmove'));
+    try {
+      await engine.start();
+      await expect(engine.evaluateMulti(START_FEN, 16, 3)).rejects.toThrow('engine_inconsistent_pv');
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('rejects inconsistent or illegal roots in single-PV searches too', async () => {
+    for (const mode of ['mismatched-single', 'illegal-root'] as const) {
+      const engine = new StockfishEngine(fakeUci(mode));
+      try {
+        await engine.start();
+        await expect(engine.evaluate(START_FEN, 16)).rejects.toThrow('engine_inconsistent_pv');
+      } finally {
+        await engine.quit();
+      }
+    }
+  });
+
+  it('rejects illegal UCI bestmove output before a bot or hint can use it', async () => {
+    const engine = new StockfishEngine(fakeUci('illegal-root'));
+    try {
+      await engine.start();
+      await expect(engine.bestMove(START_FEN, { depth: 8 })).rejects.toThrow('engine_illegal_bestmove');
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('rejects a legal move with no corresponding trustworthy scored principal variation', async () => {
+    const engine = new StockfishEngine(fakeUci('nonfinite-score'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.cp).toBeNull();
+      expect(result.mate).toBeNull();
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('excludes an illegal second candidate instead of fabricating a unique best move', async () => {
+    const engine = new StockfishEngine(fakeUci('invalid-second'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.candidates.map((c) => c.multipv)).toEqual([1]);
+      expect(result.candidates[0]?.pv).toEqual(['e2e4']);
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('cannot reinterpret MultiPV rank three as the missing second-best move', async () => {
+    const engine = new StockfishEngine(fakeUci('missing-second'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.candidates.map((c) => c.multipv)).toEqual([1]);
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('truncates a corrupt continuation before it can be presented as a legal line', async () => {
+    const engine = new StockfishEngine(fakeUci('broken-continuation'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 1);
+      expect(result.pv).toEqual(['e2e4', 'e7e5']);
+      expect(result.candidates[0]?.pv).toEqual(['e2e4', 'e7e5']);
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  it('retains distinct equal-strength alternatives without manufacturing a large gap', async () => {
+    const engine = new StockfishEngine(fakeUci('equal-candidates'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.candidates.map((c) => c.multipv)).toEqual([1, 2]);
+      expect(result.candidates.map((c) => c.cp)).toEqual([40, 39]);
+      expect(result.candidates[0]!.cp! - result.candidates[1]!.cp!).toBe(1);
+    } finally { await engine.quit(); }
+  });
+
+  it('never uses an upper/lower bound or a shallower rank to claim a unique best move', async () => {
+    const engine = new StockfishEngine(fakeUci('bounded-score'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.cp).toBe(20);
+      expect(result.depth).toBe(14);
+      expect(result.candidates.map((c) => c.multipv)).toEqual([1]);
+    } finally { await engine.quit(); }
+  });
+
+  it('does not treat an impossible second candidate as an available alternative to a forced reply', async () => {
+    const engine = new StockfishEngine(fakeUci('forced-reply'));
+    try {
+      await engine.start();
+      const forcedFen = 'k6R/8/2K5/8/8/8/8/8 b - - 0 1';
+      const result = await engine.evaluateMulti(forcedFen, 16, 3);
+      expect(result.candidates.map((c) => c.multipv)).toEqual([1]);
+      expect(result.candidates[0]?.pv).toEqual(['a8a7']);
+    } finally { await engine.quit(); }
+  });
+
+  it('never treats nonfinite or incomplete UCI scores as numeric evidence', async () => {
+    const engine = new StockfishEngine(fakeUci('nonfinite-score'));
+    try {
+      await engine.start();
+      const result = await engine.evaluateMulti(START_FEN, 16, 3);
+      expect(result.cp).toBeNull();
+      expect(result.mate).toBeNull();
+      expect(result.candidates).toEqual([]);
+    } finally { await engine.quit(); }
   });
 
   it('rejects concurrent searches and option mutations instead of mixing UCI results', async () => {
