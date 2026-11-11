@@ -2,7 +2,8 @@
 // Each row is clickable — selecting jumps the board + move list to that ply.
 
 import { useTranslation } from 'react-i18next';
-import { CLASS_STYLE, GLYPH_SVG } from '../lib/classification';
+import { CLASS_STYLE } from '../lib/classification';
+import ClassificationIcon from './ClassificationIcon';
 import type { Classification } from '../types';
 
 export interface KeyMomentItem {
@@ -46,9 +47,7 @@ export default function KeyMomentsList({ items, current, onSelect }: Props) {
               onClick={() => onSelect(m.ply)}
               className={`flex w-full items-start gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40 ${active ? 'bg-gold-50/70 dark:bg-gold-700/10 ring-1 ring-inset ring-gold-500/40' : ''}`}
             >
-              <span className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white ${s.bgClass}`}>
-                <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden>{GLYPH_SVG[s.glyph]}</svg>
-              </span>
+              <ClassificationIcon classification={m.classification} size={28} className="mt-0.5" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="font-mono text-xs tabular-nums text-chesscom-500">#{Math.ceil(m.ply / 2)}{m.side === 'black' ? '…' : '.'}</span>

@@ -19,16 +19,16 @@ export type GlyphKind =
 
 export const CLASS_STYLE: Record<Classification, ClassificationStyle> = {
   brilliant:  { bgClass: 'bg-move-brilliant',  textClass: 'text-move-brilliant',  hex: '#1baca6', glyph: 'lightning',      labelKey: 'brilliant',  order: 0 },
-  great:      { bgClass: 'bg-move-great',      textClass: 'text-move-great',      hex: '#5b8baf', glyph: 'doubleCheck',    labelKey: 'great',      order: 1 },
-  best:       { bgClass: 'bg-move-best',       textClass: 'text-move-best',       hex: '#81b64c', glyph: 'check',          labelKey: 'best',       order: 2 },
-  excellent:  { bgClass: 'bg-move-excellent',  textClass: 'text-move-excellent',  hex: '#95b776', glyph: 'check',          labelKey: 'excellent',  order: 3 },
-  good:       { bgClass: 'bg-move-good',       textClass: 'text-move-good',       hex: '#95a370', glyph: 'dot',            labelKey: 'good',       order: 4 },
-  book:       { bgClass: 'bg-move-book',       textClass: 'text-move-book',       hex: '#a88865', glyph: 'book',           labelKey: 'book',       order: 5 },
-  inaccuracy: { bgClass: 'bg-move-inaccuracy', textClass: 'text-move-inaccuracy', hex: '#f7c045', glyph: 'inaccuracy',     labelKey: 'inaccuracy', order: 6 },
-  mistake:    { bgClass: 'bg-move-mistake',    textClass: 'text-move-mistake',    hex: '#ffa459', glyph: 'questionMark',   labelKey: 'mistake',    order: 7 },
-  blunder:    { bgClass: 'bg-move-blunder',    textClass: 'text-move-blunder',    hex: '#fa412d', glyph: 'doubleQuestion', labelKey: 'blunder',    order: 8 },
-  miss:       { bgClass: 'bg-move-miss',       textClass: 'text-move-miss',       hex: '#ee6b55', glyph: 'cross',          labelKey: 'miss',       order: 9 },
-  forced:     { bgClass: 'bg-move-forced',     textClass: 'text-move-forced',     hex: '#6b6964', glyph: 'lock',           labelKey: 'forced',     order: 10 },
+  great:      { bgClass: 'bg-move-great',      textClass: 'text-move-great',      hex: '#4e9fd7', glyph: 'doubleCheck',    labelKey: 'great',      order: 1 },
+  best:       { bgClass: 'bg-move-best',       textClass: 'text-move-best',       hex: '#76bd50', glyph: 'check',          labelKey: 'best',       order: 2 },
+  excellent:  { bgClass: 'bg-move-excellent',  textClass: 'text-move-excellent',  hex: '#9fc185', glyph: 'check',          labelKey: 'excellent',  order: 3 },
+  good:       { bgClass: 'bg-move-good',       textClass: 'text-move-good',       hex: '#8a9b72', glyph: 'dot',            labelKey: 'good',       order: 4 },
+  book:       { bgClass: 'bg-move-book',       textClass: 'text-move-book',       hex: '#b99b73', glyph: 'book',           labelKey: 'book',       order: 5 },
+  inaccuracy: { bgClass: 'bg-move-inaccuracy', textClass: 'text-move-inaccuracy', hex: '#f3be41', glyph: 'inaccuracy',     labelKey: 'inaccuracy', order: 6 },
+  mistake:    { bgClass: 'bg-move-mistake',    textClass: 'text-move-mistake',    hex: '#ef904e', glyph: 'questionMark',   labelKey: 'mistake',    order: 7 },
+  blunder:    { bgClass: 'bg-move-blunder',    textClass: 'text-move-blunder',    hex: '#ee4d44', glyph: 'doubleQuestion', labelKey: 'blunder',    order: 8 },
+  miss:       { bgClass: 'bg-move-miss',       textClass: 'text-move-miss',       hex: '#e66558', glyph: 'cross',          labelKey: 'miss',       order: 9 },
+  forced:     { bgClass: 'bg-move-forced',     textClass: 'text-move-forced',     hex: '#777b7e', glyph: 'lock',           labelKey: 'forced',     order: 10 },
 };
 
 // Every glyph is SVG geometry — no Unicode emoji or browser/system fonts.

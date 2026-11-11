@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Inaccuracy move">
+  <title>Inaccuracy move</title>
+  <circle cx="16" cy="16" r="15" fill="#F3BE41"/>
+  <circle cx="16" cy="16" r="14.3" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.4"/>
+  <path d="M9.2 9.8v9.1" stroke="#382A12" stroke-width="3.1" stroke-linecap="round"/>
+  <circle cx="9.2" cy="23" r="1.7" fill="#382A12"/>
+  <path d="M15 12.5c0-2.9 1.8-4.6 4.4-4.6 2.65 0 4.45 1.7 4.45 4.05 0 2.5-1.4 3.45-3.45 4.9-.9.65-1.15 1.2-1.15 2.3" fill="none" stroke="#382A12" stroke-width="2.65" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="19.25" cy="23" r="1.65" fill="#382A12"/>
+</svg>

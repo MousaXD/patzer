@@ -75,19 +75,19 @@ export default {
         accent: { 50: '#e8efd8', 100: '#d3e0b8', 300: '#abc986', 500: '#769656', 600: '#5d8a3a', 700: '#4e7837' },
         warn:   '#ffa459',
         bad:    '#fa412d',
-        // Move classification colors — chess.com-faithful hex values.
+        // Move classification colors — match the approved 32px SVG set.
         move: {
           brilliant:  '#1baca6',  // teal
-          great:      '#5b8baf',  // steel blue
-          best:       '#81b64c',  // green-400
-          excellent:  '#95b776',  // olive
-          good:       '#95a370',  // muted olive
-          book:       '#a88865',  // warm tan
-          inaccuracy: '#f7c045',  // mustard
-          mistake:    '#ffa459',  // orange
-          blunder:    '#fa412d',  // red
-          miss:       '#ee6b55',  // red-orange (not purple)
-          forced:     '#6b6964',  // graphite
+          great:      '#4e9fd7',  // blue
+          best:       '#76bd50',  // green
+          excellent:  '#9fc185',  // sage
+          good:       '#8a9b72',  // olive
+          book:       '#b99b73',  // sand
+          inaccuracy: '#f3be41',  // gold
+          mistake:    '#ef904e',  // orange
+          blunder:    '#ee4d44',  // red
+          miss:       '#e66558',  // coral
+          forced:     '#777b7e',  // graphite
         },
       },
       fontFamily: {

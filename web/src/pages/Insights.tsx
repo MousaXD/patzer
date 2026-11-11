@@ -10,6 +10,8 @@ import * as Icons from 'lucide-react';
 import { Activity, BarChart3, Target, TrendingUp, Flame, AlertTriangle, BookOpen, Award, Lock, Sparkles, ChevronRight } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
+import type { Classification } from '../types';
+import ClassificationIcon from '../components/ClassificationIcon';
 
 type Achievement = {
   id: string;
@@ -148,17 +150,18 @@ export default function Insights() {
 /* ───── Move quality ───────────────────────────────────────────────────── */
 // Your moves by classification (chess.com's colors), and your brilliant
 // moves to jump back to. Tailwind needs the class names spelled out.
-const QUALITY_ROWS: { key: string; symbol: string; bar: string; text: string }[] = [
-  { key: 'brilliant', symbol: '!!', bar: 'bg-move-brilliant', text: 'text-move-brilliant' },
-  { key: 'great', symbol: '!', bar: 'bg-move-great', text: 'text-move-great' },
-  { key: 'best', symbol: '★', bar: 'bg-move-best', text: 'text-move-best' },
-  { key: 'excellent', symbol: '✓', bar: 'bg-move-excellent', text: 'text-move-excellent' },
-  { key: 'good', symbol: '·', bar: 'bg-move-good', text: 'text-move-good' },
-  { key: 'book', symbol: '📖', bar: 'bg-move-book', text: 'text-move-book' },
-  { key: 'inaccuracy', symbol: '?!', bar: 'bg-move-inaccuracy', text: 'text-move-inaccuracy' },
-  { key: 'mistake', symbol: '?', bar: 'bg-move-mistake', text: 'text-move-mistake' },
-  { key: 'miss', symbol: '✗', bar: 'bg-move-miss', text: 'text-move-miss' },
-  { key: 'blunder', symbol: '??', bar: 'bg-move-blunder', text: 'text-move-blunder' },
+const QUALITY_ROWS: { key: Classification; bar: string }[] = [
+  { key: 'brilliant', bar: 'bg-move-brilliant' },
+  { key: 'great', bar: 'bg-move-great' },
+  { key: 'best', bar: 'bg-move-best' },
+  { key: 'excellent', bar: 'bg-move-excellent' },
+  { key: 'good', bar: 'bg-move-good' },
+  { key: 'book', bar: 'bg-move-book' },
+  { key: 'inaccuracy', bar: 'bg-move-inaccuracy' },
+  { key: 'mistake', bar: 'bg-move-mistake' },
+  { key: 'miss', bar: 'bg-move-miss' },
+  { key: 'blunder', bar: 'bg-move-blunder' },
+  { key: 'forced', bar: 'bg-move-forced' },
 ];
 
 /** "12." for White's move, "12…" for Black's. */
@@ -185,7 +188,7 @@ function MoveQualityCard({ data }: { data: NonNullable<InsightsV2['move_quality'
             const n = data.counts[r.key] ?? 0;
             return (
               <div key={r.key} className="flex items-center gap-2 text-xs">
-                <span className={`w-6 shrink-0 text-center font-mono font-bold ${r.text}`}>{r.symbol}</span>
+                <ClassificationIcon classification={r.key} size={24} />
                 <span className="w-28 shrink-0 truncate text-chesscom-700 dark:text-chesscom-200">{t(`classification.${r.key}`)}</span>
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-700/60">
                   <div className={`h-full rounded-full ${r.bar}`} style={{ width: `${(n / max) * 100}%` }} />
