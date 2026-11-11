@@ -21,6 +21,7 @@ import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
+import ReviewUnavailable, { reviewUnavailableReason } from '../components/review/ReviewUnavailable';
 import ReviewDisclosureHeader from '../components/ReviewDisclosureHeader';
 import MistakePractice from '../components/review/MistakePractice';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
@@ -110,7 +111,7 @@ function GameAnalyzerView() {
   const queryClient = useQueryClient();
   const gameId = Number(id);
 
-  const { data, refetch, isLoading, isError, error: loadError } = useQuery({
+  const { data, refetch, isLoading, isFetching, isError, error: loadError } = useQuery({
     queryKey: ['game', gameId],
     queryFn: () => api.get<GameDetail>(`/api/games/${gameId}`),
     enabled: Number.isSafeInteger(gameId) && gameId > 0,
@@ -560,21 +561,13 @@ function GameAnalyzerView() {
 
   if (isLoading) return <AnalyzerSkeleton />;
   if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data || positions.length === 0) {
-    return (
-      <div role="alert" className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-white p-6 text-chesscom-900 shadow-soft dark:bg-chesscom-800 dark:text-chesscom-100">
-        <h1 className="text-lg font-semibold">Game Review unavailable</h1>
-        <p className="mt-2 text-sm text-chesscom-500">
-          {!Number.isSafeInteger(gameId) || gameId <= 0
-            ? 'The game link is invalid.'
-            : data && positions.length === 0 ? 'This game has an invalid or unreadable saved PGN.'
-            : loadError instanceof Error ? loadError.message : 'This game could not be loaded.'}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {Number.isSafeInteger(gameId) && gameId > 0 && <button type="button" className="btn-primary" onClick={() => void refetch()}>Retry loading</button>}
-          <Link to="/review" className="btn-secondary">Back to games</Link>
-        </div>
-      </div>
-    );
+    const validId = Number.isSafeInteger(gameId) && gameId > 0;
+    const status = (loadError as (Error & { status?: number }) | null)?.status;
+    const reason = reviewUnavailableReason({
+      gameId, hasGame: !!data, positionsLength: positions.length, status,
+    });
+    return <ReviewUnavailable reason={reason} retrying={isFetching}
+      onRetry={reason === 'loadFailed' && validId ? () => { void refetch(); } : undefined} />;
   }
 
   // The PGN may contain more moves than a partial/legacy engine result.

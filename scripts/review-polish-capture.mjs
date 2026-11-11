@@ -829,6 +829,55 @@ try {
       await page.screenshot({path:join(output,`review-shortcuts-${lang}-1024.png`)});
     }finally{await desktop.close();}
   }
+  const errorLocale=await api('/api/settings/profile',{
+    method:'PATCH',cookie:account.cookie,body:{language:'es'},
+  });
+  assert.equal(errorLocale.status,200);
+  const errorContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await errorContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await errorContext.newPage();
+    const spanish=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+    await page.goto(`${base}/review/not-a-number`,{waitUntil:'domcontentloaded'});
+    const invalidHeading=page.getByRole('heading',{name:spanish.review.unavailableHeading});
+    await invalidHeading.waitFor({state:'visible'});
+    assert.ok(await invalidHeading.evaluate(el=>document.activeElement===el),
+      'Invalid review must focus the recovery heading for keyboard users');
+    await page.getByText(spanish.review.unavailableReason.invalid,{exact:true}).waitFor({state:'visible'});
+    assert.equal(await page.getByRole('button',{name:spanish.review.retryLoading}).count(),0,
+      'Malformed links cannot be resolved by retrying');
+    await page.screenshot({path:join(output,'invalid-review-es-after.png')});
+    await page.goto(`${base}/review/999999`,{waitUntil:'domcontentloaded'});
+    await page.getByText(spanish.review.unavailableReason.notFound,{exact:true}).waitFor({state:'visible'});
+    assert.equal(await page.getByRole('button',{name:spanish.review.retryLoading}).count(),0,
+      'A confirmed missing game cannot be found by repeated requests');
+    assert.equal(await page.getByText('not_found',{exact:true}).count(),0,
+      'Backend error codes must not be rendered as user messages');
+    await page.screenshot({path:join(output,'missing-review-es-after.png')});
+    await page.getByRole('link',{name:spanish.review.backToGames}).click();
+    assert.ok(new URL(page.url()).pathname==='/review',
+      'The unavailable recovery must lead back to the saved-game library');
+    // A transient outage is different: retry should be offered, and the
+    // raw response body must not be exposed as explanatory UI text.
+    let attempts=0;
+    await page.route('**/api/games/999998',async route=>{
+      attempts+=1;
+      await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+    });
+    await page.goto(`${base}/review/999998`,{waitUntil:'domcontentloaded'});
+    const retry=page.getByRole('button',{name:spanish.review.retryLoading});
+    await retry.waitFor({state:'visible',timeout:18000});
+    await page.getByText(spanish.review.unavailableReason.loadFailed,{exact:true}).waitFor({state:'visible'});
+    assert.equal(await page.getByText('backend_unavailable',{exact:true}).count(),0);
+    const previousAttempts=attempts;
+    await Promise.all([
+      page.waitForRequest(request=>request.url().endsWith('/api/games/999998'),{timeout:10000}),
+      retry.click(),
+    ]);
+    assert.ok(attempts>previousAttempts,'Retry must issue a fresh request');
+    await page.screenshot({path:join(output,'transient-review-es-after.png')});
+  }finally{await errorContext.close();}
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},
   });

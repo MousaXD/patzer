@@ -257,6 +257,16 @@
   },
   "review": {
     "title": "Game Review",
+    "unavailableHeading": "Game review unavailable",
+    "unavailableReason": {
+      "invalid": "This game link is invalid.",
+      "unreadable": "The saved game could not be read. Return to your games to choose another.",
+      "notFound": "This game could not be found, or you do not have access to it.",
+      "loadFailed": "The game could not be loaded. Check your connection and try again."
+    },
+    "retryLoading": "Retry loading",
+    "retryingLoading": "Trying again…",
+    "backToGames": "Back to games",
     "yourGames": "Your games",
     "import": "Import from Chess.com",
     "importing": "Importing…",

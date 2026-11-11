@@ -82,6 +82,18 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review.why.showBestOnBoard).not.toEqual(en.review.why.showBestOnBoard);
       }
     });
+    it('provides distinct, translated review recovery and retry messages', () => {
+      for (const reason of ['invalid', 'unreadable', 'notFound', 'loadFailed'] as const) {
+        expect(locale.review.unavailableReason[reason]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') {
+          expect(locale.review.unavailableReason[reason]).not.toBe(en.review.unavailableReason[reason]);
+        }
+      }
+      for (const key of ['unavailableHeading', 'retryLoading', 'retryingLoading', 'backToGames'] as const) {
+        expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+    });
   },
 );
 

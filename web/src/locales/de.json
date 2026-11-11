@@ -257,6 +257,16 @@
   },
   "review": {
     "title": "Partieanalyse",
+    "unavailableHeading": "Partieanalyse nicht verfügbar",
+    "unavailableReason": {
+      "invalid": "Dieser Partielink ist ungültig.",
+      "unreadable": "Die gespeicherte Partie konnte nicht gelesen werden. Wähle eine andere Partie aus.",
+      "notFound": "Diese Partie wurde nicht gefunden oder du hast keinen Zugriff darauf.",
+      "loadFailed": "Die Partie konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut."
+    },
+    "retryLoading": "Erneut laden",
+    "retryingLoading": "Erneuter Versuch…",
+    "backToGames": "Zurück zu den Partien",
     "yourGames": "Deine Partien",
     "import": "Von Chess.com importieren",
     "importing": "Wird importiert…",

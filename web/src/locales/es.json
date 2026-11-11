@@ -248,6 +248,16 @@
   },
   "review": {
     "title": "Análisis de partida",
+    "unavailableHeading": "Análisis de partida no disponible",
+    "unavailableReason": {
+      "invalid": "Este enlace a la partida no es válido.",
+      "unreadable": "No se puede leer la partida guardada. Vuelve a tus partidas para elegir otra.",
+      "notFound": "No se encontró esta partida o no tienes acceso a ella.",
+      "loadFailed": "No se pudo cargar la partida. Comprueba tu conexión e inténtalo de nuevo."
+    },
+    "retryLoading": "Volver a cargar",
+    "retryingLoading": "Reintentando…",
+    "backToGames": "Volver a las partidas",
     "yourGames": "Tus partidas",
     "import": "Importar de Chess.com",
     "importing": "Importando…",
