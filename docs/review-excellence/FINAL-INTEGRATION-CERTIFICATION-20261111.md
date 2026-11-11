@@ -70,6 +70,10 @@ an explicit rejection check plus a separate complete-game switching assertion.
   preservation, cold cache reads, harmless bookmarks, completed-report source
   refresh/reload, and closure of a held real local-model HTTP connection after
   source refresh, without transport interception or product-function stubs.
+- The existing Agent 07 independent frontend-overhaul suite also passes **35/35
+  real Chromium checks**, including themes, accessibility, keyboard navigation,
+  special moves, variation scoring and saved-game immutability. Its presentation
+  fixtures now use canonical source fields; no assertions were changed.
 - Agent D's unchanged original A → B → A runner passes on corrected source.
   Its newer fixed-behavior runner passes **14 assertions**, including recovery,
   same-byte-length PGNs, account isolation, legacy NULL provenance and
