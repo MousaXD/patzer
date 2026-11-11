@@ -21,6 +21,25 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
+  it('focuses the attempted move after form submission and restores the text input on reset', async () => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      signals.push(init.signal as AbortSignal);
+      return new Promise(() => undefined);
+    }));
+    render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
+    const input = screen.getByLabelText(/Type a legal chess move/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'e4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit move' }));
+    const result = screen.getByRole('heading', { level: 2, name: /Your move: e4/ });
+    expect(document.activeElement).toBe(result);
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel check and try another move' }));
+    expect(signals[0]?.aborted).toBe(true);
+    expect(document.activeElement).toBe(screen.getByLabelText(/Type a legal chess move/));
+    expect(screen.queryByRole('heading', { level: 2, name: /Your move/ })).toBeNull();
+  });
+
   it('updates localized error text without aborting or restarting a pending Stockfish check', async () => {
     const signals: AbortSignal[] = [];
     vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
@@ -155,5 +174,17 @@ describe('blind retry UX', () => {
     expect(screen.queryByText(/Engine-preferred move/)).toBeNull();
     fireEvent.click(screen.getByText('Try another move'));
     expect(screen.getByText('Submit move')).toBeTruthy();
+  });
+  it('refuses contradictory engine top-move evidence instead of teaching a false alternative', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      quality: { ...quality, best_move_uci: 'e2e4', best_move_san: 'e4',
+        best_pv: ['e4', 'e5'], is_best: false },
+    }) }));
+    render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Type a legal chess move/), { target: { value: 'e4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit move' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('did not match'));
+    expect(screen.queryByText(/Engine assessment/)).toBeNull();
+    expect(screen.queryByText(/sound alternative/)).toBeNull();
   });
 });

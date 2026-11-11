@@ -67,6 +67,7 @@ describe('blind practice attempt boundary', () => {
     expect(verifiedPracticeQuality({ ...quality, best_move_san: 'Qh5' }, attempt)).toBeNull();
     expect(verifiedPracticeQuality({ ...quality, best_pv: ['e4', 'Qh5'] }, attempt)).toBeNull();
     expect(verifiedPracticeQuality({ ...quality, best_move_uci: 'd2d4', best_move_san: 'd4' }, attempt)).toBeNull();
+    expect(verifiedPracticeQuality({ ...quality, is_best: false }, attempt)).toBeNull();
     expect(verifiedPracticeQuality({ ...quality, depth_before: 2.5 }, attempt)).toBeNull();
     expect(verifiedPracticeQuality(null, attempt)).toBeNull();
   });

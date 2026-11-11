@@ -32,6 +32,9 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const [promotion, setPromotion] = useState('');
   const [retry, setRetry] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const attemptHeadingRef = useRef<HTMLHeadingElement>(null);
+  const moveInputRef = useRef<HTMLInputElement>(null);
+  const hasAttemptedRef = useRef(false);
   const displayedFen = attempt?.fenAfter ?? fenBefore;
   const positionSummary = useMemo(() => describePracticePosition(displayedFen), [displayedFen]);
   const pieceName = (type: string) => t(`practice.piece.${type}`);
@@ -47,6 +50,19 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const canPlaySquares = Boolean(fromSquare && toSquare && (promotions.length === 0 || promotions.includes(promotion)));
 
   useEffect(() => { headingRef.current?.focus(); }, []);
+  // Submitting a move removes the focused form, which otherwise strands
+  // keyboard/screen-reader focus on BODY. Announce the attempted move, then
+  // restore the newly mounted input on Try another move. Do not steal focus
+  // from users inspecting the engine response while it arrives.
+  useEffect(() => {
+    if (attempt) {
+      hasAttemptedRef.current = true;
+      attemptHeadingRef.current?.focus();
+    } else if (hasAttemptedRef.current) {
+      hasAttemptedRef.current = false;
+      moveInputRef.current?.focus();
+    }
+  }, [attempt]);
   useEffect(() => {
     if (!attempt) return;
     const controller = new AbortController();
@@ -77,7 +93,7 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   };
   const reset = () => {
     setTypedMove(''); setFromSquare(''); setToSquare(''); setPromotion('');
-    setAttempt(null); setQuality(null); setError(''); setPending(false); headingRef.current?.focus();
+    setAttempt(null); setQuality(null); setError(''); setPending(false);
   };
   const exit = () => { onExit(); };
 
@@ -116,7 +132,7 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
         <form className="flex flex-wrap items-end justify-center gap-2" onSubmit={(event) => { event.preventDefault(); submitMove(typedMove.trim()); }}>
           <label className="flex flex-col gap-1 text-sm" htmlFor="practice-move-input">
             {t('practice.moveInput')}
-            <input id="practice-move-input" autoComplete="off" spellCheck={false} value={typedMove}
+            <input id="practice-move-input" ref={moveInputRef} autoComplete="off" spellCheck={false} value={typedMove}
               onChange={(event) => { setTypedMove(event.target.value); setError(''); }} maxLength={15}
               className="min-h-11 rounded-lg border border-chesscom-300 bg-white px-3 font-mono text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-900 dark:text-chesscom-100" />
           </label>
@@ -166,7 +182,10 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
       </div>}
       {!attempt && error && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-300">{t(`practice.${error}`)}</p>}
       {attempt && <div className="mt-4 space-y-3 rounded-lg border border-chesscom-200 p-3 dark:border-chesscom-700">
-        <p className="text-sm">{t('practice.yourMove')} <strong className="font-mono">{attempt.san}</strong></p>
+        <h2 id="practice-attempt-heading" ref={attemptHeadingRef} tabIndex={-1}
+          className="text-sm font-semibold focus:outline-none">
+          {t('practice.yourMove')} <strong className="font-mono">{attempt.san}</strong>
+        </h2>
         {pending && <p role="status" aria-live="polite" className="text-sm">{t('practice.checking')}</p>}
         {error && <div role="alert" className="text-sm text-amber-700 dark:text-amber-300">
           {t(`practice.${error}`)} <button type="button" className="ml-2 min-h-11 underline underline-offset-2" onClick={() => { setPending(true); setRetry((value) => value + 1); }}>{t('practice.retryScoring')}</button>

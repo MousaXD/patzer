@@ -97,7 +97,9 @@ export function verifiedPracticeQuality(quality: VariationMoveQuality | null | u
     || (quality.best_move_san !== null && typeof quality.best_move_san !== 'string')
     || !Array.isArray(quality.best_pv) || !quality.best_pv.every((san) => typeof san === 'string')
     || typeof quality.is_best !== 'boolean'
-    || (quality.is_best && quality.best_move_uci !== attempt.uci)) return null;
+    // Stockfish's first choice and the best-move flag must agree in *both*
+    // directions. A contradictory payload must not teach a false alternative.
+    || quality.is_best !== (quality.best_move_uci === attempt.uci)) return null;
   // A coherent FEN alone is not sufficient: never reveal a purported best
   // move or engine line that is illegal or mismatched on this position.
   const best = legalAnalysisMove(attempt.fenBefore, quality.best_move_uci ?? '');

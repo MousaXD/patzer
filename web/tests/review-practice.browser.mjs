@@ -411,6 +411,29 @@ try {
     await assertNoSpoilers(page);
   });
 
+  await test('Keyboard attempt announces its result and resets focus to the input after retry', async () => {
+    await startBlind(page, standard.id);
+    await page.route('**/api/analyze/variation-move', async (route) => {
+      await sleep(900);
+      await route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'focus_negative_control' }) }).catch(() => {});
+    });
+    try {
+      await page.locator('#practice-move-input').fill('d4');
+      await page.locator('#practice-move-input').press('Enter');
+      await page.getByText(/Your move:/).waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'practice-attempt-heading',
+        null, { timeout: 2000 });
+      await page.getByText(/could not score this attempt/).waitFor({ timeout: 6000 });
+      await page.getByRole('button', { name: 'Try another move' }).click();
+      await page.locator('#practice-move-input').waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'practice-move-input',
+        null, { timeout: 2000 });
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+      await assertNoSpoilers(page);
+    } finally { await page.unroute('**/api/analyze/variation-move'); }
+  });
+
   await test('Original game remains immutable after repeated attempts and game switch', async () => {
     await startBlind(page, standard.id);
     await page.getByText(/Or choose a piece and destination/).click();
@@ -430,17 +453,30 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
   });
 
-  await test('Busy and mismatched engine responses give honest retries, never a fabricated score', async () => {
+  await test('Busy, stale and contradictory engine responses give honest retries, never a fabricated score', async () => {
     await startBlind(page, standard.id);
     let calls = 0;
     await page.route('**/api/analyze/variation-move', async (route) => {
       calls++;
       if (calls === 1) {
         await route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'engine_busy' }) });
-      } else {
+      } else if (calls === 2) {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ quality: {
           source: 'variation', fen_before: 'wrong-position', fen_after: 'wrong-position', uci: 'd2d4',
           classification: 'best', eval_before_cp: 0, eval_after_cp: 0,
+        } }) });
+      } else {
+        const { fen_before: fenBefore, move_uci: uci } = route.request().postDataJSON();
+        const board = new Chess(fenBefore);
+        const played = board.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
+        assert.ok(played, 'negative-control move must itself be legal');
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ quality: {
+          source: 'variation', fen_before: fenBefore, fen_after: board.fen(), uci,
+          san: played.san, from: played.from, to: played.to, scoring_version: 9,
+          classification: 'good', centipawn_loss: 0, win_pct_drop: 0,
+          eval_before_cp: 0, eval_after_cp: 0, depth_before: 12,
+          best_move_uci: uci, best_move_san: played.san, best_pv: [played.san],
+          is_best: false, // Contradicts the identical top UCI and must fail closed.
         } }) });
       }
     });
@@ -452,7 +488,10 @@ try {
       await page.getByRole('button', { name: 'Retry scoring' }).click();
       await page.getByText(/did not match your attempt/).waitFor({ timeout: 15000 });
       assert.equal(await page.getByText(/Engine assessment:/).count(), 0);
-      assert.equal(calls, 2);
+      await page.getByRole('button', { name: 'Retry scoring' }).click();
+      await page.getByText(/did not match your attempt/).waitFor({ timeout: 15000 });
+      assert.equal(await page.getByText(/Engine assessment:|sound alternative/).count(), 0);
+      assert.equal(calls, 3);
     } finally { await page.unroute('**/api/analyze/variation-move'); }
     await page.getByRole('button', { name: 'Retry scoring' }).click();
     await page.getByText(/Engine assessment:/).waitFor({ timeout: 120000 });
