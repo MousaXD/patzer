@@ -93,27 +93,45 @@ function sourceDrawEvidence(game,recorded){
  const positions=recorded.length?
   [recorded[0].before,...recorded.map(move=>move.after)]:[game.fen()];
  let maxPositionOccurrences=0;
- for(const fen of positions){
+ let reversibleStreak=0,maximumSourceStreak=0;
+ let prematureAutomaticEnding=null;
+ for(const [ply,fen] of positions.entries()){
+  if(ply>0){
+   const move=recorded[ply-1];
+   reversibleStreak=move.piece==='p'||move.captured?0:reversibleStreak+1;
+   maximumSourceStreak=Math.max(maximumSourceStreak,reversibleStreak);
+  }
   const identity=positionIdentityFromFen(fen);
   if(!identity)continue;
   const count=(seen.get(identity)||0)+1;
   seen.set(identity,count);
   maxPositionOccurrences=Math.max(maxPositionOccurrences,count);
+  // FIDE 5.1, 5.2 and 9.6 end a game *immediately*. chess.js's PGN
+  // replay may still accept additional legal SAN after fivefold, 75 moves,
+  // or a dead position. A later checkmate is not a legal game winner. Do not
+  // certify a source that already ended BEFORE one of its recorded moves.
+  // Claimable threefold/50-move draws are deliberately NOT included here.
+  if(ply<recorded.length&&!prematureAutomaticEnding){
+   const board=new Chess(fen);
+   const reason=board.isCheckmate()?'checkmate':
+    board.isStalemate()?'stalemate':
+    board.isInsufficientMaterial()?'dead_position':
+    count>=5?'fivefold_repetition':
+    reversibleStreak>=150?'seventy_five_move_rule':null;
+   if(reason)prematureAutomaticEnding={first_ending_ply:ply,
+    ending_kind:reason,later_moves:recorded.length-ply};
+  }
  }
  // A custom FEN's halfmove clock is an assertion about *unseen* history, not
  // independently replayed evidence of 75 moves by each side. Count source
  // moves since a pawn move/capture, ignoring the imported clock completely.
- let reversibleStreak=0,maximumSourceStreak=0;
- for(const move of recorded){
-  reversibleStreak=move.piece==='p'||move.captured?0:reversibleStreak+1;
-  maximumSourceStreak=Math.max(maximumSourceStreak,reversibleStreak);
- }
  const automaticFivefold=maxPositionOccurrences>=5;
  const automaticSeventyFive=maximumSourceStreak>=150;
  const sourceProvenDraw=boardDraw||automaticFivefold||automaticSeventyFive;
  const claimableOnly=!sourceProvenDraw&&
   (game.isThreefoldRepetition()||game.isDrawByFiftyMoves());
  return {boardDraw,sourceProvenDraw,claimableOnly,automaticFivefold,
+  prematureAutomaticEnding,
   automaticSeventyFive,maxPositionOccurrences,maximumSourceStreak};
 }
 function explicitMoveTime(text,claimStart){
@@ -193,6 +211,11 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  if(impossibleStart)return {status:'invalid_input',
   findings:[{reason:'source_start_position_impossible',detail:impossibleStart}],
   verified,unassessed,full_factuality_certified:false};
+ const drawEvidence=sourceDrawEvidence(game,recorded);
+ if(drawEvidence.prematureAutomaticEnding)return {status:'invalid_input',
+  findings:[{reason:'source_continues_after_automatic_game_end',
+   ...drawEvidence.prematureAutomaticEnding}],verified,unassessed,
+  full_factuality_certified:false};
  const momentBoards=new Map();
  for(const [index,moment] of review.key_moments.entries()){
   const field='moment:'+index;
@@ -222,7 +245,6 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  }
  const headerResult=game.header().Result||null;
  const forcedWinner=game.isCheckmate()?(game.turn()==='w'?'black':'white'):null;
- const drawEvidence=sourceDrawEvidence(game,recorded);
  const provenDraw=!forcedWinner&&drawEvidence.sourceProvenDraw;
  // A missing or '*' PGN Result tag is not an affirmative result claim.
  // Chess-law replay is still sufficient to verify a checkmated winner; only

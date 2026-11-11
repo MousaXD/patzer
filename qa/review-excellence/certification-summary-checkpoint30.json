@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T06:11:24.002Z",
+  "assigned_branch": "agent/review-benchmark-20261111",
+  "prior_checkpoint_sha": "1c9b07a334b1d9deda86473569f97e8d824ce66e",
+  "current_checkout_sha": "1c9b07a334b1d9deda86473569f97e8d824ce66e",
+  "frozen_candidate_b": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "fresh_source_run_id": "5f116b76-f2bd-41f7-bf47-14d4953fa67d",
+  "prior_real_coach_evidence_run_id": "5f2a216c-1336-4ec9-a91c-9464c1cdf7db",
+  "independent_chronology_evidence": {
+    "synthetic_source_games": 22,
+    "claim_cases": 88,
+    "independently_hand_adjudicated_sources": 22,
+    "post_terminal_source_claims_blocked": 32,
+    "legal_games_correctly_rejected_for_false_result": 28,
+    "legal_limited_winner_proofs": 8,
+    "honest_unassessed_cases": 20,
+    "source_inputs_sha256": "227409f9a69b1a27a46d13eb4430bd5473d8cc1daef5827dfb5e6fa4dccd057c",
+    "individual_outcomes_sha256": "694972fff4db41381b7442e775cc485a1d92142b29eeefadde19c6245da51368",
+    "source_identity_sha256": "c890e854d7df167a0d311232948ee859df7bf85f127ec9bf5838baa786706b6c",
+    "production_engine_certified": false,
+    "full_factuality_certified": false,
+    "release_approved": false
+  },
+  "script_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "23cb483c9a0b4e1f51fa631c6c5eb7d96b07e278bbe33b8843ad46d838915b6c",
+    "scripts/review-benchmark-result-evidence-matrix.mjs": "37ec30cbff92d259f28ab3c65cecaef691a8e8aecb87416e6a6533e85faf8eb4",
+    "scripts/review-benchmark-result-evidence-proof.mjs": "ff643d4a34d267119fe8dc91c1f3f58fe680ec0b8ab857de23807b1cc0df36ee",
+    "scripts/review-benchmark-game-end-chronology-matrix.mjs": "aaeab12cafad829b3fe3cc56d3295cbde0d782bb7e7f326db64fb39dc8ea9c18",
+    "scripts/review-benchmark-game-end-chronology-proof.mjs": "c9c73ceb611a4b1316d71cbe56219d46cdf552b09aa537603c304e61615ec3ed",
+    "scripts/review-benchmark-game-end-chronology-negatives.mjs": "509b93b2ff5bac0305f351a691d37bdab09f98fe6c5ade165f8fe8d74761b816",
+    "scripts/review-benchmark-game-end-chronology-boundary.mjs": "87c3a660acb640b6cab71ecb5412eacff702b4942870469b6c40acfa5c9f1ed2"
+  },
+  "corrected_older_legal_dead_position_fixture": true,
+  "older_checkpoint27_synthetic_insufficient_source_evidence_superseded": true,
+  "real_model_calls": 0,
+  "stockfish_calls": 0,
+  "no_real_private_PGNs": true,
+  "other_agent_source_edits": 0,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "Only 22 self-authored synthetic sources; eight intentionally invalid continued games",
+    "Automatic game end follows source chess.js board oracle plus independently counted repetitions/halfmoves",
+    "This does not prove full retrograde reachability, arbiters, draw claims, or complete coaching prose",
+    "The older checkpoint27 bare-kings continuation was corrected and its evidence digests updated",
+    "No product source, migrations, live service, user games, real LLM, or deployed Stockfish modified"
+  ]
+}

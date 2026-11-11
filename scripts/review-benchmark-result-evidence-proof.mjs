@@ -17,9 +17,12 @@ const shaJson=x=>shaData(JSON.stringify(x));
 const shaFile=path=>shaData(readFileSync(path));
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const manifestSha='2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44';
-const frozenInput='80e0b5a006f94f307c8d6a491e09e0941c155c408eacd3749d95ce81aa3d1901';
+// The original bare-kings fixture illegally continued after automatic dead
+// material at ply zero. This pinned revision captures White's final bishop
+// on ply 1 (K+B vs K+N -> K vs K+N), first creating a dead position there.
+const frozenInput='a429eac78b3b67971898c6faf6ed096aef377f7a1851448937ceacea91f59e9a';
 const frozenOutput='eabb33e02a59744c02ea098a579598db9d267a546cc71a98c5637bd1ace81a7d';
-const frozenSource='6cbe9266181b1f4dbbf24cc4c17cb2964dd49a917e371ef1a825cb1a5bf244d3';
+const frozenSource='9a3d05fbc2e299b73afe6b0a039bf65fe80d5e09e7391b77c32dbb0edb713ffc';
 const manifestFile=join(qa,'manifests/manifest-v2.jsonl');
 assert.equal(shaFile(manifestFile),manifestSha);
 const fixture=readFileSync(manifestFile,'utf8').trim().split('\n').map(JSON.parse)

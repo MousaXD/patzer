@@ -156,12 +156,16 @@ unassessed('unrecognized piece synonym',review({summary:''},{...normal,
 
 // Chess.js supports custom set-up/FEN games where the first mover is BLACK.
 // A parity-based ply heuristic would incorrectly treat ply 1 as White.
-const blackPgn='[Event "QA synthetic black-to-move"]\n[SetUp "1"]\n[FEN "8/8/8/8/8/8/8/K6k b - - 0 1"]\n[Result "*"]\n\n1... Kh2 *';
+// Previous QA used two bare kings and played Kh2 *after* automatic dead-
+// position termination. Correct this provenance test to start K+B vs K+N:
+// Black is to move in check and captures the White bishop, becoming dead on
+// precisely the first and last recorded ply. This is a legal source game.
+const blackPgn='[Event "QA synthetic black-to-move"]\n[SetUp "1"]\n[FEN "8/8/5n2/8/8/6k1/7B/4K3 b - - 0 1"]\n[Result "*"]\n\n1... Kxh2 *';
 const blackGame=new Chess();blackGame.loadPgn(blackPgn,{strict:true});
 const bm=blackGame.history({verbose:true})[0];
-assert.equal(bm.color,'b');assert.equal(bm.san,'Kh2');
-const blackMoment={ply:1,side:'black',fen_before:bm.before,san:'Kh2',
- prose:"Before the move, Black's king is on h1."};
+assert.equal(bm.color,'b');assert.equal(bm.san,'Kxh2');
+const blackMoment={ply:1,side:'black',fen_before:bm.before,san:'Kxh2',
+ prose:"Before the move, Black's king is on g3."};
 allowed('black-to-move FEN start before',review({summary:''},blackMoment),
  {pgn:blackPgn,proof:'independent_source_pgn_before_move'});
 allowed('black-to-move FEN start after',review({summary:''},{...blackMoment,

@@ -34,7 +34,11 @@ const makePgn=(title,result,movetext,setup)=>[
 const openingMoves='1. f3 e5 2. g4 Nc6';
 const mateMoves='1. f3 e5 2. g4 Qh4#';
 const stSetup='k7/8/2K5/1Q6/8/8/8/8 w - - 0 1';
-const imSetup='8/8/8/8/8/8/8/K6k b - - 0 1';
+// The prior version started with two bare kings and then played Kh2: that
+// "legal" SAN passed chess.js but the game was already dead at ply zero.
+// Here Black's king captures the last White bishop on a real legal move,
+// leaving K+N vs K insufficient material for the first time at the end.
+const imSetup='8/8/5n2/8/8/6k1/7B/4K3 b - - 0 1';
 const sources={
  'mate-correct':originalPgn,
  'mate-unknown':makePgn('checkmate unknown header','*',mateMoves),
@@ -48,9 +52,9 @@ const sources={
  'stalemate-unknown':makePgn('stalemate with unknown header','*','1. Qb6',stSetup),
  'stalemate-white':makePgn('stalemate with false white winner','1-0','1. Qb6',stSetup),
  'stalemate-black':makePgn('stalemate with false black winner','0-1','1. Qb6',stSetup),
- 'insufficient-draw':makePgn('bare kings insufficient material','1/2-1/2','1... Kh2',imSetup),
- 'insufficient-unknown':makePgn('bare kings unspecified result','*','1... Kh2',imSetup),
- 'insufficient-white':makePgn('bare kings false white winner','1-0','1... Kh2',imSetup),
+ 'insufficient-draw':makePgn('capture ends in insufficient material','1/2-1/2','1... Kxh2',imSetup),
+ 'insufficient-unknown':makePgn('capture ends in insufficient material unspecified','*','1... Kxh2',imSetup),
+ 'insufficient-white':makePgn('capture ends in insufficient material false white winner','1-0','1... Kxh2',imSetup),
 };
 const parsed=new Map();
 for(const [kind,pgn] of Object.entries(sources)){
