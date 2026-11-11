@@ -288,6 +288,8 @@
     "variationEvalUnavailable": "Stellungsbewertung nicht verfügbar",
     "variationEvalLabel": "Bewertung {{score}}",
     "boardLabel": "Schachbrett",
+    "moveNavigation": "Zugnavigation der Partie",
+    "keyboardShortcuts": "← / →: Züge wechseln · Pos1 / Ende: erster / letzter Zug · F: Brett drehen",
     "openCoach": "Coach fragen",
     "summary": "Zusammenfassung",
     "white": "Weiß",

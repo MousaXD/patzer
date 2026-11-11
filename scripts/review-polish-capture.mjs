@@ -805,6 +805,29 @@ try {
         }
       }finally{await context.close();}
     }
+    const desktop=await browser.newContext({viewport:{width:1024,height:768},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await desktop.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await desktop.newPage();
+      await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+      await page.getByRole('tab',{name:locale.review.moves}).waitFor({state:'visible'});
+      const shortcuts=page.locator('[data-review-keyboard-shortcuts]');
+      await shortcuts.waitFor({state:'visible'});
+      assert.equal((await shortcuts.innerText()).trim(),locale.review.keyboardShortcuts,
+        `Desktop keyboard shortcut instructions were not translated in ${lang}`);
+      assert.equal(await page.locator('[data-move-transport]').getAttribute('aria-label'),locale.review.moveNavigation,
+        `Keyboard/screen-reader move transport label is not localized in ${lang}`);
+      const tabWidths=await page.getByRole('tab').evaluateAll(elements=>elements.map(element=>{
+        const label=element.querySelector('span');
+        return {name:element.getAttribute('aria-label'),width:label?.clientWidth,scroll:label?.scrollWidth};
+      }));
+      assert.ok(tabWidths.every(tab=>tab.scroll!=null && tab.width!=null && tab.scroll<=tab.width+1),
+        `Localized 1024px analysis tabs clip a destination: ${lang} ${JSON.stringify(tabWidths)}`);
+      const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
+      assert.ok(overflow<=2,`Localized desktop transport causes overflow in ${lang}: ${overflow}`);
+      await page.screenshot({path:join(output,`review-shortcuts-${lang}-1024.png`)});
+    }finally{await desktop.close();}
   }
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},

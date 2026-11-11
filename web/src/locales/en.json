@@ -288,6 +288,8 @@
     "variationEvalUnavailable": "Position evaluation unavailable",
     "variationEvalLabel": "Evaluation {{score}}",
     "boardLabel": "Chessboard",
+    "moveNavigation": "Game move navigation",
+    "keyboardShortcuts": "← / →: step through moves · Home / End: first / last move · F: flip board",
     "openCoach": "Ask coach",
     "summary": "Summary",
     "white": "White",

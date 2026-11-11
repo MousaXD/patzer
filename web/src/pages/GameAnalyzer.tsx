@@ -863,7 +863,7 @@ function GameAnalyzerView() {
               {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
             </div>
           </div>
-          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label="Game move navigation">
+          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label={t('review.moveNavigation')}>
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
             <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
@@ -881,8 +881,8 @@ function GameAnalyzerView() {
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
-          <p className="review-desktop-shortcuts mt-1 text-center text-[11px] text-chesscom-500">
-            Left / Right: step through moves · Home / End: jump to start / end · F: flip board
+          <p className="review-desktop-shortcuts mt-1 text-center text-[11px] text-chesscom-500 dark:text-chesscom-300" data-review-keyboard-shortcuts>
+            {t('review.keyboardShortcuts')}
           </p>
 
         </div>

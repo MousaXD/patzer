@@ -68,13 +68,17 @@ describe('de locale', () => {
 // the midst of an otherwise translated analysis workspace.
 describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as const)(
   '%s Game Review board guidance', (lang, locale) => {
-    it('translates the starting position and best-arrow explanation', () => {
+    it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.moveNavigation?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.keyboardShortcuts?.trim().length, lang).toBeGreaterThan(0);
       expect(placeholders(locale.review.why.showBestOnBoard), lang).toEqual(['{{san}}']);
       if (lang !== 'en') {
         expect(locale.review.startingPosition).not.toEqual(en.review.startingPosition);
         expect(locale.review.bestArrowNote).not.toEqual(en.review.bestArrowNote);
+        expect(locale.review.moveNavigation).not.toEqual(en.review.moveNavigation);
+        expect(locale.review.keyboardShortcuts).not.toEqual(en.review.keyboardShortcuts);
         expect(locale.review.why.showBestOnBoard).not.toEqual(en.review.why.showBestOnBoard);
       }
     });
