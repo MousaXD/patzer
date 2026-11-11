@@ -19,25 +19,26 @@ export interface PracticeSquareMove {
 export interface PracticePositionSummary {
   toMove: 'White' | 'Black';
   inCheck: boolean;
-  white: string[];
-  black: string[];
+  white: PracticePiece[];
+  black: PracticePiece[];
 }
 
-const pieceNames: Record<string, string> = {
-  p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King',
-};
+export interface PracticePiece {
+  type: string;
+  square: string;
+}
 
 /** A factual, screen-reader-friendly description of the CURRENT board.
  * Never read saved moves, the engine, evaluation or future variations. */
 export function describePracticePosition(fen: string): PracticePositionSummary | null {
   try {
     const chess = new Chess(fen);
-    const white: string[] = [];
-    const black: string[] = [];
+    const white: PracticePiece[] = [];
+    const black: PracticePiece[] = [];
     for (const rank of chess.board()) {
       for (const piece of rank) {
         if (!piece) continue;
-        const item = `${pieceNames[piece.type]} on ${piece.square}`;
+        const item = { type: piece.type, square: piece.square };
         (piece.color === 'w' ? white : black).push(item);
       }
     }

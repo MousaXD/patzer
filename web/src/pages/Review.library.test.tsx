@@ -19,7 +19,10 @@ vi.mock('../state/auth', () => ({
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
+    t: (key: string, opts?: { defaultValue?: string; white?: string; black?: string }) =>
+      key === 'practice.entryAria'
+        ? `Practice mistakes in ${opts?.white} versus ${opts?.black} without spoilers`
+        : key === 'practice.entry' ? 'Practice first' : opts?.defaultValue ?? key,
   }),
 }));
 

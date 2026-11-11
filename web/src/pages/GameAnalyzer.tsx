@@ -82,15 +82,16 @@ export default function GameAnalyzer() {
  * explicit click. Announce the recovery destination to keyboard/screen-reader
  * users instead of leaving focus on a detached practice control. */
 function PracticeUnavailable({ practicePicker, onExit }: { practicePicker: boolean; onExit: () => void }) {
+  const { t } = useTranslation();
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
   return <section role="alert" aria-labelledby="practice-unavailable-heading"
     className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
     <h1 id="practice-unavailable-heading" ref={headingRef} tabIndex={-1}
-      className="font-semibold focus:outline-none">Practice position unavailable</h1>
-    <p className="mt-2 text-sm">This move no longer matches the saved game analysis. Return to the game and refresh its analysis.</p>
+      className="font-semibold focus:outline-none">{t('practice.unavailableHeading')}</h1>
+    <p className="mt-2 text-sm">{t('practice.unavailableReason')}</p>
     <button type="button" className="btn-secondary mt-3 min-h-11" onClick={onExit}>
-      {practicePicker ? 'Back to practice choices' : 'Return to saved game'}
+      {t(practicePicker ? 'practice.backChoices' : 'practice.returnSaved')}
     </button>
   </section>;
 }
@@ -656,7 +657,7 @@ function GameAnalyzerView() {
       return <MistakePractice key={`${gameId}:${practicePly}:${selected.fen_before}`} fenBefore={selected.fen_before}
         orientation={moveSideForPly(practicePly, startFen)}
         boardTheme={user?.profile.board_theme ?? 'green'}
-        exitLabel={practicePicker ? 'Back to practice choices' : 'Return to saved game'}
+        exitLabel={t(practicePicker ? 'practice.backChoices' : 'practice.returnSaved')}
         onExit={() => leavePractice(true)} />;
     }
     // A stale/corrupt analysis or a background refetch must not silently
@@ -678,9 +679,9 @@ function GameAnalyzerView() {
     };
     return <main data-practice-picker="true" className="mx-auto w-full max-w-2xl space-y-4 rounded-xl bg-white p-4 shadow-soft dark:bg-chesscom-800 sm:p-6">
       <Link to="/review" className="btn-ghost text-sm"><ChevronLeft className="h-4 w-4" />Back to saved games</Link>
-      <h1 id="practice-picker-heading" tabIndex={-1} className="text-xl font-bold focus:outline-none">Practice without spoilers</h1>
+      <h1 id="practice-picker-heading" tabIndex={-1} className="text-xl font-bold focus:outline-none">{t('practice.pickerHeading')}</h1>
       <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
-        Pick a moment to retry. The original move, engine answer and evaluation remain hidden until after your attempt.
+        {t('practice.pickerDescription')}
       </p>
       {eligiblePractice.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-2" aria-label="Mistakes to practice">
@@ -688,19 +689,19 @@ function GameAnalyzerView() {
             <button key={candidate.ply} type="button" id={`practice-move-${candidate.ply}`}
               className="min-h-12 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-3 text-left text-sm font-medium hover:border-gold-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900"
               onClick={() => enterPracticePly(candidate.ply)}>
-              Practice moment {index + 1} · {candidate.side === 'white' ? 'White' : 'Black'} move {candidate.moveNumber}
-              <span className="block text-xs font-normal text-chesscom-500">Answer hidden</span>
+              {t('practice.pickerMoment', { index: index + 1, side: t(`review.${candidate.side}`), move: candidate.moveNumber })}
+              <span className="block text-xs font-normal text-chesscom-500">{t('practice.answerHidden')}</span>
             </button>
           ))}
         </div>
       ) : <p role="status" className="rounded-lg border border-chesscom-200 p-3 text-sm dark:border-chesscom-700">
         {data.analysis_stale || cachedAnalysisInvalid
-          ? 'Saved analysis is out of date. Open the full review to refresh it before practicing.'
+          ? t('practice.staleAnalysis')
           : analyzing || (data.analysis && !analysis && !analysisError)
-          ? 'Preparing analyzed mistakes…'
-          : 'No practice-ready mistakes are available for this saved game. You can open the full review to analyze it.'}
+          ? t('practice.preparing')
+          : t('practice.noMistakes')}
       </p>}
-      <button type="button" className="btn-secondary min-h-11" onClick={openReview}>Open full game review (reveals answers)</button>
+      <button type="button" className="btn-secondary min-h-11" onClick={openReview}>{t('practice.openFull')}</button>
     </main>;
   }
 
@@ -910,9 +911,9 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'moves' && move && eligiblePractice.some((candidate) => candidate.ply === ply) && (
                     <div className="mb-3 rounded-lg border border-gold-500/40 p-3">
-                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">Retry with hints hidden. For a first attempt without seeing the answer, choose Practice first from your saved games.</p>
+                      <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">{t('practice.retryDescription')}</p>
                       <button type="button" className="btn-primary min-h-11 w-full"
-                        id="learn-from-mistake" onClick={() => enterPracticePly(ply)}>Learn from this mistake — retry</button>
+                        id="learn-from-mistake" onClick={() => enterPracticePly(ply)}>{t('practice.retryAction')}</button>
                     </div>
                   )}
                   {tab === 'moves' && move && (

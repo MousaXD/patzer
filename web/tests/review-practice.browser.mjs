@@ -494,6 +494,59 @@ try {
     } finally { await phone.close(); }
   });
 
+  await test('All supported non-English languages expose localized blind practice without spoilers', async () => {
+    const languages = [
+      { lang: 'de', entry: 'Zuerst üben', picker: 'Ohne Lösungshinweise üben',
+        heading: 'Aus diesem Fehler lernen', pieces: 'Weiße Figuren:', error: 'Dieser Zug ist in der Stellung nicht legal.' },
+      { lang: 'ru', entry: 'Сначала потренироваться', picker: 'Тренировка без подсказок',
+        heading: 'Учиться на этой ошибке', pieces: 'Белые фигуры:', error: 'Этот ход недопустим' },
+      { lang: 'bg', entry: 'Първо тренирай', picker: 'Тренировка без подсказки',
+        heading: 'Учи се от тази грешка', pieces: 'Бели фигури:', error: 'Този ход не е позволен' },
+      { lang: 'es', entry: 'Practicar primero', picker: 'Practicar sin pistas',
+        heading: 'Aprender de este error', pieces: 'Piezas blancas:', error: 'Esa jugada no es legal' },
+    ];
+    try {
+      for (const locale of languages) {
+        const changed = await api('/api/settings/profile', { method: 'PATCH', cookie,
+          body: { language: locale.lang } });
+        assert.equal(changed.status, 200, `profile update for ${locale.lang}`);
+        await page.goto(base + '/review');
+        const link = page.locator(`a[href="/review/${standard.id}?practice=1"]`);
+        await link.waitFor();
+        assert.equal((await link.innerText()).trim(), locale.entry);
+        assert.ok(!(await link.getAttribute('aria-label')).includes('Practice mistakes in'),
+          `${locale.lang}: accessibility label must be localized`);
+        await link.click();
+        await page.getByRole('heading', { name: locale.picker }).waitFor();
+        await assertNoSpoilers(page);
+        await page.locator('#practice-move-5').click();
+        await page.getByRole('heading', { name: locale.heading }).waitFor();
+        await assertNoSpoilers(page);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForFunction(() => {
+          const bounds = document.querySelector('cg-board')?.getBoundingClientRect();
+          return bounds && bounds.width > 150 && bounds.left >= 0 && bounds.right <= innerWidth + 2;
+        }, null, { timeout: 2500 });
+        await assertLayout(page); // Long translated labels must not create mobile overflow.
+        const position = page.locator('[data-practice-mode] details').first();
+        await position.locator('summary').click();
+        assert.ok((await position.innerText()).includes(locale.pieces),
+          `${locale.lang}: screen-reader board description is still English`);
+        await page.locator('#practice-move-input').fill('e7e5');
+        await page.locator('#practice-move-input').press('Enter');
+        assert.ok((await page.getByRole('alert').innerText()).includes(locale.error),
+          `${locale.lang}: illegal-move message must be localized`);
+        await page.setViewportSize({ width: 1440, height: 900 });
+      }
+    } finally {
+      const restore = await api('/api/settings/profile', { method: 'PATCH', cookie, body: { language: 'en' } });
+      assert.equal(restore.status, 200);
+      await page.goto(base + '/review');
+      await page.locator(`a[href="/review/${standard.id}?practice=1"]`).waitFor();
+    }
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+  });
+
   for (const theme of ['light', 'dark']) {
     await test(`${theme} responsive board, focus and no overflow at 1920, 1440, 1366, 768, 390 and zoom-equivalent 1152/720 widths`, async () => {
       const changed = await api('/api/settings/profile', { method: 'PATCH', cookie, body: { site_theme: theme } });

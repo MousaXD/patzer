@@ -1,13 +1,15 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Chess } from 'chess.js';
+import i18n from '../../i18n';
 import MistakePractice from './MistakePractice';
 
 vi.mock('../ChessBoard', () => ({ default: ({ onMove, analysisMode }: { onMove: (uci: string) => void; analysisMode: boolean }) => (
   <div data-testid="mock-board"><button disabled={!analysisMode} onClick={() => onMove('e2e4')}>Play e4</button></div>
 ) }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+beforeEach(async () => { await i18n.changeLanguage('en'); });
 const fen = new Chess().fen();
 const afterE4 = (() => { const chess = new Chess(); chess.move('e4'); return chess.fen(); })();
 const quality = {
@@ -19,6 +21,22 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
+  it('updates localized error text without aborting or restarting a pending Stockfish check', async () => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      signals.push(init.signal as AbortSignal);
+      return new Promise(() => undefined);
+    }));
+    render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Type a legal chess move/), { target: { value: 'e4' } });
+    fireEvent.click(screen.getByText('Submit move'));
+    await waitFor(() => expect(signals).toHaveLength(1));
+    await i18n.changeLanguage('de');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Aus diesem Fehler lernen' })).toBeTruthy());
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(screen.getByText(/Stockfish prüft deinen Zug/)).toBeTruthy();
+  });
   it('provides a screen-reader-accessible board description without an engine hint, updated after an attempt', () => {
     const game = new Chess();
     for (const san of ['f3', 'e5', 'g4']) game.move(san);
