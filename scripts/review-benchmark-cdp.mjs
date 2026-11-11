@@ -17,10 +17,19 @@ export function within(promise,ms,label){
  })]).finally(()=>clearTimeout(timer));
 }
 export async function until(check,label,ms=9000){
- return within((async()=>{while(true){
-  const value=await check();if(value)return value;
-  await new Promise(resolve=>setTimeout(resolve,60));
- }})(),ms,label);
+ // An unbounded poll wrapped in Promise.race keeps running even after the
+ // timeout rejects. That leaks a timer/Chrome command loop and can hang the
+ // entire QA subprocess after the top-level catch/cleanup. Bound the loop
+ // itself instead: no polling task survives its own deadline.
+ const deadline=Date.now()+ms;
+ while(Date.now()<deadline){
+  const remaining=deadline-Date.now();
+  const value=await within(Promise.resolve().then(check),remaining,label+'_check');
+  if(value)return value;
+  if(Date.now()>=deadline)break;
+  await new Promise(resolve=>setTimeout(resolve,Math.min(60,deadline-Date.now())));
+ }
+ throw Error(label+'_timeout_'+ms);
 }
 
 export async function launchBrowser({chromeBinary,profileDir}){
