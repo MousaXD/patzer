@@ -1048,7 +1048,7 @@ function GameAnalyzerView() {
                         const proseHit = reviewProse?.key_moments.find((p) => p.ply === m.ply);
                         return {
                           ply: m.ply,
-                          side: m.side,
+                          side: moveSideForPly(m.ply, startFen),
                           san: m.san,
                           classification: m.classification,
                           cp_loss: m.cp_loss,
@@ -1056,11 +1056,12 @@ function GameAnalyzerView() {
                           best_san: m.best_san,
                           title: proseHit?.title,
                           prose: proseHit?.prose,
-                          mine: data.game.user_color ? m.side === data.game.user_color : undefined,
+                          mine: data.game.user_color ? moveSideForPly(m.ply, startFen) === data.game.user_color : undefined,
                         };
                       })}
                       current={ply}
                       onSelect={setPly}
+                      startFen={startFen}
                     />
                   )}
                 </div>

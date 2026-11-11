@@ -4,6 +4,7 @@
 import { useTranslation } from 'react-i18next';
 import { CLASS_STYLE } from '../lib/classification';
 import ClassificationIcon from './ClassificationIcon';
+import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
 import type { Classification } from '../types';
 
 export interface KeyMomentItem {
@@ -25,9 +26,11 @@ interface Props {
   items: KeyMomentItem[];
   current: number;
   onSelect: (ply: number) => void;
+  /** Original PGN starting position; plies remain relative to the game. */
+  startFen?: string;
 }
 
-export default function KeyMomentsList({ items, current, onSelect }: Props) {
+export default function KeyMomentsList({ items, current, onSelect, startFen }: Props) {
   const { t } = useTranslation();
   if (items.length === 0) {
     return <div className="card p-4 text-sm text-chesscom-500">{t('review.noKeyMoments')}</div>;
@@ -41,26 +44,29 @@ export default function KeyMomentsList({ items, current, onSelect }: Props) {
         {items.map((m) => {
           const s = CLASS_STYLE[m.classification];
           const active = current === m.ply;
+          const side = moveSideForPly(m.ply, startFen);
           return (
             <button
               key={m.ply}
+              type="button"
               onClick={() => onSelect(m.ply)}
-              className={`flex w-full items-start gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40 ${active ? 'bg-gold-50/70 dark:bg-gold-700/10 ring-1 ring-inset ring-gold-500/40' : ''}`}
+              aria-current={active ? 'step' : undefined}
+              className={`flex w-full items-start gap-3 px-3 py-3 text-left text-sm transition-colors hover:bg-chesscom-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 dark:hover:bg-chesscom-900/40 sm:px-4 ${active ? 'bg-gold-50/70 dark:bg-gold-700/10 ring-1 ring-inset ring-gold-500/40' : ''}`}
             >
               <ClassificationIcon classification={m.classification} size={28} className="mt-0.5" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-xs tabular-nums text-chesscom-500">#{Math.ceil(m.ply / 2)}{m.side === 'black' ? '…' : '.'}</span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300">#{moveNumberForPly(m.ply, startFen)}{side === 'black' ? '…' : '.'}</span>
                   <span className="font-semibold">{m.san}</span>
                   {m.best_san && m.best_san !== m.san && (
-                    <span className="text-xs text-chesscom-500">{t('review.bestLabel')} <span className="font-medium text-chesscom-700 dark:text-chesscom-200">{m.best_san}</span></span>
+                    <span className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.bestLabel')} <span className="font-medium text-chesscom-700 dark:text-chesscom-200">{m.best_san}</span></span>
                   )}
                 </div>
-                <div className="mt-0.5 text-xs">
-                  {m.title ? <span className="font-medium text-chesscom-800 dark:text-chesscom-100">{m.title}</span> : <span className={`font-medium ${s.textClass}`}>{m.classification}</span>}
-                  <span className="ml-2 font-mono text-xs tabular-nums text-chesscom-500">−{m.cp_loss}cp · {m.win_pct_delta.toFixed(0)}wp</span>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  {m.title ? <span className="font-medium text-chesscom-800 dark:text-chesscom-100">{m.title}</span> : <span className={`font-medium ${s.textClass}`}>{t(`classification.${s.labelKey}`)}</span>}
+                  <span className="font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300">−{m.cp_loss}cp · {m.win_pct_delta.toFixed(0)}wp</span>
                   {m.mine != null && (
-                    <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${m.mine ? 'bg-gold-500/15 text-gold-700 dark:text-gold-300' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300'}`}>
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${m.mine ? 'bg-gold-500/15 text-gold-700 dark:text-gold-300' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300'}`}>
                       {m.mine ? t('review.why.yourMove') : t('review.why.opponentMove')}
                     </span>
                   )}

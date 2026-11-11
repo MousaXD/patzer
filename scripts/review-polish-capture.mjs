@@ -336,6 +336,13 @@ try {
     VALUES (?,12,?,80,80,?,?,?,1)`)
     .run(blackId,JSON.stringify([blackMove]),SCORING_VERSION,
       analysisSourceHash(blackSource),blackSource.source_revision);
+  // Deliberately preserve a historical White-first side label to demonstrate
+  // that the UI recovers the real mover from FEN, not from cached metadata.
+  db.prepare('UPDATE analyses SET key_moments_json = ? WHERE game_id = ?')
+    .run(JSON.stringify([{
+      ply:1,side:'white',san:'e5',fen_before:before,classification:'inaccuracy',
+      cp_loss:200,win_pct_delta:9,best_san:'c5',best_pv:['c5'],
+    }]),blackId);
   const blackContext=await browser.newContext({viewport:{width:390,height:844}});
   try{
     await blackContext.addCookies([{name:account.cookie.split('=')[0],
@@ -352,6 +359,24 @@ try {
       return !!section && Math.abs(section.getBoundingClientRect().top-64)<22;
     },undefined,{timeout:5000});
     await page.screenshot({path:join(output,'black-first-details.png')});
+    await page.getByRole('tab',{name:'Key moments'}).click();
+    const firstMoment=page.getByRole('button',{name:/#12…\s*e5/});
+    await firstMoment.waitFor({state:'visible'});
+    assert.equal(await firstMoment.getAttribute('aria-current'),'step',
+      'Black-first key moment must be marked as the selected game-relative ply');
+    const momentText=await firstMoment.innerText();
+    console.log('Black-first Key Moment rendered:',JSON.stringify(momentText));
+    await page.screenshot({path:join(output,'black-first-key-moments.png')});
+    assert.ok(momentText.toLocaleLowerCase('en-US').includes("opponent's move"),
+      `Black-first key moment must identify the mover using the actual FEN: ${momentText}`);
+    assert.equal(await page.getByText('#1.',{exact:true}).count(),0,
+      'Black-first key moment must not be mislabeled as move 1');
+    await page.getByRole('slider',{name:'Move evaluation timeline'}).focus();
+    await page.keyboard.press('Home');
+    await page.getByRole('button',{name:/#12…\s*e5/}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
+      'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}
   // Long legal game: check that arrow-key replay tracks the chosen move inside
   // the move-list scroll container, without jumping the surrounding page.
