@@ -532,7 +532,7 @@ export async function analyzePgnFull(
     // not the player's choice, so penalising them is unfair (chess.com same).
     const excludeFromAggregate = isBookMove || isForcedMove;
     const acc = moveAccuracy(playerWinBefore, playerWinBefore - wpDrop);
-    const point: MoveAccPoint = { acc, winPct: playerWinAfter, isBook: excludeFromAggregate };
+    const point: MoveAccPoint = { acc, winPctBefore: playerWinBefore, winPct: playerWinAfter, isBook: excludeFromAggregate };
     if (sideToMove === 'white') {
       whitePoints.push(point);
       if (!excludeFromAggregate) { whiteCplSum += cpLossAcpl; whiteCplN++; }
@@ -562,7 +562,7 @@ export async function analyzePgnFull(
     prevWhiteCp = nextWhiteCp;
   }
 
-  // CAPS-style game accuracy (volatility-weighted + harmonic mean).
+  // Independent Stockfish-based accuracy (volatility-weighted + harmonic mean).
   const accuracy_white = Math.round(gameAccuracy(whitePoints) * 10) / 10;
   const accuracy_black = Math.round(gameAccuracy(blackPoints) * 10) / 10;
   const acplWhite = whiteCplN ? whiteCplSum / whiteCplN : 0;
@@ -734,7 +734,7 @@ function computePhaseSplit(moves: AnalyzedMove[], openingPlies: number): PhaseSp
       const playerEvalAfter = isWhite ? (m.eval_after_cp ?? 0) : -(m.eval_after_cp ?? 0);
       const wpDrop = winDropForPly(playerEvalBefore, playerEvalAfter, wpBefore, wpAfter);
       const acc = moveAccuracy(wpBefore, wpBefore - wpDrop);
-      const point: MoveAccPoint = { acc, winPct: wpAfter, isBook: excludedFromAggregate };
+      const point: MoveAccPoint = { acc, winPctBefore: wpBefore, winPct: wpAfter, isBook: excludedFromAggregate };
       if (isWhite) {
         wPoints.push(point);
         // Full-game ACPL uses cpLossForAcpl (300cp max), while the move's
