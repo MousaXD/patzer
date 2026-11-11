@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T00:41:17.314Z",
+  "parent_benchmark_commit": "2db0a31c1cb2a76d50f86c885cb66b4adb053525",
+  "current_qa_sha": "2db0a31c1cb2a76d50f86c885cb66b4adb053525",
+  "qa_branch": "agent/review-benchmark-20261111",
+  "frozen_candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "verified_stockfish_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine_version": "Stockfish 16",
+  "analysis_depth": 8,
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "fixture_rights": "self-authored synthetic; no user data",
+  "model_source": "localhost controlled vLLM-compatible JSON, not a live external LLM",
+  "experiment": {
+    "completed_positive_accepted": 1,
+    "unsafe_terminations_accepted": 2,
+    "real_model_calls": 9,
+    "candidate_completion_certified": false
+  },
+  "candidate_existing_llm_provider_unit_tests_passed": 44,
+  "observed_escape": {
+    "nonstream_length_accepted": true,
+    "nonstream_content_filter_accepted": true,
+    "valid_json_can_outlive_untrusted_termination": true,
+    "real_written_summary_and_key_moment_affected": true
+  },
+  "verdict": {
+    "qa_attack_reproduced": true,
+    "product_json_completion_certified": false,
+    "release_approved": false,
+    "integration_approved": false
+  },
+  "source_sha256": {
+    "experiment": "6439d15a53c2028f891040781f73888f920a24b98ccdd1331368ad927253f0c5",
+    "verifier": "10227622d4d3d94ccdd5b5d5d484acb228736b229f269b87cb3df777b323f173"
+  },
+  "limits": [
+    "Mock returned valid JSON despite deliberately incompatible finish reasons; this does not measure natural model errors",
+    "Only one synthetic short game and vLLM-compatible non-streaming provider; not proof about every provider",
+    "The streaming path already rejects length termination and is not accused by this finding",
+    "No real LLM, credentials, customer games or production database used",
+    "Agent B owns any protocol/client remediation; Agent D changes only independent QA"
+  ]
+}
