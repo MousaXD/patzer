@@ -23,6 +23,50 @@ function boardFromRecordedMove(move) {
   return [before,after];
  }catch{return null;}
 }
+function positionIdentityFromFen(fen){
+ // FIDE 9.2.3: position equality depends on side, piece locations and legal
+ // castling/en-passant possibilities, not move clocks. An uncapturable ep
+ // target has no effect on legal moves and must not split one position.
+ const fields=fen.split(' ');
+ if(fields.length<6)return null;
+ if(fields[3]!=='-'){
+  const board=new Chess(fen);
+  if(!board.moves({verbose:true}).some(move=>move.flags.includes('e')))
+   fields[3]='-';
+ }
+ return fields.slice(0,4).join(' ');
+}
+function sourceDrawEvidence(game,recorded){
+ const boardDraw=game.isStalemate()||game.isInsufficientMaterial();
+ // Independently replay every recorded position: chess.js isDraw() alone
+ // conflates *claimable* threefold/50-move draws with automatic endings.
+ const seen=new Map();
+ const positions=recorded.length?
+  [recorded[0].before,...recorded.map(move=>move.after)]:[game.fen()];
+ let maxPositionOccurrences=0;
+ for(const fen of positions){
+  const identity=positionIdentityFromFen(fen);
+  if(!identity)continue;
+  const count=(seen.get(identity)||0)+1;
+  seen.set(identity,count);
+  maxPositionOccurrences=Math.max(maxPositionOccurrences,count);
+ }
+ // A custom FEN's halfmove clock is an assertion about *unseen* history, not
+ // independently replayed evidence of 75 moves by each side. Count source
+ // moves since a pawn move/capture, ignoring the imported clock completely.
+ let reversibleStreak=0,maximumSourceStreak=0;
+ for(const move of recorded){
+  reversibleStreak=move.piece==='p'||move.captured?0:reversibleStreak+1;
+  maximumSourceStreak=Math.max(maximumSourceStreak,reversibleStreak);
+ }
+ const automaticFivefold=maxPositionOccurrences>=5;
+ const automaticSeventyFive=maximumSourceStreak>=150;
+ const sourceProvenDraw=boardDraw||automaticFivefold||automaticSeventyFive;
+ const claimableOnly=!sourceProvenDraw&&
+  (game.isThreefoldRepetition()||game.isDrawByFiftyMoves());
+ return {boardDraw,sourceProvenDraw,claimableOnly,automaticFivefold,
+  automaticSeventyFive,maxPositionOccurrences,maximumSourceStreak};
+}
 function explicitMoveTime(text,claimStart){
  // Only a literal leading "Before/After the|this|that [played] move" clause
  // counts as a temporal assertion. No inferred adverbs, grammar translation,
@@ -118,7 +162,8 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  }
  const headerResult=game.header().Result||null;
  const forcedWinner=game.isCheckmate()?(game.turn()==='w'?'black':'white'):null;
- const provenDraw=!forcedWinner&&game.isDraw();
+ const drawEvidence=sourceDrawEvidence(game,recorded);
+ const provenDraw=!forcedWinner&&drawEvidence.sourceProvenDraw;
  // A missing or '*' PGN Result tag is not an affirmative result claim.
  // Chess-law replay is still sufficient to verify a checkmated winner; only
  // an explicitly conflicting declared result merits a source contradiction.
@@ -129,12 +174,14 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  // Only an explicitly *decisive* PGN tag contradicts a proven drawn board.
  if(provenDraw&&['1-0','0-1'].includes(headerResult))findings.push({reason:'pgn_result_conflicts_with_terminal_draw',field:'pgn',header_result:headerResult});
  const winner=forcedWinner; // independent terminal replay, not metadata alone
- // Resignations, time forfeits and agreements are not derivable from the PGN
- // move sequence. Do NOT label either a matching or an opposing winner claim
- // as false solely because the terminal move is absent. This was an actual
- // QA false rejection on synthetically recorded 1-0/0-1/* games. Proven
- // board-terminal draws are different: a declared winner *is* contradicted.
+ // Resignations, time forfeits, draw claims and agreements are not derivable
+ // from the PGN move list. In particular, THREE repetitions and FIFTY moves
+ // by each side require a claim; FIVE repetitions and SEVENTY-FIVE moves by
+ // each side are automatic under FIDE 9.6. Never use chess.js isDraw() alone
+ // as proof: it includes claimable draws (real QA false rejection).
  if(!winner&&!provenDraw)unassessed.push({reason:'nonterminal_result_not_independently_verified'});
+ if(!winner&&drawEvidence.claimableOnly)
+  unassessed.push({reason:'claimable_draw_not_automatic_without_recorded_claim'});
  const sections=[
   labelPart('summary',review.summary),
   labelPart('skill_assessment',review.skill_assessment),
@@ -237,7 +284,14 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  return {status:findings.length?'rejected':verified.length?
   (unassessed.length?'partial_claims_verified':'limited_claims_passed'):'not_evaluated',
   findings,verified,unassessed,
-   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Nonterminal PGN metadata cannot prove resignation or clock loss. Independently drawn terminal boards contradict winner assertions. Quoted, denied, hypothetical and conditional contexts are not evaluated. Partial/unrecognized prose is NOT certified.',
-   result_proven_by_mate:!!forcedWinner,draw_proven_by_board:provenDraw,
+   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. PGN metadata alone cannot prove resignation, clock loss or claimed draws. FIDE automatic fivefold/75-move endings differ from claimable threefold/50-move draws. Quoted, denied, hypothetical and conditional contexts are not evaluated. Partial/unrecognized prose is NOT certified.',
+   result_proven_by_mate:!!forcedWinner,
+   draw_proven_by_board:!forcedWinner&&drawEvidence.boardDraw,
+   automatic_draw_proven_from_source:provenDraw,
+   draw_claimable_only:!forcedWinner&&drawEvidence.claimableOnly,
+   automatic_fivefold_replay:drawEvidence.automaticFivefold,
+   automatic_seventy_five_replay:drawEvidence.automaticSeventyFive,
+   max_source_position_occurrences:drawEvidence.maxPositionOccurrences,
+   max_source_reversible_halfmoves:drawEvidence.maximumSourceStreak,
    full_factuality_certified:false};
 }

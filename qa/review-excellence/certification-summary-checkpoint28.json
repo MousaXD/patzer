@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T05:26:10.162Z",
+  "own_branch": "agent/review-benchmark-20261111",
+  "preceding_head": "cde9b81030bf64367953b865f78bd251a2461571",
+  "candidate_b_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "checkout_sha": "cde9b81030bf64367953b865f78bd251a2461571",
+  "recorded_test_run_id": "4e1f1b6d-6665-4e49-98fd-b18b8f3f9d32",
+  "prior_real_coach_run_id": "ffa763ea-3d5a-4669-ac34-64945e925fc9",
+  "independently_verified_scoped_evidence": {
+    "legal_source_games": 17,
+    "scope_cases": 85,
+    "separately_named_gold_controls": 18,
+    "claimable_or_unverified_cases_abstained": 59,
+    "automatic_draw_claims_or_metadata_conflicts_rejected": 26,
+    "longest_independently_replayed_halfmove_streak": 150,
+    "independent_inputs_sha256": "695afe1cfd54a2914154aaecc4c9c52da99b913073b69c1f41f69499381ad641",
+    "independent_outputs_sha256": "a5b9e163693e98cc0eca4217ee2e92ff6220f04d5d6c91fe658cdf6c8bb1e5de",
+    "independent_source_list_sha256": "1538a53b72af487c0137e18a2721fdb99232a38494ae77c4abbe3532a68b4dc8",
+    "product_certified": false,
+    "release_approved": false
+  },
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "d71e472b8e63a217b779f04a96b6e278ed3b9a8f5db3e0948e8cbda280bdc20c",
+    "scripts/review-benchmark-draw-claims-matrix.mjs": "81bed19af35dd041fe9f4fa04616cb277583b9e1e994c39fc0519d2c8e9dcca6",
+    "scripts/review-benchmark-draw-claims-proof.mjs": "9c328c45803c9c617b3cbc26494ae36e1110e01d34fcc2b033c2733c140c7fbd",
+    "scripts/review-benchmark-draw-claims-negatives.mjs": "5806b0e5cd5ba919d93594a07b9dc753d617ae13b541e00c8d460c67863e6d5c",
+    "scripts/review-benchmark-draw-claims-boundary.mjs": "df3bd6cdda54d2389f0bfca2546efe80cbc4a309254f0831dc81fa217dfbe8c9"
+  },
+  "no_model_calls": true,
+  "no_stockfish_jobs": true,
+  "synthetic_QA_only": true,
+  "product_coach_factuality_certified": false,
+  "integration_approved": false,
+  "release_approved": false,
+  "remaining_limits": [
+    "FIDE source rules 2023 Art 9.2/9.3/9.6, not independently adjudicated event claims",
+    "50-move/threefold claims require recorded external claim or adjudication evidence",
+    "FEN halfmove counter is not independent evidence of 150 fully played halfmoves",
+    "The lexical factuality checker remains English-only and finite, not a semantic model",
+    "No human-labeled sealed holdout, hosted LLM, production DB or real users",
+    "This changes only Agent D QA, not backend sources or PR #17"
+  ]
+}
