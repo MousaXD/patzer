@@ -1225,30 +1225,35 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
-    onError: () => setSaveError('Could not save your notes. Your draft is still here; try again.'),
+    onError: () => setSaveError('review.notesSaveFailed'),
   });
 
   return (
     <div className="card overflow-hidden">
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
+          type="button"
+          aria-pressed={isStarred}
           onClick={() => { const next = !isStarred; setStarred(next); star.mutate(next); }}
-          className={`btn-ghost px-2 py-1 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
+          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
           title={t('shortcuts.bookmark', { defaultValue: 'Toggle bookmark' })}
         >
           <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-gold-500' : ''}`} />
           {isStarred ? t('review.starred', { defaultValue: 'Starred' }) : t('review.star', { defaultValue: 'Star' })}
         </button>
-        <button onClick={onFlip} className="btn-ghost px-2 py-1 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
+        <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
-        <button onClick={onShare} className="btn-ghost px-2 py-1 text-xs" title={sharingVariation ? 'Share this variation position in Lab' : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
+        <button type="button" onClick={onShare} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
           {linkCopied ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Share2 className="h-3.5 w-3.5" />}
-          {linkCopied ? t('common.copied') : (sharingVariation ? 'Share branch FEN' : t('review.share', { defaultValue: 'Share position' }))}
+          {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
         <button
+          type="button"
           onClick={() => setShowNotes((s) => !s)}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${showNotes ? 'text-chesscom-900 dark:text-chesscom-100' : ''}`}
+          aria-expanded={showNotes}
+          aria-controls={`review-notes-${gameId}`}
+          className={`btn-ghost ml-auto min-h-11 px-2 py-2 text-xs ${showNotes ? 'text-chesscom-900 dark:text-chesscom-100' : ''}`}
           title={t('review.notes', { defaultValue: 'Notes' })}
         >
           <NotebookPen className="h-3.5 w-3.5" />
@@ -1257,7 +1262,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
         </button>
       </div>
       {showNotes && (
-        <div className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
+        <div id={`review-notes-${gameId}`} className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -1266,9 +1271,10 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
           />
-          {saveError && <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
-                <span>{saveError}</span>
-                <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => saveNotes.mutate(draft)}>Retry</button>
+          {saveError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
+                <span>{t(saveError)}</span>
+                <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
+                  onClick={() => saveNotes.mutate(draft)}>{t('review.notesRetrySave')}</button>
               </div>}
               <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
                 <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
@@ -1346,18 +1352,18 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   }
 
   return (
-    <div className="card flex flex-wrap items-center gap-2 p-2 text-xs">
-      <button onClick={() => copy('fen', fen)} className="btn-ghost px-2 py-1 text-xs" title={t('review.copyFenTitle')}>
-        {copied === 'fen' ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied === 'fen' ? t('common.copied') : `${t('common.copy')} FEN`}
+    <div className="card grid grid-cols-3 gap-1 p-2 text-xs" data-review-export-row>
+      <button type="button" onClick={() => copy('fen', fen)} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.copyFenTitle')}>
+        {copied === 'fen' ? <Check className="h-3.5 w-3.5 shrink-0 text-board-dark" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+        <span className="min-w-0 truncate">{copied === 'fen' ? t('common.copied') : `${t('common.copy')} FEN`}</span>
       </button>
-      <button onClick={() => copy('pgn', pgn)} className="btn-ghost px-2 py-1 text-xs" title={t('review.copyPgnTitle')}>
-        {copied === 'pgn' ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied === 'pgn' ? t('common.copied') : `${t('common.copy')} PGN`}
+      <button type="button" onClick={() => copy('pgn', pgn)} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.copyPgnTitle')}>
+        {copied === 'pgn' ? <Check className="h-3.5 w-3.5 shrink-0 text-board-dark" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+        <span className="min-w-0 truncate">{copied === 'pgn' ? t('common.copied') : `${t('common.copy')} PGN`}</span>
       </button>
-      <button onClick={downloadPgn} className="btn-ghost px-2 py-1 text-xs" title={t('review.downloadPgnTitle')}>
-        <Download className="h-3.5 w-3.5" />
-        {t('common.download')}
+      <button type="button" onClick={downloadPgn} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.downloadPgnTitle')}>
+        <Download className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{t('common.download')}</span>
       </button>
     </div>
   );

@@ -301,6 +301,104 @@ try {
       await context.close();
     }
   }
+  // Review utilities must remain comfortably actionable on narrow phones.
+  // These are real control hitboxes rather than just icon dimensions.
+  for(const width of [320,390]){
+    const context=await browser.newContext({viewport:{width,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await context.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await context.newPage();
+      await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+      const targets=['Star','Flip','Share position','Notes','Copy FEN','Copy PGN','Download'];
+      const boxes=[];
+      for(const name of targets){
+        const button=page.getByRole('button',{name,exact:true});
+        const box=await button.boundingBox();
+        boxes.push({name,width:Math.round(box?.width??0),height:Math.round(box?.height??0)});
+      }
+      console.log(`${width}px review utilities:`,JSON.stringify(boxes));
+      assert.ok(boxes.every(item=>item.height>=44),
+        `Review utilities must meet 44px touch height at ${width}px: ${JSON.stringify(boxes)}`);
+      const exportLayout=await page.locator('[data-review-export-row] button').evaluateAll(buttons=>buttons.map(button=>{
+        const outer=button.getBoundingClientRect();
+        const label=button.querySelector('span');
+        return {top:Math.round(outer.top),left:Math.round(outer.left),right:Math.round(outer.right),
+          labelFits:!!label && label.scrollWidth<=label.clientWidth+1};
+      }));
+      console.log(`${width}px export layout:`,JSON.stringify(exportLayout));
+      assert.ok(exportLayout.length===3 && exportLayout.every(item=>item.top===exportLayout[0].top && item.labelFits)
+        && exportLayout.every((item,index)=>index===0 || item.left>=exportLayout[index-1].right),
+        `Copy and download must fit in one labeled, non-overlapping row: ${width}px ${JSON.stringify(exportLayout)}`);
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)<=2,
+        `Review utility layout overflows at ${width}px`);
+      await page.getByRole('button',{name:'Star',exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`review-utilities-${width}.png`)});
+      const bookmark=page.getByRole('button',{name:'Star',exact:true});
+      assert.equal(await bookmark.getAttribute('aria-pressed'),'false',
+        'The saved-game bookmark must expose its pressed state');
+      const notesButton=page.getByRole('button',{name:'Notes',exact:true});
+      assert.equal(await notesButton.getAttribute('aria-expanded'),'false');
+      await notesButton.click();
+      assert.equal(await notesButton.getAttribute('aria-expanded'),'true');
+      const notesId=await notesButton.getAttribute('aria-controls');
+      assert.ok(notesId && await page.locator(`[id="${notesId}"] textarea`).isVisible(),
+        'Notes toggle must reveal the controlled editor');
+      await notesButton.click();
+      assert.equal(await notesButton.getAttribute('aria-expanded'),'false');
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
+        (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn,
+        'Toolbar state must not mutate the saved game source');
+    }finally{await context.close();}
+  }
+  // Notes remain private, editable and recoverable after a real failed PATCH.
+  // Verify the localized retry against the disposable authenticated backend.
+  const spanishNotes=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+  const notesLocale=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,
+    body:{language:'es',site_theme:'dark'}});
+  assert.equal(notesLocale.status,200);
+  const notesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await notesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await notesContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let noteAttempts=0;
+    await page.route(`**/api/games/${id}/notes`,async route=>{
+      noteAttempts++;
+      if(noteAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+      else await route.continue();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    const notesButton=page.getByRole('button',{name:spanishNotes.review.notes,exact:true});
+    await notesButton.click();
+    assert.equal(await notesButton.getAttribute('aria-expanded'),'true');
+    const editor=page.getByPlaceholder(spanishNotes.review.notesPlaceholder);
+    await editor.fill('Nota de ensayo: revisar la partida');
+    await editor.press('Tab');
+    await page.getByText(spanishNotes.review.notesSaveFailed,{exact:true}).waitFor({state:'visible'});
+    assert.equal(await editor.inputValue(),'Nota de ensayo: revisar la partida',
+      'A failed save must preserve the unsaved notes draft');
+    const retry=page.getByRole('button',{name:spanishNotes.review.notesRetrySave});
+    const retryBox=await retry.boundingBox();
+    assert.ok(retryBox && retryBox.height>=44,`Notes retry is too small: ${JSON.stringify(retryBox)}`);
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'review-notes-save-failure-es-390.png')});
+    await Promise.all([
+      page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`) && response.status()===200),
+      retry.click(),
+    ]);
+    await page.getByText(spanishNotes.review.notesSaveFailed,{exact:true}).waitFor({state:'hidden'});
+    assert.equal(noteAttempts,2,'Notes retry must send exactly one new PATCH');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,
+      'Nota de ensayo: revisar la partida','Successful retry must persist the unchanged draft');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{
+    await notesContext.close();
+    const restored=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,
+      body:{language:'en',site_theme:'dark'}});
+    assert.equal(restored.status,200);
+  }
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
   for(const [width,height] of [[320,760],[390,844],[1024,768]]){
@@ -861,6 +959,9 @@ try {
               await page.mouse.click(to.x,to.y);
             }
             await title.waitFor({state:'visible',timeout:4000});
+            const shareBranch=page.getByRole('button',{name:locale.review.shareBranch,exact:true});
+            assert.equal(await shareBranch.getAttribute('title'),locale.review.shareBranchTitle,
+              `Variation sharing must be localized in ${lang}`);
             const restore=page.getByRole('button',{name:locale.review.variationReturn});
             assert.ok(await restore.isEnabled());
             const activeBranch=page.getByRole('button',{

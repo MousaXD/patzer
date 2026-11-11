@@ -112,6 +112,12 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review.runEngine).not.toBe(en.review.runEngine);
       }
     });
+    it('localizes notes-save recovery and exploratory branch sharing', () => {
+      for (const key of ['notesSaveFailed', 'notesRetrySave', 'shareBranch', 'shareBranchTitle'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+    });
   },
 );
 
