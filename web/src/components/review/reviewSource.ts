@@ -2,20 +2,25 @@
  * source revision, not merely the PGN/move bytes. A -> B -> A followed by a
  * byte-identical reanalysis still invalidates all previously mounted prose.
  * Bookmarks, notes and clocks do not advance the game source revision. */
-export function reviewSourceKey(gameId: number, pgn: string | undefined, analysis: {
-  scoring_version?: number;
+export interface ReportAnalysisSource {
+  scoring_version?: number | null;
   source_hash?: string | null;
   source_revision?: number | null;
-  analysis_generation?: number;
+  analysis_generation?: number | null;
   moves_json: string;
   key_moments_json: string | null;
   phase_split_json: string | null;
   depth: number;
   accuracy_white: number;
   accuracy_black: number;
-} | null | undefined, analysisStale?: boolean, currentGameRevision?: number): string | null {
+}
+
+export function reviewSourceKey(gameId: number, pgn: string | undefined,
+  analysis: ReportAnalysisSource | null | undefined, analysisStale?: boolean,
+  currentGameRevision?: number | null): string | null {
   if (!pgn || !analysis || analysisStale || !analysis.source_hash
-    || !Number.isSafeInteger(currentGameRevision)
+    || !/^[0-9a-f]{64}$/.test(analysis.source_hash)
+    || !Number.isSafeInteger(currentGameRevision) || (currentGameRevision ?? -1) < 0
     || !Number.isSafeInteger(analysis.source_revision)
     || currentGameRevision !== analysis.source_revision
     || !Number.isSafeInteger(analysis.analysis_generation)

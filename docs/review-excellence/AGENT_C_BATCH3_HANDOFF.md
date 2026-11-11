@@ -29,3 +29,63 @@
 5. Current browser regression uses synthetic local games and intercepted cached GET / SSE payloads for deliberate late events, not a real hosted LLM or a production incidence estimate. A/B's combined native backend source-token integration and independent Agent D Checkpoints 32–35 must be re-run before merge/release. Long-running Chrome/real accessibility device testing remains independent QA work.
 
 **No merge or deployment authorized by this handoff.** Obtain integrator review, source-contract alignment and separate release certification.
+
+## Follow-up after Agent D Batch 3 independent NO-GO (2026-11-11)
+
+Agent D's `BATCH3-INDEPENDENT-CERTIFICATION-20261111.md` confirmed a real server-side
+A -> B -> A stale-report resurrection at Agent A `fb6f39b`, Agent B `50ba0fe`,
+Agent C `c6f12c1`. The game revision advanced from 0 to 2, while an analysis
+valid at revision 0 became stale and an old report could still be read. **The
+server-side failure is unresolved by frontend changes** and integration remains
+**NO-GO**.
+
+### New frontend hardening
+
+- `GameAnalyzer` reads Agent A's `game.source_revision` and
+  `analysis.source_revision`, `analysis.analysis_generation`,
+  `analysis.source_hash` when the authoritative detail API supplies them.
+- `reviewSourceKey` fails closed when an authoritative revision is missing,
+  mismatched, malformed or the engine generation/hash is absent; a newly
+  reanalyzed A with identical PGN and moves has a distinct key. Also includes
+  `scoring_version` to prevent old score-model report reuse.
+- Pre-A legacy standalone backends (which supply **none** of the source
+  fields) retain the prior PGN/moves fallback for isolated local QA. This
+  compatibility fallback is **not** independently sufficient for release;
+  Agent A's authoritative fields and Agent B's server cache checks are
+  required for the combined release.
+- Added persistent unit A -> B -> A, same-evidence reanalysis, incomplete
+  provenance and metadata tests, plus an actual Chromium browser case.
+  Browser QA uses **QA-injected provenance fields** because Agent C's isolated
+  backend predates Agent A's schema. It verifies React presentation only,
+  not Agent A's SQLite triggers or Agent B's Hono behavior.
+
+### Updated isolated validation
+
+- `npm run typecheck` — PASS.
+- `npm test -- --reporter=dot` — **755 PASS across 93 files**.
+- `npm run build` — PASS.
+- `node web/tests/review-practice.browser.mjs` — **22 PASS / 0 FAIL**
+  in Playwright Chromium against disposable authenticated local data.
+- No saved PGN mutation, main merge, production DB changes or deployment.
+
+### Release blockers remain with their respective owners
+
+1. **Agent B:** Cache GET and POST must bind to Agent A's authoritative
+   `source_revision` **and** `analysis_generation`, not merely PGN/moves,
+   and preserve the atomic `saveReviewIfFresh` guard. Expose an attested
+   identity in both cached GET and SSE done responses so Agent C can accept
+   a genuinely new valid cached report after a source change. Do not silently
+   revive an old report on cold load.
+2. **Agent A/B:** Confirm that A -> B -> A never reuses an obsolete analysis
+   or report, and a new analysis generation permits a genuinely new report.
+3. **Agent D:** Rerun all independent Chrome, Hono, concurrency and
+   negative-control checks against fixed A+B+C, without changing frozen gold
+   expectations just to make them pass.
+4. **Integrator:** PR #17 still has five scoring-version fixture failures
+   in `server/test/review-source-hono.test.ts` on the previous combined
+   candidate. Reconcile fixtures, run the complete combined suite and
+   independently verify the backup, migration, rollback and cache safety.
+
+**This Agent C patch is not a release certification.** It cannot repair the
+confirmed resurrected backend report or substitute for Agent D's independent
+combined evidence. The integrator should not merge to main yet.
