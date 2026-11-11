@@ -241,7 +241,7 @@
     "soundAlternative": "This may be a sound alternative, even though the engine ranked another move first at this depth.",
     "compare": "Review the engine's preferred continuation and compare the consequences. Its ranking can change with deeper analysis.",
     "enginePreferred": "Engine-preferred move:",
-    "continuation": "Suggested continuation:",
+    "continuation": "Engine line from before your attempt:",
     "engineCaveat": "An engine assessment is not proof that only one move works. Other moves may be equally good.",
     "cancelTry": "Cancel check and try another move",
     "tryAgain": "Try another move",

@@ -21,6 +21,22 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
+  it('identifies a verified PV as starting before the attempt, not from the displayed board', async () => {
+    const engineLine = new Chess(fen);
+    expect(engineLine.move('d4', { strict: true })?.san).toBe('d4');
+    expect(engineLine.move('d5', { strict: true })?.san).toBe('d5');
+    // The same PV cannot start on the after-e4 board: it is Black's turn.
+    const displayedPosition = new Chess(afterE4);
+    expect(() => displayedPosition.move('d4', { strict: true })).toThrow();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ quality }) }));
+    render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
+    expect(screen.queryByText(/Engine line from before your attempt/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Type a legal chess move/), { target: { value: 'e4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit move' }));
+    await waitFor(() => expect(screen.getByText(/Engine line from before your attempt:/)).toBeTruthy());
+    expect(screen.getByText('d4 d5')).toBeTruthy();
+  });
+
   it('keeps an actionable keyboard focus when retry scoring unmounts its error button', async () => {
     let rejectRetry: (error: Error) => void = () => {};
     const fetcher = vi.fn()

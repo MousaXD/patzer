@@ -87,7 +87,7 @@ async function startBlind(page, id, number = 1) {
 }
 async function assertNoSpoilers(page) {
   assert.equal(await page.locator('[data-review-workspace], [data-review-side-rail], [data-move-transport]').count(), 0);
-  assert.equal(await page.getByText(/Engine-preferred move:|Blue arrow:|Suggested continuation:|Engine assessment:/).count(), 0);
+  assert.equal(await page.getByText(/Engine-preferred move:|Blue arrow:|Suggested continuation:|Engine line from before your attempt:|Engine assessment:/).count(), 0);
   assert.equal(await page.locator('[role="img"][aria-label^="Evaluation"]').count(), 0);
   assert.equal(await page.locator('cg-board [cg-shapes]').count(), 0);
 }
@@ -404,6 +404,8 @@ try {
     assert.equal(await page.locator('#practice-move-input').count(), 0);
     await page.getByText(/Engine assessment:/).waitFor({ timeout: 120_000 });
     assert.equal(await page.getByText(/Engine-preferred move:/).count(), 1);
+    assert.equal(await page.getByText(/Engine line from before your attempt:/).count(), 1,
+      'verified best PV must disclose that its starting FEN predates the submitted move');
     assert.equal((await api(`/api/games/${standard.id}`, { cookie })).json?.game.pgn, baselinePgn);
     await page.getByRole('button', { name: 'Back to practice choices' }).click();
     await page.locator('[data-practice-picker]').waitFor();

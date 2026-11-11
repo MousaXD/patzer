@@ -241,7 +241,7 @@
     "soundAlternative": "Dies kann eine gute Alternative sein, auch wenn die Engine bei dieser Tiefe einen anderen Zug bevorzugt.",
     "compare": "Vergleiche die Folgen mit der bevorzugten Engine-Fortsetzung. Die Rangfolge kann sich bei tieferer Analyse ändern.",
     "enginePreferred": "Von der Engine bevorzugter Zug:",
-    "continuation": "Vorgeschlagene Fortsetzung:",
+    "continuation": "Engine-Variante aus der Stellung vor deinem Versuch:",
     "engineCaveat": "Eine Engine-Bewertung beweist nicht, dass nur ein Zug funktioniert. Andere Züge können gleich gut sein.",
     "cancelTry": "Prüfung abbrechen und anderen Zug versuchen",
     "tryAgain": "Anderen Zug versuchen",

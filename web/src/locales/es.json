@@ -232,7 +232,7 @@
     "soundAlternative": "Puede ser una buena alternativa, aunque el motor prefiera otra jugada a esta profundidad.",
     "compare": "Compara las consecuencias con la continuación preferida del motor. La clasificación puede cambiar con un análisis más profundo.",
     "enginePreferred": "Jugada preferida del motor:",
-    "continuation": "Continuación sugerida:",
+    "continuation": "Variante del motor desde antes de tu intento:",
     "engineCaveat": "La evaluación del motor no demuestra que solo funcione una jugada. Otras pueden ser igual de buenas.",
     "cancelTry": "Cancelar comprobación y probar otra jugada",
     "tryAgain": "Probar otra jugada",
