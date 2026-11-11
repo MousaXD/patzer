@@ -14,7 +14,7 @@ import { parseReviewGamePositions } from '../components/review/reviewGamePositio
 import { buildSavedReviewTimeline } from '../components/review/reviewTimeline';
 import { practiceCandidates } from '../components/review/practiceCandidates';
 import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
-import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
+import { reviewAnalysisErrorKind } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
@@ -274,7 +274,7 @@ function GameAnalyzerView() {
         // A failed cached JSON decode must not crash the whole Game Review.
         // Keep the saved PGN and let the user explicitly rerun analysis.
         setAnalysis(null);
-        setAnalysisError('Stored engine analysis could not be read. Run engine analysis again to restore this report.');
+        setAnalysisError('review.storedAnalysisUnreadable');
       }
     } else {
       setAnalysis(null);
@@ -508,7 +508,7 @@ function GameAnalyzerView() {
       setAnalysis(r.analysis);
       await refetch();
     } catch (error) {
-      if (!controller.signal.aborted) setAnalysisError(reviewAnalysisErrorMessage(error));
+      if (!controller.signal.aborted) setAnalysisError(`review.analysisError.${reviewAnalysisErrorKind(error)}`);
     } finally {
       if (analysisRequestRef.current === controller) analysisRequestRef.current = null;
       if (!controller.signal.aborted) setAnalyzing(false);
@@ -919,7 +919,7 @@ function GameAnalyzerView() {
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
-          {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{analysisError}</div>}
+          {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{t(analysisError)}</div>}
           {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
           {!analysis && (
             <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">

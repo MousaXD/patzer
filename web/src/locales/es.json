@@ -334,6 +334,14 @@
     "reanalysisRequired": "El análisis del motor ya no coincide con la partida. Vuelve a analizarla.",
     "generationCancelled": "Se canceló la generación del informe. Puedes intentarlo de nuevo.",
     "generationFailed": "No se pudo generar el informe. Inténtalo de nuevo.",
+    "runEngine": "Ejecutar análisis del motor",
+    "storedAnalysisUnreadable": "No se pudo leer el análisis guardado. Aún puedes reproducir la partida; vuelve a ejecutar el motor para recuperar el informe.",
+    "analysisError": {
+      "tooLarge": "Este PGN supera el límite de análisis del motor (2048 medias jugadas o 256 KB). Aún puedes reproducir la partida.",
+      "invalidPgn": "El PGN guardado contiene notación de ajedrez no válida y el motor no puede analizarlo.",
+      "busy": "Stockfish está ocupado con otros análisis. Vuelve a intentarlo cuando haya capacidad disponible.",
+      "unavailable": "No se pudo completar el análisis. Inténtalo de nuevo cuando Stockfish esté disponible."
+    },
     "source": {
       "lichess": "Lichess"
     },

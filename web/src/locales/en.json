@@ -340,6 +340,13 @@
     "generationFailed": "Could not generate the AI report. Please try again.",
     "generating": "Writing AI report…",
     "runEngine": "Run engine analysis",
+    "storedAnalysisUnreadable": "The saved engine analysis could not be read. You can still replay this game; run engine analysis again to restore its report.",
+    "analysisError": {
+      "tooLarge": "This saved PGN exceeds the engine analysis limit (2,048 half-moves or 256 KB). You can still replay the game.",
+      "invalidPgn": "The saved PGN contains invalid chess notation, so the engine cannot analyze it.",
+      "busy": "Stockfish is busy with other analysis requests. Retry when an engine slot is free.",
+      "unavailable": "Engine analysis could not finish. Retry when Stockfish is available."
+    },
     "legacyEvidence": "This saved analysis needs updating. Run engine analysis when ready; doing so replaces its cached analysis and AI report.",
     "gameReport": "AI report",
     "keyMoments": "Key moments",

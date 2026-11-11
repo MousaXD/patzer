@@ -878,6 +878,50 @@ try {
     assert.ok(attempts>previousAttempts,'Retry must issue a fresh request');
     await page.screenshot({path:join(output,'transient-review-es-after.png')});
   }finally{await errorContext.close();}
+  // The authoritative server rejects prefix-only analyses, so do not create
+  // an impossible partial source. A full move-for-move matching cache with
+  // malformed classification metadata is admitted by source provenance but
+  // deliberately rejected by the frontend's stricter rendering validator.
+  // This is a reachable, safe cached-analysis recovery state.
+  const partialMovesJson=db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json;
+  const partialMoves=JSON.parse(partialMovesJson);
+  const malformedMoves=partialMoves.map((move,index)=>index===partialMoves.length-1
+    ? {...move,classification:'not-a-valid-classification'} : move);
+  db.prepare('UPDATE analyses SET moves_json=? WHERE game_id=?')
+    .run(JSON.stringify(malformedMoves),id);
+  const sourceAttested=await api(`/api/games/${id}`,{cookie:account.cookie});
+  assert.equal(sourceAttested.status,200);
+  assert.equal(sourceAttested.json.analysis_stale,false,
+    'Malformed classifications must not bypass move/PGN source guards');
+  assert.ok(sourceAttested.json.analysis,
+    'A source-aligned, malformed classification should reach the frontend decode guard');
+  const partialContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await partialContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await partialContext.newPage();
+    const spanish=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+    await page.goto(`${base}/review/${id}?ply=24`,{waitUntil:'domcontentloaded'});
+    await page.getByText(spanish.review.storedAnalysisUnreadable,{exact:true})
+      .waitFor({state:'visible'});
+    const retryAnalysis=page.getByRole('button',{name:spanish.review.runEngine});
+    assert.ok(await retryAnalysis.isEnabled(),
+      'An invalid cached classification must offer an explicit reanalysis action');
+    await page.screenshot({path:join(output,'unreadable-cache-es-after.png')});
+    await Promise.all([
+      page.waitForRequest(request=>request.url().endsWith('/api/analyze') && request.method()==='POST'),
+      retryAnalysis.click(),
+    ]);
+    await page.getByText(spanish.review.analysisError.unavailable,{exact:true})
+      .waitFor({state:'visible',timeout:10000});
+    await page.screenshot({path:join(output,'engine-retry-unavailable-es-after.png')});
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    assert.equal(sourceAttested.json.game.pgn,originalPgn,
+      'Trying to recover an invalid analysis must not alter the saved game PGN');
+  }finally{
+    await partialContext.close();
+    db.prepare('UPDATE analyses SET moves_json=? WHERE game_id=?').run(partialMovesJson,id);
+  }
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},
   });

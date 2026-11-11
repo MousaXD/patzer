@@ -93,6 +93,16 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
       }
+      for (const key of ['tooLarge', 'invalidPgn', 'busy', 'unavailable'] as const) {
+        expect(locale.review.analysisError[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review.analysisError[key]).not.toBe(en.review.analysisError[key]);
+      }
+      expect(locale.review.storedAnalysisUnreadable?.trim().length).toBeGreaterThan(0);
+      expect(locale.review.runEngine?.trim().length).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.storedAnalysisUnreadable).not.toBe(en.review.storedAnalysisUnreadable);
+        expect(locale.review.runEngine).not.toBe(en.review.runEngine);
+      }
     });
   },
 );

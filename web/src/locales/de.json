@@ -340,6 +340,13 @@
     "generationFailed": "Der KI-Bericht konnte nicht erstellt werden. Bitte erneut versuchen.",
     "generating": "KI-Bericht wird geschrieben…",
     "runEngine": "Engine-Analyse starten",
+    "storedAnalysisUnreadable": "Die gespeicherte Engine-Analyse konnte nicht gelesen werden. Du kannst die Partie weiterhin nachspielen. Starte die Analyse erneut, um den Bericht wiederherzustellen.",
+    "analysisError": {
+      "tooLarge": "Diese PGN überschreitet das Analyselimit der Engine (2.048 Halbzüge oder 256 KB). Du kannst die Partie weiterhin nachspielen.",
+      "invalidPgn": "Die gespeicherte PGN enthält ungültige Schachnotation und kann nicht analysiert werden.",
+      "busy": "Stockfish bearbeitet bereits andere Analysen. Versuche es erneut, sobald ein Platz frei ist.",
+      "unavailable": "Die Engine-Analyse konnte nicht abgeschlossen werden. Versuche es erneut, wenn Stockfish verfügbar ist."
+    },
     "legacyEvidence": "Diese gespeicherte Analyse muss aktualisiert werden. Starte die Engine-Analyse, wenn du bereit bist. Dabei werden die gespeicherte Analyse und der KI-Bericht ersetzt.",
     "gameReport": "KI-Bericht",
     "keyMoments": "Schlüsselmomente",
