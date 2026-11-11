@@ -21,6 +21,7 @@ import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
+import ReviewDisclosureHeader from '../components/ReviewDisclosureHeader';
 import MistakePractice from '../components/review/MistakePractice';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
 import KeyMomentsList from '../components/KeyMomentsList';
@@ -1346,19 +1347,9 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
   const { t } = useTranslation();
   return (
     <div className="card overflow-hidden">
-      <button type="button"
-        onClick={onToggle}
-        aria-expanded={enabled}
-        aria-controls="review-engine-lines-content"
-        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })}
-        className={`flex min-h-11 w-full items-center gap-2 bg-chesscom-50/40 px-3 py-2 text-left transition-colors hover:bg-chesscom-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 dark:bg-chesscom-900/40 dark:hover:bg-chesscom-700/50 ${enabled ? 'border-b border-chesscom-100 dark:border-chesscom-700' : ''}`}
-      >
-        <Search className="h-3.5 w-3.5 shrink-0 text-chesscom-500 dark:text-chesscom-300" aria-hidden="true" />
-        <span className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
-          {t('review.lines', { defaultValue: 'Engine lines' })}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-chesscom-500 transition-transform motion-reduce:transition-none dark:text-chesscom-300 ${enabled ? 'rotate-180' : ''}`} aria-hidden="true" />
-      </button>
+      <ReviewDisclosureHeader icon={Search} label={t('review.lines', { defaultValue: 'Engine lines' })}
+        expanded={enabled} onToggle={onToggle} controlsId="review-engine-lines-content"
+        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })} />
       <div id="review-engine-lines-content" hidden={!enabled} className="space-y-1 p-2">
         {enabled && (
           <>

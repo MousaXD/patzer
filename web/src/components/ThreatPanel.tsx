@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Chess } from 'chess.js';
 import { Crosshair, Loader2 } from 'lucide-react';
 import { api } from '../api';
+import ReviewDisclosureHeader from './ReviewDisclosureHeader';
 
 // "What's the threat?" — for the current position, what would the side that
 // just moved play next if the side to move simply passed? We build the
@@ -149,20 +150,12 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
 
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center gap-1 border-b border-chesscom-100 bg-chesscom-50/40 px-3 py-2 dark:border-chesscom-700 dark:bg-chesscom-900/40">
-        <Crosshair className="h-3.5 w-3.5 text-chesscom-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
-          {t('threat.title', { defaultValue: "What's the threat?" })}
-        </span>
-        <button
-          onClick={() => setEnabled((s) => !s)}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${enabled ? 'text-board-dark' : ''}`}
-        >
-          {enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('threat.show', { defaultValue: 'Show threat' })}
-        </button>
-      </div>
-      {enabled && (
-        <div className="px-3 py-2 text-xs">
+      <ReviewDisclosureHeader icon={Crosshair} label={t('threat.title', { defaultValue: "What's the threat?" })}
+        expanded={enabled} onToggle={() => setEnabled((s) => !s)} controlsId="review-threat-content"
+        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('threat.show', { defaultValue: 'Show threat' })} />
+      <div id="review-threat-content" hidden={!enabled} className="px-3 py-2 text-xs">
+        {enabled && (
+          <>
           {displayedState === 'loading' && (
             <div className="flex items-center gap-2 py-1 text-chesscom-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
@@ -192,8 +185,9 @@ export default function ThreatPanel({ fen, currentCpWhite }: { fen: string; curr
               )}
             </div>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

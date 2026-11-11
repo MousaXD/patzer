@@ -490,6 +490,27 @@ try {
           assert.equal(await engine.getAttribute('aria-expanded'),'false');
           assert.ok(!(await page.locator('#review-engine-lines-content').isVisible()));
         }
+        for(const [label,contentId] of [
+          [locale.threat.title,'review-threat-content'],
+          [locale.explorer.title,'review-master-games-content'],
+        ]){
+          const disclosure=page.getByRole('button',{name:label,exact:true});
+          assert.equal(await disclosure.getAttribute('aria-controls'),contentId,
+            `Disclosure has no valid content association: ${lang} ${label}`);
+          assert.equal(await disclosure.getAttribute('aria-expanded'),'false');
+          const rect=await disclosure.boundingBox();
+          assert.ok(rect && rect.height>=40 && rect.height<=48,
+            `Utility disclosure must have a consistent one-row touch target: ${lang}/${width} ${label}: ${JSON.stringify(rect)}`);
+          if(width===390){
+            await disclosure.focus();
+            await page.keyboard.press('Enter');
+            assert.equal(await disclosure.getAttribute('aria-expanded'),'true');
+            assert.ok(await page.locator(`#${contentId}`).isVisible(),`Expanded utility content hidden: ${lang} ${label}`);
+            await disclosure.click();
+            assert.equal(await disclosure.getAttribute('aria-expanded'),'false');
+            assert.ok(!(await page.locator(`#${contentId}`).isVisible()),`Collapsed utility content still visible: ${lang} ${label}`);
+          }
+        }
         const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
         assert.ok(overflow<=2,`Horizontal overflow in ${lang} at ${width}px: ${overflow}`);
         if(width===390){
@@ -500,6 +521,10 @@ try {
           await tabs.nth(0).click();
           assert.equal(await tabs.nth(0).getAttribute('aria-selected'),'true');
           await page.screenshot({path:join(output,`review-tabs-${lang}-390.png`)});
+          if(lang==='de'||lang==='es'){
+            await page.getByText(locale.threat.title,{exact:true}).scrollIntoViewIfNeeded();
+            await page.screenshot({path:join(output,`review-utilities-${lang}-390.png`)});
+          }
         }
       }finally{await context.close();}
     }
