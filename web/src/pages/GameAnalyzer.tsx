@@ -147,6 +147,8 @@ function GameAnalyzerView() {
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [shareCopyFailed, setShareCopyFailed] = useState(false);
+  useEffect(() => { setShareCopyFailed(false); }, [gameId]);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
   const routeAttempt = searchParams.get('practicePly');
@@ -384,6 +386,20 @@ function GameAnalyzerView() {
   const shareCurrentPosition = () => isVariation
     ? `${window.location.origin}/lab#${encodeURI(variations.currentFen)}`
     : window.location.href;
+  // Both the toolbar button and the S keyboard shortcut must share the same
+  // copy success/error feedback. A denied clipboard still offers a manual URL.
+  const copySharePosition = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(shareCurrentPosition());
+      setShareCopyFailed(false);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1400);
+    } catch {
+      setLinkCopied(false);
+      setShareCopyFailed(true);
+    }
+  };
   const displayedLastMove = variations.lastMove;
 
   // Each exploratory move is classified by the existing authenticated engine
@@ -460,8 +476,8 @@ function GameAnalyzerView() {
   // Attach the keyboard listener once. Moving a ply rerenders the review,
   // so closures captured in the listener must read the latest controller
   // rather than tearing down/re-attaching between rapid key events.
-  const shortcutActions = useRef({ backward, forward, first, last, shareCurrentPosition });
-  shortcutActions.current = { backward, forward, first, last, shareCurrentPosition };
+  const shortcutActions = useRef({ backward, forward, first, last, copySharePosition });
+  shortcutActions.current = { backward, forward, first, last, copySharePosition };
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -484,10 +500,7 @@ function GameAnalyzerView() {
         setFlipped((f) => !f);
       } else if (!e.repeat && (key === 's' || key === 'S')) {
         e.preventDefault();
-        void navigator.clipboard?.writeText(shortcutActions.current.shareCurrentPosition()).then(() => {
-          setLinkCopied(true);
-          setTimeout(() => setLinkCopied(false), 1400);
-        }).catch(() => undefined);
+        void shortcutActions.current.copySharePosition();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -1167,21 +1180,10 @@ function GameAnalyzerView() {
                 notes={data.game.notes ?? ''}
                 onFlip={() => setFlipped((f) => !f)}
                 linkCopied={linkCopied}
+                shareCopyFailed={shareCopyFailed}
                 sharingVariation={isVariation}
                 shareUrl={shareCurrentPosition()}
-                onShare={async () => {
-                  const url = shareCurrentPosition();
-                  try {
-                    if (!navigator.clipboard?.writeText) return false;
-                    await navigator.clipboard.writeText(url);
-                    setLinkCopied(true);
-                    setTimeout(() => setLinkCopied(false), 1400);
-                    return true;
-                  } catch {
-                    setLinkCopied(false);
-                    return false;
-                  }
-                }}
+                onShare={copySharePosition}
               />
 
               <ExportRow
@@ -1197,14 +1199,13 @@ function GameAnalyzerView() {
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<boolean>; shareUrl: string; linkCopied: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [shareCopyFailed, setShareCopyFailed] = useState(false);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
@@ -1252,7 +1253,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
-        <button type="button" onClick={() => { void onShare().then((copied) => setShareCopyFailed(!copied)); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
+        <button type="button" onClick={() => { void onShare(); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
           {linkCopied ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Share2 className="h-3.5 w-3.5" />}
           {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
@@ -1393,11 +1394,22 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
  * A native read-only field keeps the user in control of the exact data. */
 function ClipboardManualFallback({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    // The S keyboard shortcut can be used from the board, far above this
+    // footer. Bring the recovery field into view and select it immediately.
+    // Avoid smooth scrolling while the user is trying to copy the value.
+    const field = inputRef.current;
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    field.select();
+    field.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, []);
   return (
     <div data-review-clipboard-fallback role="alert"
       className="min-w-0 border-t border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
       <p>{t('review.clipboardUnavailable')}</p>
-      <textarea aria-label={label} readOnly value={value} rows={value.length > 180 ? 3 : 1}
+      <textarea ref={inputRef} aria-label={label} readOnly value={value} rows={value.length > 180 ? 3 : 1}
         onFocus={(event) => event.currentTarget.select()}
         className="input mt-2 min-h-11 w-full min-w-0 resize-y font-mono text-xs" />
     </div>

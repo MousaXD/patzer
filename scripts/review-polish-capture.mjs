@@ -390,6 +390,26 @@ try {
     await exportFallback.waitFor({state:'hidden'});
     await page.getByRole('button',{name:'Share position',exact:true}).click();
     await shareFallback.waitFor({state:'hidden'});
+    // The documented S shortcut must offer the same recovery as the visible
+    // Share position button, not swallow clipboard failure silently.
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+      configurable:true,value:{writeText:async()=>{throw new DOMException('Clipboard blocked','NotAllowedError');}},
+    }));
+    await page.locator('.review-board-square').focus();
+    await page.keyboard.press('s');
+    await shareFallback.waitFor({state:'visible',timeout:3000});
+    const shortcutShareField=shareFallback.locator('textarea');
+    assert.equal(await shortcutShareField.inputValue(),page.url(),
+      'Keyboard S must expose the current position share URL when clipboard is denied');
+    const shortcutGeometry=await shortcutShareField.evaluate(field=>{
+      const rect=field.getBoundingClientRect();
+      return {focused:document.activeElement===field,selected:field.selectionStart===0 && field.selectionEnd===field.value.length,
+        top:rect.top,bottom:rect.bottom,viewport:innerHeight};
+    });
+    assert.ok(shortcutGeometry.focused && shortcutGeometry.selected && shortcutGeometry.top>=56
+      && shortcutGeometry.bottom<=shortcutGeometry.viewport-8,
+      `Keyboard S recovery must be visible, focused and selected: ${JSON.stringify(shortcutGeometry)}`);
+    await page.screenshot({path:join(output,'clipboard-denied-keyboard-share-320.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
       (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn,
       'Denied and successful clipboard operations must never rewrite saved PGN');
@@ -1015,6 +1035,37 @@ try {
             assert.ok(controls.restore && controls.branch && controls.restore.height>=44 && controls.branch.height>=44,
               `Active variation actions must have usable 44px touch heights: ${lang} ${JSON.stringify(controls)}`);
             assert.equal(await activeBranch.getAttribute('aria-pressed'),'true');
+            // The shortcut shares the displayed *variation*, not the saved
+            // starting position, even when clipboard permission is denied.
+            await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+              configurable:true,value:{writeText:async()=>{throw new DOMException('Clipboard blocked','NotAllowedError');}},
+            }));
+            await page.locator('.review-board-square').focus();
+            await page.keyboard.press('s');
+            const branchFallback=page.locator('[data-review-meta-toolbar] [data-review-clipboard-fallback]');
+            await branchFallback.waitFor({state:'visible',timeout:3000});
+            const expectedBranch=new Chess();
+            assert.ok(expectedBranch.move('d4'));
+            const expectedLabUrl=`${base}/lab#${encodeURI(expectedBranch.fen())}`;
+            assert.equal(await branchFallback.locator('textarea').inputValue(),expectedLabUrl,
+              `Shortcut S must share the exact unsaved ${lang} branch FEN`);
+            const branchPosition=await branchFallback.locator('textarea').evaluate(field=>{
+              const rect=field.getBoundingClientRect();
+              return {focused:document.activeElement===field,
+                selected:field.selectionStart===0 && field.selectionEnd===field.value.length,
+                top:rect.top,bottom:rect.bottom,viewport:innerHeight};
+            });
+            assert.ok(branchPosition.focused && branchPosition.selected && branchPosition.top>=56
+              && branchPosition.bottom<=branchPosition.viewport-8,
+              `Denied ${lang} variation shortcut must reveal selected fallback: ${JSON.stringify(branchPosition)}`);
+            await page.screenshot({path:join(output,`review-variation-share-fallback-${lang}-390.png`)});
+            await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+              configurable:true,value:{writeText:async(text)=>{window.__lastCopiedShare=text;}},
+            }));
+            await page.locator('.review-board-square').focus();
+            await page.keyboard.press('s');
+            await branchFallback.waitFor({state:'hidden'});
+            assert.equal(await page.evaluate(()=>window.__lastCopiedShare),expectedLabUrl);
             const variationCopy=await page.getByRole('region',{name:locale.review.variationTitle}).innerText().catch(async()=>
               page.getByLabel(locale.review.variationTitle).innerText());
             assert.ok(variationCopy.includes(locale.review.variationHelp),
