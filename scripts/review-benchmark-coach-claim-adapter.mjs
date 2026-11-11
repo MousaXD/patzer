@@ -12,6 +12,55 @@ const ownerColor={white:'w',black:'b'};
 const bounded=(v)=>typeof v==='string'&&v.length<=10000;
 const labelPart=(part,kind)=>({part,kind});
 const winnerFromResult=result=>result==='1-0'?'white':result==='0-1'?'black':null;
+function impossibleSourceStartReason(startFen){
+ // chess.js validates FEN *syntax*, not all one-ply reachability invariants.
+ // In particular it permits adjacent kings, an attacked king belonging to
+ // the player who just moved, missing rooks despite castling rights, and
+ // >8 pawns or >16 pieces of one color. Never let such a position create a
+ // positive or contradictory factuality verdict for a supposedly legal PGN.
+ const source=new Chess(startFen);
+ const [placement,turn,castling,enPassant]=startFen.split(' ');
+ if(!placement||!['w','b'].includes(turn)||!castling||!enPassant)
+  return 'missing_source_fen_fields';
+ const board=source.board().flat().filter(Boolean);
+ for(const color of ['w','b']){
+  const pieces=board.filter(p=>p.color===color);
+  if(pieces.length>16)return 'more_than_sixteen_pieces_per_side';
+  if(pieces.filter(p=>p.type==='p').length>8)return 'more_than_eight_pawns_per_side';
+ }
+ for(const [right,kingSquare,rookSquare,color] of [
+  ['K','e1','h1','w'],['Q','e1','a1','w'],
+  ['k','e8','h8','b'],['q','e8','a8','b']]){
+  if(!castling.includes(right))continue;
+  const king=source.get(kingSquare),rook=source.get(rookSquare);
+  if(king?.type!=='k'||king.color!==color||rook?.type!=='r'||rook.color!==color)
+   return 'castling_rights_without_home_king_and_rook';
+ }
+ if(enPassant!=='-'){
+  // An EP target need not be legally capturable: traditional FEN can include
+  // the square after a double pawn push even without a neighboring pawn.
+  // But the pawn which supposedly just double-moved *must exist* on the
+  // corresponding rank, and its departure/landing squares must be empty.
+  const file=enPassant[0];
+  const rank=turn==='w'?'6':'3';
+  const movedColor=turn==='w'?'b':'w';
+  const pawnRank=turn==='w'?'5':'4';
+  const originRank=turn==='w'?'7':'2';
+  const pawn=source.get(file+pawnRank);
+  if(enPassant[1]!==rank||pawn?.type!=='p'||pawn.color!==movedColor||
+   source.get(file+originRank)||source.get(enPassant))
+   return 'en_passant_target_without_previous_double_pawn_push';
+ }
+ // In any legal standard-chess position, only the player whose turn it is
+ // may be in check. Invert the turn (not the pieces) and clear EP, which is
+ // side-to-move-specific, to test the non-moving king's attack status.
+ const switched=startFen.split(' ');
+ switched[1]=turn==='w'?'b':'w';
+ switched[3]='-';
+ if(new Chess(switched.join(' ')).isCheck())
+  return 'king_of_side_not_to_move_in_check';
+ return null;
+}
 function boardFromRecordedMove(move) {
  // Only the PGN supplies positions. A report-provided FEN could be a valid
  // but unrelated chess position specifically constructed to make false prose
@@ -133,6 +182,17 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  let game;
  try{game=new Chess();game.loadPgn(pgn,{strict:true});}catch{return {status:'invalid_input',findings:[{reason:'source_pgn_invalid'}],verified,unassessed,full_factuality_certified:false};}
  const recorded=game.history({verbose:true});
+ let impossibleStart;
+ try{
+  impossibleStart=impossibleSourceStartReason(
+   game.header().SetUp==='1'&&game.header().FEN?
+    game.header().FEN:(recorded[0]?.before||game.fen()));
+ }catch{
+  impossibleStart='source_initial_fen_not_replayable';
+ }
+ if(impossibleStart)return {status:'invalid_input',
+  findings:[{reason:'source_start_position_impossible',detail:impossibleStart}],
+  verified,unassessed,full_factuality_certified:false};
  const momentBoards=new Map();
  for(const [index,moment] of review.key_moments.entries()){
   const field='moment:'+index;
