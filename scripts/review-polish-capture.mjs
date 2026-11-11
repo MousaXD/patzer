@@ -375,6 +375,16 @@ try {
     await page.keyboard.press('Home');
     await page.getByRole('button',{name:/#12…\s*e5/}).click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+    await page.waitForFunction(()=>{
+      const board=document.querySelector('.review-board-square');
+      return !!board && board===document.activeElement && board.getBoundingClientRect().top>=40 && board.getBoundingClientRect().top<=95;
+    },undefined,{timeout:5000});
+    const afterMoment=await page.locator('.review-board-square').boundingBox();
+    const momentFocus=await page.evaluate(()=>document.activeElement?.classList.contains('review-board-square'));
+    console.log('Mobile Key Moment navigation:',JSON.stringify({boardY:afterMoment?.y,boardHeight:afterMoment?.height,momentFocus}));
+    await page.screenshot({path:join(output,'black-first-moment-after-click.png')});
+    assert.ok(afterMoment && afterMoment.y>=40 && afterMoment.y<=95 && momentFocus,
+      `Tapping a mobile Key Moment must reveal/focus its board instead of leaving it off screen: ${JSON.stringify({afterMoment,momentFocus})}`);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
       'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}

@@ -699,6 +699,16 @@ function GameAnalyzerView() {
     boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     boardFocusRef.current?.focus({ preventScroll: true });
   };
+  // In the stacked/mobile layout the board is above the analysis rail.
+  // Merely updating the ply after selecting a Key Moment leaves the actual
+  // position off-screen. Move focus and scroll to the board on narrow screens;
+  // preserve desktop's fast, stationary side-by-side review workflow.
+  const selectMoment = (selectedPly: number) => {
+    setPly(selectedPly);
+    if (window.matchMedia('(max-width: 959px)').matches) {
+      requestAnimationFrame(jumpToBoard);
+    }
+  };
 
   // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
   // blind practice. The original PGN is read-only; attempts use a separate board.
@@ -1031,7 +1041,7 @@ function GameAnalyzerView() {
                       initial={reviewProse}
                       sourceReady={!!sourceKey && !data.analysis_stale && !cachedAnalysisInvalid}
                       sourceChanged={sourceNotice}
-                      onMomentJump={setPly}
+                      onMomentJump={selectMoment}
                       onGenerated={(prose) => {
                         if (sourceKey && currentSourceRef.current === sourceKey) {
                           setStoredProse({ source: sourceKey, prose });
@@ -1063,7 +1073,7 @@ function GameAnalyzerView() {
                         };
                       })}
                       current={ply}
-                      onSelect={setPly}
+                      onSelect={selectMoment}
                       startFen={startFen}
                     />
                   )}
