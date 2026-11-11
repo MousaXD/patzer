@@ -260,6 +260,8 @@
     "depth": "Profundidad",
     "accuracy": "Precisión",
     "moves": "Jugadas",
+    "gameReport": "Informe de IA",
+    "keyMoments": "Momentos clave",
     "jumpToMoveDetails": "Detalles de la jugada",
     "returnToBoard": "Volver al tablero",
     "boardLabel": "Tablero de ajedrez",

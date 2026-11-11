@@ -3,7 +3,7 @@
  * are synthetic presentation fixtures in a disposable SQLite database.
  * Requires a successful `npm run build`; never touches production state. */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -216,6 +216,19 @@ try {
           'Mobile jump did not scroll to review details');
         const reviewTab=page.getByRole('tab',{name:'Moves'});
         assert.equal(await reviewTab.getAttribute('aria-selected'),'true');
+        // Icons alone are not discoverable navigation for a first-time user.
+        // At the 390px reference width, all three review destinations must
+        // have readable, visible text labels, not just aria-label tooltips.
+        for(const tab of await page.getByRole('tab').all()){
+          const label=tab.locator('span').first();
+          assert.ok(await label.isVisible(),
+            `Mobile review tab ${await tab.getAttribute('aria-label')} must show its text label`);
+          const fits=await label.evaluate(el=>{
+            const label=el.getBoundingClientRect(),tab=el.closest('[role="tab"]')?.getBoundingClientRect();
+            return !!tab && label.width>0 && label.right<=tab.right+1 && label.left>=tab.left-1;
+          });
+          assert.ok(fits,`Mobile review tab label must stay within its touch target: ${await tab.getAttribute('aria-label')}`);
+        }
         const unavailable=page.locator('[data-review-coach-unavailable]');
         await unavailable.waitFor({state:'visible'});
         const noteHeight=await unavailable.evaluate(el=>el.getBoundingClientRect().height);
@@ -415,6 +428,64 @@ try {
     });
     await page.screenshot({path:join(output,'long-game-details.png')});
   }finally{await longContext.close();}
+  // Mobile tabs must explain their destinations visually, not rely on
+  // hover-only titles. Audit all supported app languages using the actual
+  // localized labels at the target 390px width, plus an extra narrow 320px
+  // layout. The latter may truncate but must preserve an accessible name,
+  // a visible text fragment, keyboard tab semantics and no overlap.
+  for(const lang of ['en','de','es','ru','bg']){
+    const locale=JSON.parse(readFileSync(new URL(`../web/src/locales/${lang}.json`,import.meta.url),'utf8'));
+    const updated=await api('/api/settings/profile',{
+      method:'PATCH',cookie:account.cookie,body:{language:lang,site_theme:'dark'},
+    });
+    assert.equal(updated.status,200,`Could not switch synthetic fixture to ${lang}`);
+    for(const width of [390,320]){
+      const context=await browser.newContext({viewport:{width,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+      try{
+        await context.addCookies([{name:account.cookie.split('=')[0],
+          value:account.cookie.split('=').slice(1).join('='),url:base}]);
+        const page=await context.newPage();
+        await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+        await page.locator('[data-review-jump-to-details]').click();
+        const expected=[locale.review.moves,locale.review.gameReport,locale.review.keyMoments];
+        const tabs=page.getByRole('tab');
+        assert.equal(await tabs.count(),3);
+        const actual=await tabs.evaluateAll((elements)=>elements.map((element)=>{
+          const text=element.querySelector('span');
+          const textRect=text?.getBoundingClientRect();
+          const rect=element.getBoundingClientRect();
+          return {name:element.getAttribute('aria-label'),label:text?.textContent,
+            labelVisible:!!textRect && textRect.width>0 && getComputedStyle(text).display!=='none',
+            textFits:!!text && text.scrollWidth<=text.clientWidth+1,
+            left:rect.left,right:rect.right,
+          };
+        }));
+        assert.deepEqual(actual.map(a=>a.name),expected,`Wrong tab names for ${lang}`);
+        assert.ok(actual.every(a=>a.labelVisible && a.label),`Invisible mobile labels: ${lang} ${width}: ${JSON.stringify(actual)}`);
+        if(width===390) assert.ok(actual.every(a=>a.textFits),
+          `Truncated target-width locale label: ${lang}: ${JSON.stringify(actual)}`);
+        const gear=await page.getByRole('button',{name:locale.review.depth}).boundingBox();
+        assert.ok(gear);
+        assert.ok(actual[2].right<=gear.x+1,
+          `Tab bar overlaps engine settings for ${lang} at ${width}px`);
+        const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
+        assert.ok(overflow<=2,`Horizontal overflow in ${lang} at ${width}px: ${overflow}`);
+        if(width===390){
+          await tabs.nth(1).click();
+          assert.equal(await tabs.nth(1).getAttribute('aria-selected'),'true');
+          await tabs.nth(2).click();
+          assert.equal(await tabs.nth(2).getAttribute('aria-selected'),'true');
+          await tabs.nth(0).click();
+          assert.equal(await tabs.nth(0).getAttribute('aria-selected'),'true');
+          await page.screenshot({path:join(output,`review-tabs-${lang}-390.png`)});
+        }
+      }finally{await context.close();}
+    }
+  }
+  const restored=await api('/api/settings/profile',{
+    method:'PATCH',cookie:account.cookie,body:{language:'en'},
+  });
+  assert.equal(restored.status,200);
   writeFileSync(join(output,'metrics.json'),JSON.stringify(measurements,null,2)+'\n');
   console.log(JSON.stringify({output,measurements},null,2));
 }catch(error){console.error(error);process.exitCode=1;}

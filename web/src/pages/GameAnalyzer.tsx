@@ -972,7 +972,7 @@ function GameAnalyzerView() {
                   <TabBtn id="review-tab-moves" active={tab === 'moves'} onClick={() => setTab('moves')} icon={ListOrdered} label={t('review.moves', { defaultValue: 'Moves' })} />
                   <TabBtn id="review-tab-report" active={tab === 'report'} onClick={() => setTab('report')} icon={FileText} label={t('review.gameReport', { defaultValue: 'AI report' })} />
                   <TabBtn id="review-tab-moments" active={tab === 'moments'} onClick={() => setTab('moments')} icon={Sparkles} label={t('review.keyMoments', { defaultValue: 'Key moments' })} />
-                  <button onClick={() => setShowDepthControl((s) => !s)} aria-label={t('review.depth', { defaultValue: 'Engine depth settings' })} aria-expanded={showDepthControl} className="btn-ghost ml-auto p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500" title={t('review.depth')}>
+                  <button onClick={() => setShowDepthControl((s) => !s)} aria-label={t('review.depth', { defaultValue: 'Engine depth settings' })} aria-expanded={showDepthControl} className="btn-ghost ml-auto flex min-h-11 min-w-9 shrink-0 items-center justify-center p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500" title={t('review.depth')}>
                     <SettingsIcon className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -1279,10 +1279,13 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative flex min-h-10 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:text-chesscom-100'}`}
+      className={`relative flex min-h-11 min-w-0 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:text-chesscom-100'}`}
     >
-      <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-      <span className="hidden sm:inline">{label}</span>
+      {/* Icon-only tabs gave no readable destination names on a 390px phone.
+          The compact rail has room for real text labels when the icons are
+          reserved for wider screens. Truncate only on unusually narrow widths. */}
+      <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" aria-hidden="true" />
+      <span className="min-w-0 truncate">{label}</span>
       {active && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold-500 sm:inset-x-2" />}
     </button>
   );
