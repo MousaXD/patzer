@@ -393,6 +393,7 @@
       "generic": "The import failed. Please try again later."
     },
     "pickMoves": "Show these moves",
+    "pickCountLabel": "{{side}} · {{classification}} ({{count}}) — show matching moves",
     "pickBoth": "both sides",
     "why": {
       "yourMove": "Your move",

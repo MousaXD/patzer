@@ -393,6 +393,7 @@
       "import_in_progress": "Импорт уже идёт — дождись его завершения."
     },
     "pickMoves": "Показать эти ходы",
+    "pickCountLabel": "{{side}} · {{classification}} ({{count}}) — показать ходы",
     "pickBoth": "обе стороны",
     "why": {
       "yourMove": "Твой ход",

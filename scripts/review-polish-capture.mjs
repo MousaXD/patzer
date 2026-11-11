@@ -311,6 +311,28 @@ try {
         value:account.cookie.split('=').slice(1).join('='),url:base}]);
       const page=await filterContext.newPage();
       await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+      await page.getByRole('button',{name:'Blunder',exact:true}).waitFor({state:'visible'});
+      const reportCountTargets=await page.locator('[data-review-report-summary] button.font-mono.tabular-nums')
+        .evaluateAll(buttons=>buttons.map(button=>{
+          const rect=button.getBoundingClientRect();
+          return {width:Math.round(rect.width),height:Math.round(rect.height),
+            name:button.getAttribute('aria-label')||button.getAttribute('title')};
+        }));
+      const reportCategoryTarget=await page.getByRole('button',{name:'Blunder',exact:true})
+        .evaluate(button=>{const rect=button.getBoundingClientRect();
+          return {width:Math.round(rect.width),height:Math.round(rect.height)};});
+      console.log(`${width}px Game Report classification targets:`,JSON.stringify({counts:reportCountTargets,category:reportCategoryTarget}));
+      assert.ok(reportCountTargets.length>0 && reportCountTargets.every(target=>target.width>=44 && target.height>=44)
+        && reportCategoryTarget.height>=44,
+        `Game Report classification buttons need usable touch areas at ${width}px`);
+      const countNames=reportCountTargets.map(target=>target.name);
+      assert.ok(countNames.every(name=>name && name!=='Show these moves')
+        && new Set(countNames).size===countNames.length,
+        'Each report count button must identify its own classification, side and count');
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)<=2,
+        `Game Report classification target resizing must not cause horizontal overflow at ${width}px`);
+      await page.getByRole('button',{name:'Blunder',exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`report-classification-counts-${width}.png`)});
       await page.getByRole('button',{name:'Blunder',exact:true}).click();
       await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('22 /'));
       const focus=await page.evaluate(()=>({id:document.activeElement?.id,
@@ -351,6 +373,13 @@ try {
       await page.getByRole('button',{name:english.review.filterClear}).click();
       assert.equal(await page.getByRole('button',{name:english.review.filterClear}).count(),0,
         'Clear must remove the move-classification filter without changing the saved line');
+      const blackBlunderCount=english.review.pickCountLabel
+        .replace('{{side}}',english.review.black)
+        .replace('{{classification}}',english.classification.blunder)
+        .replace('{{count}}','1');
+      await page.getByRole('button',{name:blackBlunderCount,exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('22 /'));
+      await page.getByRole('button',{name:english.review.filterClear}).click();
       await page.getByRole('button',{name:'Inaccuracy',exact:true}).click();
       await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('7 /'));
       await page.getByRole('button',{name:english.review.filterNext}).click();

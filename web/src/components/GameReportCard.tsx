@@ -42,13 +42,19 @@ export default function GameReportCard({
   const b = countByCls(moves, 'black', startFen);
   const isPicked = (c: Classification, side: MovePick['side']) => picked?.classification === c && picked.side === side;
   const cell = (c: Classification, side: 'white' | 'black', n: number) => {
-    const base = 'mx-auto flex h-7 w-10 items-center justify-center rounded-md font-mono tabular-nums';
+    const base = 'mx-auto flex h-11 w-11 items-center justify-center rounded-md font-mono tabular-nums';
     if (n === 0 || !onPick) return <span className={`${base} ${n > 0 ? '' : 'opacity-30'}`}>{n}</span>;
+    const label = t('review.pickCountLabel', {
+      classification: t(`classification.${CLASS_STYLE[c].labelKey}`),
+      side: t(`review.${side}`),
+      count: n,
+    });
     return (
       <button
         type="button"
         onClick={() => onPick({ classification: c, side })}
-        title={t('review.pickMoves', { defaultValue: 'Show these moves' })}
+        title={label}
+        aria-label={label}
         className={`${base} cursor-pointer underline decoration-dotted underline-offset-4 transition-colors hover:bg-gold-500/15 ${isPicked(c, side) ? 'bg-gold-500/25 font-bold ring-1 ring-gold-500/60' : ''}`}
       >
         {n}
@@ -57,7 +63,7 @@ export default function GameReportCard({
   };
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden" data-review-report-summary>
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:p-5">
         <PlayerColumn name={whiteName} accuracy={accuracyW} elo={eloW} perf={perfW} side="white" highlighted={userColor === 'white'} />
         <PlayerColumn name={blackName} accuracy={accuracyB} elo={eloB} perf={perfB} side="black" highlighted={userColor === 'black'} />
@@ -81,10 +87,10 @@ export default function GameReportCard({
                 type="button"
                 disabled={!onPick}
                 onClick={() => onPick?.({ classification: c, side: 'both' })}
-                className={`-mx-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-left ${onPick ? 'cursor-pointer hover:bg-chesscom-100 dark:hover:bg-chesscom-800' : ''} ${isPicked(c, 'both') ? 'bg-gold-500/20' : ''}`}
+                className={`-mx-1 flex min-h-11 min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left ${onPick ? 'cursor-pointer hover:bg-chesscom-100 dark:hover:bg-chesscom-800' : ''} ${isPicked(c, 'both') ? 'bg-gold-500/20' : ''}`}
               >
                 <ClassificationIcon classification={c} size={24} />
-                <span>{t(`classification.${s.labelKey}`)}</span>
+                <span className="min-w-0 truncate">{t(`classification.${s.labelKey}`)}</span>
               </button>
               {cell(c, 'white', wc)}
               {cell(c, 'black', bc)}

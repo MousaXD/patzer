@@ -393,6 +393,7 @@
       "generic": "Der Import ist fehlgeschlagen. Bitte versuch es später erneut."
     },
     "pickMoves": "Diese Züge zeigen",
+    "pickCountLabel": "{{side}} · {{classification}} ({{count}}) – passende Züge anzeigen",
     "pickBoth": "beide Seiten",
     "why": {
       "yourMove": "Dein Zug",

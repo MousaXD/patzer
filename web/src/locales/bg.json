@@ -337,6 +337,7 @@
       "pvp": "Срещу човек"
     },
     "pickMoves": "Покажи тези ходове",
+    "pickCountLabel": "{{side}} · {{classification}} ({{count}}) — покажи ходовете",
     "pickBoth": "двете страни",
     "why": {
       "yourMove": "Твой ход",
