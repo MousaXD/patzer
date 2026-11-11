@@ -198,11 +198,19 @@ function GameAnalyzerView() {
       setAnalysis(null);
       setAnalysisError('');
     }
-    if (data.analysis_stale && !analyzing && !practicePicker) {
-      void analyze(16, true);
-    }
+  }, [data, decodedStoredReview, setAnalysis]);
+
+  // Stale data can arrive while a player is trying a mistake (for example,
+  // a bookmark update invalidates the game-detail query). Never start a
+  // hidden full-game Stockfish job during either blind-practice surface.
+  // Re-check on leaving practice so explicit full Review still refreshes
+  // stale analysis. Deliberately exclude 'analyzing': a failed request must
+  // not create an immediate retry loop on the same stale snapshot.
+  useEffect(() => {
+    if (!data?.analysis_stale || analyzing || practicePicker || practicePly !== null) return;
+    void analyze(16, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, practicePicker]);
+  }, [data, practicePicker, practicePly]);
 
   // Load any cached AI prose for this game
   useEffect(() => {

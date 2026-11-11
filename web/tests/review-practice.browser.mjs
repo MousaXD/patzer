@@ -207,6 +207,47 @@ try {
     }
   });
 
+  await test('Bookmarked-game refetch becoming stale must not start engine work during an active retry', async () => {
+    // An in-review bookmark mutation legitimately invalidates this exact
+    // React Query game key. Delay the refreshed response until the player has
+    // entered practice and mark ONLY that returned snapshot as stale.
+    await page.goto(`${base}/review/${standard.id}?ply=5`);
+    await page.locator('[data-analysis-workspace]').waitFor();
+    let staleResponses = 0;
+    let hiddenAnalysisPosts = 0;
+    await page.route(`**/api/games/${standard.id}`, async (route) => {
+      const response = await route.fetch();
+      const original = await response.json();
+      staleResponses++;
+      await sleep(750);
+      await route.fulfill({ response, json: { ...original, analysis_stale: true } });
+    });
+    await page.route('**/api/analyze', (route) => {
+      hiddenAnalysisPosts++;
+      return route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'blind_stale_refresh_must_not_analyze' }) });
+    });
+    try {
+      await page.getByRole('button', { name: 'Star', exact: true }).click();
+      await page.locator('#learn-from-mistake').click();
+      await page.locator('[data-practice-mode]').waitFor();
+      await page.getByText('Practice position unavailable').waitFor({ timeout: 6000 });
+      await sleep(300);
+      assert.ok(staleResponses >= 1, 'bookmark must trigger a real game-detail refetch');
+      assert.equal(hiddenAnalysisPosts, 0,
+        'stale refetch silently started expensive full-game analysis behind a hidden retry');
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+      await page.getByRole('button', { name: 'Return to saved game' }).click();
+      await page.locator('[data-analysis-workspace]').waitFor();
+      await page.getByText('Engine analysis could not finish. Retry when Stockfish is available.').waitFor();
+      assert.equal(hiddenAnalysisPosts, 1,
+        'leaving a blind retry should resume one ordinary stale-analysis attempt, without an unbounded retry loop');
+    } finally {
+      await page.unroute(`**/api/games/${standard.id}`);
+      await page.unroute('**/api/analyze');
+    }
+  });
+
   await test('Entering a retry cancels in-flight full-game reanalysis and restores controls', async () => {
     await page.goto(`${base}/review/${standard.id}?ply=5`);
     await page.locator('[data-analysis-workspace]').waitFor();
