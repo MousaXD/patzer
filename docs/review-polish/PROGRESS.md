@@ -8,9 +8,9 @@
 
 **Worktree:** `/home/mousa/projects/my-creations/game/patzer-review-polish-20261111` (independent of production checkout)
 
-**Latest previously pushed implementation commit:** `4cc3aa4` (inactive analysis-tab dark contrast). This session adds a compact Game Review coaching-unavailable state.
+**Latest verified implementation commit:** `b7a86a1` (compact and provider-neutral unconfigured AI coaching state; pushed).
 
-**Documentation handoff:** `a0826d4` (pushed). Current change in progress: long-game move navigation and scroll anchoring.
+**Other validated commits in this continuation:** `efbdd46` (160-ply mobile scrolling), `4cc3aa4` (inactive-tab dark contrast). All pushed to this branch.
 
 **Initial review cockpit commit:** `fdddebb` (review cockpit and audit harness).
 
@@ -80,11 +80,11 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 
 - **Next highest-value task:** Investigate the task-based flow in the review rail (move explanation, timeline, engine lines, game report, threats, explorer, notes and exports). Identify clear navigation/friction through browser evidence; avoid gratuitous reordering or removing capabilities. Real-engine graph evidence remains open pending an available Stockfish installation.
 - Mobile two-way navigation is verified using actual browser pointer/keyboard interaction. Verify physical touch gesture behavior separately when a device is available; it has not been claimed as tested.
-- Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative.
+- Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative. No Stockfish executable was found at the checked standard local paths (`/usr/games/stockfish`, `/usr/bin/stockfish`, `/usr/local/bin/stockfish` or repository `bin/stockfish`). Do not redesign the graph's scored area from fixtures alone.
 - Dark move-number and phase-label foreground styles have been corrected; future passes can audit the rest of the interface's secondary labels quantitatively rather than globally overriding the palette.
 - Investigate whether the lengthy utilities below the core review distract users, without removing functionality merely for shorter pages.
 - Run independent real analysis source integrity/browser regression suite separately before eventual release. This iteration modifies frontend layout only.
 
 ## Deployment/merge status
 
-No merge, deployment, updater, production SQLite or live service changes authorized or performed. Commit and push only the isolated feature branch.
+No merge, deployment, updater, production SQLite or live service changes authorized or performed. The last implementation commit was pushed to the isolated feature branch; the worktree was clean at the implementation checkpoint. Continue to commit and push only the feature branch until the owner authorizes a merge.
