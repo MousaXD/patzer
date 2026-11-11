@@ -519,6 +519,15 @@ try {
           value:account.cookie.split('=').slice(1).join('='),url:base}]);
         const page=await context.newPage();
         await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+        const hint=page.locator('[data-review-explore-hint]');
+        await hint.waitFor({state:'visible'});
+        const hintText=await hint.innerText();
+        assert.ok(hintText.includes(locale.review.exploreLabel) && hintText.includes(locale.review.exploreHint),
+          `Board exploration hint must use the selected ${lang} locale: ${hintText}`);
+        if(width===390){
+          await hint.scrollIntoViewIfNeeded();
+          await page.screenshot({path:join(output,`review-explore-hint-${lang}-390.png`)});
+        }
         await page.locator('[data-review-jump-to-details]').click();
         const expected=[locale.review.moves,locale.review.gameReport,locale.review.keyMoments];
         const tabs=page.getByRole('tab');
@@ -597,6 +606,46 @@ try {
           if(lang==='de'||lang==='es'){
             await page.getByText(locale.threat.title,{exact:true}).scrollIntoViewIfNeeded();
             await page.screenshot({path:join(output,`review-utilities-${lang}-390.png`)});
+            // Try a legal unsaved branch from the starting board. It must be
+            // explorable and reversible without changing the original PGN.
+            const originalPgn=db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn;
+            await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+            await page.locator('cg-board').waitFor({state:'visible'});
+            const board=await page.locator('cg-board').boundingBox();
+            assert.ok(board);
+            const from={x:board.x+board.width*3.5/8,y:board.y+board.height*6.5/8}; // d2
+            const to={x:board.x+board.width*3.5/8,y:board.y+board.height*4.5/8}; // d4
+            await page.mouse.move(from.x,from.y);
+            await page.mouse.down();
+            await page.mouse.move(to.x,to.y,{steps:12});
+            await page.mouse.up();
+            const title=page.getByText(locale.review.variationTitle,{exact:true});
+            if(!(await title.isVisible())){
+              await page.mouse.click(from.x,from.y);
+              await page.mouse.click(to.x,to.y);
+            }
+            await title.waitFor({state:'visible',timeout:4000});
+            const restore=page.getByRole('button',{name:locale.review.variationReturn});
+            assert.ok(await restore.isEnabled());
+            const variationCopy=await page.getByRole('region',{name:locale.review.variationTitle}).innerText().catch(async()=>
+              page.getByLabel(locale.review.variationTitle).innerText());
+            assert.ok(variationCopy.includes(locale.review.variationHelp),
+              `Active variation instructions must be translated in ${lang}`);
+            await title.scrollIntoViewIfNeeded();
+            await page.screenshot({path:join(output,`review-variation-active-${lang}-390.png`)});
+            await restore.click();
+            await page.waitForFunction(()=>{
+              const transport=document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim();
+              return transport?.startsWith('0 /') && !transport.includes('var');
+            });
+            assert.equal(await restore.isDisabled(),true,
+              `Return to game must be unavailable when already on the saved line (${lang})`);
+            const savedBranch=page.getByRole('button',{name:locale.review.variationOption.replace('{{number}}','1').replace('{{moves}}','1')});
+            assert.ok(await savedBranch.isVisible(),
+              `Returning to the saved game should not delete the optional exploratory branch (${lang})`);
+            await page.screenshot({path:join(output,`review-variation-returned-${lang}-390.png`)});
+            assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn,
+              'An explored variation must not alter the saved PGN');
           }
         }
       }finally{await context.close();}

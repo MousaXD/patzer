@@ -403,7 +403,7 @@ function GameAnalyzerView() {
           if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
           } else {
-            setQualityError('The engine response did not match this position. Retry scoring.');
+            setQualityError('source_mismatch');
           }
         }
       } catch (e) {
@@ -412,7 +412,7 @@ function GameAnalyzerView() {
         if (status === 429 && attempt === 0) {
           retry = window.setTimeout(() => void evaluate(1), 1100);
         } else {
-          setQualityError('Move not scored — the Stockfish engine is unavailable or busy.');
+          setQualityError('engine_unavailable');
         }
       }
     };
@@ -837,7 +837,7 @@ function GameAnalyzerView() {
           <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft dark:bg-chesscom-800">
             <div className="min-w-0 truncate text-chesscom-500">
               {isVariation ? (
-                <><span className="font-medium text-amber-600">Variation {branchMove?.san ?? 'starting position'}</span>
+                <><span className="font-medium text-amber-600">{t('review.variationMove', { san: branchMove?.san ?? t('review.startingPosition') })}</span>
                   {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
                 </>
               ) : ply > 0 && pos?.san ? (
@@ -849,8 +849,8 @@ function GameAnalyzerView() {
                 </>
               ) : <span className="italic">{t('review.startingPosition')}</span>}
             </div>
-            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? 'Position evaluation unavailable' : `Evaluation ${fmtCp(currentEvalCp)}`}>
-              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? 'Analyzing…' : '—') : fmtCp(currentEvalCp)}
+            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? t('review.variationEvalUnavailable') : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) })}>
+              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
             </div>
           </div>
           <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label="Game move navigation">
@@ -880,38 +880,38 @@ function GameAnalyzerView() {
         {/* RIGHT RAIL — one natural document scroll rather than a separate
             clipped scroll island; analysis cards remain reachable at any size. */}
         <div className="review-side-rail min-w-0 space-y-3" data-review-side-rail>
-          <section className="card px-3 py-2.5" aria-label="Analysis variations">
+          <section className="card px-3 py-2.5" aria-label={t('review.variationTitle')}>
             {isVariation || variations.variations.length > 0 ? (
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-[190px] flex-1">
-                  <div className="text-sm font-semibold">Interactive analysis</div>
-                  <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
+                  <div className="text-sm font-semibold">{t('review.variationTitle')}</div>
+                  <p className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationHelp')}</p>
                 </div>
                 <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
-                  Return to game
+                  {t('review.variationReturn')}
                 </button>
               </div>
             ) : (
-              <p className="flex items-center gap-2 text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300" data-review-explore-hint>
-                <span className="shrink-0 font-semibold text-chesscom-700 dark:text-chesscom-200">Explore:</span>
-                Move a piece on the board to try a different line. Your saved game stays intact.
+              <p className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300" data-review-explore-hint>
+                <span className="font-semibold text-chesscom-700 dark:text-chesscom-200">{t('review.exploreLabel')} </span>
+                {t('review.exploreHint')}
               </p>
             )}
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
                   className={`rounded-md px-2 py-1.5 text-xs font-medium ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
-                  onClick={() => variations.selectVariation(branch.id)} title={`Variation ${index + 1}, ${branch.moves.length} moves, from game ply ${branch.basePly}`}>
-                  Variation {index + 1} · {branch.moves.length} moves
+                  onClick={() => variations.selectVariation(branch.id)} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
+                  {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
                 </button>
               ))}
             </div>}
             {isVariation && <div role="status" className="mt-2 text-sm">
-              <span className="font-mono text-xs text-chesscom-500">{variations.playedVariationMoves.map((m) => m.san).join(' ') || 'Branch point'}</span>
+              <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
               {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
-                <span>{qualityError}</span>
+                <span>{t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}</span>
                 <button type="button" className="rounded border border-amber-500/40 px-2 py-1 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
-                  onClick={() => setQualityRetry((previous) => previous + 1)}>Retry scoring</button>
+                  onClick={() => setQualityRetry((previous) => previous + 1)}>{t('review.variationRetryScoring')}</button>
               </div>}
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
@@ -934,7 +934,7 @@ function GameAnalyzerView() {
               {/* During exploratory play this is still the original game timeline,
                   not a fabricated analysis of the unscored hypothetical branch. */}
               <div className="card p-2">
-                {isVariation && <p className="mb-2 text-xs text-chesscom-500">Original game timeline · select a move to return to the saved line.</p>}
+                {isVariation && <p className="mb-2 text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationTimelineHint')}</p>}
                 <EvalGraph
                   evals={timeline.evals}
                   current={isVariation ? undefined : ply}
