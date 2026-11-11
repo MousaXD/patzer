@@ -7,15 +7,18 @@
 **Base:** `origin/main` at `738dd75`
 
 **Worktree:** `/home/mousa/projects/my-creations/game/patzer-review-polish-20261111` (independent of production checkout)
-**Previous validated implementation commit:** `fdddebb` (review cockpit and audit harness). The next commit includes mobile jump and contrast refinements.
 
-**Mobile navigation/contrast commit:** `14ec726` (pushed). The current work adds the missing-evaluation presentation guard and regression evidence.
+**Latest verified implementation commit:** `7397969` (evaluation graph circular marker refinement, pushed). The working tree was clean after publication; a later documentation-only handoff may advance HEAD without changing implementation.
 
-**Source truth commit:** `5ba9029` (pushed). This session also fixes Black-first FEN move labels and win-chance POV.
+**Initial review cockpit commit:** `fdddebb` (review cockpit and audit harness).
 
-**Black-first FEN commit:** `c5779e5` (pushed). Current work addresses dark-mode move history readability.
+**Mobile navigation/contrast commit:** `14ec726` (pushed).
 
-**Dark move-history readability commit:** `3e07a3d` (pushed). Current work corrects the evaluation graph marker geometry.
+**Source truth commit:** `5ba9029` (pushed).
+
+**Black-first FEN commit:** `c5779e5` (pushed).
+
+**Dark move-history readability commit:** `3e07a3d` (pushed).
 
 ## Completed changes
 
@@ -67,6 +70,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 
 ## Open investigation
 
+- **Next highest-value task:** Test long-game move selection and scroll/focus behavior on narrow screens using a disposable, legal 100+ ply game. Fix only reproduced failures; otherwise continue with task-based review-rail information architecture and the remaining real-engine graph data audit.
 - Mobile two-way navigation is verified using actual browser pointer/keyboard interaction. Verify physical touch gesture behavior separately when a device is available; it has not been claimed as tested.
 - Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative.
 - Dark move-number and phase-label foreground styles have been corrected; future passes can audit the rest of the interface's secondary labels quantitatively rather than globally overriding the palette.
