@@ -466,18 +466,27 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 .review-board-column { width:100%; min-width:0; max-width:760px; margin-inline:auto; }
 .review-board-square { min-width:0; max-width:100%; }
 .review-side-rail { width:100%; max-width:760px; margin-inline:auto; }
-@media (min-width:1200px) {
+/* A landscape tablet has room for a genuine review cockpit. Below 1200px the
+   former one-column layout put the entire analysis timeline below a 728px
+   board, forcing users to scroll past the board to inspect their moves. */
+@media (min-width:960px) {
   .review-workspace {
     display:grid;
-    /* 440px is enough for two-column move notation, reports and engine lines.
-       The board gets the remaining space up to 84dvh / 880px; the % cap
-       prevents overflow when the app's navigation is expanded. */
-    grid-template-columns:minmax(0,min(84dvh,880px,calc(100% - 464px))) minmax(0,440px);
+    /* Leave vertical room for the player bars, selected-move summary and
+       transport. The previous 84dvh board cap pushed the controls offscreen
+       even at 1440x900 and made laptop review require constant scrolling. */
+    grid-template-columns:minmax(0,min(calc(100dvh - 350px),760px,calc(100% - 366px))) minmax(0,340px);
     align-items:start;
     justify-content:center;
-    gap:1.5rem;
+    gap:1.25rem;
   }
   .review-board-column, .review-side-rail { max-width:none; margin-inline:0; }
+}
+@media (min-width:1200px) {
+  .review-workspace {
+    grid-template-columns:minmax(0,min(calc(100dvh - 350px),760px,calc(100% - 464px))) minmax(0,440px);
+    gap:1.5rem;
+  }
 }
 /* The transport is a control surface, not selectable document text. */
 [data-move-transport], [data-move-transport] * { user-select:none; -webkit-user-select:none; }

@@ -1,0 +1,45 @@
+# Patzer Game Review — Product Quality Plan
+
+## Scope and safety
+
+- Baseline: `origin/main` at `738dd75`, fetched 11 November 2026.
+- Workstream: `feat/review-polish-product-excellence-20261111`, isolated worktree.
+- Improve the real Game Review interface without changing engine scoring, source revisions, report cache integrity, game PGNs or production services.
+- Browser evidence uses synthetic chess game + analysis presentation fixtures and a disposable SQLite database. Synthetic move quality and score values **must not** be interpreted as engine certification.
+- Chess.com is a product-quality benchmark, not a design source to clone.
+
+## Evaluation method
+
+Each candidate is ranked by user impact, defect severity, diagnosis confidence, implementation risk, expected benefit and verification coverage. No issue is considered fixed solely because the CSS appears plausible: capture real Chromium screenshots in light/dark at 1920×1080, 1728×900, 1440×900, 1366×768, 1024×768 and 390×844, and review the resulting geometry.
+
+## Backlog
+
+| Priority | User-visible issue and evidence | Impact / severity | Confidence | Risk | Expected benefit and verification | State |
+| --- | --- | --- | --- | --- | --- | --- |
+| P0 | At 1024×768 the baseline 728px board filled the initial viewport, and the analysis rail began at y=1118px. At desktop/laptop sizes transport was below the viewport (e.g. y=1030px at 1440×900). | High / high | High: actual Chromium bounding boxes and screenshots | Low-medium: workspace CSS only | Put timeline beside board when space permits and ensure move controls fit vertically; 12 viewport/theme checks | Completed |
+| P1 | Inactive variations panel occupied substantial space at the top of every Game Review rail, including a disabled **Return to game** button. | Medium / medium | High: DOM and captured screenshots | Low: presentation-only conditions | Compact a first-use hint; preserve branch controls and return flow when needed; screenshot check | Completed |
+| P1 | The 1024px review tab labels wrapped onto multiple lines in a narrow right rail. | Medium / medium | High: actual 1024px screenshot | Low: spacing and white-space changes only | Restore one-line tab labels without hiding accessible names; browser screenshot check | Completed |
+| P1 | Board still visually dominates the mobile first view, while analysis sits further down the document. | Medium / medium | High for layout, medium for optimal interaction | Medium: mobile architecture | Explore a contextual compact move strip / accessible board-to-analysis jump without obscuring the board; evaluate with 390×844 input/focus checks | Open |
+| P2 | Some graph presentations can visually resemble a filled black silhouette; especially important to distinguish unknown samples from actual scored segments. | Medium / medium | Medium: synthetic fixture exaggerates movement | Medium/high: score semantics | Validate against real bounded Stockfish analyses and evaluate accessible graph labeling; do not invent or smooth missing data | Needs investigation |
+| P2 | Review has several lower rail utilities (engine lines, report, threats, explorer, notes, exports). Their ordering and discovery require task observation beyond static screenshot. | Medium / medium | Medium | Medium | Check user journeys: identify mistakes, switch tabs, test variation, return, export; reduce redundant surfaces only when verified | Open |
+| P2 | Long games and narrow viewport selection/focus behavior. | Medium / medium | Medium | Medium | Keyboard and touch walkthrough with actual large-game fixtures; prevent outer scroll jumps and clipped move state | Open |
+
+## Quality gates
+
+1. Reproduce an issue on source baseline with captured screenshots/geometry.
+2. Apply smallest coherent fix on this feature branch.
+3. Run `npm run typecheck`, `npm test`, `npm run build` at milestone.
+4. Capture all 12 theme/viewport combinations with `scripts/review-polish-capture.mjs` (isolated local server and database).
+5. Review the before/after screenshots, including mobile, and check browser runtime errors + horizontal overflow. For landscape ≥960px assert board and rail coexist and move transport remains in the viewport.
+6. Commit and push only to this branch. Never merge/deploy without explicit owner authorization.
+
+## Capture command
+
+```bash
+npm run build
+PATZER_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+PATZER_POLISH_OUTPUT=qa-artifacts/review-polish/final \
+node scripts/review-polish-capture.mjs
+```
+
+If the repository provides resolvable `playwright`, omit `PATZER_PLAYWRIGHT_MODULE`. Screen captures and JSON metrics are intentionally local QA artifacts, not bundled into the app. The source script is tracked so future runs remain reproducible.

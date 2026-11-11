@@ -849,16 +849,23 @@ function GameAnalyzerView() {
         {/* RIGHT RAIL — one natural document scroll rather than a separate
             clipped scroll island; analysis cards remain reachable at any size. */}
         <div className="review-side-rail min-w-0 space-y-3" data-review-side-rail>
-          <section className="card p-3" aria-label="Analysis variations">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-[190px] flex-1">
-                <div className="text-sm font-semibold">Interactive analysis</div>
-                <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
+          <section className="card px-3 py-2.5" aria-label="Analysis variations">
+            {isVariation || variations.variations.length > 0 ? (
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-[190px] flex-1">
+                  <div className="text-sm font-semibold">Interactive analysis</div>
+                  <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
+                </div>
+                <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                  Return to game
+                </button>
               </div>
-              <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
-                Return to game
-              </button>
-            </div>
+            ) : (
+              <p className="flex items-center gap-2 text-xs leading-relaxed text-chesscom-500">
+                <span className="shrink-0 font-semibold text-chesscom-700 dark:text-chesscom-200">Explore:</span>
+                Move a piece on the board to try a different line. Your saved game stays intact.
+              </p>
+            )}
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
@@ -1234,7 +1241,7 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative flex items-center gap-1 px-2 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:hover:text-chesscom-100'}`}
+      className={`relative flex min-h-10 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:hover:text-chesscom-100'}`}
     >
       <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
       <span className="hidden sm:inline">{label}</span>
