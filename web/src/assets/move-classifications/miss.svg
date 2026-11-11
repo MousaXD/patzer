@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Miss move">
+  <title>Miss move</title>
+  <circle cx="16" cy="16" r="15" fill="#E66558"/>
+  <circle cx="16" cy="16" r="14.3" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="1.4"/>
+  <path d="m10.2 10.2 11.6 11.6m0-11.6L10.2 21.8" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+</svg>

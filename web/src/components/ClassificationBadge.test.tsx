@@ -3,29 +3,47 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import ClassificationBadge, { markerGeometry } from './ClassificationBadge';
 import { CLASS_STYLE, GLYPH_SVG, qualityMatchesPosition, styleFor } from '../lib/classification';
+import ClassificationIcon, { MOVE_ICON_SOURCES } from './ClassificationIcon';
 
 const render = (props: Parameters<typeof ClassificationBadge>[0]) => renderToStaticMarkup(createElement(ClassificationBadge, props));
 
 describe('move-quality SVG badge', () => {
-  it('covers all classifications with scalable vector pictograms and no text/font fallback', () => {
+  it('uses all ten approved SVGs and preserves the existing brilliant glyph', () => {
     expect(Object.keys(CLASS_STYLE)).toHaveLength(11);
     for (const [classification, style] of Object.entries(CLASS_STYLE)) {
       expect(GLYPH_SVG[style.glyph]).toBeDefined();
       const markup = render({ classification, square: 'e4' });
       expect(markup).toContain('role="img"');
-      expect(markup).toContain('<svg');
+      if (classification === 'brilliant') {
+        expect(markup).toContain('<svg');
+      } else {
+        const source = MOVE_ICON_SOURCES[classification as keyof typeof MOVE_ICON_SOURCES];
+        expect(source).toBeDefined();
+        expect(markup).toContain('<img');
+        expect(markup).toContain(source);
+      }
       expect(markup).not.toContain('<text');
       expect(markup).not.toContain('font-family');
       expect(markup).not.toContain('fontFamily');
     }
+    expect(Object.keys(MOVE_ICON_SOURCES)).toHaveLength(10);
   });
 
-  it('renders the requested orange question-mark marker with a dark SVG outline', () => {
+  it('renders the approved orange question-mark SVG without duplicating a badge circle', () => {
     const html = render({ classification: 'mistake', square: 'e4' });
-    expect(html).toContain('#ffa459');
-    expect(html).toContain('#262626');
+    expect(CLASS_STYLE.mistake.hex).toBe('#ef904e');
+    expect(html).toContain(MOVE_ICON_SOURCES.mistake);
+    expect(html).not.toContain('#262626');
     expect(html).toContain('mistake move to e4');
     expect(html).toContain('pointer-events-none');
+  });
+
+  it('keeps SVG assets decorative while labels remain on their surrounding controls', () => {
+    const html = renderToStaticMarkup(createElement(ClassificationIcon, { classification: 'best', size: 24 }));
+    expect(html).toContain(MOVE_ICON_SOURCES.best);
+    expect(html).toContain('alt=""');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('draggable="false"');
   });
 
   it('mirrors coordinates correctly when the board is flipped', () => {

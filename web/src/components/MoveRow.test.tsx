@@ -7,6 +7,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 import MoveRow from './MoveRow';
+import { MOVE_ICON_SOURCES } from './ClassificationIcon';
 
 function render(current: number, highlight?: Set<number>) {
   return renderToStaticMarkup(createElement(MoveRow, {
@@ -30,11 +31,14 @@ describe('review move row', () => {
     expect(html).toContain('focus-visible:outline');
   });
 
-  it('keeps SVG classification indicators and highlights without Unicode symbols', () => {
+  it('uses the approved SVG asset for mistakes and preserves Brilliant and highlights', () => {
     const html = render(13, new Set([14]));
     expect(html).toContain('aria-current="step"');
-    expect((html.match(/<svg/g) ?? []).length).toBe(2);
-    expect(html).toContain('border-chesscom-900/90');
+    expect((html.match(/<svg/g) ?? []).length).toBe(1);
+    expect((html.match(/<img/g) ?? []).length).toBe(1);
+    expect(html).toContain(MOVE_ICON_SOURCES.mistake);
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('bg-gold-50');
     expect(html).not.toContain('font-family');
   });
 
@@ -43,6 +47,7 @@ describe('review move row', () => {
       num: 1, white: { ply: 1, san: 'e4' }, current: 1, onSelect: () => undefined,
     }));
     expect(html).not.toContain('<svg');
+    expect(html).not.toContain('<img');
     expect(html).toContain('aria-label="1. review.white e4"');
   });
 });

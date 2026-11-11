@@ -1,4 +1,5 @@
-import { GLYPH_SVG, styleFor } from '../lib/classification';
+import { styleFor } from '../lib/classification';
+import ClassificationIcon from './ClassificationIcon';
 
 interface Props {
   classification: string;
@@ -80,12 +81,7 @@ export default function ClassificationBadge({
           width: `${geo.diameter}%`, aspectRatio: '1 / 1',
         }}
       >
-        <svg aria-hidden="true" viewBox="0 0 28 28" width="100%" height="100%" style={{ overflow: 'visible' }}>
-          <circle cx="14" cy="14" r="12.6" fill={style.hex} stroke="#262626" strokeWidth="2" />
-          <g transform="translate(2 2)" color="#ffffff">
-            {GLYPH_SVG[style.glyph]}
-          </g>
-        </svg>
+        <ClassificationIcon classification={style.labelKey} size="100%" />
       </div>
     </>
   );

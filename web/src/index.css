@@ -459,9 +459,9 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
  .ui-tab[aria-selected='true'] { outline:2px solid Highlight; outline-offset:-2px; }
 }
 
-/* Game Review cockpit: use both dimensions, not only a vh-based square cap.
-   Avoid fixed 380px rail and hidden overflow that previously left an enormous
-   right gutter and nested scrollbars at common desktop resolutions. */
+/* Game Review cockpit: prioritize the board and treat the detail rail as a
+   readable sidebar. Keep the two surfaces together, not stretched across the
+   full viewport; natural page scrolling avoids clipped analysis content. */
 .review-workspace { display:flex; flex-direction:column; gap:1rem; min-width:0; }
 .review-board-column { width:100%; min-width:0; max-width:760px; margin-inline:auto; }
 .review-board-square { min-width:0; max-width:100%; }
@@ -469,7 +469,10 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 @media (min-width:1200px) {
   .review-workspace {
     display:grid;
-    grid-template-columns:minmax(0,min(74dvh,760px,calc(100vw - 160px - min(45vw,620px)))) minmax(340px,min(45vw,620px));
+    /* 440px is enough for two-column move notation, reports and engine lines.
+       The board gets the remaining space up to 84dvh / 880px; the % cap
+       prevents overflow when the app's navigation is expanded. */
+    grid-template-columns:minmax(0,min(84dvh,880px,calc(100% - 464px))) minmax(0,440px);
     align-items:start;
     justify-content:center;
     gap:1.5rem;

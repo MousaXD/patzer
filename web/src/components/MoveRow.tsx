@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
-import { styleFor, GLYPH_SVG } from '../lib/classification';
+import { styleFor } from '../lib/classification';
+import ClassificationIcon from './ClassificationIcon';
 
 interface Move { ply: number; san: string; classification?: string }
 
@@ -85,13 +86,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
       )}
     >
       <span className="truncate font-medium tabular-nums">{move.san}</span>
-      {style && (
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-chesscom-900/90 text-white" style={{ backgroundColor: style.hex }} aria-hidden="true">
-          <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
-            {GLYPH_SVG[style.glyph]}
-          </svg>
-        </span>
-      )}
+      {style && <ClassificationIcon classification={style.labelKey} size={24} />}
     </button>
   );
 }
