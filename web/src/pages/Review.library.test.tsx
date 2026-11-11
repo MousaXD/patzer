@@ -19,7 +19,10 @@ vi.mock('../state/auth', () => ({
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
+    t: (key: string, opts?: { defaultValue?: string; white?: string; black?: string }) =>
+      key === 'practice.entryAria'
+        ? `Practice mistakes in ${opts?.white} versus ${opts?.black} without spoilers`
+        : key === 'practice.entry' ? 'Practice first' : opts?.defaultValue ?? key,
   }),
 }));
 
@@ -72,6 +75,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('offers direct spoiler-free practice only for games with saved analysis', async () => {
+    mocks.get.mockResolvedValueOnce({ games: [
+      { ...makeGame(1), analyzed: 1 }, makeGame(2),
+      { ...makeGame(3), analyzed: 1, result: '*' },
+    ], total: 3 });
+    mount();
+    const practice = await screen.findByRole('link', { name: /Practice mistakes in White 1 versus Black 1 without spoilers/ });
+    expect(practice.getAttribute('href')).toBe('/review/1?practice=1');
+    expect(screen.queryByRole('link', { name: /Practice mistakes in White 2/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Practice mistakes in White 3/ })).toBeNull();
+  });
+
   it('loads bounded batches and explains the 200-game backend cap', async () => {
     mount();
     await screen.findByText(/40 of 1,000 games/);
