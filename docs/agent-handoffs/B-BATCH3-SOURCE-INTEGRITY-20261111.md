@@ -1,0 +1,27 @@
+# Agent B — Batch 3 review source-integrity handoff
+
+**Branch:** `agent/review-coach-20261111` (base `19c359e`). **Owner:** Coach/AI review backend only. **Scope:** `server/src/coach/reviewSource.ts`, `reviewCache.ts`, `routes/review.ts`, `autoReview.ts`, source-specific tests. No engine/scoring, UI, DB migrations, production state, deployment or main merge.
+
+## Reproduced failure and correction
+
+Agent D's Checkpoints 32 and 35 prove that cached prose may outlive its PGN and that an old engine-analysis row can be paired with a changed game before generation starts. The old `saveReviewIfFresh` CAS protected **changes during** generation, not an already mismatched source at admission. This batch retains its single-statement compare-and-swap, and adds both admission and cached-read evidence checks.
+
+* Strict replay of the actual PGN via chess.js (including custom starting FEN) verifies every saved analyzed ply against SAN, UCI and full before/after FEN. Key moments also match ply, side, SAN, FEN and classification. A mismatched/malformed sequence or stale scoring version is not admissible. A same-length different PGN cannot pass.
+* New prose includes `source_integrity` (a SHA-256 digest) and `accuracy_model_version`, identifying game ID, owner, exact PGN, perspective, result (when captured), saved analysis row including `created_at`, scoring version and all report-relevant analysis fields. No notes/bookmark fields are included. GET fails closed for old unmarked prose and checks its evidence and current language/audience/version before revealing any text.
+* A single joined SQL query snapshots game and analysis in the GET/POST routes. An SSE watchdog also checks the exact row, game and user preferences while generation runs, aborting obsolete model requests. The original SQL CAS remains the authority for storage under concurrency. Auto-review observes the same checks.
+* Harmless notes/bookmark changes preserve cached prose. Restoring an **identical** PGN and analysis permits the old report again when its full attestation matches.
+
+## Frontend/API contract for Agent C
+
+* `GET /api/games/:id/review` returns `{review:null,stale:true,error:'review_source_stale',reason,action,message}` when saved prose cannot be trusted. `action` is `reanalyze_game` for mismatched engine evidence and `regenerate_report` when only the prose/settings are stale. No analysis yields `{review:null}`.
+* `POST /api/games/:id/review` returns HTTP **409** `{error:'analysis_source_stale',stale:true,reason,action:'reanalyze_game',message}` on PGN/analysis or scoring mismatch, without creating an SSE stream. Missing analysis returns 409 `analysis_required`.
+* Once started, SSE `error` has JSON `{error:'review_source_changed',stale:true,action:'reanalyze_game',message}` for obsolete generation. On success, `done.review` includes `source_integrity` and `accuracy_model_version`; GET gives the same metadata. Agent C must parse structured errors and localize them rather than displaying JSON verbatim, and reject outdated `done` events when the mounted game's source changes.
+* A source digest is a backend cache attestation, **not** a substitute for Agent A's canonical engine-source identity. Agent A/the integrator should define an atomic `analysis_generation` or equivalent stable generation key, plus a PGN identity bound at engine analysis creation. It must cover `POST /api/analyze` cached decisions, analysis writes, game detail, and all provenance consumers. This branch intentionally does not change that contract or PR #17.
+
+## Current validation and limitations
+
+* Disposable SQLite, signed accounts and actual Hono GET/POST: Fool's Mate vs Scholar's Mate, equal-length distinct PGNs, changed PGN before generation, changed PGN after cache, provenance after restoration, score/setting/perspective updates, legacy prose, harmless metadata, malformed JSON and foreign/anonymous access.
+* The in-flight SSE test uses a deliberately stalled mocked model. It changes the PGN while work is ongoing, witnesses watchdog-triggered AbortSignal after ~750 ms, receives only a stale-source `error`, and verifies no cached prose or successful `done` was written.
+* `npm run typecheck`, `npm test`, `npm run build`, and `git diff --check` passed after the main source edits. Full suite after the final in-flight-test addition: **820/820** over **94** test files. The in-flight mock-model Hono test passed independently (7/7 Hono source tests). Re-run validation on the integrator's combined branch before release.
+
+**Important open release blockers:** A change to `games.pgn` without updating an engine analysis can still cause the general `/api/analyze` cache and `/api/games/:id` analysis paths to serve stale analysis: those files belong to Agent A/integrator and have not been modified here. A same-second reanalysis of identical row content is indistinguishable without a separate generation identifier. A game altered and restored to precisely the same state has no distinguishable revision (ABA); this must be resolved at shared-schema design time if every intermediate write needs to invalidate the prior report. Raw report source metadata is currently in the prose JSON itself (no migration), not an authoritative engine row binding. PGN replay proves source chronology, not the statistical correctness of engine evaluations. Full Agent D adversarial certification and integration with Agent C remain outstanding. No live model, production DB, merge, deployment or PR #17 backfill was used.

@@ -7,9 +7,11 @@ import { REVIEW_PROSE_VERSION } from '../src/coach/review.js';
 // the manual Game Review and auto-review worker call after awaiting the LLM.
 const db = new Database(':memory:');
 db.exec(`
-  CREATE TABLE games (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, pgn TEXT NOT NULL, user_color TEXT);
+  CREATE TABLE games (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, pgn TEXT NOT NULL, user_color TEXT, result TEXT);
+  CREATE TABLE profiles (user_id INTEGER PRIMARY KEY, language TEXT NOT NULL, audience TEXT NOT NULL);
   CREATE TABLE analyses (
     game_id INTEGER PRIMARY KEY, depth INTEGER NOT NULL, scoring_version INTEGER NOT NULL,
+    created_at TEXT,
     moves_json TEXT NOT NULL, key_moments_json TEXT, phase_split_json TEXT,
     accuracy_white REAL, accuracy_black REAL,
     estimated_elo_white REAL, estimated_elo_black REAL,
@@ -19,8 +21,9 @@ db.exec(`
   );
 `);
 
-const game: ReviewCacheGame = { pgn: '[Result "1-0"] 1.e4', user_color: 'white', user_id: 1 };
+const game: ReviewCacheGame = { pgn: '[Result "1-0"] 1.e4', user_color: 'white', user_id: 1, result: 'win' };
 const original: ReviewCacheSource = {
+  created_at: '2026-11-11 00:00:00',
   scoring_version: 10, depth: 16, moves_json: '[{"san":"e4"}]',
   key_moments_json: null, phase_split_json: null,
   accuracy_white: 85, accuracy_black: 62,
@@ -32,15 +35,16 @@ const original: ReviewCacheSource = {
 const proposedReview = { version: REVIEW_PROSE_VERSION, summary: 'Position checked.', language: 'en' };
 
 beforeEach(() => {
-  db.exec('DELETE FROM analyses; DELETE FROM games;');
-  db.prepare('INSERT INTO games (id, user_id, pgn, user_color) VALUES (1, ?, ?, ?)')
-    .run(game.user_id, game.pgn, game.user_color);
+  db.exec('DELETE FROM analyses; DELETE FROM games; DELETE FROM profiles;');
+  db.prepare('INSERT INTO games (id, user_id, pgn, user_color, result) VALUES (1, ?, ?, ?, ?)')
+    .run(game.user_id, game.pgn, game.user_color, game.result);
+  db.prepare('INSERT INTO profiles (user_id, language, audience) VALUES (1, ?, ?)').run('en', 'beginner');
   db.prepare(`INSERT INTO analyses
-    (game_id, scoring_version, depth, moves_json, key_moments_json, phase_split_json,
+    (game_id, created_at, scoring_version, depth, moves_json, key_moments_json, phase_split_json,
      accuracy_white, accuracy_black, estimated_elo_white, estimated_elo_black,
      performance_white, performance_black, opening_eco, opening_name, prose_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(original.scoring_version, original.depth, original.moves_json,
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(original.created_at, original.scoring_version, original.depth, original.moves_json,
       original.key_moments_json, original.phase_split_json,
       original.accuracy_white, original.accuracy_black,
       original.estimated_elo_white, original.estimated_elo_black,
@@ -64,6 +68,7 @@ describe('written Game Review atomic compare-and-swap cache', () => {
 
   it.each([
     ['scoring_version', 11],
+    ['created_at', '2026-11-11 00:00:01'],
     ['depth', 18],
     ['moves_json', '[{"san":"d4"}]'],
     ['key_moments_json', '[{"ply":1}]'],
@@ -106,6 +111,7 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     ['pgn', '[Result "0-1"] 1.d4'],
     ['user_color', 'black'],
     ['user_id', 2],
+    ['result', 'loss'],
   ] as const)('rejects a stale result when the game %s changes', (column, value) => {
     db.prepare(`UPDATE games SET ${column} = ? WHERE id = 1`).run(value);
     expect(save()).toBe(false);
@@ -117,5 +123,12 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     db.prepare('UPDATE analyses SET accuracy_white = NULL, opening_name = NULL WHERE game_id = 1').run();
     expect(save(original)).toBe(false);
     expect(save(current)).toBe(true);
+  });
+
+  it('does not overwrite an obsolete language/audience while a report is generating', () => {
+    db.prepare('UPDATE profiles SET language = ? WHERE user_id = 1').run('de');
+    expect(save()).toBe(false);
+    db.prepare('UPDATE profiles SET language = ?, audience = ? WHERE user_id = 1').run('en', 'advanced');
+    expect(save()).toBe(false);
   });
 });
