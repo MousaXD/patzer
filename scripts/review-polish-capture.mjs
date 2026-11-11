@@ -301,6 +301,38 @@ try {
       await context.close();
     }
   }
+  // Selecting a classification from the report should move the keyboard
+  // reader to the filtered Moves tab, not leave focus on an offscreen count.
+  for(const [width,height] of [[390,844],[1024,768]]){
+    const filterContext=await browser.newContext({viewport:{width,height},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      const originalPgn=db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn;
+      await filterContext.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await filterContext.newPage();
+      await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+      await page.getByRole('button',{name:'Blunder',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('22 /'));
+      const focus=await page.evaluate(()=>({id:document.activeElement?.id,
+        tag:document.activeElement?.tagName,
+        tabTop:document.getElementById('review-tab-moves')?.getBoundingClientRect().top}));
+      console.log(`${width}px classification filter focus:`,JSON.stringify(focus));
+      assert.equal(focus.id,'review-tab-moves',
+        `Selecting a report classification must focus the destination Moves tab: ${JSON.stringify(focus)}`);
+      assert.ok(focus.tabTop >= 55 && focus.tabTop < 200,
+        `Focused filtered Moves tab must remain visible below the fixed app header (${width}px): ${JSON.stringify(focus)}`);
+      assert.equal(await page.getByRole('tab',{name:'Moves'}).getAttribute('aria-selected'),'true');
+      if(width===390)assert.ok(await page.locator('[data-review-jump-to-board]').isVisible(),
+        'Filtered mobile move results must retain an explicit path back to the board');
+      await page.screenshot({path:join(output,`report-filter-focus-${width}.png`)});
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await page.getByRole('tab',{name:'AI report'}).getAttribute('aria-selected'),'true',
+        'The focused tab must retain keyboard navigation after classification filtering');
+      await page.keyboard.press('ArrowLeft');
+      assert.equal(await page.getByRole('tab',{name:'Moves'}).getAttribute('aria-selected'),'true');
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn);
+    }finally{await filterContext.close();}
+  }
   // Evidence-gap regression: a cached analysis may legitimately lack one
   // evaluation even when its recorded move classification is present. In a
   // disposable fixture only, remove the before score from an inaccuracy and

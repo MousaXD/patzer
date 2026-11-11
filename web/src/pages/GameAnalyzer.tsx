@@ -671,9 +671,15 @@ function GameAnalyzerView() {
       if (rail.scrollHeight > rail.clientHeight && getComputedStyle(rail).overflowY !== 'visible') {
         rail.scrollBy({ top: offset, behavior });
       } else {
-        // Normal page scrolling is now the sole desktop scroll surface.
-        tabEl.scrollIntoView({ behavior, block: 'nearest' });
+        // 'nearest' may leave a focused tab hidden beneath the fixed app
+        // header at laptop widths. The card already has scroll-mt-16 to
+        // expose the tablist without obscuring it under the header.
+        tabEl.scrollIntoView({ behavior, block: 'start' });
       }
+      // The clicked summary button can end up far below the filtered move
+      // results after scrolling. Give keyboard/screen-reader users a stable
+      // destination instead of leaving focus in the offscreen report card.
+      document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
     });
   };
 
