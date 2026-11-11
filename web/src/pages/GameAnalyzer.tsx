@@ -764,7 +764,6 @@ function GameAnalyzerView() {
       <div
         className="review-workspace"
         data-review-workspace
-        style={{ gridTemplateColumns: 'minmax(0, min(72dvh, 760px, calc(48% - 12px))) minmax(0, min(760px, calc(52% - 12px)))' }}
       >
         {/* BOARD COLUMN — viewport-aware fluid width; at desktop sizes the
             grid centers this square and the right rail as a single cockpit. */}
@@ -851,8 +850,8 @@ function GameAnalyzerView() {
             clipped scroll island; analysis cards remain reachable at any size. */}
         <div className="review-side-rail min-w-0 space-y-3" data-review-side-rail>
           <section className="card p-3" aria-label="Analysis variations">
-            <div className="flex items-center justify-between gap-2">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-[190px] flex-1">
                 <div className="text-sm font-semibold">Interactive analysis</div>
                 <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
               </div>
