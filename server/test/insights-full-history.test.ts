@@ -21,8 +21,9 @@ beforeAll(async () => {
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
   const game = db.prepare(`INSERT INTO games (id,user_id,source,external_id,pgn,white,black,result,end_time,user_color,time_class,eco,opening_name,rated)
     VALUES (?,1,'chesscom',?,'PGN','stats','other','win',?,'white','rapid','C20','Kings Pawn',0)`);
-  const analysis = db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version, accuracy_white)
-    VALUES (?,16,?,?,88)`);
+  const analysis = db.prepare(`INSERT INTO analyses
+    (game_id, depth, moves_json, scoring_version, accuracy_white, source_hash, source_revision, analysis_generation)
+    VALUES (?,16,?,?,88,'synthetic-history-provenance',0,1)`);
   const writeAll = db.transaction(() => {
     for (let i = 1; i <= 260; i++) {
       game.run(i,`https://www.chess.com/game/live/${i}`, new Date(Date.UTC(2026,0,1,0,i)).toISOString());

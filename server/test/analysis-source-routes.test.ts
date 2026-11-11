@@ -89,11 +89,24 @@ suite('actual authenticated Hono engine-source cache, bounded Stockfish depth 8'
     const staleGame = await games('/1', { headers: { Cookie: cookie } });
     expect((await staleGame.json() as { analysis_stale: boolean; analysis: unknown }))
       .toMatchObject({ analysis_stale: true, analysis: null });
+    const listing = await games('/?limit=10', { headers: { Cookie: cookie } });
+    const listed = (await listing.json()) as { games: {
+      id: number; analyzed: number; accuracy_white: number | null;
+    }[] };
+    expect(listed.games.find((item) => item.id === 1)).toMatchObject({
+      analyzed: 0, accuracy_white: null,
+    });
+    const staleFiltered = await games('/?analyzed=0&limit=10', { headers: { Cookie: cookie } });
+    expect(((await staleFiltered.json()) as { games: { id: number }[] }).games.some((item) => item.id === 1))
+      .toBe(true);
     const result = await post(1);
     expect(result.status).toBe(200);
     expect(await result.json()).toMatchObject({ cached: false });
     expect(JSON.parse(source(1)!.moves_json)).toHaveLength(7);
     expect(source(1)!.source_revision).toBe(oldRevision + 1);
+    const freshFiltered = await games('/?analyzed=1&limit=10', { headers: { Cookie: cookie } });
+    expect(((await freshFiltered.json()) as { games: { id: number }[] }).games.some((item) => item.id === 1))
+      .toBe(true);
   }, 60_000);
 
   it('same ply count in another game never qualifies as an old cache hit', async () => {

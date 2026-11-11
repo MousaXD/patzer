@@ -71,6 +71,10 @@ function summarize(moves: readonly AnalyzedMove[]) {
     acplBlack: bN ? bCpl / bN : 0,
     whiteCount: white.length,
     blackCount: black.length,
+    // Only scored decisions, never book or forced moves, can support a
+    // strength/performance estimate. A zero-evidence game is not 2880 Elo.
+    eligibleWhiteCount: wN,
+    eligibleBlackCount: bN,
   };
 }
 
@@ -81,11 +85,12 @@ export function recalculateAnalysisFromMoves(
   const full = summarize(moves);
   const color = game.userColor ?? 'white';
   const score = playerScore(game.result, color);
-  const estimatedEloWhite = full.whiteCount ? estimateElo(full.accuracyWhite, full.acplWhite) : null;
-  const estimatedEloBlack = full.blackCount ? estimateElo(full.accuracyBlack, full.acplBlack) : null;
+  const estimatedEloWhite = full.eligibleWhiteCount ? estimateElo(full.accuracyWhite, full.acplWhite) : null;
+  const estimatedEloBlack = full.eligibleBlackCount ? estimateElo(full.accuracyBlack, full.acplBlack) : null;
   let performanceWhite: number | null = null;
   let performanceBlack: number | null = null;
-  if (score !== null) {
+  const playerHasEvidence = color === 'white' ? full.eligibleWhiteCount > 0 : full.eligibleBlackCount > 0;
+  if (score !== null && playerHasEvidence) {
     const perf = estimateGamePerformance({
       accuracy: color === 'white' ? full.accuracyWhite : full.accuracyBlack,
       acpl: color === 'white' ? full.acplWhite : full.acplBlack,
@@ -96,11 +101,11 @@ export function recalculateAnalysisFromMoves(
     if (color === 'white') performanceWhite = perf;
     else performanceBlack = perf;
   }
-  if (performanceWhite === null && full.whiteCount) {
+  if (performanceWhite === null && full.eligibleWhiteCount) {
     performanceWhite = estimateGamePerformance({ accuracy: full.accuracyWhite, acpl: full.acplWhite,
       opponentRating: null, opponentRd: null, score: score ?? 0.5 });
   }
-  if (performanceBlack === null && full.blackCount) {
+  if (performanceBlack === null && full.eligibleBlackCount) {
     performanceBlack = estimateGamePerformance({ accuracy: full.accuracyBlack, acpl: full.acplBlack,
       opponentRating: null, opponentRd: null, score: score ?? 0.5 });
   }
@@ -113,8 +118,8 @@ export function recalculateAnalysisFromMoves(
       const sum = summarize(subset);
       previous.accuracy_white = sum.accuracyWhite;
       previous.accuracy_black = sum.accuracyBlack;
-      previous.acpl_white = sum.whiteCount ? Math.round(sum.acplWhite) : 0;
-      previous.acpl_black = sum.blackCount ? Math.round(sum.acplBlack) : 0;
+      previous.acpl_white = sum.eligibleWhiteCount ? Math.round(sum.acplWhite) : 0;
+      previous.acpl_black = sum.eligibleBlackCount ? Math.round(sum.acplBlack) : 0;
     }
   }
   return {

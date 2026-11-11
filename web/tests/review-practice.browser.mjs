@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { Chess } from 'chess.js';
+import { analysisSourceHash } from '../../server/dist/chess/analysisSource.js';
 
 const artifacts = resolve(process.env.PATZER_PRACTICE_QA_ARTIFACTS || 'qa-artifacts/review-practice-browser');
 const tempRoot = mkdtempSync(join(tmpdir(), 'patzer-blind-practice-'));
@@ -25,6 +26,23 @@ const results = [];
 const browserErrors = [];
 let browser;
 let db;
+
+// The browser suite uses disposable synthetic games, but they must satisfy
+// the *real* analysis-source contract. Otherwise all fixtures are legacy
+// source-less analyses and cannot exercise a valid, already-open Game Review.
+function syntheticGameSource(gameId) {
+  return db.prepare(`SELECT pgn, start_fen, user_color, result,
+    opponent_rating_before, user_rd_before, source_revision FROM games WHERE id = ?`)
+    .get(gameId);
+}
+function stampSyntheticReanalysis(gameId) {
+  const source = syntheticGameSource(gameId);
+  const digest = source && analysisSourceHash(source);
+  assert.ok(digest, 'synthetic game needs a valid source identity');
+  db.prepare(`UPDATE analyses SET source_hash = ?, source_revision = ?,
+    analysis_generation = analysis_generation + 1 WHERE game_id = ?`)
+    .run(digest, source.source_revision, gameId);
+}
 
 async function test(name, fn) {
   try { await fn(); results.push({ name, status: 'PASS' }); console.log(`PASS ${name}`); }
@@ -61,8 +79,14 @@ function seed(userId, name, sans, classifications, partialLength = sans.length, 
   const id = Number(db.prepare("INSERT INTO games (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color) VALUES (?, 'imported', ?, ?, 'QA White', 'QA Black', '1-0', '600', datetime('now'), 'white')")
     .run(userId, name, pgn).lastInsertRowid);
   const scored = analyzed.slice(0, partialLength);
-  db.prepare('INSERT INTO analyses (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version) VALUES (?,12,?,83,85,?)')
-    .run(id, JSON.stringify(scored), scoringVersion);
+  const source = syntheticGameSource(id);
+  const digest = source && analysisSourceHash(source);
+  assert.ok(digest, 'synthetic fixture must have a canonical analysis hash');
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+     source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,83,85,?,?,?,1)`)
+    .run(id, JSON.stringify(scored), scoringVersion, digest, source.source_revision);
   return { id, pgn, analyzed: scored };
 }
 let scoringVersion;
@@ -175,6 +199,7 @@ try {
       db.prepare('UPDATE games SET pgn=? WHERE id=?').run(updated.pgn, original.id);
       db.prepare('UPDATE analyses SET moves_json=?, accuracy_white=90, accuracy_black=91, prose_json=NULL WHERE game_id=?')
         .run(JSON.stringify(updated.analyzed), original.id);
+      stampSyntheticReanalysis(original.id);
       await page.getByRole('button', { name: 'Starred', exact: true }).click();
       await page.getByRole('status').filter({ hasText: /game changed/i }).waitFor();
       assert.equal(await page.getByText(oldMarker).count(), 0, 'old report must not reappear in the report tab');
@@ -220,6 +245,7 @@ try {
       db.prepare('UPDATE games SET pgn=? WHERE id=?').run(updated.pgn, original.id);
       db.prepare('UPDATE analyses SET moves_json=?, accuracy_white=87, prose_json=NULL WHERE game_id=?')
         .run(JSON.stringify(updated.analyzed), original.id);
+      stampSyntheticReanalysis(original.id);
       await page.getByRole('button', { name: 'Star', exact: true }).click();
       await page.getByText('The game changed. Reanalyze it to generate an updated report.').waitFor();
       await sleep(2200); // Allow even a noncompliant late SSE completion to arrive.

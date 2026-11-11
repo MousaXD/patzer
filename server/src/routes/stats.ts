@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
+import { SCORING_VERSION } from '../chess/classifier.js';
 
 const router = new Hono();
 router.use('*', requireAuth);
@@ -24,8 +25,10 @@ router.get('/me', (c) => {
   const accs = db.prepare(`
     SELECT g.user_color, a.accuracy_white, a.accuracy_black
     FROM analyses a JOIN games g ON g.id = a.game_id
-    WHERE g.user_id = ?
-  `).all(me.id) as AccRow[];
+    WHERE g.user_id = ? AND a.scoring_version >= ?
+      AND a.source_hash IS NOT NULL AND a.source_revision = g.source_revision
+      AND a.analysis_generation > 0
+  `).all(me.id, SCORING_VERSION) as AccRow[];
   let accSum = 0; let accN = 0;
   for (const r of accs) {
     const v = r.user_color === 'white' ? r.accuracy_white : r.accuracy_black;

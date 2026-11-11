@@ -55,6 +55,11 @@ describe('AI report source evidence', () => {
     expect(reviewSourceDigest(game, { ...original, scoring_version: 10 })).not.toBe(digest);
     expect(reviewSourceDigest(game, { ...original, moves_json: evidence(scholar) })).not.toBe(digest);
     expect(reviewSourceDigest(game, { ...original, accuracy_white: 31.9 })).not.toBe(digest);
+    // A source may return to byte-identical PGN/evaluations after intermediate
+    // changes. Report attestations must still change with the monotonic tokens.
+    expect(reviewSourceDigest({ ...game, current_source_revision: 2 }, original)).not.toBe(digest);
+    expect(reviewSourceDigest(game, { ...original, source_revision: 2 })).not.toBe(digest);
+    expect(reviewSourceDigest(game, { ...original, analysis_generation: 2 })).not.toBe(digest);
     expect(reviewSourceDigest(game, { ...original, prose_json: '{"other":"review"}' })).toBe(digest);
   });
   it('does not bind unrelated bookmark/notes metadata', () => {

@@ -8,6 +8,9 @@ import { reviewSourceDigest } from './reviewSource.js';
  * record or newer independently generated review. No migrations are needed. */
 export interface ReviewCacheSource {
   created_at?: string;
+  source_hash?: string | null;
+  source_revision?: number | null;
+  analysis_generation?: number | null;
   depth: number;
   scoring_version: number;
   moves_json: string;
@@ -32,6 +35,10 @@ export interface ReviewCacheGame {
   user_color: 'white' | 'black' | null;
   user_id: number;
   result?: string | null;
+  start_fen?: string | null;
+  opponent_rating_before?: number | null;
+  user_rd_before?: number | null;
+  current_source_revision?: number;
 }
 
 /** Read-only LLM watchdog. Checks the exact same evidence as the final CAS,
@@ -46,6 +53,8 @@ export function isReviewSourceUnchanged(
 ): boolean {
   const current = database.prepare(`
     SELECT a.*, g.pgn, g.user_color, g.result, g.user_id,
+           g.start_fen, g.opponent_rating_before, g.user_rd_before,
+           g.source_revision AS current_source_revision,
            p.language, p.audience
       FROM analyses a JOIN games g ON g.id = a.game_id
       JOIN profiles p ON p.user_id = g.user_id
@@ -53,7 +62,16 @@ export function isReviewSourceUnchanged(
   `).get(gameId, game.user_id) as (ReviewCacheSource & ReviewCacheGame & {
     language: Language; audience: Audience;
   }) | undefined;
-  return !!current && current.language === language && current.audience === audience
+  return !!current && Boolean(source.source_hash)
+    && Number.isSafeInteger(source.source_revision)
+    && Number.isSafeInteger(source.analysis_generation)
+    && (source.analysis_generation ?? 0) > 0
+    && current.current_source_revision === game.current_source_revision
+    && current.current_source_revision === source.source_revision
+    && current.source_hash === source.source_hash
+    && current.source_revision === source.source_revision
+    && current.analysis_generation === source.analysis_generation
+    && current.language === language && current.audience === audience
     && current.prose_json === source.prose_json && current.prose_version === source.prose_version
     && current.prose_lang === source.prose_lang && current.prose_audience === source.prose_audience
     && (source.created_at === undefined || current.created_at === source.created_at)
@@ -74,6 +92,13 @@ export function saveReviewIfFresh(
   audience: Audience,
   withProvenance = false,
 ): boolean {
+  // Never allow a report write for legacy/unversioned analysis evidence. The
+  // game-source revision and analysis generation must be nonzero/valid and
+  // must agree with the snapshot captured before generating prose.
+  if (!source.source_hash || !Number.isSafeInteger(source.source_revision)
+    || !Number.isSafeInteger(source.analysis_generation)
+    || (source.analysis_generation ?? 0) < 1
+    || game.current_source_revision !== source.source_revision) return false;
   const payload = withProvenance && review && typeof review === 'object' && !Array.isArray(review)
     ? { ...review, accuracy_model_version: source.scoring_version,
       source_integrity: reviewSourceDigest(game, source, gameId) }
@@ -83,6 +108,7 @@ export function saveReviewIfFresh(
        SET prose_json = ?, prose_version = ?, prose_lang = ?, prose_audience = ?
      WHERE game_id = ?
        AND scoring_version = ? AND depth = ? AND moves_json = ?
+       AND source_hash IS ? AND source_revision IS ? AND analysis_generation = ?
        AND key_moments_json IS ? AND phase_split_json IS ?
        AND accuracy_white IS ? AND accuracy_black IS ?
        AND estimated_elo_white IS ? AND estimated_elo_black IS ?
@@ -95,6 +121,8 @@ export function saveReviewIfFresh(
          SELECT 1 FROM games g
           WHERE g.id = analyses.game_id AND g.user_id = ?
             AND g.pgn IS ? AND g.user_color IS ?
+            AND g.source_revision = ? AND g.start_fen IS ?
+            AND g.opponent_rating_before IS ? AND g.user_rd_before IS ?
             AND (? = 0 OR g.result IS ?)
        )
        AND EXISTS (
@@ -104,6 +132,7 @@ export function saveReviewIfFresh(
   `).run(
     JSON.stringify(payload), REVIEW_PROSE_VERSION, language, audience,
     gameId, source.scoring_version, source.depth, source.moves_json,
+    source.source_hash, source.source_revision, source.analysis_generation,
     source.key_moments_json, source.phase_split_json,
     source.accuracy_white, source.accuracy_black,
     source.estimated_elo_white, source.estimated_elo_black,
@@ -113,6 +142,8 @@ export function saveReviewIfFresh(
     source.prose_lang, source.prose_audience,
     Number(source.created_at !== undefined), source.created_at ?? null,
     game.user_id, game.pgn, game.user_color,
+    game.current_source_revision, game.start_fen ?? null,
+    game.opponent_rating_before ?? null, game.user_rd_before ?? null,
     Number(Object.hasOwn(game, 'result')), game.result ?? null,
     game.user_id, language, audience,
   );

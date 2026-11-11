@@ -20,6 +20,10 @@ interface ReviewRow extends AnalysisRow {
   user_id: number;
   user_color: 'white' | 'black' | null;
   result: string | null;
+  start_fen: string | null;
+  opponent_rating_before: number | null;
+  user_rd_before: number | null;
+  current_source_revision: number;
   created_at: string;
   scoring_version: number;
   prose_json: string | null;
@@ -59,12 +63,15 @@ async function sweep(): Promise<void> {
 
   const rows = db.prepare(`
     SELECT g.id AS game_id, g.pgn, g.user_id, g.user_color, g.result,
+           g.start_fen, g.opponent_rating_before, g.user_rd_before,
+           g.source_revision AS current_source_revision,
            a.depth, a.accuracy_white, a.accuracy_black,
            a.estimated_elo_white, a.estimated_elo_black,
            a.performance_white, a.performance_black,
            a.opening_eco, a.opening_name,
            a.key_moments_json, a.phase_split_json, a.moves_json,
-           a.scoring_version, a.created_at, a.prose_json,
+           a.scoring_version, a.created_at, a.source_hash,
+           a.source_revision, a.analysis_generation, a.prose_json,
            a.prose_version, a.prose_lang, a.prose_audience
       FROM analyses a
       JOIN games g ON g.id = a.game_id

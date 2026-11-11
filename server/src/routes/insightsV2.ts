@@ -46,6 +46,12 @@ const CLASSIFICATIONS: Classification[] = [
 /** How many of your brilliant moves the page lists. */
 const BRILLIANT_LIST = 10;
 
+// SQL-side provenance gate for aggregate read paths: a source edit or legacy
+// unversioned analysis must never count toward the user's accuracy, mistakes
+// or learning trends. Detailed per-game reads independently replay the PGN.
+const usableAnalysisSql = `a.scoring_version >= ? AND a.source_hash IS NOT NULL
+  AND a.source_revision = g.source_revision AND a.analysis_generation > 0`;
+
 router.get('/', (c) => {
   const me = c.get('user');
 
@@ -95,9 +101,9 @@ router.get('/', (c) => {
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
            COUNT(*) AS total,
-           SUM(CASE WHEN a.scoring_version >= ? THEN 1 ELSE 0 END) AS analyzed_games,
-           AVG(CASE WHEN g.user_color='white' AND a.scoring_version >= ? THEN a.accuracy_white
-                    WHEN g.user_color='black' AND a.scoring_version >= ? THEN a.accuracy_black
+           SUM(CASE WHEN (${usableAnalysisSql}) THEN 1 ELSE 0 END) AS analyzed_games,
+           AVG(CASE WHEN g.user_color='white' AND (${usableAnalysisSql}) THEN a.accuracy_white
+                    WHEN g.user_color='black' AND (${usableAnalysisSql}) THEN a.accuracy_black
                     ELSE NULL END) AS avg_acc
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.user_id = ? AND g.result IS NOT NULL AND g.start_fen IS NULL
@@ -125,7 +131,7 @@ router.get('/', (c) => {
            CASE WHEN g.user_color='white' THEN a.accuracy_white
                 WHEN g.user_color='black' THEN a.accuracy_black ELSE NULL END AS accuracy_user
     FROM analyses a JOIN games g ON g.id = a.game_id
-    WHERE g.user_id = ? AND a.scoring_version >= ? AND g.start_fen IS NULL
+    WHERE g.user_id = ? AND (${usableAnalysisSql}) AND g.start_fen IS NULL
     ORDER BY g.end_time DESC, g.id DESC
   `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
   let analyzedCount = 0;
@@ -150,9 +156,9 @@ router.get('/', (c) => {
            SUM(CASE WHEN g.result='win' THEN 1 ELSE 0 END) AS wins,
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
-           SUM(CASE WHEN a.scoring_version >= ? THEN 1 ELSE 0 END) AS analyzed_games,
-           AVG(CASE WHEN a.scoring_version >= ? AND g.user_color='white' THEN a.accuracy_white
-                    WHEN a.scoring_version >= ? AND g.user_color='black' THEN a.accuracy_black
+           SUM(CASE WHEN (${usableAnalysisSql}) THEN 1 ELSE 0 END) AS analyzed_games,
+           AVG(CASE WHEN (${usableAnalysisSql}) AND g.user_color='white' THEN a.accuracy_white
+                    WHEN (${usableAnalysisSql}) AND g.user_color='black' THEN a.accuracy_black
                     ELSE NULL END) AS avg_accuracy
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.user_id = ? AND g.start_fen IS NULL

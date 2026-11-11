@@ -24,6 +24,10 @@ interface GameRow {
   user_color: 'white' | 'black' | null;
   user_id: number;
   result: string | null;
+  start_fen: string | null;
+  opponent_rating_before: number | null;
+  user_rd_before: number | null;
+  current_source_revision: number;
 }
 
 interface JoinedRow extends GameRow, AnalysisRow { game_id: number | null }
@@ -31,7 +35,9 @@ interface JoinedRow extends GameRow, AnalysisRow { game_id: number | null }
 // One SQLite statement observes the game and analysis in the SAME read
 // snapshot, not a PGN from before a reanalysis and evidence from after it.
 function loadReviewRow(id: number, userId: number): (GameRow & Partial<AnalysisRow> & { game_id: number | null }) | undefined {
-  return db.prepare(`SELECT g.pgn, g.user_color, g.user_id, g.result, a.*
+  return db.prepare(`SELECT g.pgn, g.user_color, g.user_id, g.result,
+      g.start_fen, g.opponent_rating_before, g.user_rd_before,
+      g.source_revision AS current_source_revision, a.*
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.id = ? AND g.user_id = ?`).get(id, userId) as JoinedRow | undefined;
 }

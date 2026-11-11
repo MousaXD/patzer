@@ -7,11 +7,13 @@ import { REVIEW_PROSE_VERSION } from '../src/coach/review.js';
 // the manual Game Review and auto-review worker call after awaiting the LLM.
 const db = new Database(':memory:');
 db.exec(`
-  CREATE TABLE games (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, pgn TEXT NOT NULL, user_color TEXT, result TEXT);
+  CREATE TABLE games (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, pgn TEXT NOT NULL, user_color TEXT, result TEXT,
+    start_fen TEXT, opponent_rating_before REAL, user_rd_before REAL, source_revision INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE profiles (user_id INTEGER PRIMARY KEY, language TEXT NOT NULL, audience TEXT NOT NULL);
   CREATE TABLE analyses (
     game_id INTEGER PRIMARY KEY, depth INTEGER NOT NULL, scoring_version INTEGER NOT NULL,
     created_at TEXT,
+    source_hash TEXT, source_revision INTEGER, analysis_generation INTEGER NOT NULL DEFAULT 0,
     moves_json TEXT NOT NULL, key_moments_json TEXT, phase_split_json TEXT,
     accuracy_white REAL, accuracy_black REAL,
     estimated_elo_white REAL, estimated_elo_black REAL,
@@ -21,9 +23,11 @@ db.exec(`
   );
 `);
 
-const game: ReviewCacheGame = { pgn: '[Result "1-0"] 1.e4', user_color: 'white', user_id: 1, result: 'win' };
+const game: ReviewCacheGame = { pgn: '[Result "1-0"] 1.e4', user_color: 'white', user_id: 1, result: 'win',
+  start_fen: null, opponent_rating_before: null, user_rd_before: null, current_source_revision: 0 };
 const original: ReviewCacheSource = {
   created_at: '2026-11-11 00:00:00',
+  source_hash: 'synthetic-cas-source-hash', source_revision: 0, analysis_generation: 1,
   scoring_version: 10, depth: 16, moves_json: '[{"san":"e4"}]',
   key_moments_json: null, phase_split_json: null,
   accuracy_white: 85, accuracy_black: 62,
@@ -42,14 +46,16 @@ beforeEach(() => {
   db.prepare(`INSERT INTO analyses
     (game_id, created_at, scoring_version, depth, moves_json, key_moments_json, phase_split_json,
      accuracy_white, accuracy_black, estimated_elo_white, estimated_elo_black,
-     performance_white, performance_black, opening_eco, opening_name, prose_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+     performance_white, performance_black, opening_eco, opening_name, prose_json,
+     source_hash, source_revision, analysis_generation)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(original.created_at, original.scoring_version, original.depth, original.moves_json,
       original.key_moments_json, original.phase_split_json,
       original.accuracy_white, original.accuracy_black,
       original.estimated_elo_white, original.estimated_elo_black,
       original.performance_white, original.performance_black,
-      original.opening_eco, original.opening_name, original.prose_json);
+      original.opening_eco, original.opening_name, original.prose_json,
+      original.source_hash, original.source_revision, original.analysis_generation);
 });
 afterAll(() => db.close());
 
@@ -81,6 +87,9 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     ['performance_black', 1200],
     ['opening_eco', 'D00'],
     ['opening_name', 'Queen\'s Pawn'],
+    ['source_hash', 'other-synthetic-analysis'],
+    ['source_revision', 1],
+    ['analysis_generation', 2],
   ] as const)('refuses a stale report if %s changed while it was generated', (column, newValue) => {
     // Column names are static test-controlled input, never user data.
     db.prepare(`UPDATE analyses SET ${column} = ? WHERE game_id = 1`).run(newValue);
@@ -112,6 +121,7 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     ['user_color', 'black'],
     ['user_id', 2],
     ['result', 'loss'],
+    ['source_revision', 2],
   ] as const)('rejects a stale result when the game %s changes', (column, value) => {
     db.prepare(`UPDATE games SET ${column} = ? WHERE id = 1`).run(value);
     expect(save()).toBe(false);
@@ -129,6 +139,18 @@ describe('written Game Review atomic compare-and-swap cache', () => {
     db.prepare('UPDATE profiles SET language = ? WHERE user_id = 1').run('de');
     expect(save()).toBe(false);
     db.prepare('UPDATE profiles SET language = ?, audience = ? WHERE user_id = 1').run('en', 'advanced');
+    expect(save()).toBe(false);
+  });
+
+  it('refuses A-B-A game source resurrection despite identical PGN and analysis contents', () => {
+    db.prepare('UPDATE games SET pgn = ?, source_revision = 1 WHERE id = 1').run('1.d4');
+    db.prepare('UPDATE games SET pgn = ?, source_revision = 2 WHERE id = 1').run(game.pgn);
+    expect(save()).toBe(false);
+    expect(cache().prose_json).toBeNull();
+  });
+
+  it('refuses old report after same-input reanalysis increments generation', () => {
+    db.prepare('UPDATE analyses SET analysis_generation = analysis_generation + 1 WHERE game_id = 1').run();
     expect(save()).toBe(false);
   });
 });

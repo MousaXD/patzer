@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Chess } from 'chess.js';
 import type { AnalyzedMove } from '../src/types.js';
+import { SCORING_VERSION } from '../src/chess/classifier.js';
+import { analysisSourceHash, loadAnalysisGameSource } from '../src/chess/analysisSource.js';
 
 // The actual authenticated Hono route and actual SQLite persistence run with
 // entirely synthetic games, no engine binary, no hosted model or live data.
@@ -74,10 +76,14 @@ function seed(pgn: string = fool, owner = 1, id = 1) {
   db.prepare(`INSERT INTO games (id,user_id,source,pgn,user_color,result)
     VALUES (?, ?, 'imported', ?, 'white', ?)`)
     .run(id, owner, pgn, pgn === fool ? 'loss' : 'win');
+  const source = loadAnalysisGameSource(db, id);
+  const hash = source && analysisSourceHash(source);
+  if (!source || !hash) throw new Error('Synthetic source identity could not be established');
   db.prepare(`INSERT INTO analyses
-    (game_id, depth, moves_json, key_moments_json, scoring_version, accuracy_white, accuracy_black)
-    VALUES (?, 8, ?, '[]', 9, 88, 91)`)
-    .run(id, JSON.stringify(evidence(pgn)));
+    (game_id, depth, moves_json, key_moments_json, scoring_version, accuracy_white, accuracy_black,
+     source_hash, source_revision, analysis_generation)
+    VALUES (?, 8, ?, '[]', ?, 88, 91, ?, ?, 1)`)
+    .run(id, JSON.stringify(evidence(pgn)), SCORING_VERSION, hash, source.source_revision);
 }
 
 beforeAll(async () => {
@@ -128,13 +134,23 @@ describe('authenticated Review source consistency (actual Hono + SQLite)', () =>
     expect(analysisRow()?.prose_json).toBeNull();
   });
 
-  it('invalidates completed prose when game PGN or player perspective changes, and restores exact source', async () => {
+  it('never resurrects cached prose across A-B-A; fresh reanalysis restores a valid report', async () => {
     expect((await generate()).body).toContain('event: done');
     const fresh = (await get()).body.review;
     db.prepare('UPDATE games SET pgn = ? WHERE id = 1').run(scholar);
     expect((await get()).body).toMatchObject({ review: null, stale: true });
     db.prepare('UPDATE games SET pgn = ? WHERE id = 1').run(fool);
-    expect((await get()).body.review).toEqual(fresh);
+    expect((await get()).body).toMatchObject({ review: null, stale: true });
+    expect((await generate()).status).toBe(409);
+    const restoredSource = loadAnalysisGameSource(db, 1)!;
+    db.prepare(`UPDATE analyses SET source_revision = ?, source_hash = ?,
+      analysis_generation = analysis_generation + 1,
+      prose_json = NULL, prose_version = 0, prose_lang = NULL, prose_audience = NULL
+      WHERE game_id = 1`).run(restoredSource.source_revision, analysisSourceHash(restoredSource));
+    expect((await generate()).body).toContain('event: done');
+    const regenerated = (await get()).body.review;
+    expect(regenerated).toBeTruthy();
+    expect(regenerated).not.toEqual(fresh);
     db.prepare(`UPDATE games SET user_color = 'black' WHERE id = 1`).run();
     expect((await get()).body).toMatchObject({ review: null, stale: true });
   });
@@ -148,10 +164,10 @@ describe('authenticated Review source consistency (actual Hono + SQLite)', () =>
     db.prepare('UPDATE profiles SET language = ?, audience = ? WHERE user_id = 1').run('en', 'advanced');
     expect((await get()).body).toMatchObject({ review: null, stale: true });
     db.prepare('UPDATE profiles SET audience = ? WHERE user_id = 1').run('beginner');
-    db.prepare('UPDATE analyses SET scoring_version = 10 WHERE game_id = 1').run();
+    db.prepare('UPDATE analyses SET scoring_version = ? WHERE game_id = 1').run(SCORING_VERSION - 1);
     expect((await get()).body).toMatchObject({ review: null, stale: true });
 
-    db.prepare('UPDATE analyses SET scoring_version = 9, prose_json = NULL WHERE game_id = 1').run();
+    db.prepare('UPDATE analyses SET scoring_version = ?, prose_json = NULL WHERE game_id = 1').run(SCORING_VERSION);
     db.prepare('UPDATE games SET pgn = ? WHERE id = 1').run('1. e4 e5 2. Nf3 Nc6 *');
     db.prepare('UPDATE analyses SET moves_json = ? WHERE game_id = 1').run(JSON.stringify(evidence('1. d4 d5 2. c4 e6 *')));
     expect((await generate()).status).toBe(409);

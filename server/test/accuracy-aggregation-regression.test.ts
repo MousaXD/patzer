@@ -81,4 +81,44 @@ describe('Patzer accuracy (not proprietary Chess.com CAPS2)', () => {
     expect(() => recalculateAnalysisFromMoves(moves, { userColor: 'white', result: 'win', opponentRating: null }, null))
       .toThrow('invalid_eval_in_cached_analysis');
   });
+
+  it('never fabricates Elo or performance from an all-book/forced v9 analysis', () => {
+    const moves = [
+      evaluatedMove(1, 0, 0, 'book'),
+      evaluatedMove(2, 0, 0, 'book'),
+      evaluatedMove(3, 0, 0, 'forced'),
+      evaluatedMove(4, 0, 0, 'forced'),
+    ];
+    const phase = { opening: { from_ply: 1, to_ply: 4, accuracy_white: 100,
+      accuracy_black: 100, acpl_white: 333, acpl_black: 333 }, middlegame: null, endgame: null };
+    const result = recalculateAnalysisFromMoves(moves,
+      { userColor: 'white', result: 'win', opponentRating: 1750 }, phase);
+    expect(result.estimatedEloWhite).toBeNull();
+    expect(result.estimatedEloBlack).toBeNull();
+    expect(result.performanceWhite).toBeNull();
+    expect(result.performanceBlack).toBeNull();
+    expect(result.phaseSplit?.opening?.acpl_white).toBe(0);
+    expect(result.phaseSplit?.opening?.acpl_black).toBe(0);
+  });
+
+  it('keeps unavailable scores null for a Black-first forced-only history', () => {
+    const reply = evaluatedMove(1, 0, 0, 'forced');
+    reply.fen_before = '4k3/8/8/8/8/8/8/4K3 b - - 0 1';
+    const r = recalculateAnalysisFromMoves([reply],
+      { userColor: 'black', result: 'loss', opponentRating: 2000 }, null);
+    expect(r.estimatedEloBlack).toBeNull();
+    expect(r.performanceBlack).toBeNull();
+    expect(r.estimatedEloWhite).toBeNull();
+  });
+
+  it('keeps one side null when only the other side has scored decisions', () => {
+    const r = recalculateAnalysisFromMoves([
+      evaluatedMove(1, 0, 0, 'book'),
+      evaluatedMove(2, 0, -30, 'good'),
+    ], { userColor: 'white', result: 'draw', opponentRating: 1550 }, null);
+    expect(r.estimatedEloWhite).toBeNull();
+    expect(r.performanceWhite).toBeNull();
+    expect(r.estimatedEloBlack).toBeTypeOf('number');
+    expect(r.performanceBlack).toBeTypeOf('number');
+  });
 });

@@ -129,10 +129,11 @@ router.post('/', async (c) => {
   if (inflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
 
   if (!force) {
-    const existing = db.prepare('SELECT depth, scoring_version, source_hash, source_revision, moves_json FROM analyses WHERE game_id = ?').get(game_id) as
-      | { depth: number; scoring_version: number; source_hash: string | null; source_revision: number | null; moves_json: string }
+    const existing = db.prepare('SELECT depth, scoring_version, source_hash, source_revision, analysis_generation, moves_json FROM analyses WHERE game_id = ?').get(game_id) as
+      | { depth: number; scoring_version: number; source_hash: string | null; source_revision: number | null; analysis_generation: number; moves_json: string }
       | undefined;
     if (existing && existing.depth >= depth && existing.scoring_version >= SCORING_VERSION
+      && existing.analysis_generation > 0
       && analysisMatchesGame(game as AnalysisGameSource, existing)) {
       const cached = db.prepare(`SELECT depth, accuracy_white, accuracy_black,
                                         estimated_elo_white, estimated_elo_black,

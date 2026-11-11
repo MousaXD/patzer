@@ -11,6 +11,7 @@ import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { onlineUserIds } from '../ws/lobby.js';
 import { GLICKO_DEFAULTS, PROVISIONAL_RD_THRESHOLD, PROVISIONAL_GAMES } from '../chess/glicko.js';
+import { SCORING_VERSION } from '../chess/classifier.js';
 import type { TimeClass } from '../chess/timeClass.js';
 
 const router = new Hono();
@@ -126,8 +127,11 @@ router.get('/:id', (c) => {
   // Average accuracy across analyzed games (this player's side only).
   const accs = db.prepare(`
     SELECT g.user_color, a.accuracy_white, a.accuracy_black
-    FROM analyses a JOIN games g ON g.id = a.game_id WHERE g.user_id = ?
-  `).all(id) as AccRow[];
+    FROM analyses a JOIN games g ON g.id = a.game_id
+    WHERE g.user_id = ? AND a.scoring_version >= ?
+      AND a.source_hash IS NOT NULL AND a.source_revision = g.source_revision
+      AND a.analysis_generation > 0
+  `).all(id, SCORING_VERSION) as AccRow[];
   let accSum = 0; let accN = 0;
   for (const r of accs) {
     const v = r.user_color === 'white' ? r.accuracy_white : r.accuracy_black;
