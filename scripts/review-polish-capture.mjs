@@ -106,6 +106,18 @@ async function measure(page,width,height,theme) {
     assert.ok(boxes.transport && boxes.transport.bottom <= height,
       `Move transport fell below the viewport: ${boxes.transport?.bottom}px > ${height}px`);
   }
+  if(width===1024){
+    const tabs=await page.getByRole('tab').evaluateAll((elements)=>elements.map(tab=>{
+      const label=tab.querySelector('span');
+      const icon=tab.querySelector('svg');
+      return {name:tab.getAttribute('aria-label'),
+        textWidth:label?.scrollWidth??0,available:label?.clientWidth??0,
+        iconVisible:!!icon && getComputedStyle(icon).display!=='none'};
+    }));
+    console.log('1024px review tab labels:',JSON.stringify(tabs));
+    assert.ok(tabs.length===3 && tabs.every(item=>item.textWidth<=item.available),
+      `Review tab names must not be clipped in the 1024px cockpit: ${JSON.stringify(tabs)}`);
+  }
   measurements.push({viewport:`${width}x${height}`,theme,...boxes});
   const label=`${theme}-${width}x${height}`;
   await page.screenshot({path:join(output,label+'-viewport.png')});

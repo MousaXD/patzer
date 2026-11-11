@@ -1296,10 +1296,9 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
       aria-label={label}
       className={`relative flex min-h-11 min-w-0 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:text-chesscom-100'}`}
     >
-      {/* Icon-only tabs gave no readable destination names on a 390px phone.
-          The compact rail has room for real text labels when the icons are
-          reserved for wider screens. Truncate only on unusually narrow widths. */}
-      <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" aria-hidden="true" />
+      {/* Narrow cockpit rails need full text destinations, not clipped titles.
+          Use icons only when the wider desktop rail has room for both. */}
+      <Icon className="hidden h-3.5 w-3.5 shrink-0 xl:block" aria-hidden="true" />
       <span className="min-w-0 truncate">{label}</span>
       {active && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold-500 sm:inset-x-2" />}
     </button>
