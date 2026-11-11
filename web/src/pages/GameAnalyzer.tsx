@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
@@ -97,6 +97,8 @@ function PracticeUnavailable({ practicePicker, onExit }: { practicePicker: boole
 
 function GameAnalyzerView() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -126,7 +128,10 @@ function GameAnalyzerView() {
   const [showDepthControl, setShowDepthControl] = useState(false);
   const [reviewProse, setReviewProse] = useState<GameReviewProse | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
-  const [practicePly, setPracticePly] = useState<number | null>(null);
+  // An in-review retry is transient. A blind attempt entered from the
+  // library uses a separate URL history entry so Back returns to its
+  // spoiler-free picker instead of unexpectedly leaving the saved game.
+  const [reviewPracticePly, setReviewPracticePly] = useState<number | null>(null);
   // A category picked in the Game Report table (e.g. Black's misses): those
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
@@ -136,6 +141,12 @@ function GameAnalyzerView() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
+  const routeAttempt = searchParams.get('practicePly');
+  const routePracticePly = practicePicker && routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
+    ? Number(routeAttempt) : null;
+  const practicePly = practicePicker
+    ? routePracticePly !== null && Number.isSafeInteger(routePracticePly) ? routePracticePly : null
+    : reviewPracticePly;
   // Blind practice must not compete with a previously started full-game
   // reanalysis, whether entered through the library or from normal Review.
   useEffect(() => {
@@ -157,12 +168,33 @@ function GameAnalyzerView() {
   // background refetch or on return from an attempted move (which restores
   // focus to the chosen practice moment instead).
   const pickerHeadingFocusedRef = useRef(false);
+  const lastDirectAttemptRef = useRef<number | null>(null);
+  const returnToChoiceRef = useRef<number | null>(null);
+  const restoringPickerFocusRef = useRef(false);
+  useEffect(() => {
+    const previous = lastDirectAttemptRef.current;
+    lastDirectAttemptRef.current = practicePicker ? practicePly : null;
+    // Browser Back should focus the picker heading; the explicit exit button
+    // returns focus to the selected moment. Never focus a detached board.
+    if (!practicePicker || practicePly !== null || previous === null) return;
+    const id = returnToChoiceRef.current === previous
+      ? `practice-move-${previous}` : 'practice-picker-heading';
+    returnToChoiceRef.current = null;
+    restoringPickerFocusRef.current = true;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(id);
+      if (target) { target.focus(); pickerHeadingFocusedRef.current = true; }
+      restoringPickerFocusRef.current = false;
+    });
+    return () => { cancelAnimationFrame(frame); restoringPickerFocusRef.current = false; };
+  }, [practicePicker, practicePly]);
   useEffect(() => {
     if (!practicePicker) {
       pickerHeadingFocusedRef.current = false;
       return;
     }
-    if (practicePly !== null || positions.length === 0 || pickerHeadingFocusedRef.current) return;
+    if (practicePly !== null || positions.length === 0
+      || pickerHeadingFocusedRef.current || restoringPickerFocusRef.current) return;
     const frame = requestAnimationFrame(() => {
       const heading = document.getElementById('practice-picker-heading');
       if (heading) {
@@ -268,6 +300,36 @@ function GameAnalyzerView() {
   const setPly = useCallback((value: number | ((previous: number) => number)) => {
     selectOriginalPly(typeof value === 'function' ? value(ply) : value);
   }, [selectOriginalPly, ply]);
+  const enterPracticePly = (selected: number) => {
+    if (practicePicker) {
+      const next = new URLSearchParams(searchParams);
+      next.set('practicePly', String(selected));
+      setSearchParams(next, { state: { fromBlindPracticePicker: true } });
+      // Push one history entry for browser Back/Forward and mark its actual
+      // origin. A bookmarked attempt URL has no guaranteed picker to pop to.
+    } else {
+      setReviewPracticePly(selected);
+    }
+  };
+  const leavePractice = (restoreSelectedMove: boolean) => {
+    if (practicePicker) {
+      returnToChoiceRef.current = restoreSelectedMove ? practicePly : null;
+      if ((location.state as { fromBlindPracticePicker?: boolean } | null)?.fromBlindPracticePicker) {
+        navigate(-1); // Return to the actual picker, not a duplicate history entry.
+      } else {
+        // Direct/bookmarked exercise URL with no known picker behind it.
+        const next = new URLSearchParams(searchParams);
+        next.delete('practicePly');
+        setSearchParams(next, { replace: true });
+      }
+    } else {
+      if (restoreSelectedMove && practicePly !== null) setPly(practicePly);
+      setReviewPracticePly(null);
+      requestAnimationFrame(() => document.getElementById(
+        restoreSelectedMove ? 'learn-from-mistake' : 'full-game-review-heading',
+      )?.focus());
+    }
+  };
   const isVariation = variations.activeVariationId !== null;
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
@@ -595,17 +657,11 @@ function GameAnalyzerView() {
         orientation={moveSideForPly(practicePly, startFen)}
         boardTheme={user?.profile.board_theme ?? 'green'}
         exitLabel={practicePicker ? 'Back to practice choices' : 'Return to saved game'}
-        onExit={() => { setPly(practicePly); setPracticePly(null);
-          requestAnimationFrame(() => document.getElementById(practicePicker ? `practice-move-${practicePly}` : 'learn-from-mistake')?.focus()); }} />;
+        onExit={() => leavePractice(true)} />;
     }
     // A stale/corrupt analysis or a background refetch must not silently
     // drop blind mode and expose the original move or its engine hint.
-    return <PracticeUnavailable practicePicker={practicePicker} onExit={() => {
-      setPracticePly(null);
-      requestAnimationFrame(() => document.getElementById(
-        practicePicker ? 'practice-picker-heading' : 'full-game-review-heading',
-      )?.focus());
-    }} />;
+    return <PracticeUnavailable practicePicker={practicePicker} onExit={() => leavePractice(false)} />;
   }
 
   // This route is linked directly from the saved-game library. No chessboard,
@@ -615,6 +671,8 @@ function GameAnalyzerView() {
     const openReview = () => {
       const next = new URLSearchParams(searchParams);
       next.delete('practice');
+      next.delete('practicePly');
+      setReviewPracticePly(null);
       setSearchParams(next, { replace: true });
       requestAnimationFrame(() => document.getElementById('full-game-review-heading')?.focus());
     };
@@ -629,7 +687,7 @@ function GameAnalyzerView() {
           {eligiblePractice.map((candidate, index) => (
             <button key={candidate.ply} type="button" id={`practice-move-${candidate.ply}`}
               className="min-h-12 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-3 text-left text-sm font-medium hover:border-gold-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900"
-              onClick={() => setPracticePly(candidate.ply)}>
+              onClick={() => enterPracticePly(candidate.ply)}>
               Practice moment {index + 1} · {candidate.side === 'white' ? 'White' : 'Black'} move {candidate.moveNumber}
               <span className="block text-xs font-normal text-chesscom-500">Answer hidden</span>
             </button>
@@ -854,7 +912,7 @@ function GameAnalyzerView() {
                     <div className="mb-3 rounded-lg border border-gold-500/40 p-3">
                       <p className="mb-2 text-sm text-chesscom-600 dark:text-chesscom-300">Retry with hints hidden. For a first attempt without seeing the answer, choose Practice first from your saved games.</p>
                       <button type="button" className="btn-primary min-h-11 w-full"
-                        id="learn-from-mistake" onClick={() => setPracticePly(ply)}>Learn from this mistake — retry</button>
+                        id="learn-from-mistake" onClick={() => enterPracticePly(ply)}>Learn from this mistake — retry</button>
                     </div>
                   )}
                   {tab === 'moves' && move && (

@@ -161,6 +161,83 @@ try {
     assert.equal(await page.getByRole('button', { name: /Practice moment/ }).count(), 3);
   });
 
+  await test('Browser Back returns from an active blind attempt to the spoiler-free picker', async () => {
+    await page.goto(base + '/review');
+    await page.locator(`a[href="/review/${standard.id}?practice=1"]`).click();
+    await page.locator('[data-practice-picker]').waitFor();
+    await page.getByRole('button', { name: /Practice moment 1/ }).click();
+    await page.locator('[data-practice-mode]').waitFor();
+    await assertNoSpoilers(page);
+    await page.goBack();
+    await page.locator('[data-practice-picker]').waitFor({ timeout: 3000 });
+    assert.equal(new URL(page.url()).searchParams.get('practice'), '1');
+    await assertNoSpoilers(page);
+    await page.waitForFunction(() => document.activeElement?.id === 'practice-picker-heading',
+      null, { timeout: 2500 });
+    await page.goForward();
+    await page.locator('[data-practice-mode]').waitFor({ timeout: 3000 });
+    await assertNoSpoilers(page);
+    assert.equal(await page.locator('#practice-move-input').count(), 1);
+    await page.getByRole('button', { name: 'Back to practice choices' }).click();
+    await page.locator('[data-practice-picker]').waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'practice-move-5');
+    await assertNoSpoilers(page);
+    await page.goBack();
+    await page.waitForURL((url) => url.pathname === '/review' && !url.searchParams.has('practice'),
+      { timeout: 3000 });
+  });
+
+  await test('Direct attempt links and invalid practice plies fail closed without requiring prior history', async () => {
+    await page.goto(`${base}/review/${standard.id}?practice=1&practicePly=5`);
+    await page.locator('[data-practice-mode]').waitFor();
+    await assertNoSpoilers(page);
+    await page.getByRole('button', { name: 'Back to practice choices' }).click();
+    await page.locator('[data-practice-picker]').waitFor();
+    assert.equal(new URL(page.url()).searchParams.has('practicePly'), false);
+    await page.waitForFunction(() => document.activeElement?.id === 'practice-move-5');
+    await page.goto(`${base}/review/${standard.id}?practice=1&practicePly=999999`);
+    await page.getByText('Practice position unavailable').waitFor();
+    await assertNoSpoilers(page);
+    await page.getByRole('button', { name: 'Back to practice choices' }).click();
+    await page.locator('[data-practice-picker]').waitFor();
+    await page.waitForFunction(() => document.activeElement?.id === 'practice-picker-heading');
+    assert.equal(new URL(page.url()).searchParams.has('practicePly'), false);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+  });
+
+  await test('Browser Back cancels an in-flight attempt and Forward starts a fresh blind retry', async () => {
+    await page.goto(base + '/review');
+    await page.locator(`a[href="/review/${standard.id}?practice=1"]`).click();
+    await page.getByRole('button', { name: /Practice moment 1/ }).click();
+    await page.locator('[data-practice-mode]').waitFor();
+    let received;
+    const requestReceived = new Promise((resolve) => { received = resolve; });
+    let calls = 0;
+    await page.route('**/api/analyze/variation-move', async (route) => {
+      calls++;
+      received();
+      await sleep(1300);
+      await route.fulfill({ status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'obsolete_attempt_must_not_appear' }) }).catch(() => undefined);
+    });
+    try {
+      await page.locator('#practice-move-input').fill('d4');
+      await page.getByRole('button', { name: 'Submit move' }).click();
+      await requestReceived;
+      await page.goBack();
+      await page.locator('[data-practice-picker]').waitFor();
+      await sleep(1400);
+      await assertNoSpoilers(page);
+      assert.equal(calls, 1);
+      await page.goForward();
+      await page.locator('[data-practice-mode]').waitFor();
+      await assertNoSpoilers(page);
+      assert.equal(await page.locator('#practice-move-input').count(), 1);
+      assert.equal(await page.getByText(/Engine assessment:|The engine could not score/).count(), 0);
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+    } finally { await page.unroute('**/api/analyze/variation-move'); }
+  });
+
   await test('Blind picker does not fetch AI prose, coach config or hidden engine work', async () => {
     const requests = [];
     const onRequest = (request) => requests.push({ path: new URL(request.url()).pathname, method: request.method() });
