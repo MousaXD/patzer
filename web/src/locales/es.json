@@ -295,6 +295,10 @@
       "lichess_unavailable": "No se puede conectar con Lichess ahora mismo. Inténtalo más tarde.",
       "generic": "La importación falló. Inténtalo de nuevo más tarde."
     },
+    "gameChanged": "La partida ha cambiado. Analízala de nuevo para generar un informe actualizado.",
+    "reanalysisRequired": "El análisis del motor ya no coincide con la partida. Vuelve a analizarla.",
+    "generationCancelled": "Se canceló la generación del informe. Puedes intentarlo de nuevo.",
+    "generationFailed": "No se pudo generar el informe. Inténtalo de nuevo.",
     "source": {
       "lichess": "Lichess"
     },

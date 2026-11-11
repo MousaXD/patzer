@@ -69,7 +69,7 @@ describe('Game Review report stream lifecycle', () => {
     )));
     render(<GameReportPanel gameId={2} initial={null} />);
     fireEvent.click(screen.getByText('Write AI report'));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('connection ended'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Could not generate'));
     expect(screen.getByText('Write AI report')).toBeTruthy();
   });
 
@@ -77,7 +77,8 @@ describe('Game Review report stream lifecycle', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply('event: error\ndata: busy\n\n')));
     render(<GameReportPanel gameId={3} initial={review} />);
     fireEvent.click(screen.getByText('Write it again'));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('busy'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Could not generate'));
+    expect(screen.getByRole('alert').textContent).not.toContain('busy');
     expect(screen.getByText('A completed chess report')).toBeTruthy();
   });
 

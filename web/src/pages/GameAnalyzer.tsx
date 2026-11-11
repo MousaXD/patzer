@@ -16,6 +16,7 @@ import { practiceCandidates } from '../components/review/practiceCandidates';
 import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
 import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
+import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
@@ -127,7 +128,7 @@ function GameAnalyzerView() {
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [requestedDepth, setRequestedDepth] = useState(16);
   const [showDepthControl, setShowDepthControl] = useState(false);
-  const [reviewProse, setReviewProse] = useState<GameReviewProse | null>(null);
+  const [storedProse, setStoredProse] = useState<{ source: string; prose: GameReviewProse } | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
   // An in-review retry is transient. A blind attempt entered from the
   // library uses a separate URL history entry so Back returns to its
@@ -217,6 +218,31 @@ function GameAnalyzerView() {
     [data?.analysis, positions],
   );
   const cachedAnalysisInvalid = needsFreshReviewAnalysis(data?.analysis, decodedStoredReview);
+  // A report must cover this entire saved game. A valid prefix-only legacy
+  // analysis is useful for the Moves tab, but not evidence for an AI summary.
+  const fullEngineEvidence = !!decodedStoredReview
+    && decodedStoredReview.moves.length === positions.length - 1
+    && decodedStoredReview.moves.every((move, index) =>
+      move.fen_before === positions[index]?.fen && move.fen_after === positions[index + 1]?.fen);
+  const sourceKey = !cachedAnalysisInvalid && fullEngineEvidence && data
+    ? reviewSourceKey(gameId, data.game.pgn, data.analysis, data.analysis_stale) : null;
+  // This ref is updated DURING render, not in an effect: a late promise from
+  // the prior commit must never win the race before effect cleanup runs.
+  const currentSourceRef = useRef(sourceKey);
+  currentSourceRef.current = sourceKey;
+  const reviewProse = storedProse?.source === sourceKey ? storedProse.prose : null;
+  // The initial loading state has no source; going from null to the FIRST
+  // verified analysis is not a game update. Preserve the last valid source
+  // through temporary invalid/no-analysis states so A -> null -> B is still
+  // recognized as a change (and never accepts A's cached prose for B).
+  const lastValidSourceRef = useRef<string | null>(null);
+  const sourceChanged = lastValidSourceRef.current !== null
+    && lastValidSourceRef.current !== sourceKey;
+  const [sourceNotice, setSourceNotice] = useState(false);
+  useEffect(() => {
+    if (sourceChanged) setSourceNotice(true);
+    if (sourceKey) lastValidSourceRef.current = sourceKey;
+  }, [sourceKey, sourceChanged]);
 
   useEffect(() => {
     if (!data) return;
@@ -262,21 +288,28 @@ function GameAnalyzerView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, practicePicker, practicePly]);
 
-  // Load any cached AI prose for this game
+  // Load prose only for the source that was observed at request admission.
+  // Game-detail refetches can arrive without remounting the route. Do not
+  // refetch prose for harmless notes/bookmark changes.
   useEffect(() => {
-    // A slower request for a previous game must never replace this game's
-    // review text after navigating between library entries.
     let active = true;
-    setReviewProse(null);
     // Cached AI prose contains conclusions/engine lines; neither mount nor
     // request it in the blind exercise. Fetch it only in the full review.
-    if (!practicePicker && Number.isSafeInteger(gameId) && gameId > 0) {
+    if (!practicePicker && sourceKey && Number.isSafeInteger(gameId) && gameId > 0) {
       api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
-        .then((r) => { if (active) setReviewProse(isCompleteReviewPayload(r) ? r.review : null); })
-        .catch(() => { if (active) setReviewProse(null); });
+        .then((r) => {
+          if (!active || currentSourceRef.current !== sourceKey) return;
+          if (isCompleteReviewPayload(r)) {
+            // A backend without provenance cannot establish that previously
+            // cached prose matches a NEW source. Fail closed on refresh.
+            if (!sourceChanged) setStoredProse((previous) =>
+              previous?.source === sourceKey ? previous : { source: sourceKey, prose: r.review as GameReviewProse });
+          } else setStoredProse(null);
+        })
+        .catch(() => { if (active && currentSourceRef.current === sourceKey) setStoredProse(null); });
     }
     return () => { active = false; };
-  }, [gameId, practicePicker]);
+  }, [gameId, practicePicker, sourceKey]);
 
   useEffect(() => {
     if (practicePicker) { setCoachConfigured(false); return; }
@@ -944,11 +977,18 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'report' && (
                     <GameReportPanel
-                      key={gameId}
+                      key={sourceKey ?? `unavailable:${gameId}`}
                       gameId={gameId}
                       initial={reviewProse}
+                      sourceReady={!!sourceKey && !data.analysis_stale && !cachedAnalysisInvalid}
+                      sourceChanged={sourceNotice}
                       onMomentJump={setPly}
-                      onGenerated={setReviewProse}
+                      onGenerated={(prose) => {
+                        if (sourceKey && currentSourceRef.current === sourceKey) {
+                          setStoredProse({ source: sourceKey, prose });
+                          setSourceNotice(false);
+                        }
+                      }}
                       userColor={data.game.user_color}
                       startFen={startFen}
                     />

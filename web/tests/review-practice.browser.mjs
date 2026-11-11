@@ -141,6 +141,101 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   const page = await logIn(context);
 
+  // Source lifecycle regression: use the real React route, authenticated game
+  // details/bookmark invalidation and disposable SQLite. The deterministic
+  // report transport is intercepted so a hostile obsolete SSE done can be
+  // delivered even after its originating request was cancelled.
+  await test('Mounted report follows game and analysis source, not notes or bookmark metadata', async () => {
+    const original = seed(user.id, 'report-source-original', ['f3', 'e5', 'g4', 'Qh4#'],
+      ['good', 'good', 'blunder', 'best']);
+    const updated = seed(user.id, 'report-source-updated', ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'],
+      ['good', 'good', 'good', 'good', 'good', 'blunder', 'best']);
+    const oldMarker = 'QA_SOURCE_OLD_BLACK_CHECKMATE';
+    const old = { review: { version: 4, language: 'en', audience: 'adult',
+      opening: null, summary: oldMarker, skill_assessment: 'Synthetic test report',
+      phases: { opening: null, middlegame: null, endgame: null }, key_moments: [] } };
+    let cachedReads = 0;
+    await page.route(`**/api/games/${original.id}/review`, async (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      cachedReads++;
+      // Intentionally hostile stale backend cache: the client must never
+      // reattach this older prose after a same-game PGN/analysis change.
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(old) });
+    });
+    try {
+      await page.goto(`${base}/review/${original.id}`);
+      await page.getByRole('tab', { name: 'AI report' }).click();
+      await page.getByText(oldMarker).waitFor();
+      const beforeBookmark = cachedReads;
+      await page.getByRole('button', { name: 'Star', exact: true }).click();
+      await page.waitForResponse((r) => r.url().endsWith(`/api/games/${original.id}`) && r.status() === 200);
+      assert.equal(await page.getByText(oldMarker).count(), 1, 'metadata edit must keep valid prose');
+      assert.equal(cachedReads, beforeBookmark, 'metadata-only refetch must not request prose again');
+
+      db.prepare('UPDATE games SET pgn=? WHERE id=?').run(updated.pgn, original.id);
+      db.prepare('UPDATE analyses SET moves_json=?, accuracy_white=90, accuracy_black=91, prose_json=NULL WHERE game_id=?')
+        .run(JSON.stringify(updated.analyzed), original.id);
+      await page.getByRole('button', { name: 'Starred', exact: true }).click();
+      await page.getByRole('status').filter({ hasText: /game changed/i }).waitFor();
+      assert.equal(await page.getByText(oldMarker).count(), 0, 'old report must not reappear in the report tab');
+      await page.getByRole('tab', { name: 'Moves' }).click();
+      await page.getByText('Qxf7#').waitFor();
+      await page.getByRole('tab', { name: 'AI report' }).click();
+      assert.equal(await page.getByText(oldMarker).count(), 0, 'tab switching must not restore old prose');
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(original.id).pgn, updated.pgn,
+        'review interactions must not change the newly saved PGN');
+    } finally {
+      await page.unroute(`**/api/games/${original.id}/review`);
+    }
+  });
+
+  await test('Obsolete SSE done is discarded after same-ply source change; explicit cancellation remains usable', async () => {
+    const original = seed(user.id, 'report-source-inflight', ['e4', 'e5', 'Nf3', 'Nc6'],
+      ['good', 'good', 'good', 'good']);
+    const updated = seed(user.id, 'report-source-same-plies', ['d4', 'd5', 'c4', 'e6'],
+      ['good', 'good', 'good', 'good']);
+    const lateMarker = 'QA_OBSOLETE_DONE_MUST_NEVER_RENDER';
+    let postStarted;
+    const receivedPost = new Promise((resolve) => { postStarted = resolve; });
+    let postRequests = 0;
+    await page.route(`**/api/games/${original.id}/review`, async (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{"review":null}' });
+      }
+      postRequests++;
+      postStarted();
+      await sleep(1800);
+      await route.fulfill({ status: 200, contentType: 'text/event-stream',
+        body: `event: done\ndata: ${JSON.stringify({ review: { version: 4, language: 'en',
+          audience: 'adult', opening: null, summary: lateMarker, skill_assessment: 'Old',
+          phases: { opening: null, middlegame: null, endgame: null }, key_moments: [] } })}\n\n` })
+        .catch(() => undefined);
+    });
+    try {
+      await page.goto(`${base}/review/${original.id}`);
+      await page.getByRole('tab', { name: 'AI report' }).click();
+      await page.getByRole('button', { name: 'Write AI report' }).click();
+      await receivedPost;
+      await page.getByText('Writing AI report…').waitFor();
+      db.prepare('UPDATE games SET pgn=? WHERE id=?').run(updated.pgn, original.id);
+      db.prepare('UPDATE analyses SET moves_json=?, accuracy_white=87, prose_json=NULL WHERE game_id=?')
+        .run(JSON.stringify(updated.analyzed), original.id);
+      await page.getByRole('button', { name: 'Star', exact: true }).click();
+      await page.getByText('The game changed. Reanalyze it to generate an updated report.').waitFor();
+      await sleep(2200); // Allow even a noncompliant late SSE completion to arrive.
+      assert.equal(await page.getByText(lateMarker).count(), 0);
+      assert.equal(await page.getByText('Writing AI report…').count(), 0);
+      await page.getByRole('tab', { name: 'Moves' }).click();
+      await page.getByText('c4').waitFor();
+      await page.getByRole('tab', { name: 'AI report' }).click();
+      assert.equal(await page.getByText(lateMarker).count(), 0);
+      assert.equal(postRequests, 1);
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(original.id).pgn, updated.pgn);
+    } finally {
+      await page.unroute(`**/api/games/${original.id}/review`);
+    }
+  });
+
   await test('Library entry is independently spoiler free', async () => {
     await page.goto(base + '/review');
     const link = page.locator(`a[href="/review/${standard.id}?practice=1"]`);
