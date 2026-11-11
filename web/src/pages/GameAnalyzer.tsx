@@ -1346,22 +1346,22 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
   const { t } = useTranslation();
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center gap-1 border-b border-chesscom-100 bg-chesscom-50/40 px-3 py-2 dark:border-chesscom-700 dark:bg-chesscom-900/40">
-        <Search className="h-3.5 w-3.5 text-chesscom-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
+      <button type="button"
+        onClick={onToggle}
+        aria-expanded={enabled}
+        aria-controls="review-engine-lines-content"
+        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })}
+        className={`flex min-h-11 w-full items-center gap-2 bg-chesscom-50/40 px-3 py-2 text-left transition-colors hover:bg-chesscom-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 dark:bg-chesscom-900/40 dark:hover:bg-chesscom-700/50 ${enabled ? 'border-b border-chesscom-100 dark:border-chesscom-700' : ''}`}
+      >
+        <Search className="h-3.5 w-3.5 shrink-0 text-chesscom-500 dark:text-chesscom-300" aria-hidden="true" />
+        <span className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
           {t('review.lines', { defaultValue: 'Engine lines' })}
         </span>
-        <button
-          onClick={onToggle}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${enabled ? 'text-board-dark' : ''}`}
-        >
-          {enabled
-            ? t('review.linesHide', { defaultValue: 'Hide' })
-            : t('review.linesShow', { defaultValue: 'Show top engine lines' })}
-        </button>
-      </div>
-      {enabled && (
-        <div className="space-y-1 p-2">
+        <ChevronDown className={`h-4 w-4 shrink-0 text-chesscom-500 transition-transform motion-reduce:transition-none dark:text-chesscom-300 ${enabled ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      <div id="review-engine-lines-content" hidden={!enabled} className="space-y-1 p-2">
+        {enabled && (
+          <>
           {loading && lines.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
@@ -1411,8 +1411,9 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
               <Loader2 className="h-3 w-3 animate-spin" /> {t('review.linesRefreshing', { defaultValue: 'refreshing…' })}
             </div>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

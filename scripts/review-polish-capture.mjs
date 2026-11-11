@@ -468,6 +468,28 @@ try {
         assert.ok(gear);
         assert.ok(actual[2].right<=gear.x+1,
           `Tab bar overlaps engine settings for ${lang} at ${width}px`);
+        // The collapsed Engine Lines header used to repeat its name in a
+        // long call-to-action that wrapped into two lines in German/Spanish.
+        // Its entire header is now one accessible disclosure touch target.
+        const engine=page.getByRole('button',{name:locale.review.lines,exact:true});
+        assert.ok(await engine.isVisible(),`Engine Lines disclosure missing in ${lang}`);
+        assert.equal(await engine.getAttribute('aria-expanded'),'false');
+        assert.equal(await engine.getAttribute('aria-controls'),'review-engine-lines-content');
+        const header=await engine.boundingBox();
+        assert.ok(header && header.height<=48 && header.height>=40,
+          `Collapsed Engine Lines should fit one comfortable row in ${lang}/${width}: ${JSON.stringify(header)}`);
+        const engineLabel=engine.locator('span').first();
+        assert.ok(await engineLabel.isVisible());
+        assert.ok(await engineLabel.evaluate(el=>el.scrollWidth<=el.clientWidth+1),
+          `Engine Lines label is clipped in ${lang}/${width}`);
+        if(width===390){
+          await engine.click();
+          assert.equal(await engine.getAttribute('aria-expanded'),'true');
+          assert.ok(await page.locator('#review-engine-lines-content').isVisible());
+          await engine.click();
+          assert.equal(await engine.getAttribute('aria-expanded'),'false');
+          assert.ok(!(await page.locator('#review-engine-lines-content').isVisible()));
+        }
         const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
         assert.ok(overflow<=2,`Horizontal overflow in ${lang} at ${width}px: ${overflow}`);
         if(width===390){
