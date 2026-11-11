@@ -7,6 +7,7 @@ import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
 import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
+import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
 import { Chess } from 'chess.js';
 import { clearLiveBotGame, loadLiveBotGame, resumableSummary } from '../chess/liveBotGames.js';
 
@@ -173,14 +174,15 @@ router.get('/:id', (c) => {
   const user = c.get('user');
   const id = parseGameId(c.req.param('id'));
   if (id === null) return c.json({ error: 'invalid_input' }, 400);
-  const game = db.prepare('SELECT * FROM games WHERE id = ? AND user_id = ?').get(id, user.id);
+  const game = db.prepare('SELECT * FROM games WHERE id = ? AND user_id = ?').get(id, user.id) as AnalysisGameSource | undefined;
   if (!game) return c.json({ error: 'not_found' }, 404);
   const analysis = db.prepare('SELECT * FROM analyses WHERE game_id = ?').get(id) as
-    | { scoring_version: number }
+    | { scoring_version: number; source_hash: string | null; source_revision: number | null; moves_json: string }
     | undefined;
   // If the analysis was made at an older scoring_version, hide it — UI will
   // show the Analyze CTA (and we set a flag so the frontend can auto-fire it).
-  const stale = !!(analysis && analysis.scoring_version < SCORING_VERSION);
+  const stale = !!(analysis && (analysis.scoring_version < SCORING_VERSION ||
+    !analysisMatchesGame(game, analysis)));
   return c.json({
     game,
     analysis: stale ? null : analysis,

@@ -8,6 +8,7 @@ import { db } from './db.js';
 import { importChessComGames } from './chess/chesscomImport.js';
 import { analyzePgn, saveAnalysis } from './routes/analyze.js';
 import { kickAutoReview } from './autoReview.js';
+import { loadAnalysisGameSource } from './chess/analysisSource.js';
 
 // Poll interval in minutes; 0 disables the timer (a one-off sync still runs on
 // boot so a restart always catches up).
@@ -76,8 +77,11 @@ async function analyzePending(): Promise<void> {
 
   for (const row of rows) {
     try {
-      const analysis = await analyzePgn(row.pgn, 14);
-      saveAnalysis(row.id, analysis);
+      const source = loadAnalysisGameSource(db, row.id);
+      if (!source || source.pgn !== row.pgn) throw new Error('analysis_source_changed');
+      const analysis = await analyzePgn(source.pgn, 14);
+      if (!saveAnalysis(row.id, analysis, source))
+        throw new Error('analysis_source_changed');
       console.log(`[chesscom-sync] analyzed game ${row.id}`);
     } catch (err) {
       console.warn(`[chesscom-sync] analyze game ${row.id}:`, err instanceof Error ? err.message : err);

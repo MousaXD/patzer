@@ -178,6 +178,16 @@ ensureColumn('analyses', 'prose_json', `TEXT`);
 ensureColumn('analyses', 'prose_version', `INTEGER NOT NULL DEFAULT 0`);
 ensureColumn('analyses', 'prose_lang', `TEXT`);
 ensureColumn('analyses', 'prose_audience', `TEXT`);
+// Batch 3 review integrity: legacy analysis rows have NULL provenance and are
+// deliberately stale until a new engine calculation. No historical backfill.
+// Production application of this additive schema requires the owner's separate
+// migration approval; only disposable DBs are used on the agent branch.
+ensureColumn('games', 'source_revision', `INTEGER NOT NULL DEFAULT 0`);
+ensureColumn('analyses', 'source_hash', `TEXT`);
+ensureColumn('analyses', 'source_revision', `INTEGER`);
+// Every successful analysis write advances its own generation, even when a
+// forced rerun produces identical moves and scores. AI prose must bind to it.
+ensureColumn('analyses', 'analysis_generation', `INTEGER NOT NULL DEFAULT 0`);
 
 // v6.0.0 — bookmarks + notes (per-game, per-user). Lets users star a game and
 // jot personal notes. Both are user-scoped because games rows are per-user
@@ -195,6 +205,23 @@ try {
 } catch (e) {
   console.error('[db] could not widen games.source for Lichess import:', (e as Error).message);
 }
+
+// Create AFTER the legacy games-table rebuild, which otherwise drops triggers.
+// This SQLite-side counter protects even if PGN writes come through a second
+// process, the PvP socket or direct SQL. A -> B -> A increments twice.
+// Notes, bookmarks, clocks, ECO display values and time stamps do NOT bump it.
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS trg_games_source_revision
+  AFTER UPDATE OF pgn, start_fen, user_color, result,
+                  opponent_rating_before, user_rd_before ON games
+  WHEN OLD.pgn IS NOT NEW.pgn OR OLD.start_fen IS NOT NEW.start_fen
+    OR OLD.user_color IS NOT NEW.user_color OR OLD.result IS NOT NEW.result
+    OR OLD.opponent_rating_before IS NOT NEW.opponent_rating_before
+    OR OLD.user_rd_before IS NOT NEW.user_rd_before
+  BEGIN
+    UPDATE games SET source_revision = source_revision + 1 WHERE id = NEW.id;
+  END;
+`);
 
 // Lichess username for the game importer, next to the Chess.com one.
 ensureColumn('profiles', 'lichess_username', 'TEXT');

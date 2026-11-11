@@ -18,6 +18,7 @@ import { coachExplain } from '../coach/explain.js';
 import type { AuthedUser, Difficulty, Classification } from '../types.js';
 import { notifyUser } from './lobby.js';
 import { startFromPosition, startFenOf } from '../chess/startFen.js';
+import { loadAnalysisGameSource } from '../chess/analysisSource.js';
 
 // `Skill Level` alone produces tiers that don't match their labels — at
 // `Skill 3 / depth 4`, "Beginner" already plays around 1400 Elo, so a
@@ -669,11 +670,12 @@ async function endBotGame(ws: WebSocket, session: BotSession, result: '1-0' | '0
   });
   setImmediate(async () => {
     try {
+      const source = loadAnalysisGameSource(db, gameId);
+      if (!source || source.pgn !== pgn) return;
       const analysis = await analyzePgn(pgn, 14);
       // The full row — key moments and phase split included — so the written
       // Game Review has what it needs without a second analysis.
-      saveAnalysis(gameId, analysis);
-      kickAutoReview();
+      if (saveAnalysis(gameId, analysis, source)) kickAutoReview();
     } catch (err) {
       console.error('[auto-analyze]', err);
     }
@@ -1037,6 +1039,8 @@ async function endPvpGame(session: PvpSession, result: '1-0' | '0-1' | '1/2-1/2'
       // applyRatedUpdate above (or remain null for unrated games).
       const ids = db.prepare(`SELECT id, user_color, opponent_rating_before, user_rd_before FROM games WHERE external_id = ?`).all(session.external_id) as { id: number; user_color: 'white' | 'black' | null; opponent_rating_before: number | null; user_rd_before: number | null }[];
       for (const r of ids) {
+        const source = loadAnalysisGameSource(db, r.id);
+        if (!source || source.pgn !== pgn) continue;
         const score = scoreFor(result, r.user_color ?? 'white');
         const analysis = await analyzePgnFull(pgn, 14, {
           score,
@@ -1044,7 +1048,7 @@ async function endPvpGame(session: PvpSession, result: '1-0' | '0-1' | '1/2-1/2'
           opponentRating: r.opponent_rating_before,
           opponentRd: r.user_rd_before,
         });
-        saveAnalysis(r.id, analysis);
+        if (!saveAnalysis(r.id, analysis, source)) continue;
       }
       kickAutoReview();
       // Notify the still-connected sockets that analysis is ready

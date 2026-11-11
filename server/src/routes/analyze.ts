@@ -15,6 +15,10 @@ import { gameAccuracy, type MoveAccPoint } from '../chess/accuracy.js';
 import { extractKeyMoments } from '../chess/keyMoments.js';
 import { lookupOpeningByEpd, fenToEpd, lookupOpeningFromPgn } from '../chess/openings.js';
 import { startFenOf } from '../chess/startFen.js';
+import {
+  analysisMatchesGame, loadAnalysisGameSource, persistAnalysisIfFresh,
+  type AnalysisGameSource,
+} from '../chess/analysisSource.js';
 import type { AnalysisResult, AnalyzedMove, Color, KeyMomentSummary, PhaseSplit } from '../types.js';
 
 const router = new Hono();
@@ -87,6 +91,8 @@ interface GameRow {
   opponent_rating_before: number | null;
   user_rd_before: number | null;
   result: 'win' | 'loss' | 'draw' | string | null;
+  start_fen: string | null;
+  source_revision: number;
 }
 
 export function rowToAnalysis(row: AnalysisRow): AnalysisResult {
@@ -114,7 +120,7 @@ router.post('/', async (c) => {
   const { game_id, depth, force } = parsed.data;
 
   const game = db.prepare(`
-    SELECT pgn, user_color, opponent_user_id, time_class,
+    SELECT pgn, user_color, opponent_user_id, time_class, start_fen, source_revision,
            user_rating_before, opponent_rating_before, user_rd_before, result
       FROM games WHERE id = ? AND user_id = ?
   `).get(game_id, user.id) as GameRow | undefined;
@@ -123,17 +129,22 @@ router.post('/', async (c) => {
   if (inflight.has(user.id)) return c.json({ error: 'already_analyzing' }, 429);
 
   if (!force) {
-    const existing = db.prepare('SELECT depth, scoring_version FROM analyses WHERE game_id = ?').get(game_id) as
-      | { depth: number; scoring_version: number }
+    const existing = db.prepare('SELECT depth, scoring_version, source_hash, source_revision, moves_json FROM analyses WHERE game_id = ?').get(game_id) as
+      | { depth: number; scoring_version: number; source_hash: string | null; source_revision: number | null; moves_json: string }
       | undefined;
-    if (existing && existing.depth >= depth && existing.scoring_version >= SCORING_VERSION) {
+    if (existing && existing.depth >= depth && existing.scoring_version >= SCORING_VERSION
+      && analysisMatchesGame(game as AnalysisGameSource, existing)) {
       const cached = db.prepare(`SELECT depth, accuracy_white, accuracy_black,
                                         estimated_elo_white, estimated_elo_black,
                                         performance_white, performance_black,
                                         opening_eco, opening_name,
                                         key_moments_json, phase_split_json, moves_json
                                    FROM analyses WHERE game_id = ?`).get(game_id) as AnalysisRow;
-      return c.json({ analysis: rowToAnalysis(cached), cached: true });
+      // Snapshot could have changed between SELECTs (e.g. a second SQLite
+      // writer). Re-check provenance immediately before returning cached data.
+      const latest = loadAnalysisGameSource(db, game_id);
+      if (latest && analysisMatchesGame(latest, { ...existing, moves_json: cached.moves_json }))
+        return c.json({ analysis: rowToAnalysis(cached), cached: true });
     }
   }
 
@@ -150,7 +161,7 @@ router.post('/', async (c) => {
       // estimateGamePerformance defaults to RD=350 (low confidence).
       opponentRd: null,
     }, c.req.raw.signal);
-    saveAnalysis(game_id, result);
+    if (!saveAnalysis(game_id, result, game as AnalysisGameSource)) throw new Error('analysis_source_changed');
     return result;
   })();
 
@@ -162,6 +173,7 @@ router.post('/', async (c) => {
     const code = error instanceof Error ? error.message : '';
     if (code === 'pgn_too_large') return c.json({ error: code }, 413);
     if (code === 'invalid_pgn') return c.json({ error: code }, 400);
+    if (code === 'analysis_source_changed') return c.json({ error: code, stale: true }, 409);
     return c.json({ error: 'analysis_failed' }, 503);
   } finally {
     inflight.delete(user.id);
@@ -649,38 +661,10 @@ function medianDepth(depths: number[]): number {
 
 /** Upsert a full analysis row for a game, and backfill the game's opening so
  *  list endpoints can show it without joining `analyses`. */
-export function saveAnalysis(gameId: number, result: AnalysisResult): void {
-  db.prepare(`
-    INSERT INTO analyses (game_id, depth, accuracy_white, accuracy_black,
-      estimated_elo_white, estimated_elo_black,
-      performance_white, performance_black,
-      opening_eco, opening_name,
-      key_moments_json, phase_split_json,
-      moves_json, scoring_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(game_id) DO UPDATE SET
-      depth = excluded.depth,
-      accuracy_white = excluded.accuracy_white, accuracy_black = excluded.accuracy_black,
-      estimated_elo_white = excluded.estimated_elo_white, estimated_elo_black = excluded.estimated_elo_black,
-      performance_white = excluded.performance_white, performance_black = excluded.performance_black,
-      opening_eco = excluded.opening_eco, opening_name = excluded.opening_name,
-      key_moments_json = excluded.key_moments_json, phase_split_json = excluded.phase_split_json,
-      moves_json = excluded.moves_json, scoring_version = excluded.scoring_version,
-      created_at = datetime('now')
-  `).run(
-    gameId, result.depth,
-    result.accuracy_white, result.accuracy_black,
-    result.estimated_elo_white, result.estimated_elo_black,
-    result.performance_white, result.performance_black,
-    result.opening_eco, result.opening_name,
-    JSON.stringify(result.key_moments),
-    result.phase_split ? JSON.stringify(result.phase_split) : null,
-    JSON.stringify(result.moves), SCORING_VERSION,
-  );
-  if (result.opening_eco || result.opening_name) {
-    db.prepare(`UPDATE games SET eco = ?, opening_name = ? WHERE id = ?`)
-      .run(result.opening_eco, result.opening_name, gameId);
-  }
+export function saveAnalysis(
+  gameId: number, result: AnalysisResult, source: AnalysisGameSource,
+): boolean {
+  return persistAnalysisIfFresh(db, gameId, result, source, SCORING_VERSION);
 }
 
 // Phase split: opening = first N plies (ECO depth, fallback BOOK_PLIES);
