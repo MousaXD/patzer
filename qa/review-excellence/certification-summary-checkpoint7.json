@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T00:21:52.863Z",
+  "parent_benchmark_commit": "d86a9f9fc4649c7c14a9de220fb5b58f59d3d238",
+  "benchmark_checkout_sha": "d86a9f9fc4649c7c14a9de220fb5b58f59d3d238",
+  "branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine": "Stockfish 16",
+  "depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "fixture": "SYN-GAME-FOOLS-MATE",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_data_rights": "self-authored synthetic",
+  "sealed_holdout_used": false,
+  "real_code_paths": [
+    "analyzePgn",
+    "saveAnalysis",
+    "buildGameReview",
+    "saveReviewIfFresh",
+    "authenticated GET /:id/review"
+  ],
+  "discovered_defects": [
+    "real_reanalysis_retains_and_serves_old_review",
+    "controlled_scoring_version_change_accepts_unmarked_old_review",
+    "auto_review_skips_non_null_stale_prose"
+  ],
+  "known_protective_controls": {
+    "other_user_denied": true,
+    "unauthenticated_denied": true,
+    "marked_version_mismatch_rejected": true,
+    "marked_version_match_accepted": true,
+    "changed_language_rejected": true,
+    "null_cache_not_served": true,
+    "in_flight_stale_write_rejected": true
+  },
+  "positive_controls_verified": 8,
+  "existing_agent_b_cache_unit_tests_passed": 22,
+  "negative_safe_certification_rejected": true,
+  "historical_verdict": "real candidate contains stale cache defect; a 0 exit on the reproduce command proves the *attack*, not the product",
+  "benchmark_runner_sha256": "d2c2f67bed8bd9b47aba22f57be7e37ce0e49eb20e51ceaa26330d3a9bc79f27",
+  "evidence": {
+    "initial_white_accuracy": 31.8,
+    "reanalyzed_white_accuracy": 6.800000000000001,
+    "old_cached_review_sha256": "f3e2d09b6ce35dbe146e7551458fb2b914d21759b7f4ffc6fcb105a021763a4c",
+    "prose_version": 9,
+    "marker_absent": true,
+    "autoreview_pending": 0,
+    "cache_escapes": {
+      "real_reanalysis_stale_prose_escaped": true,
+      "controlled_scoring_migration_stale_prose_escaped": true
+    }
+  },
+  "product_cache_certified": false,
+  "release_approved": false,
+  "integration_approved": false,
+  "known_gaps": [
+    "Only a disposable four-ply Fool's Mate synthetic PGN; not a statistical workload",
+    "Scoring-version-only update is a controlled test mutation, not evidence of a deployed migration",
+    "Real saveAnalysis reanalysis path demonstrated with a changed accuracy field",
+    "Policy-fix requires coordination with Agent B, Agent A and PR #17 scoring/backfill; do not edit their source",
+    "No latency/concurrency or multi-user load SLO validation beyond authenticated ownership controls"
+  ]
+}
