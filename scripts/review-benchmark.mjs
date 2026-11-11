@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Agent D independent, offline chess-evidence benchmark. No database, network or service access.
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { readFile, mkdir, writeFile, realpath, lstat, rename, rm } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { cpus, platform, release, totalmem } from 'node:os';
-import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Chess } from 'chess.js';
 
@@ -21,12 +21,21 @@ const main = async () => {
   const manifestPath = resolve(args.manifest || join(base, 'manifests/manifest-v1.jsonl'));
   const manifestBytes = await readFile(manifestPath);
   const entries = manifestBytes.toString('utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
-  const selected = entries.filter(e => !args.split || args.split === 'all' || args.split === e.split);
+  // An empty selection must never look like a successfully certified split.
+  // In particular, HOLDOUT has not been curated yet; zero tested examples
+  // are not evidence of a green held-out review benchmark.
+  const requestedSplit = args.split ?? 'all';
+  const allowedSplits = new Set(['dev', 'holdout', 'stress']);
+  const selected = entries.filter(e => requestedSplit === 'all' || requestedSplit === e.split);
   const errors = [];
   const cases = [];
   const seen = new Set();
-  const allowedSplits = new Set(['dev', 'holdout', 'stress']);
+  if (requestedSplit !== 'all' && !allowedSplits.has(requestedSplit)) {
+    errors.push(fail('__selection__', 'invalid_requested_split'));
+  }
+  if (selected.length === 0) errors.push(fail('__selection__', 'empty_requested_split'));
   const allowedKinds = new Set(['completed_game', 'position', 'explanation_case', 'malformed_input']);
+  const fixtureRoot = await realpath(join(base, 'fixtures'));
   for (const e of entries) {
     if (!e.fixture_id || seen.has(e.fixture_id)) errors.push(fail(e.fixture_id, 'duplicate_or_missing_id'));
     seen.add(e.fixture_id);
@@ -42,7 +51,14 @@ const main = async () => {
       if (typeof e.pgn_file !== 'string' || isAbsolute(e.pgn_file) || e.pgn_file.split('/').includes('..')) throw Error('unsafe_fixture_path');
       const path = resolve(base, 'fixtures', e.pgn_file);
       if (!relative(join(base, 'fixtures'), path) || relative(join(base, 'fixtures'), path).startsWith('..')) throw Error('unsafe_fixture_path');
-      const contents = await readFile(path, 'utf8');
+      // Prevent a symlink inside the fixture directory from redirecting the
+      // runner into private files or an active database outside the QA corpus.
+      const resolvedFixture = await realpath(path);
+      const inside = relative(fixtureRoot, resolvedFixture);
+      if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw Error('unsafe_fixture_path');
+      // Read the resolved, verified target, not a symlink that could be
+      // retargeted between containment validation and opening the file.
+      const contents = await readFile(resolvedFixture, 'utf8');
       if (sha(contents) !== e.pgn_sha256) throw Error('fixture_digest_mismatch');
       if (e.kind === 'completed_game') {
         const chess = new Chess();
@@ -67,17 +83,49 @@ const main = async () => {
     engine_sha256: null, engine_options: null, scoring_model_version: 'not_assessed',
     node_version: process.version,
     os_cpu_summary: { platform: platform(), release: release(), model: cpus()[0]?.model, logical_cpus: cpus().length, total_memory_bytes: totalmem() },
-    split: args.split || 'all', fixture_count: selected.length, manifest_count: entries.length, skipped_count_and_reasons: [],
+    split: requestedSplit, fixture_count: selected.length, manifest_count: entries.length, skipped_count_and_reasons: [],
     elapsed_ms: elapsed, cpu_usage_us: process.cpuUsage(), max_rss_bytes: process.resourceUsage().maxRSS * 1024,
-    metrics: { checks_passed: selected.length - new Set(errors.map(e => e.fixture_id)).size, failed_checks: errors.length, game_plies: cases.reduce((n, c) => n + (c.plies || 0), 0) },
+    metrics: { checks_passed: Math.max(0, selected.length - new Set(errors.filter(e => selected.some(x => x.fixture_id === e.fixture_id)).map(e => e.fixture_id)).size), failed_checks: errors.length, game_plies: cases.reduce((n, c) => n + (c.plies || 0), 0) },
     uncertainty: 'Synthetic deterministic checks only; not an engine-strength, human-helpfulness, or accuracy-calibration benchmark',
     failures: errors, cases
   };
   if (args.out) {
     const path = resolve(args.out);
-    if (!path.startsWith(join(root, 'qa/review-excellence/results') + '/')) throw Error('out must be inside qa/review-excellence/results');
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, JSON.stringify(result, null, 2) + '\n');
+    const outputRoot = join(base, 'results');
+    const rel = relative(outputRoot, path);
+    if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
+      throw Error('unsafe_output_path');
+    }
+    await mkdir(outputRoot, { recursive: true });
+    const outputRootStat = await lstat(outputRoot);
+    if (!outputRootStat.isDirectory() || outputRootStat.isSymbolicLink()) throw Error('unsafe_output_path');
+    const outputRootReal = await realpath(outputRoot);
+    let parent = outputRoot;
+    const parts = rel.split(sep);
+    for (const component of parts.slice(0, -1)) {
+      parent = join(parent, component);
+      try { await mkdir(parent); }
+      catch (err) { if (err.code !== 'EEXIST') throw err; }
+      const stat = await lstat(parent);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error('unsafe_output_path');
+    }
+    const parentReal = await realpath(dirname(path));
+    const parentRel = relative(outputRootReal, parentReal);
+    if (parentRel === '..' || parentRel.startsWith('..' + sep) || isAbsolute(parentRel)) {
+      throw Error('unsafe_output_path');
+    }
+    try {
+      const existing = await lstat(path);
+      if (!existing.isFile() || existing.isSymbolicLink()) throw Error('unsafe_output_path');
+    } catch (err) { if (err.code !== 'ENOENT') throw err; }
+    // Atomic rename never follows an existing destination hard link and never
+    // truncates the target of an output symlink. Reject symlinks explicitly,
+    // and create the temporary file exclusively within the checked parent.
+    const pending = join(parentReal, '.benchmark-' + randomUUID() + '.tmp');
+    try {
+      await writeFile(pending, JSON.stringify(result, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+      await rename(pending, path);
+    } finally { await rm(pending, { force: true }); }
   }
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = errors.length ? 1 : 0;
