@@ -318,6 +318,8 @@
     "showAll": "Show all games",
     "starred": "Starred",
     "star": "Star",
+    "bookmarkSaveFailed": "Could not update the bookmark. The previous state is restored; you can retry.",
+    "bookmarkRetry": "Retry bookmark",
     "flip": "Flip",
     "share": "Share position",
     "shareBranch": "Share branch FEN",

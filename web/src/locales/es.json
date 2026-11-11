@@ -313,6 +313,8 @@
     "showAll": "Mostrar todas las partidas",
     "starred": "Destacada",
     "star": "Destacar",
+    "bookmarkSaveFailed": "No se pudo actualizar el marcador. Se restauró el estado anterior; puedes reintentarlo.",
+    "bookmarkRetry": "Reintentar marcador",
     "flip": "Girar",
     "share": "Compartir posición",
     "shareBranch": "Compartir FEN de variante",

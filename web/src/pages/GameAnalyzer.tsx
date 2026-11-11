@@ -1206,6 +1206,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
@@ -1214,7 +1215,13 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
 
   const star = useMutation({
     mutationFn: (next: boolean) => api.patch(`/api/games/${gameId}/bookmark`, { bookmarked: next }),
-    onError: () => setStarred(bookmarked),
+    onMutate: (next: boolean) => { setBookmarkRetryTarget(null); setStarred(next); },
+    onError: (_error, attempted) => {
+      setStarred(bookmarked);
+      // Retry the original intent; toggling again could target the wrong state.
+      setBookmarkRetryTarget(attempted);
+    },
+    onSuccess: () => setBookmarkRetryTarget(null),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
@@ -1243,7 +1250,8 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <button
           type="button"
           aria-pressed={isStarred}
-          onClick={() => { const next = !isStarred; setStarred(next); star.mutate(next); }}
+          disabled={star.isPending}
+          onClick={() => star.mutate(!isStarred)}
           className={`btn-ghost min-h-11 px-2 py-2 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
           title={t('shortcuts.bookmark', { defaultValue: 'Toggle bookmark' })}
         >
@@ -1270,6 +1278,13 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
           {notes && !showNotes && <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-gold-500" />}
         </button>
       </div>
+      {bookmarkRetryTarget !== null && <div data-review-bookmark-error role="alert"
+        className="flex flex-wrap items-center justify-between gap-2 border-t border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200">
+        <span>{t('review.bookmarkSaveFailed')}</span>
+        <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs"
+          disabled={star.isPending}
+          onClick={() => star.mutate(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
+      </div>}
       {shareCopyFailed && <ClipboardManualFallback
         label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
         value={shareUrl}

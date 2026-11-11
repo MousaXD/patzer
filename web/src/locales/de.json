@@ -318,6 +318,8 @@
     "showAll": "Alle Partien anzeigen",
     "starred": "Markiert",
     "star": "Markieren",
+    "bookmarkSaveFailed": "Die Markierung konnte nicht geändert werden. Der vorherige Zustand wurde wiederhergestellt; versuche es erneut.",
+    "bookmarkRetry": "Markierung erneut versuchen",
     "flip": "Drehen",
     "share": "Stellung teilen",
     "shareBranch": "Varianten-FEN teilen",

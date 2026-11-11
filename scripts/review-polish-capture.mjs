@@ -462,6 +462,57 @@ try {
       body:{language:'en',site_theme:'dark'}});
     assert.equal(restored.status,200);
   }
+  // Bookmark PATCH failures currently roll back the optimistic Star button
+  // without telling the user whether the bookmark was actually saved.
+  const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await bookmarkContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await bookmarkContext.newPage();
+    let bookmarkAttempts=0;
+    const requestedBookmarkStates=[];
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.route(`**/api/games/${id}/bookmark`,async route=>{
+      bookmarkAttempts++;
+      requestedBookmarkStates.push(route.request().postDataJSON().bookmarked);
+      if(bookmarkAttempts===1 || bookmarkAttempts===3)await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+      else await route.continue();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Star',exact:true}).click();
+    await page.getByRole('button',{name:'Star',exact:true}).waitFor({state:'visible',timeout:3000});
+    assert.equal(await page.getByRole('button',{name:'Star',exact:true}).getAttribute('aria-pressed'),'false',
+      'Failed bookmark PATCH must not leave a falsely selected star');
+    await page.locator('[data-review-bookmark-error]').waitFor({state:'visible',timeout:3000});
+    const retry=page.locator('[data-review-bookmark-error] button');
+    assert.ok((await retry.boundingBox())?.height>=44,'Bookmark retry needs a 44px touch target');
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'bookmark-save-failure-390.png')});
+    await Promise.all([
+      page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/bookmark`) && response.status()===200),
+      retry.click(),
+    ]);
+    assert.equal(bookmarkAttempts,2);
+    await page.locator('[data-review-bookmark-error]').waitFor({state:'hidden'});
+    assert.equal(db.prepare('SELECT bookmarked FROM games WHERE id=?').get(id).bookmarked,1);
+    // The reverse operation (unstar) must retry false, never accidentally
+    // re-star a game because a failed optimistic toggle was rolled back.
+    await page.getByRole('button',{name:'Starred',exact:true}).click();
+    await page.locator('[data-review-bookmark-error]').waitFor({state:'visible'});
+    assert.equal(await page.getByRole('button',{name:'Starred',exact:true}).getAttribute('aria-pressed'),'true');
+    await Promise.all([
+      page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/bookmark`) && response.status()===200),
+      retry.click(),
+    ]);
+    await page.locator('[data-review-bookmark-error]').waitFor({state:'hidden'});
+    assert.deepEqual(requestedBookmarkStates,[true,true,false,false],
+      'Failed bookmark and unbookmark retries must preserve the exact original intent');
+    assert.equal(db.prepare('SELECT bookmarked FROM games WHERE id=?').get(id).bookmarked,0);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{
+    await bookmarkContext.close();
+    db.prepare('UPDATE games SET bookmarked=0 WHERE id=?').run(id);
+  }
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
   for(const [width,height] of [[320,760],[390,844],[1024,768]]){
@@ -1010,6 +1061,28 @@ try {
             await page.getByText(locale.review.startingPosition,{exact:true}).first().waitFor({state:'visible'});
             const board=await page.locator('cg-board').boundingBox();
             assert.ok(board);
+            if(lang==='de'){
+              // Chessground should reject an illegal pawn jump before the
+              // variation controller is called, without locking future legal
+              // moves or modifying the immutable saved game.
+              let illegalRequests=0;
+              page.on('request',request=>{
+                if(request.url().endsWith('/api/analyze/variation-move')) illegalRequests++;
+              });
+              const invalidFrom={x:board.x+board.width*4.5/8,y:board.y+board.height*6.5/8}; // e2
+              const invalidTo={x:board.x+board.width*4.5/8,y:board.y+board.height*3.5/8}; // e5
+              await page.mouse.move(invalidFrom.x,invalidFrom.y);
+              await page.mouse.down();
+              await page.mouse.move(invalidTo.x,invalidTo.y,{steps:12});
+              await page.mouse.up();
+              assert.equal(await page.getByText(locale.review.variationTitle,{exact:true}).count(),0,
+                'Illegal e2-e5 drag must not create a variation');
+              assert.ok((await page.locator('[data-move-transport]').innerText()).startsWith('0 /'),
+                'Illegal drag must not move the original game cursor');
+              assert.equal(illegalRequests,0,'Illegal drag must not request engine scoring');
+              assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn);
+              await page.screenshot({path:join(output,'review-invalid-drag-de-390.png')});
+            }
             const from={x:board.x+board.width*3.5/8,y:board.y+board.height*6.5/8}; // d2
             const to={x:board.x+board.width*3.5/8,y:board.y+board.height*4.5/8}; // d4
             await page.mouse.move(from.x,from.y);

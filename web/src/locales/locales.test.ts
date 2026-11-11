@@ -113,7 +113,7 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       }
     });
     it('localizes notes-save recovery and exploratory branch sharing', () => {
-      for (const key of ['notesSaveFailed', 'notesRetrySave', 'shareBranch', 'shareBranchTitle', 'clipboardUnavailable'] as const) {
+      for (const key of ['notesSaveFailed', 'notesRetrySave', 'shareBranch', 'shareBranchTitle', 'clipboardUnavailable', 'bookmarkSaveFailed', 'bookmarkRetry'] as const) {
         expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
       }
