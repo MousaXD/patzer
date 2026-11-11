@@ -351,6 +351,18 @@ const explainBody = {
 };
 
 describe('POST /explain (regression #37)', () => {
+  it.each([
+    ['wrong actor', { player: 'White' }],
+    ['illegal move', { played_san: 'Nf3' }],
+    ['invalid FEN', { fen: 'not-a-fen' }],
+  ])('does not run engine or model for an unverified %s', async (_, override) => {
+    const result = await post('/explain', { ...explainBody, ...override });
+    expect(result.text).toMatch(/cannot verify|check whose turn/i);
+    expect(result.actions).toBeNull();
+    expect(engineCalls).toEqual([]);
+    expect(prompts).toHaveLength(0);
+  });
+
   it('gives the opponent\'s answer as a short line, not just one move', async () => {
     const prev = coaching.setCoachEngine(async (fen) => (fen === AFTER_NF6 ? [{ cp: 300, mate: null, pv: ['c4f7', 'e8e7', 'f7b3', 'a7a6'] }] : ENGINE[fen] ?? null));
     try {

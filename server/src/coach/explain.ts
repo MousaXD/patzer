@@ -58,6 +58,20 @@ export async function coachExplain(
   opts: RunOpts = {},
 ): Promise<CoachAnswer> {
   opts.signal?.throwIfAborted();
+  // Validate the recorded position, move, and actual mover *before* invoking
+  // Stockfish, reading player history, or prompting a model. Otherwise even
+  // an impossible move can produce an authoritative-sounding fallback.
+  const evidence = momentEvidence(params.fen, params.played_san, params.best_san, params.pv_san ?? []);
+  if (evidence.status !== 'verified' || params.player.toLowerCase() !== evidence.actor) {
+    const unverified: Record<Language, string> = {
+      en: 'I cannot verify this move from the supplied position. Check whose turn it is and the recorded move.',
+      bg: 'Не мога да проверя този ход в посочената позиция. Провери кой е на ход и записания ход.',
+      es: 'No puedo verificar esta jugada en la posición indicada. Comprueba a quién le toca mover y la jugada registrada.',
+      de: 'Ich kann diesen Zug in der angegebenen Stellung nicht bestätigen. Prüfe, wer am Zug ist und welcher Zug aufgezeichnet wurde.',
+      ru: 'Не могу проверить этот ход в указанной позиции. Проверь, чья очередь ходить и какой ход записан.',
+    };
+    return { text: unverified[lang], actions: [], source: 'fallback' };
+  }
   // The move is the user's own when they're the one asking about their game
   // (Play), or in Game Review when the move belongs to their colour.
   const coaching = await explainCoaching({
@@ -69,7 +83,6 @@ export async function coachExplain(
     ownMove: params.user_perspective ?? false,
   }, lang, aud);
   opts.signal?.throwIfAborted();
-  const evidence = momentEvidence(params.fen, params.played_san, params.best_san, params.pv_san ?? []);
   const mate = evidence.claims.find((c) => c.evidence_type === 'reply_mate_in_one')?.variation_san?.[0];
   const better = evidence.legal_best_san && evidence.legal_best_san !== params.played_san ? evidence.legal_best_san : null;
   const verdict = String(coaching.facts.verdict ?? '').trim();
@@ -85,7 +98,7 @@ export async function coachExplain(
   const safeFallback = evidence.status === 'verified' && screenCoachProse(deterministic, evidence, lang).accepted
     ? deterministic : qualified[lang];
   const fallback = (): CoachAnswer => ({ text: safeFallback, actions: coaching.actions, source: 'fallback' });
-  if (evidence.status !== 'verified' || params.player.toLowerCase() !== evidence.actor || !llmConfigured()) return fallback();
+  if (!llmConfigured()) return fallback();
 
   const input = {
     ...params,
