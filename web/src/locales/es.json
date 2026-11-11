@@ -317,6 +317,7 @@
     "share": "Compartir posición",
     "shareBranch": "Compartir FEN de variante",
     "shareBranchTitle": "Compartir esta posición de la variante en el laboratorio",
+    "clipboardUnavailable": "No se puede copiar al portapapeles. Selecciona el texto de abajo y cópialo manualmente.",
     "notes": "Notas",
     "notesSaveFailed": "No se pudieron guardar tus notas. El borrador sigue aquí; inténtalo de nuevo.",
     "notesRetrySave": "Reintentar guardado",

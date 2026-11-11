@@ -1168,12 +1168,19 @@ function GameAnalyzerView() {
                 onFlip={() => setFlipped((f) => !f)}
                 linkCopied={linkCopied}
                 sharingVariation={isVariation}
-                onShare={() => {
+                shareUrl={shareCurrentPosition()}
+                onShare={async () => {
                   const url = shareCurrentPosition();
-                  navigator.clipboard?.writeText(url).then(() => {
+                  try {
+                    if (!navigator.clipboard?.writeText) return false;
+                    await navigator.clipboard.writeText(url);
                     setLinkCopied(true);
                     setTimeout(() => setLinkCopied(false), 1400);
-                  }).catch(() => undefined);
+                    return true;
+                  } catch {
+                    setLinkCopied(false);
+                    return false;
+                  }
                 }}
               />
 
@@ -1190,13 +1197,14 @@ function GameAnalyzerView() {
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopied, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => void; linkCopied: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<boolean>; shareUrl: string; linkCopied: boolean; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [shareCopyFailed, setShareCopyFailed] = useState(false);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
@@ -1229,7 +1237,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
   });
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden" data-review-meta-toolbar>
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
           type="button"
@@ -1244,7 +1252,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
         <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
-        <button type="button" onClick={onShare} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
+        <button type="button" onClick={() => { void onShare().then((copied) => setShareCopyFailed(!copied)); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
           {linkCopied ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Share2 className="h-3.5 w-3.5" />}
           {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
@@ -1261,6 +1269,10 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
           {notes && !showNotes && <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-gold-500" />}
         </button>
       </div>
+      {shareCopyFailed && <ClipboardManualFallback
+        label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
+        value={shareUrl}
+      />}
       {showNotes && (
         <div id={`review-notes-${gameId}`} className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
           <textarea
@@ -1332,14 +1344,18 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
 function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState<'fen' | 'pgn' | null>(null);
+  const [manualCopy, setManualCopy] = useState<'fen' | 'pgn' | null>(null);
 
   async function copy(kind: 'fen' | 'pgn', text: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(kind);
+      setManualCopy(null);
       setTimeout(() => setCopied(null), 1400);
     } catch {
-      // Clipboard API may be denied; silently no-op.
+      // Clipboard can be unavailable on self-hosted HTTP or denied by the
+      // browser. Show the exact source text without altering the saved game.
+      setManualCopy(kind);
     }
   }
 
@@ -1365,6 +1381,25 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
         <Download className="h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 truncate">{t('common.download')}</span>
       </button>
+      {manualCopy && <div className="col-span-3 min-w-0">
+        <ClipboardManualFallback label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
+          value={manualCopy === 'fen' ? fen : pgn} />
+      </div>}
+    </div>
+  );
+}
+
+/** Browser clipboard permissions may be denied on a self-hosted origin.
+ * A native read-only field keeps the user in control of the exact data. */
+function ClipboardManualFallback({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation();
+  return (
+    <div data-review-clipboard-fallback role="alert"
+      className="min-w-0 border-t border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+      <p>{t('review.clipboardUnavailable')}</p>
+      <textarea aria-label={label} readOnly value={value} rows={value.length > 180 ? 3 : 1}
+        onFocus={(event) => event.currentTarget.select()}
+        className="input mt-2 min-h-11 w-full min-w-0 resize-y font-mono text-xs" />
     </div>
   );
 }

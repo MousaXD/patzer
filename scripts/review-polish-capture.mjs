@@ -351,6 +351,49 @@ try {
         'Toolbar state must not mutate the saved game source');
     }finally{await context.close();}
   }
+  // Reproduce blocked clipboard access in a self-hosted/browser permission
+  // environment. Silent failure leaves users unable to export their game.
+  const blockedContext=await browser.newContext({viewport:{width:320,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await blockedContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await blockedContext.newPage();
+    await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{
+      configurable:true,value:{writeText:async()=>{throw new DOMException('Clipboard blocked','NotAllowedError');}},
+    }));
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Copy FEN',exact:true}).click();
+    const exportFallback=page.locator('[data-review-export-row] [data-review-clipboard-fallback]');
+    await exportFallback.waitFor({state:'visible',timeout:3000});
+    const manualText=exportFallback.locator('textarea');
+    const expectedFen=JSON.parse(db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json)[14].fen_after;
+    assert.equal(await manualText.inputValue(),expectedFen,
+      'Denied Copy FEN must expose only the exact displayed FEN, not fabricated game data');
+    await manualText.focus();
+    const selected=await manualText.evaluate(el=>({start:el.selectionStart,end:el.selectionEnd,length:el.value.length}));
+    assert.ok(selected.start===0 && selected.end===selected.length,
+      'Manual FEN fallback must auto-select the exact text for keyboard copying');
+    await page.screenshot({path:join(output,'clipboard-denied-fen-320.png')});
+    await page.getByRole('button',{name:'Copy PGN',exact:true}).click();
+    assert.equal(await manualText.inputValue(),db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
+      'Denied Copy PGN must expose the exact authoritative saved PGN');
+    await page.getByRole('button',{name:'Share position',exact:true}).click();
+    const shareFallback=page.locator('[data-review-meta-toolbar] [data-review-clipboard-fallback]');
+    await shareFallback.waitFor({state:'visible',timeout:3000});
+    assert.equal(await shareFallback.locator('textarea').inputValue(),page.url(),
+      'Denied Share position must expose the displayed review URL, not another move');
+    await page.screenshot({path:join(output,'clipboard-denied-share-320.png')});
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+      configurable:true,value:{writeText:async()=>{}},
+    }));
+    await page.getByRole('button',{name:'Copy FEN',exact:true}).click();
+    await exportFallback.waitFor({state:'hidden'});
+    await page.getByRole('button',{name:'Share position',exact:true}).click();
+    await shareFallback.waitFor({state:'hidden'});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
+      (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn,
+      'Denied and successful clipboard operations must never rewrite saved PGN');
+  }finally{await blockedContext.close();}
   // Notes remain private, editable and recoverable after a real failed PATCH.
   // Verify the localized retry against the disposable authenticated backend.
   const spanishNotes=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));

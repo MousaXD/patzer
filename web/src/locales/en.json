@@ -322,6 +322,7 @@
     "share": "Share position",
     "shareBranch": "Share branch FEN",
     "shareBranchTitle": "Share this variation position in Lab",
+    "clipboardUnavailable": "Clipboard access is blocked. Select the text below and copy it manually.",
     "notes": "Notes",
     "notesSaveFailed": "Could not save your notes. Your draft is still here; try again.",
     "notesRetrySave": "Retry save",

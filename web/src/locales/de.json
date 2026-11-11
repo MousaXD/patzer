@@ -322,6 +322,7 @@
     "share": "Stellung teilen",
     "shareBranch": "Varianten-FEN teilen",
     "shareBranchTitle": "Diese Variantenstellung im Labor teilen",
+    "clipboardUnavailable": "Kopieren in die Zwischenablage ist nicht verfügbar. Markiere den Text unten und kopiere ihn manuell.",
     "notes": "Notizen",
     "notesSaveFailed": "Die Notizen konnten nicht gespeichert werden. Dein Entwurf bleibt erhalten; versuche es erneut.",
     "notesRetrySave": "Erneut speichern",
