@@ -341,6 +341,7 @@
     "hasNote": "note",
     "clearSearch": "Clear",
     "startingPosition": "starting position",
+    "bestArrowNote": "Blue arrow: best continuation from the displayed board position.",
     "best": "best: {{san}}",
     "sideShort": {
       "white": "W",

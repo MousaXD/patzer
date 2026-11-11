@@ -367,6 +367,7 @@
     "hasNote": "бележка",
     "clearSearch": "Изчисти",
     "startingPosition": "начална позиция",
+    "bestArrowNote": "Синя стрелка: най-доброто продължение от показаната позиция.",
     "best": "най-добър: {{san}}",
     "sideShort": {
       "white": "Б",

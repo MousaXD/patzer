@@ -281,6 +281,8 @@
     "variationEvalUnavailable": "Evaluación de la posición no disponible",
     "variationEvalLabel": "Evaluación {{score}}",
     "boardLabel": "Tablero de ajedrez",
+    "startingPosition": "posición inicial",
+    "bestArrowNote": "Flecha azul: mejor continuación desde la posición mostrada en el tablero.",
     "openCoach": "Preguntar al entrenador",
     "summary": "Resumen",
     "white": "Blancas",

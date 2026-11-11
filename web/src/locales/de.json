@@ -341,6 +341,7 @@
     "hasNote": "Notiz",
     "clearSearch": "Leeren",
     "startingPosition": "Grundstellung",
+    "bestArrowNote": "Blauer Pfeil: bester Folgezug aus der angezeigten Brettstellung.",
     "best": "besser: {{san}}",
     "sideShort": {
       "white": "W",

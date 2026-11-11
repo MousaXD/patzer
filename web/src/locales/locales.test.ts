@@ -64,6 +64,21 @@ describe('de locale', () => {
   });
 });
 
+// The mobile Game Review board must not fall back to English instructions in
+// the midst of an otherwise translated analysis workspace.
+describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as const)(
+  '%s Game Review board guidance', (lang, locale) => {
+    it('translates the starting position and best-arrow explanation', () => {
+      expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.startingPosition).not.toEqual(en.review.startingPosition);
+        expect(locale.review.bestArrowNote).not.toEqual(en.review.bestArrowNote);
+      }
+    });
+  },
+);
+
 // Lesson texts have their own namespace; missing keys must not silently put
 // English sentences into a translated lesson.
 describe.each([['de', learnDe], ['ru', learnRu]] as const)('%s lesson texts', (lang, texts) => {

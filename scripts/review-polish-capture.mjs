@@ -524,6 +524,10 @@ try {
         const hintText=await hint.innerText();
         assert.ok(hintText.includes(locale.review.exploreLabel) && hintText.includes(locale.review.exploreHint),
           `Board exploration hint must use the selected ${lang} locale: ${hintText}`);
+        const arrowNote=page.locator('[data-review-best-arrow-note]');
+        await arrowNote.waitFor({state:'visible'});
+        assert.equal((await arrowNote.innerText()).trim(),locale.review.bestArrowNote,
+          `Board arrow guidance must be localized in ${lang}`);
         if(width===390){
           await hint.scrollIntoViewIfNeeded();
           await page.screenshot({path:join(output,`review-explore-hint-${lang}-390.png`)});
@@ -611,6 +615,8 @@ try {
             const originalPgn=db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn;
             await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
             await page.locator('cg-board').waitFor({state:'visible'});
+            await page.locator('.review-board-square').waitFor({state:'visible'});
+            await page.getByText(locale.review.startingPosition,{exact:true}).first().waitFor({state:'visible'});
             const board=await page.locator('cg-board').boundingBox();
             assert.ok(board);
             const from={x:board.x+board.width*3.5/8,y:board.y+board.height*6.5/8}; // d2
@@ -647,6 +653,13 @@ try {
             assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn,
               'An explored variation must not alter the saved PGN');
           }
+          await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+          await page.getByText(locale.review.startingPosition,{exact:true}).first().waitFor({state:'visible'});
+          const startingArrow=page.locator('[data-review-best-arrow-note]');
+          await startingArrow.waitFor({state:'visible'});
+          assert.equal((await startingArrow.innerText()).trim(),locale.review.bestArrowNote);
+          await startingArrow.scrollIntoViewIfNeeded();
+          await page.screenshot({path:join(output,`review-start-arrow-${lang}-390.png`)});
         }
       }finally{await context.close();}
     }

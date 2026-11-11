@@ -822,7 +822,7 @@ function GameAnalyzerView() {
           </div>
           {bestUci && (
             <p className="mb-1 text-[11px] text-chesscom-500 dark:text-chesscom-300" role="note" data-review-best-arrow-note>
-              Blue arrow: best continuation from the displayed board position.
+              {t('review.bestArrowNote')}
             </p>
           )}
           <PlayerHeader

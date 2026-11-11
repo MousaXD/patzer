@@ -341,6 +341,7 @@
     "hasNote": "заметка",
     "clearSearch": "Очистить",
     "startingPosition": "начальная позиция",
+    "bestArrowNote": "Синяя стрелка: лучший следующий ход из показанной позиции.",
     "best": "лучший: {{san}}",
     "sideShort": {
       "white": "Б",
