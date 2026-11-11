@@ -83,6 +83,9 @@ async function measure(page,width,height,theme) {
     };
     return {board:rect('cg-board'), rail:rect('[data-review-side-rail]'),
       workspace:rect('[data-review-workspace]'), transport:rect('[data-move-transport]'),
+      graphMarkerAspectRatios:[...document.querySelectorAll('svg[role="slider"] circle[stroke="#fff"], [data-eval-graph-marker]')]
+        .slice(0,12).map(el=>{ const r=el.getBoundingClientRect();
+          return r.height ? +(r.width/r.height).toFixed(2) : null; }),
       documentHeight:document.documentElement.scrollHeight,
       horizontalOverflow:document.documentElement.scrollWidth-innerWidth,
       themeRendered:document.documentElement.classList.contains('dark')?'dark':'light',
@@ -92,6 +95,9 @@ async function measure(page,width,height,theme) {
   });
   assert.ok(boxes.board && boxes.board.width>175,'Board missing');
   assert.ok(Math.abs(boxes.board.width-boxes.board.height)<3,'Board not square');
+  assert.ok(boxes.graphMarkerAspectRatios.length>0,'Evaluation classification markers are missing');
+  assert.ok(boxes.graphMarkerAspectRatios.every((ratio)=>ratio!==null && ratio>=0.9 && ratio<=1.1),
+    `Evaluation markers must render as circles, not distorted ovals: ${JSON.stringify(boxes.graphMarkerAspectRatios)}`);
   assert.ok(boxes.horizontalOverflow<=2,`Horizontal overflow: ${boxes.horizontalOverflow}`);
   assert.equal(boxes.themeRendered,theme);
   if(width>=960){
@@ -154,6 +160,25 @@ try {
         assert.notEqual(await transport.innerText(),oldText,'Next move did not advance');
         assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,previousPgn,
           'Move navigation must not rewrite the saved PGN');
+        // Classification dots are layered above the interactive SVG but must
+        // not absorb taps or block its keyboard-slider navigation.
+        const marker=page.locator('[data-eval-graph-marker]').first();
+        const chosen=Number(await marker.getAttribute('data-ply'));
+        const dot=await marker.boundingBox();
+        assert.ok(dot && chosen>0);
+        await page.mouse.click(dot.x+dot.width/2,dot.y+dot.height/2);
+        await page.waitForFunction((ply)=>{
+          const text=document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim();
+          return text?.startsWith(`${ply} /`);
+        },chosen);
+        const graph=page.getByRole('slider',{name:'Move evaluation timeline'});
+        await graph.focus();
+        await page.keyboard.press('End');
+        await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('24 /'));
+        await page.keyboard.press('Home');
+        await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('0 /'));
+        assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,previousPgn,
+          'Graph clicking and keyboard navigation must not rewrite saved game source');
       }
       if(width===390){
         if(theme==='dark'){

@@ -15,6 +15,8 @@
 
 **Black-first FEN commit:** `c5779e5` (pushed). Current work addresses dark-mode move history readability.
 
+**Dark move-history readability commit:** `3e07a3d` (pushed). Current work corrects the evaluation graph marker geometry.
+
 ## Completed changes
 
 1. Reproduced and measured the original board-versus-controls conflict through real Chromium screenshot capture, both themes and all six target screen sizes.
@@ -29,6 +31,7 @@
 10. Added 8 unit regression cases for numerical cp, missing and non-finite scores, and evidence-independent classifications; added a disposable real-React browser capture that removes a score from the cached fixture and verifies no odds appear in the rendered explanation.
 11. Reused the existing `moveSideForPly`/`moveNumberForPly` helpers in `MoveExplanation`, preserving the actual mover, fullmove number and win-chance point-of-view for imported Black-first FEN games. Wired the already-available starting FEN through `GameAnalyzer` without altering the PGN or scoring. Added Black-first assertions and an isolated real browser screenshot; `12…e5` correctly appears as an opponent Black move with a Black-side 59% → 41% comparison in the synthetic fixture.
 12. Detected a concrete dark-mode accessibility/polish problem in the real Chromium move list: row numbers at **3.018:1** contrast, and a selected-move tile of **0.817** relative background luminance (near-white). Lightened secondary label text only in dark mode, used a subdued dark selected tile with a gold inset ring, and aligned Starting position/phase labels with the same contrast system. Post-fix measured **4.844:1** row-number contrast and **0.064** relative luminance of the selected tile. The light version is unchanged. The real dark/light 390px review-detail screenshots were opened and inspected after the fix.
+13. Diagnosed flat, oval evaluation markers in real Chromium captures. The responsive SVG stretches both axes independently; marker bounding boxes were **4.4:1** wide-to-tall on desktop and **3.35–3.63:1** on tablet/mobile. Rendered fixed-pixel classification, sampled-position and selected-position circles on a pointer-transparent overlay without touching evaluation curves, gaps or graph click positions. All 12 browser geometry checks now report **1.0:1**. Compared real 1440px before/after screenshots in light theme and inspected 1024px dark result. Browser navigation tests now click an actual marker and exercise keyboard Home/End, checking the saved PGN remains unchanged.
 
 ## Before/after visual evidence
 
@@ -58,6 +61,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 - After the source-truth guard: `npm run typecheck` PASS; targeted 34 tests PASS (8 newly added), full suite **924 PASS / 12 skipped**, production build PASS; 12 viewport/theme browser captures PASS and actual missing-score browser assertion PASS. Additional details screenshot is captured separately under `qa-artifacts/review-polish/source-evidence/missing-eval-details.png`.
 - Black-first FEN follow-up: typecheck PASS, targeted 13 tests PASS including a new real-mover test, **full suite 925 passed / 12 skipped**, build PASS, all 12 layout captures PASS and Black-first real Chromium fixture PASS; screenshot `qa-artifacts/review-polish/black-first/black-first-details.png`.
 - Dark move-list readability: a new browser assertion intentionally failed against the preceding implementation, recording a 3.018:1 row-number contrast. After correction: typecheck PASS, 7 targeted tests PASS, **full suite 925 passed / 12 skipped**, production build PASS, 12/12 layout captures PASS, and dark-mode browser assertion PASS. Before/after captures: `qa-artifacts/review-polish/dark-list-baseline/dark-390x844-details.png` and `qa-artifacts/review-polish/dark-list-after/dark-390x844-details.png`.
+- Graph geometry refinement: typecheck PASS, 4 targeted tests PASS, **full suite 926 passed / 12 skipped**, build PASS, 12/12 geometry captures PASS with 1:1 marker aspect; marker click and keyboard Home/End regression PASS with PGN unchanged. Captures: `qa-artifacts/review-polish/graph-marker-before/` vs `graph-marker-final/`.
 - Updated mobile implementation: typecheck PASS, 916 tests PASS (12 skipped), build PASS, screenshot capture 12/12 PASS. The final explanation-metadata color change was followed by another successful typecheck, production build, and all 12 browser screenshots; actual dark mobile board and details views were inspected.
 - Screenshot fixtures are presentation-only: classifications/eval scores are synthetic and **do not** certify actual chess analysis.
 

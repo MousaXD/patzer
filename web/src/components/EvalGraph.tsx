@@ -108,37 +108,13 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
         {paths.map((path, index) => (
           <path key={index} d={path.line} fill="none" stroke="#7d7670" strokeWidth="0.7" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         ))}
-        {/* Scored samples remain visible even when surrounded by missing data. */}
-        {points.filter((point) => point.y !== null).map((point) => (
-          <circle key={'sample-' + point.ply} cx={point.x} cy={point.y!} r="0.65" fill="#7d7670" />
-        ))}
-        {/* Mistake / blunder / brilliancy markers */}
-        {markers.map((m) => {
-          const p = points.find((point) => point.ply === m.ply);
-          if (!p || p.y === null) return null;
-          const s = styleFor(m.classification);
-          if (!s) return null;
-          const radius = m.classification === 'brilliant' ? 2.6 : 2.0;
-          return (
-            <circle
-              key={m.ply}
-              cx={p.x}
-              cy={p.y}
-              r={radius}
-              fill={s.hex}
-              stroke="#fff"
-              strokeWidth="0.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          );
-        })}
+        {/* Markers are rendered below with fixed CSS pixel dimensions.
+            SVG circles turn into distorted horizontal ovals when this
+            full-width graph uses preserveAspectRatio="none". */}
         {/* Ply zero has a cursor, but no invented score. */}
         {currentX !== undefined && (
           <g>
             <line x1={currentX} y1={0} x2={currentX} y2={100} stroke="#ffc934" strokeWidth="0.5" strokeDasharray="1 1" vectorEffect="non-scaling-stroke" />
-            {currentPoint?.y != null && (
-              <circle cx={currentX} cy={currentPoint.y} r="2.4" fill="#ffc934" stroke="#fff" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
-            )}
           </g>
         )}
         {/* Hover hairline */}
@@ -146,9 +122,33 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
           <line x1={hoverPoint.x} y1={0} x2={hoverPoint.x} y2={100} stroke="rgba(125,118,112,0.55)" strokeWidth="0.4" vectorEffect="non-scaling-stroke" />
         )}
       </svg>
+      {/* These overlays share the graph's percentage coordinates but keep
+          true circular pixel geometry on desktop, tablet and mobile. They
+          cannot intercept graph clicks, drags or keyboard navigation. */}
+      {points.filter((point) => point.y !== null).map((point) => (
+        <span key={`sample-${point.ply}`} aria-hidden="true" data-eval-graph-sample
+          className="pointer-events-none absolute h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-chesscom-400 dark:bg-chesscom-300"
+          style={{ left: `${point.x}%`, top: `${point.y}%` }} />
+      ))}
+      {markers.map((marker) => {
+        const point = points.find((p) => p.ply === marker.ply);
+        if (point?.y == null) return null;
+        const style = styleFor(marker.classification);
+        if (!style) return null;
+        return (
+          <span key={`marker-${marker.ply}`} aria-hidden="true" data-eval-graph-marker data-ply={marker.ply}
+            className={`pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-chesscom-100 ${marker.classification === 'brilliant' ? 'h-3 w-3' : 'h-2.5 w-2.5'}`}
+            style={{ left: `${point.x}%`, top: `${point.y}%`, backgroundColor: style.hex }} />
+        );
+      })}
+      {currentX !== undefined && currentPoint?.y != null && (
+        <span aria-hidden="true" data-eval-graph-current
+          className="pointer-events-none absolute z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold-500 ring-1 ring-white dark:ring-chesscom-100"
+          style={{ left: `${currentX}%`, top: `${currentPoint.y}%` }} />
+      )}
       {hoverPly !== null && (
         <div
-          className="pointer-events-none absolute top-1 rounded-sm bg-chesscom-900/90 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white shadow-soft"
+          className="pointer-events-none absolute top-1 z-30 rounded-sm bg-chesscom-900/90 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white shadow-soft"
           style={{
             left: 'calc(' + (hoverPoint?.x ?? 0) + '% + 4px)',
             transform: (hoverPoint?.x ?? 0) > 80 ? 'translateX(-100%)' : undefined,
