@@ -466,6 +466,14 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 .review-board-column { width:100%; min-width:0; max-width:760px; margin-inline:auto; }
 .review-board-square { min-width:0; max-width:100%; }
 .review-side-rail { width:100%; max-width:760px; margin-inline:auto; }
+/* On stacked screens a user should be able to move between a live board and
+   its explanation without traversing every intermediate panel manually. */
+@media (min-width:960px) {
+  .review-mobile-jump { display:none; }
+}
+@media (max-width:959px) {
+  .review-desktop-shortcuts { display:none; }
+}
 /* A landscape tablet has room for a genuine review cockpit. Below 1200px the
    former one-column layout put the entire analysis timeline below a 728px
    board, forcing users to scroll past the board to inspect their moves. */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUp, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
@@ -141,6 +141,7 @@ function GameAnalyzerView() {
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  const boardFocusRef = useRef<HTMLDivElement | null>(null);
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -682,6 +683,22 @@ function GameAnalyzerView() {
     });
   };
 
+  // On narrow screens the board and its explanation cannot fit together.
+  // Make the journey two-way without duplicating game state or introducing a
+  // fixed overlay over the chessboard. Focusing the destination also helps
+  // keyboard/screen-reader users understand where the jump landed.
+  const jumpToReviewSection = () => {
+    setTab('moves');
+    requestAnimationFrame(() => {
+      tabsRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
+    });
+  };
+  const jumpToBoard = () => {
+    boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    boardFocusRef.current?.focus({ preventScroll: true });
+  };
+
   // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
   // blind practice. The original PGN is read-only; attempts use a separate board.
   if (practicePly !== null) {
@@ -780,7 +797,11 @@ function GameAnalyzerView() {
           <div className="relative my-2 flex items-stretch justify-center gap-2">
             <EvalBar cp={currentEvalCp} orientation={orientation} />
             <div
-              className={`review-board-square relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'green'}`}
+              ref={boardFocusRef}
+              role="group"
+              tabIndex={-1}
+              aria-label={t('review.boardLabel', { defaultValue: 'Chessboard' })}
+              className={`review-board-square relative aspect-square w-full min-w-0 scroll-mt-16 board-theme-${user?.profile.board_theme ?? 'green'}`}
             >
               <ChessBoard
                 fen={currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}
@@ -799,7 +820,7 @@ function GameAnalyzerView() {
             </div>
           </div>
           {bestUci && (
-            <p className="mb-1 text-[11px] text-chesscom-500" role="note">
+            <p className="mb-1 text-[11px] text-chesscom-500 dark:text-chesscom-300" role="note" data-review-best-arrow-note>
               Blue arrow: best continuation from the displayed board position.
             </p>
           )}
@@ -840,7 +861,16 @@ function GameAnalyzerView() {
             <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
             <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
-          <p className="mt-1 text-center text-[11px] text-chesscom-500">
+          {analysis && !isVariation && (
+            <button type="button" data-review-jump-to-details
+              className="review-mobile-jump btn-secondary mt-2 min-h-11 w-full justify-center text-sm"
+              onClick={jumpToReviewSection}>
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              {t('review.jumpToMoveDetails')}
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          <p className="review-desktop-shortcuts mt-1 text-center text-[11px] text-chesscom-500">
             Left / Right: step through moves · Home / End: jump to start / end · F: flip board
           </p>
 
@@ -861,7 +891,7 @@ function GameAnalyzerView() {
                 </button>
               </div>
             ) : (
-              <p className="flex items-center gap-2 text-xs leading-relaxed text-chesscom-500">
+              <p className="flex items-center gap-2 text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300" data-review-explore-hint>
                 <span className="shrink-0 font-semibold text-chesscom-700 dark:text-chesscom-200">Explore:</span>
                 Move a piece on the board to try a different line. Your saved game stays intact.
               </p>
@@ -917,7 +947,14 @@ function GameAnalyzerView() {
               {/* Tabbed workspace — Moves / AI report / Key moments / Engine / Coach.
                   This is the ONLY tabbed surface on the page: engine lines moved in
                   here (previously a peer card) so there is one mental model, not three. */}
-              <div ref={tabsRef} className="card overflow-hidden scroll-mt-2">
+              <div ref={tabsRef} className="card overflow-hidden scroll-mt-16">
+                <div className="review-mobile-jump flex items-center justify-between gap-2 border-b border-chesscom-100 px-3 py-1.5 text-xs text-chesscom-500 dark:border-chesscom-700">
+                  <span className="font-semibold text-chesscom-700 dark:text-chesscom-200">{t('review.jumpToMoveDetails')}</span>
+                  <button type="button" data-review-jump-to-board onClick={jumpToBoard}
+                    className="btn-ghost min-h-9 px-2 py-1 text-xs">
+                    <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> {t('review.returnToBoard')}
+                  </button>
+                </div>
                 <div role="tablist" aria-label="Review detail sections" onKeyDown={(event) => {
                   if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab') return;
                   const tabs: Tab[] = ['moves', 'report', 'moments'];

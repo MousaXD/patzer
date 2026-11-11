@@ -60,13 +60,13 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
       <div className="flex items-center gap-2">
         <ClassificationIcon classification={move.classification} size={28} />
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] uppercase tracking-wide text-chesscom-500">{who}</div>
+          <div className="text-[11px] uppercase tracking-wide text-chesscom-500 dark:text-chesscom-300">{who}</div>
           <div className="truncate text-sm font-semibold">
             <span className="font-mono">{num}{move.san}</span>
             <span className={`ml-2 ${s.textClass}`}>{t(`classification.${s.labelKey}`)}</span>
           </div>
         </div>
-        <div className="shrink-0 text-right font-mono text-xs tabular-nums text-chesscom-500" title={t('review.why.winChance')}>
+        <div className="shrink-0 text-right font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300" title={t('review.why.winChance')}>
           {wp.before}% → <span className={wp.drop >= 10 ? 'font-bold text-bad' : 'font-semibold text-chesscom-800 dark:text-chesscom-100'}>{wp.after}%</span>
         </div>
       </div>
@@ -75,10 +75,10 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
 
       {showBest && (
         <div className="mt-2 rounded-md bg-white px-2.5 py-1.5 text-xs dark:bg-chesscom-800">
-          <span className="text-chesscom-500">{t('review.why.engineWanted')} </span>
+          <span className="text-chesscom-500 dark:text-chesscom-300">{t('review.why.engineWanted')} </span>
           <span className="font-mono font-semibold text-move-best">{move.best_move_san}</span>
           {line && (
-            <div className="mt-0.5 font-mono text-[11px] text-chesscom-500">{t('review.why.line')}: {line}</div>
+            <div className="mt-0.5 font-mono text-[11px] text-chesscom-500 dark:text-chesscom-300">{t('review.why.line')}: {line}</div>
           )}
         </div>
       )}
@@ -90,7 +90,7 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
       )}
 
       <div className="mt-3 border-t border-chesscom-200 pt-2 dark:border-chesscom-700">
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-chesscom-500">{t('review.why.coachSays')}</div>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-chesscom-500 dark:text-chesscom-300">{t('review.why.coachSays')}</div>
         <CoachPanel
           systemConfigured={coachConfigured}
           request={coachRequest}

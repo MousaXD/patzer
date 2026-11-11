@@ -7,7 +7,7 @@
 **Base:** `origin/main` at `738dd75`
 
 **Worktree:** `/home/mousa/projects/my-creations/game/patzer-review-polish-20261111` (independent of production checkout)
-**Last validated implementation commit:** `fdddebb` (initial review cockpit improvement and audit harness). This progress document may have a later documentation-only commit.
+**Previous validated implementation commit:** `fdddebb` (review cockpit and audit harness). The next commit includes mobile jump and contrast refinements.
 
 ## Completed changes
 
@@ -16,6 +16,9 @@
 3. Reduced default variation panel chrome into a compact hint; active variations retain the full branching UI and Return to game action.
 4. Corrected review tab whitespace and spacing to prevent narrow desktop tab labels wrapping.
 5. Added a self-contained isolated browser capture script with disposable SQLite, synthetic PGN/evaluations, assertion of board squareness, no horizontal overflow, correct theme, and visible desktop transport.
+6. Added a compact mobile-only **Move details** jump from the board and a **Back to board** action above the Moves/AI report/Key moments tabs. Both scroll to the destination with a 64px sticky-header clearance and move keyboard focus. Respect reduced-motion preferences; no overlay obscures the board. New control labels exist in all five locale JSON files.
+7. Removed irrelevant desktop-only keyboard shortcut instructions from narrow stacked layouts. Preserved them on landscape desktop layouts.
+8. Corrected dark-theme foreground colors in the variation guidance, blue-arrow note, and move explanation metadata that were visibly dim against dark panels.
 
 ## Before/after visual evidence
 
@@ -41,11 +44,13 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 - After the initial responsive CSS change: 12 screenshots and geometry captures PASS, zero horizontal overflow.
 - **Final implementation build + screenshots: PASS** across all 12 theme/viewport combinations. Independently viewed the 1440×900, 1024×768 and 390×844 Chromium screenshot results. On 1024×768 the tab labels now stay on a single line, the idle variation CTA is compact, and the move transport sits within the viewport.
 - Browser interaction checks at 1024×768 in both light and dark themes: PASS. Right/Left keyboard arrows switch between Moves and AI report tabs; Next move advances the visible position and leaves the original PGN in SQLite unchanged.
+- Mobile browser interaction checks at 390×844 light/dark: PASS. Two-way jump scrolls and focuses on the correct tab/board, keeps next-move keyboard navigation and does not alter saved PGN. The dark-theme run uses `prefers-reduced-motion: reduce`. Browser asserts minimum 4.5:1 contrast on board note and inactive-variation hint.
+- Updated mobile implementation: typecheck PASS, 916 tests PASS (12 skipped), build PASS, screenshot capture 12/12 PASS. The final explanation-metadata color change was followed by another successful typecheck, production build, and all 12 browser screenshots; actual dark mobile board and details views were inspected.
 - Screenshot fixtures are presentation-only: classifications/eval scores are synthetic and **do not** certify actual chess analysis.
 
 ## Open investigation
 
-- Confirm mobile navigation and selected-move tracking by actual keyboard/touch playback; consider a contextual jump between board and move analysis.
+- Mobile two-way navigation is verified using actual browser pointer/keyboard interaction. Verify physical touch gesture behavior separately when a device is available; it has not been claimed as tested.
 - Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative.
 - Investigate whether the lengthy utilities below the core review distract users, without removing functionality merely for shorter pages.
 - Run independent real analysis source integrity/browser regression suite separately before eventual release. This iteration modifies frontend layout only.

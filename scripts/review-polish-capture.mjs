@@ -129,7 +129,8 @@ try {
     const setting=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,body:{site_theme:theme}});
     assert.equal(setting.status,200,JSON.stringify(setting.json));
     for(const [width,height] of sizes){
-      const context=await browser.newContext({viewport:{width,height},colorScheme:theme});
+      const context=await browser.newContext({viewport:{width,height},colorScheme:theme,
+        reducedMotion:width===390 && theme==='dark' ? 'reduce' : 'no-preference'});
       await context.addCookies([{name:account.cookie.split('=')[0],
         value:account.cookie.split('=').slice(1).join('='),url:base}]);
       const page=await context.newPage(),errors=[];
@@ -153,6 +154,57 @@ try {
         assert.notEqual(await transport.innerText(),oldText,'Next move did not advance');
         assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,previousPgn,
           'Move navigation must not rewrite the saved PGN');
+      }
+      if(width===390){
+        if(theme==='dark'){
+          const ratios=await page.evaluate(()=>{
+            const rgb=(value)=>value.match(/[\d.]+/g)?.slice(0,3).map(Number)??[];
+            const luminance=(value)=>rgb(value).map(component=>{
+              const n=component/255; return n<=0.04045?n/12.92:Math.pow((n+0.055)/1.055,2.4);
+            }).reduce((total,component,i)=>total+component*[0.2126,0.7152,0.0722][i],0);
+            const contrast=(fg,bg)=>{
+              const a=luminance(fg),b=luminance(bg);
+              return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+            };
+            const note=document.querySelector('[data-review-best-arrow-note]');
+            const hint=document.querySelector('[data-review-explore-hint]');
+            if(!note||!hint) return null;
+            return {
+              arrow:contrast(getComputedStyle(note).color,getComputedStyle(document.querySelector('[data-app-shell]')).backgroundColor),
+              hint:contrast(getComputedStyle(hint).color,getComputedStyle(hint.closest('.card')).backgroundColor),
+            };
+          });
+          assert.ok(ratios && ratios.arrow>=4.5 && ratios.hint>=4.5,
+            `Dark review guidance must reach AA text contrast: ${JSON.stringify(ratios)}`);
+        }
+        const jump=page.locator('[data-review-jump-to-details]');
+        assert.ok(await jump.isVisible(),'Mobile board-to-details jump is missing');
+        const startingScroll=await page.evaluate(()=>window.scrollY);
+        await jump.click();
+        await page.waitForFunction(()=>document.activeElement?.id==='review-tab-moves');
+        await page.waitForFunction(()=>{
+          const el=document.querySelector('[data-review-jump-to-board]')?.closest('[role="tabpanel"]')
+            ?? document.getElementById('review-tab-moves')?.closest('.card');
+          return !!el && Math.abs(el.getBoundingClientRect().top-64)<22;
+        },undefined,{timeout:5000});
+        assert.ok((await page.evaluate(()=>window.scrollY))>startingScroll+100,
+          'Mobile jump did not scroll to review details');
+        const reviewTab=page.getByRole('tab',{name:'Moves'});
+        assert.equal(await reviewTab.getAttribute('aria-selected'),'true');
+        await page.screenshot({path:join(output,`${theme}-390x844-details.png`)});
+        const returnButton=page.locator('[data-review-jump-to-board]');
+        assert.ok(await returnButton.isVisible(),'Return-to-board action missing');
+        await returnButton.click();
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('review-board-square'));
+        await page.waitForFunction(()=>Math.abs(document.querySelector('.review-board-square').getBoundingClientRect().top-64)<22,
+          undefined,{timeout:5000});
+        const oldPgn=db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn;
+        const countBefore=await page.locator('[data-move-transport]').innerText();
+        await page.keyboard.press('ArrowRight');
+        assert.notEqual(await page.locator('[data-move-transport]').innerText(),countBefore,
+          'Board focus lost the review keyboard shortcut');
+        assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,oldPgn,
+          'Mobile jump/navigation must never modify the saved PGN');
       }
       assert.deepEqual(errors,[],`${theme} ${width}x${height} runtime errors`);
       await context.close();
