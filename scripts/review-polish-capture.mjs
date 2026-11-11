@@ -388,6 +388,66 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
       'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}
+  // AI Report and Key Moments share the mobile board-navigation contract.
+  // Install a synthetic, source-attested report only in the disposable QA DB.
+  // Its cached moment must use the real Black-first mover for the backend's
+  // provenance validator; the earlier intentionally stale-side test remains
+  // independent and is restored after these report navigation assertions.
+  const blackCachedMoment=db.prepare('SELECT key_moments_json FROM analyses WHERE game_id = ?').get(blackId).key_moments_json;
+  db.prepare('UPDATE analyses SET key_moments_json = ? WHERE game_id = ?')
+    .run(JSON.stringify([{...JSON.parse(blackCachedMoment)[0],side:'black'}]),blackId);
+  const {saveReviewIfFresh}=await import('../server/dist/coach/reviewCache.js');
+  const {REVIEW_PROSE_VERSION}=await import('../server/dist/coach/review.js');
+  const profile=db.prepare('SELECT language,audience FROM profiles WHERE user_id = ?').get(user.id);
+  const reportSource=db.prepare(`SELECT a.*,g.pgn,g.user_id,g.user_color,g.result,
+      g.start_fen,g.opponent_rating_before,g.user_rd_before,
+      g.source_revision AS current_source_revision
+    FROM analyses a JOIN games g ON g.id = a.game_id WHERE a.game_id = ?`).get(blackId);
+  const syntheticProse={
+    version:REVIEW_PROSE_VERSION,language:profile.language,audience:profile.audience,
+    opening:null,summary:'Synthetic report for isolated navigation testing only',
+    skill_assessment:'Test-only text; not an engine or AI assessment',
+    phases:{opening:null,middlegame:null,endgame:null},
+    key_moments:[{ply:1,side:'black',san:'e5',classification:'inaccuracy',
+      cp_loss:200,win_pct_delta:9,best_san:'c5',title:'Black played e5',
+      prose:'Synthetic explanation to test navigation, not a real chess claim',by_user:false}],
+  };
+  assert.ok(saveReviewIfFresh(db,blackId,reportSource,reportSource,syntheticProse,
+    profile.language,profile.audience,true),'Could not seed source-verified disposable AI report');
+  const certifiedProse=await api(`/api/games/${blackId}/review`,{cookie:account.cookie});
+  assert.equal(certifiedProse.status,200);
+  assert.equal(certifiedProse.json.review?.summary,syntheticProse.summary,
+    'AI report must pass the real authenticated provenance gate');
+  for(const [width,height] of [[390,844],[1024,768]]){
+    const context=await browser.newContext({viewport:{width,height},reducedMotion:'reduce'});
+    try{
+      await context.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await context.newPage();
+      await page.goto(`${base}/review/${blackId}?ply=0`);
+      await page.getByRole('tab',{name:'AI report'}).click();
+      await page.getByText(syntheticProse.summary,{exact:true}).waitFor({state:'visible'});
+      const moment=page.getByRole('button',{name:/#12…\s*Black played e5/});
+      await moment.waitFor({state:'visible'});
+      await moment.click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+      if(width===390){
+        await page.waitForFunction(()=>{
+          const board=document.querySelector('.review-board-square');
+          return !!board && board===document.activeElement && board.getBoundingClientRect().top>=40 && board.getBoundingClientRect().top<=95;
+        },undefined,{timeout:5000});
+      }else{
+        assert.ok(await moment.evaluate(el=>document.activeElement===el),
+          'Desktop AI Report must keep the selected moment focused for side-by-side browsing');
+      }
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
+        'Selecting an AI Report moment must preserve the saved PGN');
+      await page.screenshot({path:join(output,`black-first-ai-report-moment-${width}.png`)});
+    }finally{await context.close();}
+  }
+  db.prepare(`UPDATE analyses SET key_moments_json=?,prose_json=NULL,
+    prose_version=0,prose_lang=NULL,prose_audience=NULL WHERE game_id=?`)
+    .run(blackCachedMoment,blackId);
   // Legacy key_moments_json can still hold an odds delta when the underlying
   // engine move has no before/after score. Never present that unsupported
   // percentage as though it were measured. The fixture is disposable only.
