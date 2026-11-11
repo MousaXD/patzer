@@ -303,7 +303,7 @@ try {
   }
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
-  for(const [width,height] of [[390,844],[1024,768]]){
+  for(const [width,height] of [[320,760],[390,844],[1024,768]]){
     const filterContext=await browser.newContext({viewport:{width,height},colorScheme:'dark',reducedMotion:'reduce'});
     try{
       const originalPgn=db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn;
@@ -322,7 +322,25 @@ try {
       assert.ok(focus.tabTop >= 55 && focus.tabTop < 200,
         `Focused filtered Moves tab must remain visible below the fixed app header (${width}px): ${JSON.stringify(focus)}`);
       assert.equal(await page.getByRole('tab',{name:'Moves'}).getAttribute('aria-selected'),'true');
-      if(width===390)assert.ok(await page.locator('[data-review-jump-to-board]').isVisible(),
+      const filterButtons=await page.locator('#review-tabpanel > div').first().locator('button[title]')
+        .evaluateAll(elements=>elements.map(button=>{
+          const box=button.getBoundingClientRect();
+          return {name:button.getAttribute('aria-label')||button.getAttribute('title'),
+            width:Math.round(box.width),height:Math.round(box.height),
+            left:Math.round(box.left),right:Math.round(box.right)};
+        }));
+      console.log(`${width}px filter controls:`,JSON.stringify(filterButtons));
+      assert.ok(filterButtons.length===3 && filterButtons.every(button=>button.name && button.width>=44 && button.height>=44),
+        `Previous/Next/Clear classification controls must have labeled 44px touch targets: ${JSON.stringify(filterButtons)}`);
+      const english=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+      assert.deepEqual(filterButtons.map(button=>button.name),
+        [english.review.filterPrev,english.review.filterNext,english.review.filterClear],
+        'Filtered move controls must explain their action to assistive technology');
+      const filterOverflow=await page.locator('#review-tabpanel > div').first()
+        .evaluate(el=>el.scrollWidth-el.clientWidth);
+      assert.ok(filterOverflow<=1 && filterButtons.every((button,index)=>index===0 || button.left>=filterButtons[index-1].right),
+        `Enlarged filter actions must not overflow or overlap at ${width}px: ${JSON.stringify({filterOverflow,filterButtons})}`);
+      if(width<960)assert.ok(await page.locator('[data-review-jump-to-board]').isVisible(),
         'Filtered mobile move results must retain an explicit path back to the board');
       await page.screenshot({path:join(output,`report-filter-focus-${width}.png`)});
       await page.keyboard.press('ArrowRight');
@@ -330,6 +348,15 @@ try {
         'The focused tab must retain keyboard navigation after classification filtering');
       await page.keyboard.press('ArrowLeft');
       assert.equal(await page.getByRole('tab',{name:'Moves'}).getAttribute('aria-selected'),'true');
+      await page.getByRole('button',{name:english.review.filterClear}).click();
+      assert.equal(await page.getByRole('button',{name:english.review.filterClear}).count(),0,
+        'Clear must remove the move-classification filter without changing the saved line');
+      await page.getByRole('button',{name:'Inaccuracy',exact:true}).click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('7 /'));
+      await page.getByRole('button',{name:english.review.filterNext}).click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('15 /'));
+      await page.getByRole('button',{name:english.review.filterPrev}).click();
+      await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('7 /'));
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn);
     }finally{await filterContext.close();}
   }

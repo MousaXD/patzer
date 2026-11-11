@@ -93,6 +93,10 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
       }
+      for (const key of ['filterPrev', 'filterNext', 'filterClear'] as const) {
+        expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
       for (const key of ['tooLarge', 'invalidPgn', 'busy', 'unavailable'] as const) {
         expect(locale.review.analysisError[key]?.trim().length).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review.analysisError[key]).not.toBe(en.review.analysisError[key]);

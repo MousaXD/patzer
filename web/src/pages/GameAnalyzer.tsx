@@ -988,15 +988,21 @@ function GameAnalyzerView() {
                 </div>
                 <div id="review-tabpanel" role="tabpanel" aria-labelledby={`review-tab-${tab}`} className="p-3">
                   {tab === 'moves' && pick && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-gold-500/40 bg-gold-50/60 px-2 py-1.5 text-xs dark:bg-gold-700/10">
+                    <div className="mb-2 flex min-w-0 items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-50/60 px-1.5 py-1 text-xs dark:bg-gold-700/10 sm:gap-1.5 sm:px-2">
                       <span className="min-w-0 flex-1 truncate">
                         <span className="font-semibold">{t(`classification.${pick.classification}`)}</span>
                         <span className="text-chesscom-500"> · {pick.side === 'both' ? t('review.pickBoth', { defaultValue: 'both sides' }) : t(`review.${pick.side}`)}</span>
                       </span>
-                      <span className="font-mono tabular-nums text-chesscom-500">{pickIndex >= 0 ? pickIndex + 1 : '–'}/{pickedPlies.length}</span>
-                      <button onClick={() => stepPick(-1)} className="btn-ghost p-1" title={t('review.prev')}><ChevronLeft className="h-4 w-4" /></button>
-                      <button onClick={() => stepPick(1)} className="btn-ghost p-1" title={t('review.next')}><ChevronRight className="h-4 w-4" /></button>
-                      <button onClick={() => setPick(null)} className="btn-ghost p-1" title={t('common.close', { defaultValue: 'Close' })}><X className="h-4 w-4" /></button>
+                      <span className="shrink-0 font-mono tabular-nums text-chesscom-500">{pickIndex >= 0 ? pickIndex + 1 : '–'}/{pickedPlies.length}</span>
+                      <button type="button" onClick={() => stepPick(-1)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('review.prev')}
+                        aria-label={t('review.filterPrev')}><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>
+                      <button type="button" onClick={() => stepPick(1)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('review.next')}
+                        aria-label={t('review.filterNext')}><ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                      <button type="button" onClick={() => setPick(null)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('common.close', { defaultValue: 'Close' })}
+                        aria-label={t('review.filterClear')}><X className="h-4 w-4" aria-hidden="true" /></button>
                     </div>
                   )}
                   {tab === 'moves' && move && eligiblePractice.some((candidate) => candidate.ply === ply) && (
