@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T01:29:16.838Z",
+  "parent_checkpoint_commit": "cc33a7a0ffda977fe37edc078594e8ccf397a8c8",
+  "own_branch": "agent/review-benchmark-20261111",
+  "own_checkout_sha": "cc33a7a0ffda977fe37edc078594e8ccf397a8c8",
+  "candidate_product_sha": "ee4b61168ce61ac615e8efa77bc5ae56698ac5cf",
+  "controlled_react_component": "web/src/components/GameReportPanel.tsx",
+  "source_hashes": {
+    "component": "c3c033be05df83ef230b85542c906ae6321d88fa5169705cd00e8eaeceb49ddb",
+    "qa_test": "c9ee2d03310e5a7bd04cdab00106795c479e6db24942bab95d690fcb66a78199",
+    "qa_config": "b28a2b77e42b113ed02e897429d354d19aa28969b8976a091e7363214783346b"
+  },
+  "evidence": {
+    "schema_version": 1,
+    "candidate_sha": "ee4b61168ce61ac615e8efa77bc5ae56698ac5cf",
+    "component_sha256": "c3c033be05df83ef230b85542c906ae6321d88fa5169705cd00e8eaeceb49ddb",
+    "qa_test_sha256": "c9ee2d03310e5a7bd04cdab00106795c479e6db24942bab95d690fcb66a78199",
+    "qa_config_sha256": "b28a2b77e42b113ed02e897429d354d19aa28969b8976a091e7363214783346b",
+    "locale_mode": "controlled Spanish i18n mock, not a logged-in user profile",
+    "tests_passed": 3,
+    "test_files_passed": 1,
+    "successful_cases": [
+      "renders a completed old-English beginner response despite Spanish UI context",
+      "also renders a matching Spanish advanced response as a positive control",
+      "rejects malformed done payloads rather than falsely calling them completed"
+    ],
+    "stale_profile_done_accepted_by_component": true,
+    "fresh_profile_done_accepted": true,
+    "malformed_done_rejected": true,
+    "has_real_browser_navigation_test": false,
+    "has_real_authentication_test": false,
+    "release_approved": false,
+    "product_fully_certified": false,
+    "raw_vitest_log_sha256": "05f84ddd27a246cdd9ccda667f173f348acf166ad601fed76995c7c5898884a3"
+  },
+  "verification": {
+    "tested_real_react_component": true,
+    "wrong_profile_metadata_accepted": true,
+    "correct_profile_metadata_accepted": true,
+    "malformed_payload_rejected": true,
+    "general_browser_or_release_certified": false
+  },
+  "agent_c_existing_stream_tests_passed": 6,
+  "upstream_unit_log_sha256": "866c2cca178ca1073b752a17d9fd91571c5da57b66428c75efa0b01f53c8148c",
+  "link_to_backend_qa": "Checkpoint 12 language and Checkpoint 13 audience races demonstrate the SSE can contain stale profile metadata",
+  "interpretation": "component accepts a structurally valid SSE done payload without comparing its language/audience to an active profile",
+  "no_actual_browser_navigation": true,
+  "no_private_user_data": true,
+  "no_production_changes": true,
+  "integration_approved": false,
+  "release_approved": false,
+  "limits": [
+    "Only one mocked Spanish-locale React component, no full authenticated page/browser navigation",
+    "No simulated actual profile store: GameReportPanel does not receive audience as a prop",
+    "The report must not be used to assert frequency or effect of a real hosted model",
+    "Backend should own source provenance; frontend could avoid displaying mismatched generation results as defense in depth"
+  ]
+}
