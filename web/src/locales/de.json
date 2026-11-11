@@ -365,6 +365,7 @@
       "engineWanted": "Die Engine wollte:",
       "line": "Variante",
       "coachSays": "In einfachen Worten",
+      "coachUnavailable": "Für KI-Erklärungen muss ein Administrator unter Admin → System ein Modell einrichten.",
       "brilliant": "Der beste Zug der Engine — und er gibt Material. Das Opfer funktioniert: Die Stellung bleibt gesund ({{after}} % Gewinnchance), weil der Gegner das Angebot nicht gefahrlos annehmen kann.",
       "great": "Ein kritischer Zug: die erste Wahl der Engine in einer Stellung, in der die anderen Züge klar schlechter waren, oder ein Zug, der eine schlechte Stellung rettet ({{before}} % → {{after}} %).",
       "best": "Genau die erste Wahl der Engine — besser ging es nicht.",

@@ -317,6 +317,7 @@
       "engineWanted": "El motor quería:",
       "line": "Línea",
       "coachSays": "En palabras sencillas",
+      "coachUnavailable": "Para recibir explicaciones de IA, un administrador debe configurar un modelo en Admin → Sistema.",
       "brilliant": "La mejor jugada del motor — y entrega material. El sacrificio funciona: la posición sigue sana ({{after}}% de ganar) porque el rival no puede aceptar la oferta sin peligro.",
       "great": "Una jugada crítica: la primera opción del motor en una posición donde las demás eran claramente peores, o una que salvó una mala posición ({{before}}% → {{after}}%).",
       "best": "Exactamente la primera opción del motor: no había nada mejor.",

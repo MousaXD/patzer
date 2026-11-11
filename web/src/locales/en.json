@@ -365,6 +365,7 @@
       "engineWanted": "The engine wanted:",
       "line": "Line",
       "coachSays": "In plain words",
+      "coachUnavailable": "AI explanations need a model configured by an administrator in Admin → System.",
       "brilliant": "The engine's top move — and it gives up material. The sacrifice works: the position stays sound ({{after}}% win chance) because the opponent can't safely take what was offered.",
       "great": "A critical move: the engine's first choice in a position where the alternatives were clearly worse, or one that saved a bad position ({{before}}% → {{after}}%).",
       "best": "Exactly the engine's first choice — nothing better was available.",

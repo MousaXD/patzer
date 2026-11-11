@@ -7,7 +7,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Swords } from 'lucide-react';
+import { Info, Swords } from 'lucide-react';
 import { CLASS_STYLE } from '../lib/classification';
 import ClassificationIcon from './ClassificationIcon';
 import CoachPanel from './CoachPanel';
@@ -65,7 +65,7 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
   const num = `${moveNumberForPly(move.ply, startFen)}${side === 'white' ? '.' : '…'}`;
 
   return (
-    <div className="mb-3 rounded-lg border border-chesscom-200 bg-chesscom-50/60 p-3 dark:border-chesscom-700 dark:bg-chesscom-900/40">
+    <div data-review-move-explanation className="mb-3 rounded-lg border border-chesscom-200 bg-chesscom-50/60 p-3 dark:border-chesscom-700 dark:bg-chesscom-900/40">
       <div className="flex items-center gap-2">
         <ClassificationIcon classification={move.classification} size={28} />
         <div className="min-w-0 flex-1">
@@ -101,15 +101,24 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
       )}
 
       <div className="mt-3 border-t border-chesscom-200 pt-2 dark:border-chesscom-700">
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-chesscom-500 dark:text-chesscom-300">{t('review.why.coachSays')}</div>
-        <CoachPanel
-          systemConfigured={coachConfigured}
-          request={coachRequest}
-          autoPlay
-          triggerKey={move.ply}
-          debounceMs={700}
-          compact
-        />
+        {coachConfigured ? (
+          <>
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-chesscom-500 dark:text-chesscom-300">{t('review.why.coachSays')}</div>
+            <CoachPanel
+              systemConfigured={coachConfigured}
+              request={coachRequest}
+              autoPlay
+              triggerKey={move.ply}
+              debounceMs={700}
+              compact
+            />
+          </>
+        ) : (
+          <p role="note" data-review-coach-unavailable className="flex items-start gap-2 text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>{t('review.why.coachUnavailable')}</span>
+          </p>
+        )}
       </div>
     </div>
   );

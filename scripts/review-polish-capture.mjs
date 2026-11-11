@@ -216,6 +216,13 @@ try {
           'Mobile jump did not scroll to review details');
         const reviewTab=page.getByRole('tab',{name:'Moves'});
         assert.equal(await reviewTab.getAttribute('aria-selected'),'true');
+        const unavailable=page.locator('[data-review-coach-unavailable]');
+        await unavailable.waitFor({state:'visible'});
+        const noteHeight=await unavailable.evaluate(el=>el.getBoundingClientRect().height);
+        const explanationHeight=await page.locator('[data-review-move-explanation]').evaluate(el=>el.getBoundingClientRect().height);
+        assert.ok(noteHeight>0 && noteHeight<70,
+          `Unavailable AI coaching should be a compact readable note: ${noteHeight}px`);
+        console.log('Unconfigured coaching layout:',JSON.stringify({theme,noteHeight,explanationHeight}));
         await page.screenshot({path:join(output,`${theme}-390x844-details.png`)});
         if(theme==='dark'){
           const readability=await page.evaluate(()=>{

@@ -25,6 +25,22 @@ const render = (sample: AnalyzedMove, startFen?: string, userColor: 'white' | 'b
 }));
 
 describe('Game Review win-chance source integrity', () => {
+  it('shows a compact truthful coaching-unavailable note without a nested empty coach card', () => {
+    const html=render(move);
+    expect(html).toContain('data-review-coach-unavailable');
+    expect(html).toContain('review.why.coachUnavailable');
+    expect(html).not.toContain('review.why.coachSays');
+    expect(html).not.toContain('coach.notConfigured');
+  });
+
+  it('keeps the configured AI coaching surface and suppresses the unavailable note', () => {
+    const html=renderToStaticMarkup(createElement(MoveExplanation, {
+      move, userColor:'white', coachConfigured:true, coachRequest:null,
+    }));
+    expect(html).toContain('review.why.coachSays');
+    expect(html).not.toContain('data-review-coach-unavailable');
+  });
+
   it('keeps real numerical evaluations and the existing point-of-view formula', () => {
     expect(whiteWinPct(0)).toBeCloseTo(50);
     expect(whiteWinPct(9000)).toBe(100);
