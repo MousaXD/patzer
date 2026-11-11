@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:03:07.762Z",
+  "previous_agent_d_head": "f1e6755f743391430c7ab073305b2093eec59311",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "fixture_manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "self_authored_chess_only": true,
+  "disposable_database_only": true,
+  "actual_real_route_fault": "swap-model-output",
+  "positive_run_exit": 0,
+  "negative_run_exit": 1,
+  "clean_authenticated_reviews_certified": 2,
+  "clean_benchmark_run_id": "fb9b300a-7ee8-4f7e-9beb-ba40e9962ab4",
+  "negative_benchmark_run_id": "3c4832b9-b774-40b0-a1f1-99b0d4359214",
+  "corrupt_authenticated_reviews_rejected": 2,
+  "corrupt_provider_reports_were_cached": 2,
+  "independently_rejected_forged_green_packets": 3,
+  "factual_result": "Both users received the other language's summary from the deliberately corrupt model; valid account ownership checks remained enforced.",
+  "not_an_authentication_bypass": true,
+  "product_release_approved": false,
+  "overall_quality_certified": false,
+  "source_sha256": {
+    "runner": "dffb45d2872bd09d6f4d91c3041667359861714662fb5921c74af699c5e1b62e",
+    "verifier": "c892d17da162e330ba542982e2c75e67e7e317f1c75fe05ad79fcb30013372f8",
+    "boundary_controls": "95e9045f7b75d4b5777ea56715ece17efbb6097d8a9085e21d9132cf7e11c93c"
+  },
+  "limitations": [
+    "This is a synthetic and deliberately incorrect mock-model output, not an observed live-LLM rate",
+    "Two parallel requests, two fixed profile languages, one legal synthetic PGN only",
+    "The benchmark expects known mock strings; human-language assessment and sealed holdout remain absent",
+    "Successful detection does not make Patzer's model text safe and is not a release certificate"
+  ]
+}

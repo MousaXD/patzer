@@ -42,7 +42,6 @@ export function validateTenantConcurrencyEvidence(r){
  assert.equal(r.rights,'QA-authored synthetic chess, fake users and disposable database');
  assert.equal(r.overall_product_security_certified,false);
  assert.equal(r.release_approved,false);
- assert.equal(r.tested_tenants_isolated,true);
  const entry=readFileSync(join(qa,'manifests/manifest-v2.jsonl'),'utf8').trim()
   .split('\n').map(JSON.parse).find(x=>x.fixture_id===r.fixture_id);
  assert(entry?.source_kind==='synthetic'&&entry.license==='self-authored');
@@ -83,7 +82,7 @@ export function validateTenantConcurrencyEvidence(r){
   const wire=readReviewFromSse(o.real_sse?.[lang]);
   assert.equal(wire.language,want.language);
   assert.equal(wire.audience,want.audience);
-  assert.equal(wire.summary,want.summary);
+  assert.equal(wire.summary,want.summary,'incorrect recipient-specific review summary in real SSE');
   assert.equal(wire.phases?.opening?.accuracy,accuracy);
   assert.equal(wire.key_moments?.[0]?.side,'white');
   assert.equal(wire.key_moments?.[0]?.ply,3);
@@ -96,6 +95,12 @@ export function validateTenantConcurrencyEvidence(r){
    language:want.language,audience:want.audience,summary:want.summary,stale:false,
   },'authenticated GET leaked a different review');
  }
+ // These self-reported flags are checked AFTER independent, chess-derived
+ // SSE and cache proof. A forged `green` flag cannot mask a bad wire payload.
+ assert.equal(r.test_only_provider_fault,null,'test-only corruption not a certifiable clean run');
+ assert.equal(r.tested_tenants_isolated,true);
+ assert.equal(o.provider_payload_swapped,false);
+ assert.equal(o.cross_user_prose_accepted_and_cached,false);
  assert(Number.isFinite(r.elapsed_ms)&&r.elapsed_ms>0&&r.elapsed_ms<15000);
  return {both_tenant_sse_payloads_correct:true,
   per_tenant_cached_review_isolated:true,

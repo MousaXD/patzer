@@ -18,6 +18,15 @@ mkdirSync(results,{recursive:true});
 const args=Object.fromEntries(process.argv.slice(2).map(x=>{
  const i=x.indexOf('=');return i<0?[x.slice(2),true]:[x.slice(2,i),x.slice(i+1)];
 }));
+// A negative control must change model output before the real application
+// consumes it, not rewrite the finished evidence object after the fact.
+const injectedFault=args.fault??null;
+assert(injectedFault===null||injectedFault==='swap-model-output',
+ 'unknown test-only provider fault');
+const runId=args['run-id']??null;
+assert(runId===null||(typeof runId==='string'
+ &&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)),
+ 'invalid unique QA run identifier');
 const app=realpathSync(args['app-root']||join(results,'worktree-coach'));
 assert(app.startsWith(join(results,'worktree-')),'use detached QA candidate only');
 const sha=x=>createHash('sha256').update(x).digest('hex');
@@ -67,7 +76,9 @@ function parsePrompt(body){
   mover:stage==='moment'?facts.moment?.who_moved??null:null};
 }
 const send=(res,data)=>{
- const profile=profiles[data.lang];
+ const outputLang=injectedFault==='swap-model-output'
+  ? (data.lang==='en'?'es':'en') : data.lang;
+ const profile=profiles[outputLang];
  replies.push({lang:data.lang,stage:data.stage});
  res.writeHead(200,{'content-type':'application/json'});
  res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({
@@ -161,14 +172,16 @@ try{
   observed.cached[lang]={language:row.prose_lang,audience:row.prose_audience,
    summary:saved.summary,by_user:saved.key_moments?.[0]?.by_user??null};
   assert.equal(row.prose_lang,p.lang);assert.equal(row.prose_audience,p.audience);
-  assert.equal(saved.summary,p.summary);
+  if(!injectedFault)assert.equal(saved.summary,p.summary);
   const response=await req(p.game_id,{headers:cookie(lang)});
   assert.equal(response.status,200);
   const actual=await response.json();
   observed.readback[lang]={language:actual.review?.language,
    audience:actual.review?.audience,summary:actual.review?.summary,stale:actual.stale??false};
-  assert.deepEqual(observed.readback[lang],{language:p.lang,
+  if(!injectedFault)assert.deepEqual(observed.readback[lang],{language:p.lang,
    audience:p.audience,summary:p.summary,stale:false});
+  else assert.equal(observed.readback[lang].stale,false,
+   'the injected provider response should be treated as a completed cache write');
  }
  assert.equal(observed.cached.en.by_user,true);
  assert.equal(observed.cached.es.by_user,false);
@@ -193,6 +206,13 @@ try{
  observed.provider_errors=providerErrors;
  observed.white_accuracy=analysis.accuracy_white;
  observed.black_accuracy=analysis.accuracy_black;
+ observed.provider_payload_swapped=injectedFault==='swap-model-output';
+ observed.cross_user_prose_accepted_and_cached=injectedFault==='swap-model-output'
+  ? Object.entries(profiles).every(([lang,p])=>
+   observed.cached[lang].summary===profiles[lang==='en'?'es':'en'].summary
+   &&observed.readback[lang].summary===profiles[lang==='en'?'es':'en'].summary
+   &&observed.cached[lang].summary!==p.summary)
+  : false;
 }finally{
  try{db?.close();}catch{}
  provider.closeAllConnections();
@@ -200,17 +220,30 @@ try{
  rmSync(temp,{recursive:true,force:true});
 }
 const packet={schema_version:1,at_utc:new Date().toISOString(),
+ benchmark_run_id:runId,
  candidate_sha:execFileSync('git',['rev-parse','HEAD'],{cwd:app,encoding:'utf8'}).trim(),
  engine_sha256:engineSha,manifest_sha256:sha(manifest),fixture_id:entry.fixture_id,
  rights:'QA-authored synthetic chess, fake users and disposable database',
  scope:'real Hono Game Review SSE with two concurrent different user owners and opposing colors/locales',
  observation:observed,elapsed_ms:Date.now()-started,
- tested_tenants_isolated:true,overall_product_security_certified:false,release_approved:false,
+ test_only_provider_fault:injectedFault,
+ tested_tenants_isolated:!injectedFault,overall_product_security_certified:false,release_approved:false,
  limits:['One in-process dual-request run with synthetic owners, one shared PGN and localhost mock model',
   'No real reverse proxy, remote LLM, browser login or cross-process stress',
   'Only this single Game Review endpoint and two userColor/profile combinations were challenged']};
-const output=join(results,'review-tenant-concurrency.json');
+const output=join(results,injectedFault
+ ? 'review-tenant-concurrency-fault-swap.json':'review-tenant-concurrency.json');
 writeFileSync(output,JSON.stringify(packet,null,2)+'\n');
 console.log(JSON.stringify({report:output,candidate:packet.candidate_sha,
+ benchmark_run_id:runId,
  cached:observed.cached,prompt_summaries:messages.filter(x=>x.stage==='summary'),
- total_model_calls:requests,closed_provider_requests:closures,elapsed_ms:packet.elapsed_ms},null,2));
+ total_model_calls:requests,closed_provider_requests:closures,elapsed_ms:packet.elapsed_ms,
+ test_only_provider_fault:injectedFault,
+ wrong_prose_cached:observed.cross_user_prose_accepted_and_cached},null,2));
+if(injectedFault){
+ assert.equal(observed.cross_user_prose_accepted_and_cached,true,
+  'fault not observed in actual cached application output: revisit injection effectiveness');
+ // Synthetic corruption must never return a green exit from the application
+ // evidence runner even when Patzer itself signals `done` for both reviews.
+ process.exitCode=1;
+}
