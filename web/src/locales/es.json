@@ -313,6 +313,7 @@
       "whiteMove": "Jugada de las blancas",
       "blackMove": "Jugada de las negras",
       "winChance": "Probabilidad de ganar del bando que movió: antes → después",
+      "evaluationUnavailable": "Falta una evaluación del motor antes o después de esta jugada, por lo que no se puede mostrar un cambio fiable en la probabilidad de ganar.",
       "engineWanted": "El motor quería:",
       "line": "Línea",
       "coachSays": "En palabras sencillas",

@@ -210,6 +210,30 @@ try {
       await context.close();
     }
   }
+  // Evidence-gap regression: a cached analysis may legitimately lack one
+  // evaluation even when its recorded move classification is present. In a
+  // disposable fixture only, remove the before score from an inaccuracy and
+  // verify the live React component does not display a fake 50% comparison.
+  const stored=db.prepare('SELECT moves_json FROM analyses WHERE game_id = ?').get(id);
+  const incomplete=JSON.parse(stored.moves_json);
+  incomplete[14].eval_before_cp=null;
+  db.prepare('UPDATE analyses SET moves_json = ? WHERE game_id = ?').run(JSON.stringify(incomplete),id);
+  const missingContext=await browser.newContext({viewport:{width:390,height:844}});
+  try{
+    await missingContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await missingContext.newPage();
+    await page.goto(`${base}/review/${id}?ply=15`);
+    await page.locator('[data-review-jump-to-details]').click();
+    await page.getByText('The engine has no complete before-and-after evaluation for this move, so its win-chance change cannot be shown.').waitFor();
+    assert.equal(await page.getByTitle('Win chance for the side that moved: before → after').count(),0,
+      'An unknown engine score must not render fake win odds');
+    await page.waitForFunction(()=>{
+      const section=document.querySelector('[data-review-jump-to-board]')?.closest('.card');
+      return !!section && Math.abs(section.getBoundingClientRect().top-64)<22;
+    },undefined,{timeout:5000});
+    await page.screenshot({path:join(output,'missing-eval-details.png')});
+  }finally{await missingContext.close();}
   writeFileSync(join(output,'metrics.json'),JSON.stringify(measurements,null,2)+'\n');
   console.log(JSON.stringify({output,measurements},null,2));
 }catch(error){console.error(error);process.exitCode=1;}

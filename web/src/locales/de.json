@@ -361,6 +361,7 @@
       "whiteMove": "Zug von Weiß",
       "blackMove": "Zug von Schwarz",
       "winChance": "Gewinnchance der ziehenden Seite: vorher → nachher",
+      "evaluationUnavailable": "Für diesen Zug fehlt mindestens eine Engine-Bewertung. Eine Veränderung der Gewinnchance lässt sich deshalb nicht verlässlich anzeigen.",
       "engineWanted": "Die Engine wollte:",
       "line": "Variante",
       "coachSays": "In einfachen Worten",

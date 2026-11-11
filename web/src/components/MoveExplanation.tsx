@@ -13,18 +13,20 @@ import ClassificationIcon from './ClassificationIcon';
 import CoachPanel from './CoachPanel';
 import type { AnalyzedMove } from '../types';
 
-/** Lichess win-chance curve (same as the server's cpToWinPct), 0..100 for White. */
-export function whiteWinPct(cp: number | null | undefined): number {
-  const v = cp ?? 0;
-  if (v >= 9000) return 100;
-  if (v <= -9000) return 0;
-  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * v)) - 1);
+/** Lichess win-chance curve (same as the server's cpToWinPct), 0..100 for White.
+ * Only real scores are accepted: a missing evaluation is not equality. */
+export function whiteWinPct(cp: number): number {
+  if (cp >= 9000) return 100;
+  if (cp <= -9000) return 0;
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
 }
 
 /** Win chance before and after the move, for the side that played it. */
 export function moverWinPct(move: Pick<AnalyzedMove, 'ply' | 'eval_before_cp' | 'eval_after_cp'>) {
+  if (move.eval_before_cp == null || move.eval_after_cp == null
+    || !Number.isFinite(move.eval_before_cp) || !Number.isFinite(move.eval_after_cp)) return null;
   const white = move.ply % 2 === 1;
-  const pov = (cp: number | null | undefined) => (white ? whiteWinPct(cp) : 100 - whiteWinPct(cp));
+  const pov = (cp: number) => (white ? whiteWinPct(cp) : 100 - whiteWinPct(cp));
   const before = Math.round(pov(move.eval_before_cp));
   const after = Math.round(pov(move.eval_after_cp));
   return { before, after, drop: Math.max(0, before - after) };
@@ -50,7 +52,11 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
     : t(side === userColor ? 'review.why.yourMove' : 'review.why.opponentMove');
   const wp = moverWinPct(move);
   const pawns = (move.centipawn_loss / 100).toFixed(1);
-  const reason = t(`review.why.${move.classification}`, { before: wp.before, after: wp.after, drop: wp.drop, pawns });
+  // Book, forced and best descriptions are independent of win-chance numbers.
+  // Other labels' detailed explanations explicitly require measured odds.
+  const reason = wp || ['book', 'forced', 'best'].includes(move.classification)
+    ? t(`review.why.${move.classification}`, { before: wp?.before, after: wp?.after, drop: wp?.drop, pawns })
+    : t('review.why.evaluationUnavailable');
   const showBest = !!move.best_move_san && move.best_move_san !== move.san;
   const line = move.best_pv?.slice(0, 6).join(' ');
   const num = `${Math.ceil(move.ply / 2)}${side === 'white' ? '.' : '…'}`;
@@ -66,9 +72,11 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
             <span className={`ml-2 ${s.textClass}`}>{t(`classification.${s.labelKey}`)}</span>
           </div>
         </div>
-        <div className="shrink-0 text-right font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300" title={t('review.why.winChance')}>
-          {wp.before}% → <span className={wp.drop >= 10 ? 'font-bold text-bad' : 'font-semibold text-chesscom-800 dark:text-chesscom-100'}>{wp.after}%</span>
-        </div>
+        {wp && (
+          <div className="shrink-0 text-right font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300" title={t('review.why.winChance')}>
+            {wp.before}% → <span className={wp.drop >= 10 ? 'font-bold text-bad' : 'font-semibold text-chesscom-800 dark:text-chesscom-100'}>{wp.after}%</span>
+          </div>
+        )}
       </div>
 
       <p className="mt-2 text-sm text-chesscom-800 dark:text-chesscom-100">{reason}</p>

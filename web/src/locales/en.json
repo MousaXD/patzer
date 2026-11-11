@@ -361,6 +361,7 @@
       "whiteMove": "White's move",
       "blackMove": "Black's move",
       "winChance": "Win chance for the side that moved: before → after",
+      "evaluationUnavailable": "The engine has no complete before-and-after evaluation for this move, so its win-chance change cannot be shown.",
       "engineWanted": "The engine wanted:",
       "line": "Line",
       "coachSays": "In plain words",

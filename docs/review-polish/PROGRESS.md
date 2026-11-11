@@ -9,6 +9,8 @@
 **Worktree:** `/home/mousa/projects/my-creations/game/patzer-review-polish-20261111` (independent of production checkout)
 **Previous validated implementation commit:** `fdddebb` (review cockpit and audit harness). The next commit includes mobile jump and contrast refinements.
 
+**Mobile navigation/contrast commit:** `14ec726` (pushed). The current work adds the missing-evaluation presentation guard and regression evidence.
+
 ## Completed changes
 
 1. Reproduced and measured the original board-versus-controls conflict through real Chromium screenshot capture, both themes and all six target screen sizes.
@@ -19,6 +21,8 @@
 6. Added a compact mobile-only **Move details** jump from the board and a **Back to board** action above the Moves/AI report/Key moments tabs. Both scroll to the destination with a 64px sticky-header clearance and move keyboard focus. Respect reduced-motion preferences; no overlay obscures the board. New control labels exist in all five locale JSON files.
 7. Removed irrelevant desktop-only keyboard shortcut instructions from narrow stacked layouts. Preserved them on landscape desktop layouts.
 8. Corrected dark-theme foreground colors in the variation guidance, blue-arrow note, and move explanation metadata that were visibly dim against dark panels.
+9. Fixed a real source-truth defect: `MoveExplanation.whiteWinPct` used to turn a missing cp into 0, implicitly claiming 50% odds. `moverWinPct` now refuses a comparison unless both positions have finite engine scores, hides numerical odds when unavailable, and displays a translated evidence-gap explanation. Independent prose for Book, Best, and Forced is retained. No scoring algorithm, classification or source revision changed.
+10. Added 8 unit regression cases for numerical cp, missing and non-finite scores, and evidence-independent classifications; added a disposable real-React browser capture that removes a score from the cached fixture and verifies no odds appear in the rendered explanation.
 
 ## Before/after visual evidence
 
@@ -45,6 +49,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 - **Final implementation build + screenshots: PASS** across all 12 theme/viewport combinations. Independently viewed the 1440×900, 1024×768 and 390×844 Chromium screenshot results. On 1024×768 the tab labels now stay on a single line, the idle variation CTA is compact, and the move transport sits within the viewport.
 - Browser interaction checks at 1024×768 in both light and dark themes: PASS. Right/Left keyboard arrows switch between Moves and AI report tabs; Next move advances the visible position and leaves the original PGN in SQLite unchanged.
 - Mobile browser interaction checks at 390×844 light/dark: PASS. Two-way jump scrolls and focuses on the correct tab/board, keeps next-move keyboard navigation and does not alter saved PGN. The dark-theme run uses `prefers-reduced-motion: reduce`. Browser asserts minimum 4.5:1 contrast on board note and inactive-variation hint.
+- After the source-truth guard: `npm run typecheck` PASS; targeted 34 tests PASS (8 newly added), full suite **924 PASS / 12 skipped**, production build PASS; 12 viewport/theme browser captures PASS and actual missing-score browser assertion PASS. Additional details screenshot is captured separately under `qa-artifacts/review-polish/source-evidence/missing-eval-details.png`.
 - Updated mobile implementation: typecheck PASS, 916 tests PASS (12 skipped), build PASS, screenshot capture 12/12 PASS. The final explanation-metadata color change was followed by another successful typecheck, production build, and all 12 browser screenshots; actual dark mobile board and details views were inspected.
 - Screenshot fixtures are presentation-only: classifications/eval scores are synthetic and **do not** certify actual chess analysis.
 
@@ -52,6 +57,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 
 - Mobile two-way navigation is verified using actual browser pointer/keyboard interaction. Verify physical touch gesture behavior separately when a device is available; it has not been claimed as tested.
 - Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative.
+- Investigate remaining very low contrast on nonprimary scores and phase labels in the dark move table; avoid global palette changes without sufficient verification.
 - Investigate whether the lengthy utilities below the core review distract users, without removing functionality merely for shorter pages.
 - Run independent real analysis source integrity/browser regression suite separately before eventual release. This iteration modifies frontend layout only.
 
