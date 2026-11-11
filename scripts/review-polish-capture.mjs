@@ -378,6 +378,54 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
       'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}
+  // Legacy key_moments_json can still hold an odds delta when the underlying
+  // engine move has no before/after score. Never present that unsupported
+  // percentage as though it were measured. The fixture is disposable only.
+  db.prepare('UPDATE analyses SET moves_json = ? WHERE game_id = ?')
+    .run(JSON.stringify([{...blackMove,eval_before_cp:null}]),blackId);
+  const unsupportedContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await unsupportedContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await unsupportedContext.newPage();
+    await page.goto(`${base}/review/${blackId}?ply=1`);
+    await page.getByRole('tab',{name:'Key moments'}).click();
+    const moment=page.getByRole('button',{name:/#12…\s*e5/});
+    await moment.waitFor({state:'visible'});
+    const text=await moment.innerText();
+    assert.ok(text.includes('200cp') && !text.includes('9wp'),
+      `Missing engine evidence must not appear as measured win-chance change: ${text}`);
+    await page.screenshot({path:join(output,'black-first-key-moments-no-evaluation.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
+      'Key Moments incomplete-score presentation must preserve the saved PGN');
+  }finally{await unsupportedContext.close();}
+  // The classification label in Key Moments previously bypassed i18next.
+  // Check the same evidence-gap fixture in every supported language using
+  // the actual browser locale and visible translated classification label.
+  for(const lang of ['en','de','es','ru','bg']){
+    const locale=JSON.parse(readFileSync(new URL(`../web/src/locales/${lang}.json`,import.meta.url),'utf8'));
+    const setting=await api('/api/settings/profile',{
+      method:'PATCH',cookie:account.cookie,body:{language:lang,site_theme:'dark'},
+    });
+    assert.equal(setting.status,200,`Unable to set Key Moments locale ${lang}`);
+    const context=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await context.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await context.newPage();
+      await page.goto(`${base}/review/${blackId}?ply=1`);
+      await page.getByRole('tab',{name:locale.review.keyMoments}).click();
+      const moment=page.getByRole('button',{name:/#12…\s*e5/});
+      await moment.waitFor({state:'visible'});
+      assert.ok((await moment.innerText()).includes(locale.classification.inaccuracy),
+        `Key Moments classification is not localized in ${lang}`);
+      assert.ok((await moment.innerText()).toLocaleLowerCase(lang).includes(locale.review.why.opponentMove.toLocaleLowerCase(lang)),
+        `Key Moments mover label is not localized in ${lang}`);
+      await page.screenshot({path:join(output,`black-first-key-moments-${lang}-390.png`)});
+    }finally{await context.close();}
+  }
+  const english=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,body:{language:'en'}});
+  assert.equal(english.status,200);
   // Long legal game: check that arrow-key replay tracks the chosen move inside
   // the move-list scroll container, without jumping the surrounding page.
   const longChess=new Chess(), longMoves=[];

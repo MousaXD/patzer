@@ -20,6 +20,8 @@ export interface KeyMomentItem {
   prose?: string;
   /** Whether it was the player's own move (unknown: not shown). */
   mine?: boolean;
+  /** True only when the authoritative analyzed move has finite before/after scores. */
+  hasWinChanceEvidence?: boolean;
 }
 
 interface Props {
@@ -64,7 +66,10 @@ export default function KeyMomentsList({ items, current, onSelect, startFen }: P
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                   {m.title ? <span className="font-medium text-chesscom-800 dark:text-chesscom-100">{m.title}</span> : <span className={`font-medium ${s.textClass}`}>{t(`classification.${s.labelKey}`)}</span>}
-                  <span className="font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300">−{m.cp_loss}cp · {m.win_pct_delta.toFixed(0)}wp</span>
+                  <span className="font-mono text-xs tabular-nums text-chesscom-500 dark:text-chesscom-300">
+                    −{m.cp_loss}cp
+                    {m.hasWinChanceEvidence && Number.isFinite(m.win_pct_delta) && ` · ${m.win_pct_delta.toFixed(0)}wp`}
+                  </span>
                   {m.mine != null && (
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${m.mine ? 'bg-gold-500/15 text-gold-700 dark:text-gold-300' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300'}`}>
                       {m.mine ? t('review.why.yourMove') : t('review.why.opponentMove')}

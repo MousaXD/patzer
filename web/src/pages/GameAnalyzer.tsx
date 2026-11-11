@@ -1046,6 +1046,7 @@ function GameAnalyzerView() {
                     <KeyMomentsList
                       items={analysis.key_moments.map((m) => {
                         const proseHit = reviewProse?.key_moments.find((p) => p.ply === m.ply);
+                        const measuredMove = analysis.moves.find((source) => source.ply === m.ply);
                         return {
                           ply: m.ply,
                           side: moveSideForPly(m.ply, startFen),
@@ -1057,6 +1058,8 @@ function GameAnalyzerView() {
                           title: proseHit?.title,
                           prose: proseHit?.prose,
                           mine: data.game.user_color ? moveSideForPly(m.ply, startFen) === data.game.user_color : undefined,
+                          hasWinChanceEvidence: measuredMove?.eval_before_cp != null && measuredMove.eval_after_cp != null
+                            && Number.isFinite(measuredMove.eval_before_cp) && Number.isFinite(measuredMove.eval_after_cp),
                         };
                       })}
                       current={ply}

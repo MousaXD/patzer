@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 
 const moments: KeyMomentItem[] = [
   { ply: 1, san: 'e5', side: 'white', classification: 'mistake',
-    cp_loss: 75, win_pct_delta: 12, best_san: 'c5', mine: false },
+    cp_loss: 75, win_pct_delta: 12, best_san: 'c5', mine: false, hasWinChanceEvidence: true },
   { ply: 2, san: 'e4', side: 'black', classification: 'best',
     cp_loss: 0, win_pct_delta: 0, best_san: null, mine: true },
 ];
@@ -42,5 +42,16 @@ describe('Key Moments uses the original game starting position', () => {
     render(<KeyMomentsList items={[]} current={0} onSelect={vi.fn()} />);
     expect(screen.getByText('review.noKeyMoments')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('never displays an unsupported win-chance change from a cached moment', () => {
+    const incomplete = { ...moments[0]!, hasWinChanceEvidence: false };
+    const { rerender } = render(<KeyMomentsList items={[incomplete]} current={1} onSelect={vi.fn()} />);
+    expect(screen.getByRole('button').textContent).toContain('−75cp');
+    expect(screen.getByRole('button').textContent).not.toContain('12wp');
+    rerender(<KeyMomentsList items={[{ ...moments[0]!, win_pct_delta: Number.NaN }]} current={1} onSelect={vi.fn()} />);
+    expect(screen.getByRole('button').textContent).not.toContain('NaN');
+    rerender(<KeyMomentsList items={[moments[0]!]} current={1} onSelect={vi.fn()} />);
+    expect(screen.getByRole('button').textContent).toContain('12wp');
   });
 });
