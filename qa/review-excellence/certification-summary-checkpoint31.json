@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-11-11T06:27:03.804Z",
+  "prior_head": "f88519629491f709030caf9f595666e431e457af",
+  "branch": "agent/review-benchmark-20261111",
+  "checkout_sha": "f88519629491f709030caf9f595666e431e457af",
+  "pinned_candidate_b": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "new_run_id": "a76f36b2-7f4f-45a2-a240-f5c452e2a643",
+  "prior_real_coach_run_id": "c4c5d687-62b5-40e4-8426-acf1e0debe81",
+  "independent_scoped_result": {
+    "independent_synthetic_source_cases": 36,
+    "independently_adjudicated_verdicts": 108,
+    "impossible_piece_inventories_blocked": 51,
+    "insufficient_evidence_abstentions": 57,
+    "independently_enumerated_source_gold": 36,
+    "input_sha256": "b3fb98bcdd97f6813aa42cf19b57f9915d1e23adcdf1e9bc7ac8ec1d791f59b2",
+    "outcome_sha256": "710f33666f833b2ef45ac79bd92c2db44b20ffe33e59ac682ed25bbcce072a3d",
+    "source_sha256": "f4f7b9131352cddc24ef450e21755bbe451a8d9e9b2a2fe981065e8151a5aa0c",
+    "full_retrograde_certified": false,
+    "product_coach_certified": false,
+    "release_approved": false
+  },
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "e27783d8b4482fc4c3a4adb37f26f2a998c56cca06668dda9ccdc233e4ab6c18",
+    "scripts/review-benchmark-promotion-budget-matrix.mjs": "c5472693570595a99950f4133a47e3456043393c77771560dce483cd4b9e8ee3",
+    "scripts/review-benchmark-promotion-budget-proof.mjs": "3cf522132f8b343cbc57d4d5177dc119368de942826aff0f50e16e744cffe8b4",
+    "scripts/review-benchmark-promotion-budget-negatives.mjs": "10c8dbac4108314254a6ff80226122ef83e94d5f55ceb2e1e0525489b417f74e",
+    "scripts/review-benchmark-promotion-budget-boundary.mjs": "148aca705f22bbe6d03619ac5b07f3c9887cf2ed1bdf81b429c0c0bd7af4eca0"
+  },
+  "no_real_users_or_db": true,
+  "external_model_calls": 0,
+  "stockfish_calls": 0,
+  "no_product_files_mutated": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limitations": [
+    "Necessary promotion inventory only, not full retrograde chess proof",
+    "Positive FEN cases mean not contradicted by this test, not historically reachable",
+    "Bishops are color-bound, but castling and EP history require additional independent evidence",
+    "Synthetic custom FEN inventory and explicit English result assertions only",
+    "No real customers, live LLM, sealed human holdout, production DB or changes to other agents"
+  ]
+}

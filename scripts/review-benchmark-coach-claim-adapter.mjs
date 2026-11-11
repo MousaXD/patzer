@@ -26,7 +26,26 @@ function impossibleSourceStartReason(startFen){
  for(const color of ['w','b']){
   const pieces=board.filter(p=>p.color===color);
   if(pieces.length>16)return 'more_than_sixteen_pieces_per_side';
-  if(pieces.filter(p=>p.type==='p').length>8)return 'more_than_eight_pawns_per_side';
+  const pawns=pieces.filter(p=>p.type==='p').length;
+  if(pawns>8)return 'more_than_eight_pawns_per_side';
+  // Standard chess begins with Q=1, R=2, N=2, one light-square bishop and
+  // one dark-square bishop. Any surplus must be a promotion. Even two
+  // SAME-color bishops require at least one promotion, because an original
+  // bishop can never switch square color. Every promoted piece consumes a
+  // pawn missing from the current board; if not enough pawns are absent,
+  // this setup cannot represent legal standard-chess history. This is a
+  // NECESSARY inventory constraint, not full retrograde reachability.
+  const n=type=>pieces.filter(p=>p.type===type).length;
+  const bishopColors=[0,0];
+  for(const bishop of pieces.filter(p=>p.type==='b')){
+   const square=bishop.square;
+   const file=square.charCodeAt(0)-97,rank=Number(square[1])-1;
+   bishopColors[(file+rank)&1]++;
+  }
+  const promotedBishops=bishopColors.reduce((sum,count)=>sum+Math.max(0,count-1),0);
+  const neededPromotions=Math.max(0,n('q')-1)+Math.max(0,n('r')-2)+
+   Math.max(0,n('n')-2)+promotedBishops;
+  if(neededPromotions>8-pawns)return 'missing_pawn_promotion_budget';
  }
  for(const [right,kingSquare,rookSquare,color] of [
   ['K','e1','h1','w'],['Q','e1','a1','w'],
