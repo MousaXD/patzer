@@ -495,6 +495,41 @@ try {
     } finally { await page.unroute('**/api/analyze/variation-move'); }
     await page.getByRole('button', { name: 'Retry scoring' }).click();
     await page.getByText(/Engine assessment:/).waitFor({ timeout: 120000 });
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()),
+      'Try another move', 'successful retry removed keyboard focus instead of returning an actionable control');
+  });
+
+  await test('Retry scoring preserves keyboard focus while a second request is pending', async () => {
+    await startBlind(page, standard.id);
+    let requests = 0;
+    await page.route('**/api/analyze/variation-move', async (route) => {
+      requests++;
+      if (requests > 1) await sleep(800);
+      await route.fulfill({
+        status: 503, contentType: 'application/json',
+        body: JSON.stringify({ error: 'focus_retry_negative_control' }),
+      }).catch(() => {});
+    });
+    try {
+      await page.locator('#practice-move-input').fill('d4');
+      await page.getByRole('button', { name: 'Submit move' }).click();
+      await page.getByText(/could not score this attempt/).waitFor();
+      await page.getByRole('button', { name: 'Retry scoring' }).focus();
+      await page.getByRole('button', { name: 'Retry scoring' }).press('Enter');
+      await page.getByText(/Checking your move with Stockfish/).waitFor();
+      // Wait for the React request-effect commit, not the optimistic pending
+      // paint. Otherwise the old error/button can still be mounted and this
+      // test falsely passes before the focus-breaking unmount.
+      await page.getByText(/could not score this attempt/).waitFor({ state: 'hidden' });
+      const focusedWhilePending = await page.evaluate(() => document.activeElement?.textContent?.trim());
+      assert.equal(focusedWhilePending, 'Cancel check and try another move',
+        'retry button was unmounted without transferring focus to the persistent cancel control');
+      await page.getByText(/could not score this attempt/).waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()),
+        'Try another move', 'late scoring error did not preserve a usable keyboard action');
+      assert.equal(requests, 2);
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
+    } finally { await page.unroute('**/api/analyze/variation-move'); }
   });
 
   await test('Leaving while evaluation is pending cannot reveal a late reply', async () => {

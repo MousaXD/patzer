@@ -21,6 +21,28 @@ const quality = {
 };
 
 describe('blind retry UX', () => {
+  it('keeps an actionable keyboard focus when retry scoring unmounts its error button', async () => {
+    let rejectRetry: (error: Error) => void = () => {};
+    const fetcher = vi.fn()
+      .mockRejectedValueOnce(new Error('engine unavailable'))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRetry = reject; }));
+    vi.stubGlobal('fetch', fetcher);
+    render(<MistakePractice fenBefore={fen} orientation="white" onExit={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Type a legal chess move/), { target: { value: 'e4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit move' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry scoring' })).toBeTruthy());
+    const retry = screen.getByRole('button', { name: 'Retry scoring' });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByText(/Checking your move/)).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry scoring' })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel check and try another move' }));
+    rejectRetry(new Error('engine still unavailable'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry scoring' })).toBeTruthy());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Try another move' }));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('focuses the attempted move after form submission and restores the text input on reset', async () => {
     const signals: AbortSignal[] = [];
     vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {

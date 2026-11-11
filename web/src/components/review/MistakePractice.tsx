@@ -34,6 +34,7 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const headingRef = useRef<HTMLHeadingElement>(null);
   const attemptHeadingRef = useRef<HTMLHeadingElement>(null);
   const moveInputRef = useRef<HTMLInputElement>(null);
+  const resetButtonRef = useRef<HTMLButtonElement>(null);
   const hasAttemptedRef = useRef(false);
   const displayedFen = attempt?.fenAfter ?? fenBefore;
   const positionSummary = useMemo(() => describePracticePosition(displayedFen), [displayedFen]);
@@ -94,6 +95,15 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
   const reset = () => {
     setTypedMove(''); setFromSquare(''); setToSquare(''); setPromotion('');
     setAttempt(null); setQuality(null); setError(''); setPending(false);
+  };
+  const retryScoring = () => {
+    if (pending || !attempt) return;
+    // The error's Retry button unmounts when scoring begins. Transfer keyboard
+    // focus to the persistent Cancel/Try another button before clearing that
+    // error, so focus never falls back to BODY during a failed/retried request.
+    resetButtonRef.current?.focus();
+    setPending(true);
+    setRetry((value) => value + 1);
   };
   const exit = () => { onExit(); };
 
@@ -188,7 +198,7 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
         </h2>
         {pending && <p role="status" aria-live="polite" className="text-sm">{t('practice.checking')}</p>}
         {error && <div role="alert" className="text-sm text-amber-700 dark:text-amber-300">
-          {t(`practice.${error}`)} <button type="button" className="ml-2 min-h-11 underline underline-offset-2" onClick={() => { setPending(true); setRetry((value) => value + 1); }}>{t('practice.retryScoring')}</button>
+          {t(`practice.${error}`)} <button type="button" className="ml-2 min-h-11 underline underline-offset-2" onClick={retryScoring}>{t('practice.retryScoring')}</button>
         </div>}
         {quality && <div role="status" aria-live="polite" className="space-y-2 text-sm">
           <p><strong>{t('practice.assessment')}</strong> {t(`classification.${quality.classification}`)}. {t('practice.winChanceLoss', { drop: quality.win_pct_drop.toFixed(1), depth: quality.depth_before })}</p>
@@ -200,7 +210,7 @@ export default function MistakePractice({ fenBefore, orientation, onExit, exitLa
           {quality.best_pv.length > 0 && <p>{t('practice.continuation')} <span className="font-mono">{quality.best_pv.slice(0, 6).join(' ')}</span></p>}
           <p className="text-xs text-chesscom-500">{t('practice.engineCaveat')}</p>
         </div>}
-        <button type="button" className="btn-secondary min-h-11" onClick={reset}>
+        <button type="button" ref={resetButtonRef} className="btn-secondary min-h-11" onClick={reset}>
           {t(pending ? 'practice.cancelTry' : 'practice.tryAgain')}
         </button>
       </div>}
