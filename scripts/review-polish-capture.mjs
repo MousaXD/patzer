@@ -234,6 +234,46 @@ try {
     },undefined,{timeout:5000});
     await page.screenshot({path:join(output,'missing-eval-details.png')});
   }finally{await missingContext.close();}
+  // Black-first FEN uses game-relative ply 1 for Black's 12th move. The UI
+  // must not label it White's 1st move or invert Black's win-chance direction.
+  const blackFen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 12';
+  const blackGame=new Chess(blackFen);
+  blackGame.setHeader('SetUp','1'); blackGame.setHeader('FEN',blackFen);
+  const before=blackGame.fen(), played=blackGame.move('e5');
+  assert.ok(played);
+  const blackId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-black-first',?,'Example White','Example Black','*','600',datetime('now'),'white')`)
+    .run(user.id,blackGame.pgn()).lastInsertRowid);
+  const blackSource=loadAnalysisGameSource(db,blackId);
+  assert.ok(blackSource);
+  const blackMove={ply:1,san:'e5',uci:'e7e5',fen_before:before,
+    fen_after:blackGame.fen(),eval_before_cp:-100,eval_after_cp:100,
+    best_move_uci:'c7c5',best_move_san:'c5',best_pv:[],
+    centipawn_loss:200,classification:'inaccuracy'};
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,80,80,?,?,?,1)`)
+    .run(blackId,JSON.stringify([blackMove]),SCORING_VERSION,
+      analysisSourceHash(blackSource),blackSource.source_revision);
+  const blackContext=await browser.newContext({viewport:{width:390,height:844}});
+  try{
+    await blackContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await blackContext.newPage();
+    await page.goto(`${base}/review/${blackId}?ply=1`);
+    await page.locator('[data-review-jump-to-details]').click();
+    await page.getByText('12…e5',{exact:true}).waitFor();
+    await page.getByText("Opponent's move",{exact:true}).waitFor();
+    const value=await page.getByTitle('Win chance for the side that moved: before → after').innerText();
+    assert.match(value,/59%\s*→\s*41%/,'Black-first win chances are not from Black\'s perspective');
+    await page.waitForFunction(()=>{
+      const section=document.querySelector('[data-review-jump-to-board]')?.closest('.card');
+      return !!section && Math.abs(section.getBoundingClientRect().top-64)<22;
+    },undefined,{timeout:5000});
+    await page.screenshot({path:join(output,'black-first-details.png')});
+  }finally{await blackContext.close();}
   writeFileSync(join(output,'metrics.json'),JSON.stringify(measurements,null,2)+'\n');
   console.log(JSON.stringify({output,measurements},null,2));
 }catch(error){console.error(error);process.exitCode=1;}

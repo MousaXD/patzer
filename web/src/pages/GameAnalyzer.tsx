@@ -999,6 +999,7 @@ function GameAnalyzerView() {
                   {tab === 'moves' && move && (
                     <MoveExplanation
                       move={move}
+                      startFen={startFen}
                       userColor={data.game.user_color}
                       coachConfigured={coachConfigured}
                       coachRequest={coachReq}

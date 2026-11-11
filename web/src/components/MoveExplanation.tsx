@@ -11,6 +11,7 @@ import { Swords } from 'lucide-react';
 import { CLASS_STYLE } from '../lib/classification';
 import ClassificationIcon from './ClassificationIcon';
 import CoachPanel from './CoachPanel';
+import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
 import type { AnalyzedMove } from '../types';
 
 /** Lichess win-chance curve (same as the server's cpToWinPct), 0..100 for White.
@@ -22,10 +23,10 @@ export function whiteWinPct(cp: number): number {
 }
 
 /** Win chance before and after the move, for the side that played it. */
-export function moverWinPct(move: Pick<AnalyzedMove, 'ply' | 'eval_before_cp' | 'eval_after_cp'>) {
+export function moverWinPct(move: Pick<AnalyzedMove, 'ply' | 'eval_before_cp' | 'eval_after_cp'>, startFen?: string) {
   if (move.eval_before_cp == null || move.eval_after_cp == null
     || !Number.isFinite(move.eval_before_cp) || !Number.isFinite(move.eval_after_cp)) return null;
-  const white = move.ply % 2 === 1;
+  const white = moveSideForPly(move.ply, startFen) === 'white';
   const pov = (cp: number) => (white ? whiteWinPct(cp) : 100 - whiteWinPct(cp));
   const before = Math.round(pov(move.eval_before_cp));
   const after = Math.round(pov(move.eval_after_cp));
@@ -38,19 +39,21 @@ interface Props {
   userColor: 'white' | 'black' | null;
   coachConfigured: boolean;
   coachRequest: (() => { url: string; body: Record<string, unknown> }) | null;
+  /** Initial position for correct move numbering and mover POV in FEN games. */
+  startFen?: string;
   /** "Play from here" link for the position after this move (the one on the
    *  board): play on against Patzer. Absent once the game is over. */
   playFrom?: string;
 }
 
-export default function MoveExplanation({ move, userColor, coachConfigured, coachRequest, playFrom }: Props) {
+export default function MoveExplanation({ move, userColor, coachConfigured, coachRequest, playFrom, startFen }: Props) {
   const { t } = useTranslation();
   const s = CLASS_STYLE[move.classification];
-  const side = move.ply % 2 === 1 ? 'white' : 'black';
+  const side = moveSideForPly(move.ply, startFen);
   const who = userColor == null
     ? t(side === 'white' ? 'review.why.whiteMove' : 'review.why.blackMove')
     : t(side === userColor ? 'review.why.yourMove' : 'review.why.opponentMove');
-  const wp = moverWinPct(move);
+  const wp = moverWinPct(move, startFen);
   const pawns = (move.centipawn_loss / 100).toFixed(1);
   // Book, forced and best descriptions are independent of win-chance numbers.
   // Other labels' detailed explanations explicitly require measured odds.
@@ -59,7 +62,7 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
     : t('review.why.evaluationUnavailable');
   const showBest = !!move.best_move_san && move.best_move_san !== move.san;
   const line = move.best_pv?.slice(0, 6).join(' ');
-  const num = `${Math.ceil(move.ply / 2)}${side === 'white' ? '.' : '…'}`;
+  const num = `${moveNumberForPly(move.ply, startFen)}${side === 'white' ? '.' : '…'}`;
 
   return (
     <div className="mb-3 rounded-lg border border-chesscom-200 bg-chesscom-50/60 p-3 dark:border-chesscom-700 dark:bg-chesscom-900/40">

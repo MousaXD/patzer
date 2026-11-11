@@ -11,6 +11,8 @@
 
 **Mobile navigation/contrast commit:** `14ec726` (pushed). The current work adds the missing-evaluation presentation guard and regression evidence.
 
+**Source truth commit:** `5ba9029` (pushed). This session also fixes Black-first FEN move labels and win-chance POV.
+
 ## Completed changes
 
 1. Reproduced and measured the original board-versus-controls conflict through real Chromium screenshot capture, both themes and all six target screen sizes.
@@ -23,6 +25,7 @@
 8. Corrected dark-theme foreground colors in the variation guidance, blue-arrow note, and move explanation metadata that were visibly dim against dark panels.
 9. Fixed a real source-truth defect: `MoveExplanation.whiteWinPct` used to turn a missing cp into 0, implicitly claiming 50% odds. `moverWinPct` now refuses a comparison unless both positions have finite engine scores, hides numerical odds when unavailable, and displays a translated evidence-gap explanation. Independent prose for Book, Best, and Forced is retained. No scoring algorithm, classification or source revision changed.
 10. Added 8 unit regression cases for numerical cp, missing and non-finite scores, and evidence-independent classifications; added a disposable real-React browser capture that removes a score from the cached fixture and verifies no odds appear in the rendered explanation.
+11. Reused the existing `moveSideForPly`/`moveNumberForPly` helpers in `MoveExplanation`, preserving the actual mover, fullmove number and win-chance point-of-view for imported Black-first FEN games. Wired the already-available starting FEN through `GameAnalyzer` without altering the PGN or scoring. Added Black-first assertions and an isolated real browser screenshot; `12…e5` correctly appears as an opponent Black move with a Black-side 59% → 41% comparison in the synthetic fixture.
 
 ## Before/after visual evidence
 
@@ -50,6 +53,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 - Browser interaction checks at 1024×768 in both light and dark themes: PASS. Right/Left keyboard arrows switch between Moves and AI report tabs; Next move advances the visible position and leaves the original PGN in SQLite unchanged.
 - Mobile browser interaction checks at 390×844 light/dark: PASS. Two-way jump scrolls and focuses on the correct tab/board, keeps next-move keyboard navigation and does not alter saved PGN. The dark-theme run uses `prefers-reduced-motion: reduce`. Browser asserts minimum 4.5:1 contrast on board note and inactive-variation hint.
 - After the source-truth guard: `npm run typecheck` PASS; targeted 34 tests PASS (8 newly added), full suite **924 PASS / 12 skipped**, production build PASS; 12 viewport/theme browser captures PASS and actual missing-score browser assertion PASS. Additional details screenshot is captured separately under `qa-artifacts/review-polish/source-evidence/missing-eval-details.png`.
+- Black-first FEN follow-up: typecheck PASS, targeted 13 tests PASS including a new real-mover test, **full suite 925 passed / 12 skipped**, build PASS, all 12 layout captures PASS and Black-first real Chromium fixture PASS; screenshot `qa-artifacts/review-polish/black-first/black-first-details.png`.
 - Updated mobile implementation: typecheck PASS, 916 tests PASS (12 skipped), build PASS, screenshot capture 12/12 PASS. The final explanation-metadata color change was followed by another successful typecheck, production build, and all 12 browser screenshots; actual dark mobile board and details views were inspected.
 - Screenshot fixtures are presentation-only: classifications/eval scores are synthetic and **do not** certify actual chess analysis.
 

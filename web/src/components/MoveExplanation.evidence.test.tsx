@@ -20,8 +20,8 @@ const move: AnalyzedMove = {
   best_move_uci: 'c4d5', best_pv: [],
 };
 
-const render = (sample: AnalyzedMove) => renderToStaticMarkup(createElement(MoveExplanation, {
-  move: sample, userColor: 'white', coachConfigured: false, coachRequest: null,
+const render = (sample: AnalyzedMove, startFen?: string, userColor: 'white' | 'black' | null = 'white') => renderToStaticMarkup(createElement(MoveExplanation, {
+  move: sample, userColor, coachConfigured: false, coachRequest: null, startFen,
 }));
 
 describe('Game Review win-chance source integrity', () => {
@@ -58,5 +58,19 @@ describe('Game Review win-chance source integrity', () => {
     expect(html).toContain(`review.why.${classification}`);
     expect(html).not.toContain('review.why.evaluationUnavailable');
     expect(html).not.toContain('review.why.winChance');
+  });
+
+  it('uses the real mover and fullmove number for Black-first FEN games', () => {
+    const blackFirst = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 12';
+    const first = { ...move, ply: 1, san: 'e5', eval_before_cp: 100, eval_after_cp: -100 };
+    const black = moverWinPct(first, blackFirst);
+    expect(black!.before).toBeLessThan(black!.after);
+    const html = render(first, blackFirst, null);
+    expect(html).toContain('12…e5');
+    expect(html).toContain('review.why.blackMove');
+    expect(html).not.toContain('review.why.whiteMove');
+    const second = render({ ...first, ply: 2, san: 'e4' }, blackFirst, null);
+    expect(second).toContain('13.e4');
+    expect(second).toContain('review.why.whiteMove');
   });
 });
