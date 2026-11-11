@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:25:49.680Z",
+  "parent_qa_commit": "d7712012cc26efee36ab07cc21ff90de2fe18730",
+  "qa_checkout_sha": "d7712012cc26efee36ab07cc21ff90de2fe18730",
+  "own_branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "stockfish_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "stockfish_version": "16",
+  "depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "qa_run_id": "edc4bb64-c84a-4c92-9b4c-71b9b44e6ef6",
+  "raw_evidence_uncommitted": true,
+  "verdict": {
+    "separate_processes_and_http_sockets_confirmed": true,
+    "shared_sqlite_logout_rejects_future_admissions": true,
+    "previously_admitted_review_completes": true,
+    "fresh_session_works_on_both_workers": true,
+    "independent_negative_cookie_controls_passed": true,
+    "policy_for_canceling_inflight_work": "not established",
+    "full_authentication_certified": false,
+    "release_approved": false
+  },
+  "source_hashes": {
+    "worker": "bd32fefbbfe006099a07fb67e461a92be733d82390ec84b070fe49592212c633",
+    "harness": "7f682f9955d9181ea7a4f5eb5a3e6f67ec32bc17cc0ad9a10db5d79db5806a39",
+    "verifier": "efb7988f4493b7d646de4d3b0d51b58d49ea480d089ae204f6f7131ff8376579"
+  },
+  "integration_approved": false,
+  "release_approved": false,
+  "limitations": [
+    "Real HTTP over distinct local Node processes and shared synthetic SQLite WAL only",
+    "Minimal route mounting omits global CSRF/CORS and browser identity-provider behavior",
+    "In-flight request cancellation after logout has no specified product contract",
+    "No production DB or data, remote model, cross-machine deployment or sealed holdout"
+  ]
+}

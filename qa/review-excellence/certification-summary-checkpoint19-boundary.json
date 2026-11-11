@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T02:25:49.628Z",
+  "previous_qa_commit": "d7712012cc26efee36ab07cc21ff90de2fe18730",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "valid_run_id": "edc4bb64-c84a-4c92-9b4c-71b9b44e6ef6",
+  "broken_run_id": "effb2f5d-7a40-4b85-b5e9-d2dc0b2a69c0",
+  "valid_run_exit": 0,
+  "broken_run_exit": 1,
+  "broken_worker_actual_http_200_detected": true,
+  "broken_worker_rejected_by": "revoked_cookie_accepted_by_worker",
+  "original_hono_review_and_auth_routes_tested": true,
+  "test_only_wrapper_generated_bad_response": true,
+  "full_product_security_certified": false,
+  "release_approved": false,
+  "source_hashes": {
+    "worker": "bd32fefbbfe006099a07fb67e461a92be733d82390ec84b070fe49592212c633",
+    "real_http_harness": "7f682f9955d9181ea7a4f5eb5a3e6f67ec32bc17cc0ad9a10db5d79db5806a39",
+    "independent_proof": "efb7988f4493b7d646de4d3b0d51b58d49ea480d089ae204f6f7131ff8376579",
+    "boundary_challenge": "f9ba72db6d712478bcd6cf74e300690f95d9a9d21ba69f220e605e954a634931"
+  },
+  "limitations": [
+    "The deliberate HTTP bypass is injected by QA route middleware, not Patzer source",
+    "Two independent Node processes and localhost HTTP only, no remote reverse proxy",
+    "No production SQLite, private game histories, real auth material or external model"
+  ]
+}
