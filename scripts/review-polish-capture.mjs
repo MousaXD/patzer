@@ -327,6 +327,81 @@ try {
     },undefined,{timeout:5000});
     await page.screenshot({path:join(output,'black-first-details.png')});
   }finally{await blackContext.close();}
+  // Long legal game: check that arrow-key replay tracks the chosen move inside
+  // the move-list scroll container, without jumping the surrounding page.
+  const longChess=new Chess(), longMoves=[];
+  const repeatedCycle=['Nf3','Nf6','Ng1','Ng8'];
+  for(let index=0;index<160;index++){
+    const before=longChess.fen(), move=longChess.move(repeatedCycle[index%4]);
+    assert.ok(move);
+    longMoves.push({ply:index+1,san:move.san,uci:move.from+move.to,
+      fen_before:before,fen_after:longChess.fen(),eval_before_cp:0,
+      eval_after_cp:0,best_move_uci:move.from+move.to,
+      best_move_san:move.san,best_pv:[],centipawn_loss:0,classification:'book'});
+  }
+  const longId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-long-game',?,'Long White','Long Black','*','600',datetime('now'),'white')`)
+    .run(user.id,longChess.pgn()).lastInsertRowid);
+  const longSource=loadAnalysisGameSource(db,longId);
+  assert.ok(longSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,80,80,?,?,?,1)`)
+    .run(longId,JSON.stringify(longMoves),SCORING_VERSION,
+      analysisSourceHash(longSource),longSource.source_revision);
+  // Isolate move-history scrolling from the board-to-detail smooth-scroll
+  // animation: that transition is already exercised separately above.
+  const longContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await longContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await longContext.newPage(),errors=[];
+    page.on('pageerror',err=>errors.push(err.message));
+    await page.goto(`${base}/review/${longId}?ply=155`,{waitUntil:'domcontentloaded'});
+    await page.locator('[data-review-jump-to-details]').click();
+    await page.waitForFunction(()=>{
+      const panel=document.querySelector('[data-review-jump-to-board]')?.closest('.card');
+      return !!panel && Math.abs(panel.getBoundingClientRect().top-64)<22;
+    },undefined,{timeout:5000});
+    await page.waitForFunction(()=>{
+      const root=document.querySelector('[role="region"][aria-label="Moves"]');
+      const selected=root?.querySelector('button[aria-current="step"]');
+      if(!root||!selected)return false;
+      const outer=root.getBoundingClientRect(),inner=selected.getBoundingClientRect();
+      return root.scrollTop>1000 && inner.top>=outer.top && inner.bottom<=outer.bottom;
+    });
+    await page.screenshot({path:join(output,'long-game-initial-details.png')});
+    const graph=page.getByRole('slider',{name:'Move evaluation timeline'});
+    await graph.focus();
+    const outerStart=await page.evaluate(()=>window.scrollY);
+    await page.keyboard.press('Home');
+    await page.waitForFunction(()=>document.querySelector('[role="region"][aria-label="Moves"]')?.scrollTop===0 &&
+      !!document.querySelector('[role="region"][aria-label="Moves"] button[aria-current="step"]'));
+    const outerHome=await page.evaluate(()=>window.scrollY);
+    await page.keyboard.press('End');
+    await page.waitForFunction(()=>{
+      const root=document.querySelector('[role="region"][aria-label="Moves"]');
+      const selected=root?.querySelector('button[aria-current="step"]');
+      if(!root||!selected)return false;
+      const a=root.getBoundingClientRect(),b=selected.getBoundingClientRect();
+      return root.scrollTop>1000 && b.top>=a.top && b.bottom<=a.bottom;
+    });
+    const outerEnd=await page.evaluate(()=>window.scrollY);
+    console.log('Long-game outer page scroll:',JSON.stringify({outerStart,outerHome,outerEnd,delta:outerEnd-outerStart}));
+    assert.ok(Math.abs(outerEnd-outerStart)<=5,
+      `Long-game move tracking must scroll the move list, not the surrounding page: ${outerStart} -> ${outerEnd}`);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(longId).pgn,longChess.pgn(),
+      'Long-game navigation must preserve the saved PGN');
+    assert.deepEqual(errors,[],'No long-game browser runtime exceptions');
+    await page.locator('[data-review-jump-to-board]').evaluate(el=>el.closest('.card')?.scrollIntoView({block:'start',behavior:'auto'}));
+    await page.waitForFunction(()=>{
+      const panel=document.querySelector('[data-review-jump-to-board]')?.closest('.card');
+      return !!panel && Math.abs(panel.getBoundingClientRect().top-64)<22;
+    });
+    await page.screenshot({path:join(output,'long-game-details.png')});
+  }finally{await longContext.close();}
   writeFileSync(join(output,'metrics.json'),JSON.stringify(measurements,null,2)+'\n');
   console.log(JSON.stringify({output,measurements},null,2));
 }catch(error){console.error(error);process.exitCode=1;}
