@@ -30,7 +30,7 @@ const changed=[
  ['neutral result proof altered',x=>x.independent_claim_validation.neutral.verified[0].proof='model_claim'],
  ['neutral piece proof altered',x=>x.independent_claim_validation.neutral.verified[1].proof='model_fen'],
  ['neutral verified not actually supported',x=>x.independent_claim_validation.neutral.verified.pop()],
- ['neutral has unassessed content',x=>x.independent_claim_validation.neutral.unassessed.push({reason:'missing'})],
+ ['neutral unassessed coverage forged',x=>x.independent_claim_validation.neutral.unassessed.push({reason:'missing'})],
  ['hostile false claims labeled pass',x=>x.independent_claim_validation.hostile.status='limited_claims_passed'],
  ['winner contradiction hidden',x=>x.independent_claim_validation.hostile.findings.shift()],
  ['piece contradiction hidden',x=>x.independent_claim_validation.hostile.findings.pop()],

@@ -30,7 +30,9 @@ assert.equal(raw.actual_result,'0-1');
 assert.equal(raw.replay_white_king_e1,true);
 assert.equal(raw.replay_white_king_e2,false);
 assert.equal(raw.candidate_factuality_certified,false);
-assert.equal(raw.independent_claim_validation.neutral.status,'limited_claims_passed');
+assert.equal(raw.independent_claim_validation.neutral.status,'partial_claims_verified');
+assert(raw.independent_claim_validation.neutral.unassessed.some(x=>x.reason==='unchecked_prose_remainder'),
+ 'independent QA cannot claim all safe model prose was fact checked');
 assert.equal(raw.independent_claim_validation.neutral.verified.length,2);
 assert.equal(raw.independent_claim_validation.hostile.status,'rejected');
 assert.deepEqual(raw.independent_claim_validation.hostile.findings.map(x=>x.reason).sort(),[

@@ -36,6 +36,25 @@ function explicitMoveTime(text,claimStart){
  if(/(?:^|[.!?]\s+|\n)\s*(?:Before|After)\b/i.test(prefix))return 'unresolved';
  return null;
 }
+function isQuotedOrDisavowed(text,claimStart){
+ // This verifier is a *literal-claim* checker, not a quotation/negation
+ // parser. Abstain on specific recognizable meta-language instead of
+ // misclassifying a quoted or explicitly denied sentence as an assertion.
+ const prefix=text.slice(0,claimStart);
+ const before=prefix.trimEnd();
+ if(/[“‘«]$/.test(before))return true; // directional OPEN quote
+ // Straight ASCII quotes can also be CLOSING quotes. A quote directly before
+ // the next, independently asserted sentence must not suppress that claim.
+ if(before.endsWith('"')&&(before.match(/"/g)||[]).length%2===1)return true;
+ if(before.endsWith("'")&&(before.match(/'/g)||[]).length%2===1)return true;
+ const boundaries=[...prefix.matchAll(/[.!?]\s+|\n/g)];
+ const last=boundaries.at(-1);
+ const at=last?last.index+last[0].length:0;
+ // Ignore only non-word-leading ornamentation (e.g. a leading emoji or
+ // bullet), not words that may change the statement's actual semantics.
+ const context=prefix.slice(at).replace(/^[^\p{L}\p{N}]+/u,'').trimStart();
+ return /^(?:(?:It\s+(?:is|was)\s+(?:false|wrong|incorrect)\s+that)|(?:It\s+would\s+be\s+(?:false|wrong|incorrect)\s+to\s+say(?:\s+that)?)|(?:Do\s+not\s+(?:say|claim|write)(?:\s+that)?)|(?:Never\s+(?:say|claim)(?:\s+that)?))\s*$/i.test(context);
+}
 export function validateWrittenGameReview({pgn, review, userColor='white'}){
  const findings=[],verified=[],unassessed=[];
  if(!bounded(pgn)||!review||!['white','black'].includes(userColor))return {status:'invalid_input',findings:[{reason:'invalid_review_input'}],verified,unassessed,full_factuality_certified:false};
@@ -90,10 +109,17 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  for(const {part,kind:text} of sections){
   if(!text)continue;
   if(!bounded(text)){findings.push({reason:'invalid_prose',field:part});continue;}
+  const checkedSpans=[];
+  const register=(m)=>checkedSpans.push([m.index,m.index+m[0].length]);
   // Post-game, unambiguous claims of which side won or lost.
   // Does not accept all paraphrases: unidentified claims stay *unassessed*.
   const actorPhrases=[...text.matchAll(/\b(White|Black)\s+(won|lost)\s+(?:the|this)\s+game\b/gi)];
   for(const m of actorPhrases) {
+   register(m);
+   if(isQuotedOrDisavowed(text,m.index)){
+    unassessed.push({field:part,reason:'quoted_or_disavowed_result_not_assessed',claim:m[0]});
+    continue;
+   }
    const color=m[1].toLowerCase();
    const assertedWinner=m[2].toLowerCase()==='won'?color:(color==='white'?'black':'white');
    if(!winner){findings.push({reason:'result_claim_without_terminal_proof',field:part,claim:m[0]});continue;}
@@ -102,6 +128,11 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
   }
   const userPhrases=[...text.matchAll(/\b(You|Your opponent)\s+(won|lost)\s+(?:the|this)\s+game\b/gi)];
   for(const m of userPhrases){
+   register(m);
+   if(isQuotedOrDisavowed(text,m.index)){
+    unassessed.push({field:part,reason:'quoted_or_disavowed_result_not_assessed',claim:m[0]});
+    continue;
+   }
    const owner=m[1].toLowerCase()==='you'?userColor:(userColor==='white'?'black':'white');
    const assertedWinner=m[2].toLowerCase()==='won'?owner:(owner==='white'?'black':'white');
    if(!winner){findings.push({reason:'result_claim_without_terminal_proof',field:part,claim:m[0]});continue;}
@@ -114,6 +145,11 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
   // this favors avoiding accusations over guessing temporal semantics.
   const pieceStatements=[...text.matchAll(/\b(White|Black)(?:['’]s)?\s+(king|queen|rook|bishop|knight|pawn)\s+(?:(?:is|was|stands|stood|sits|sat|remains|remained|currently|still|located|positioned)\s+){0,4}(?:on|at)\s+([a-h][1-8])\b/gi)];
   for(const m of pieceStatements) {
+   register(m);
+   if(isQuotedOrDisavowed(text,m.index)){
+    unassessed.push({field:part,reason:'quoted_or_disavowed_piece_not_assessed',claim:m[0]});
+    continue;
+   }
    const owner=m[1].toLowerCase(),piece=pieceType[m[2].toLowerCase()],square=m[3];
    const mindex=Number(part.split(':')[1]);
    const boards=part.startsWith('moment:')?momentBoards.get(mindex):null;
@@ -130,9 +166,25 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
    else verified.push({field:part,type:'piece_location',
     proof:time?'independent_source_pgn_'+time+'_move':'independent_source_pgn_move_replay'});
   }
+  // Checked spans are the *only* text the finite lexical adapter assessed.
+  // An unrelated sentence or an unsupported paraphrase in the same review
+  // must not vanish from its uncertainty report merely because a different
+  // literal claim was true. Record uncertainty even for unsupported sections
+  // (including skill assessment and pedagogical explanations).
+  // RegExp match indices are UTF-16 code-unit offsets. split('') deliberately
+  // uses the same coordinate system; [...text] counts astral Unicode scalars
+  // and would erase the wrong spans after emoji or other surrogate pairs.
+  const unchecked=text.split('');
+  for(const [start,end] of checkedSpans)unchecked.fill(' ',start,end);
+  const remainder=unchecked.join('');
+  if(/[\p{L}\p{N}]/u.test(remainder))
+   unassessed.push({field:part,reason:'unchecked_prose_remainder',
+    remaining_character_count:[...remainder.trim()].length});
  }
  if(!findings.length && !verified.length)unassessed.push({reason:'no_recognized_checkable_claims'});
- return {status:findings.length?'rejected':verified.length?'limited_claims_passed':'not_evaluated',findings,verified,unassessed,
-   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Unexamined prose is NOT certified.',
+ return {status:findings.length?'rejected':verified.length?
+  (unassessed.length?'partial_claims_verified':'limited_claims_passed'):'not_evaluated',
+  findings,verified,unassessed,
+   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Partial/unrecognized prose is NOT certified.',
    result_proven_by_mate:!!forcedWinner,full_factuality_certified:false};
 }

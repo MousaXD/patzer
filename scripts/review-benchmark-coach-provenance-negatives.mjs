@@ -27,7 +27,9 @@ const observe=(r,p=pgn,who='white')=>validateWrittenGameReview({pgn:p,review:r,u
 let observed=0;
 function allowed(name,r,opts={}){
  const result=observe(r,opts.pgn??pgn,opts.userColor??'white');
- assert.equal(result.status,'limited_claims_passed',name+': '+JSON.stringify(result.findings));
+ assert.equal(result.status,'partial_claims_verified',name+': '+JSON.stringify(result.findings));
+ assert(result.unassessed.some(x=>x.reason==='unchecked_prose_remainder'&&x.field==='skill_assessment'),
+  'scoped claim pass concealed unassessed instructional prose');
  assert.equal(result.findings.length,0,name);
  assert.equal(result.full_factuality_certified,false,name);
  if(opts.proof)assert(result.verified.some(v=>v.proof===opts.proof),name+' lacks expected independent proof');

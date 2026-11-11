@@ -65,15 +65,18 @@ export function verifyCoachProvenanceEvidence(raw){
 
  const neutral=raw.independent_claim_validation.neutral;
  const hostile=raw.independent_claim_validation.hostile;
- assert.equal(neutral.status,'limited_claims_passed');
- assert.deepEqual(neutral.unassessed,[]);
+ assert.equal(neutral.status,'partial_claims_verified');
+ assert.deepEqual(neutral.unassessed,[
+  {field:'skill_assessment',reason:'unchecked_prose_remainder',remaining_character_count:88},
+  {field:'phase:opening',reason:'unchecked_prose_remainder',remaining_character_count:47},
+ ]);
  assert.equal(neutral.verified.length,2);
  assert.deepEqual(neutral.verified.map(x=>x.field),['summary','moment:0']);
  assert.deepEqual(neutral.verified.map(x=>x.type),['game_result','piece_location']);
  assert.deepEqual(neutral.verified.map(x=>x.proof),[
   'replay_checkmate','independent_source_pgn_move_replay']);
  assert.equal(hostile.status,'rejected');
- assert.deepEqual(hostile.unassessed,[]);
+ assert.deepEqual(hostile.unassessed,neutral.unassessed);
  assert.equal(hostile.findings.length,2);
  assert.equal(hostile.findings[0].reason,'contradicted_game_winner');
  assert.equal(hostile.findings[0].field,'summary');
@@ -104,7 +107,7 @@ export function verifyCoachProvenanceEvidence(raw){
  const truth={...compromised,key_moments:[{...fakeMoment,
   fen_before:moves[2].before,prose:"Before the move, White's pawn is on g2."}]};
  const good=validateWrittenGameReview({pgn,review:truth});
- assert.equal(good.status,'limited_claims_passed');
+ assert.equal(good.status,'partial_claims_verified');
  assert(good.verified.some(x=>x.proof==='independent_source_pgn_before_move'));
  const lie={...truth,key_moments:[{...truth.key_moments[0],
   prose:"Before the move, White's pawn is on g4."}]};

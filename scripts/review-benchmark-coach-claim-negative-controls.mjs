@@ -27,8 +27,10 @@ const check=(claim,expectedReasons=[])=>{
   for(const reason of expectedReasons)assert(reasons.includes(reason),reason+': '+JSON.stringify(reasons));
   assert.equal(observed.status,'rejected');
  } else {
-  assert.equal(observed.status,'limited_claims_passed',JSON.stringify(reasons));
+  assert.equal(observed.status,'partial_claims_verified',JSON.stringify(reasons));
   assert.equal(observed.findings.length,0);
+  assert(observed.unassessed.some(x=>x.reason==='unchecked_prose_remainder'&&x.field==='skill_assessment'),
+   'unrecognized skill prose should not disappear when other facts were verified');
  }
  assertions++;
 };
