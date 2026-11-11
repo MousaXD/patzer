@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T05:07:19.934Z",
+  "prior_checkpoint_head": "6537ed5180fa9f5df289013d1ced29e60719d04d",
+  "own_branch": "agent/review-benchmark-20261111",
+  "qa_checkout_sha": "6537ed5180fa9f5df289013d1ced29e60719d04d",
+  "pinned_candidate_b": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "manifest_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "result_matrix_run_id": "04555cbd-53b1-40b1-9250-07f12214dbe1",
+  "prior_real_coach_run_id": "20fa422a-bd50-4bb4-a39b-e5e16dd90550",
+  "independent_result_proof": {
+    "bounded_synthetic_games": 15,
+    "claim_case_count": 67,
+    "independently_named_gold_cases": 32,
+    "not_evaluated_cases": 37,
+    "source_or_claim_contradictions_rejected": 24,
+    "partially_verified_cases": 4,
+    "directly_verified_cases": 2,
+    "individual_input_sha256": "80e0b5a006f94f307c8d6a491e09e0941c155c408eacd3749d95ce81aa3d1901",
+    "individual_outcome_sha256": "eabb33e02a59744c02ea098a579598db9d267a546cc71a98c5637bd1ace81a7d",
+    "product_coach_factuality_certified": false,
+    "release_approved": false
+  },
+  "source_sha256": {
+    "scripts/review-benchmark-coach-claim-adapter.mjs": "8ab7e8bc10810d5107037fc6ae54b5d3c6f20850483c8632581020571a1aa89c",
+    "scripts/review-benchmark-coach-claim-negative-controls.mjs": "c8fb6664ebcf73a7cbf7f9bc5952798b7aeebec570de5cfbbaed928720fd04ee",
+    "scripts/review-benchmark-result-evidence-matrix.mjs": "5bbce48d43647159cedbad28bf108d39ac503808d96cae958fa823c6b387648d",
+    "scripts/review-benchmark-result-evidence-proof.mjs": "3062142d3f8159805225a0575f42155bb20e9670370ba40b321efe010a334f58",
+    "scripts/review-benchmark-result-evidence-negatives.mjs": "c80642b8aa22cf4275d70b8358c2497bfc40bd3d7d163f30fac1e7f2e8eb40a5",
+    "scripts/review-benchmark-result-evidence-boundary.mjs": "7f681dd39a0e7fbd47f099d1f9a85bee7df786768f3691b4992c11ce3806d650"
+  },
+  "synthetic_QA_only": true,
+  "real_model_calls_this_checkpoint": 0,
+  "no_product_files_modified": true,
+  "release_approved": false,
+  "integration_approved": false,
+  "limits": [
+    "PGN-only replay cannot prove human resignation, time forfeit or agreed draw",
+    "Terminal checkmate/draw board-state claims are chess.js oracles, not real game adjudications",
+    "Only explicit finite English winner/owner-piece-square claims are checked",
+    "No real user games, sealed human holdout, external LLM, production database or load assessment",
+    "Other owner source branches and PR #17 remain untouched"
+  ]
+}

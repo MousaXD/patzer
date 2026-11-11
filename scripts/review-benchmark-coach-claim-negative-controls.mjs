@@ -56,10 +56,19 @@ for(const [result,piece,reason] of [
 ])check(make(result,piece),[reason]);
 // Independent verifier must not invent an outcome when the chess rules do not
 // show a terminal checkmate, even if someone invents a Result header.
-const unfinished='[Event "Synthetic fixture"]\n[Result "1-0"]\n\n1. e4 e5 *';
+// Preserve the actual first three Fool's Mate plies, so the moment metadata
+// remains source-anchored. Replace the mating fourth ply with a legal quiet
+// move. A 2-ply PGN would instead (correctly) reject the *unrelated* ply-3
+// moment, falsely implying that our result-policy regression failed.
+const unfinished='[Event "Synthetic fixture"]\n[Result "1-0"]\n\n1. f3 e5 2. g4 Nc6 *';
 const nonterminal=validateWrittenGameReview({pgn:unfinished,review:make('White won the game.',"White's king is on e1.")});
-assert(nonterminal.findings.some(x=>x.reason==='result_claim_without_terminal_proof'));
+assert.equal(nonterminal.status,'partial_claims_verified',
+ 'an unverified nonterminal PGN result should be abstained, not called false');
+assert.deepEqual(nonterminal.findings,[]);
+assert(nonterminal.unassessed.some(x=>x.reason==='winner_not_independently_proven_from_nonterminal_pgn'));
 assert(nonterminal.unassessed.some(x=>x.reason==='nonterminal_result_not_independently_verified'));
+assert(nonterminal.verified.some(x=>x.type==='piece_location'),
+ 'legally replayed piece claims should remain independently verifiable');
 assert.equal(nonterminal.result_proven_by_mate,false);
 assert.equal(validateWrittenGameReview({pgn:'illegal PGN',review:make('White won the game.','')}).status,'invalid_input');
 // This evaluator deliberately does NOT claim to understand equivalent prose,

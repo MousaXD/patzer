@@ -118,9 +118,23 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  }
  const headerResult=game.header().Result||null;
  const forcedWinner=game.isCheckmate()?(game.turn()==='w'?'black':'white'):null;
- if(forcedWinner && winnerFromResult(headerResult)!==forcedWinner)findings.push({reason:'pgn_result_conflicts_with_mate',field:'pgn'});
+ const provenDraw=!forcedWinner&&game.isDraw();
+ // A missing or '*' PGN Result tag is not an affirmative result claim.
+ // Chess-law replay is still sufficient to verify a checkmated winner; only
+ // an explicitly conflicting declared result merits a source contradiction.
+ if(forcedWinner&&['1-0','0-1','1/2-1/2'].includes(headerResult)
+  &&winnerFromResult(headerResult)!==forcedWinner)
+  findings.push({reason:'pgn_result_conflicts_with_mate',field:'pgn',header_result:headerResult});
+ // '*' means unknown/unfinished metadata, not an asserted wrong winner.
+ // Only an explicitly *decisive* PGN tag contradicts a proven drawn board.
+ if(provenDraw&&['1-0','0-1'].includes(headerResult))findings.push({reason:'pgn_result_conflicts_with_terminal_draw',field:'pgn',header_result:headerResult});
  const winner=forcedWinner; // independent terminal replay, not metadata alone
- if(!winner)unassessed.push({reason:'nonterminal_result_not_independently_verified'});
+ // Resignations, time forfeits and agreements are not derivable from the PGN
+ // move sequence. Do NOT label either a matching or an opposing winner claim
+ // as false solely because the terminal move is absent. This was an actual
+ // QA false rejection on synthetically recorded 1-0/0-1/* games. Proven
+ // board-terminal draws are different: a declared winner *is* contradicted.
+ if(!winner&&!provenDraw)unassessed.push({reason:'nonterminal_result_not_independently_verified'});
  const sections=[
   labelPart('summary',review.summary),
   labelPart('skill_assessment',review.skill_assessment),
@@ -150,7 +164,8 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
    }
    const color=m[1].toLowerCase();
    const assertedWinner=m[2].toLowerCase()==='won'?color:(color==='white'?'black':'white');
-   if(!winner){findings.push({reason:'result_claim_without_terminal_proof',field:part,claim:m[0]});continue;}
+   if(provenDraw){findings.push({reason:'contradicted_terminal_draw_winner',field:part,claim:m[0],verified_result:'1/2-1/2'});continue;}
+   if(!winner){unassessed.push({reason:'winner_not_independently_proven_from_nonterminal_pgn',field:part,claim:m[0]});continue;}
    if(assertedWinner!==winner)findings.push({reason:'contradicted_game_winner',field:part,claim:m[0],verified_winner:winner});
    else verified.push({field:part,type:'game_result',proof:'replay_checkmate'});
   }
@@ -167,7 +182,8 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
    }
    const owner=m[1].toLowerCase()==='you'?userColor:(userColor==='white'?'black':'white');
    const assertedWinner=m[2].toLowerCase()==='won'?owner:(owner==='white'?'black':'white');
-   if(!winner){findings.push({reason:'result_claim_without_terminal_proof',field:part,claim:m[0]});continue;}
+   if(provenDraw){findings.push({reason:'contradicted_terminal_draw_winner',field:part,claim:m[0],verified_result:'1/2-1/2'});continue;}
+   if(!winner){unassessed.push({reason:'winner_not_independently_proven_from_nonterminal_pgn',field:part,claim:m[0]});continue;}
    if(assertedWinner!==winner)findings.push({reason:'contradicted_game_winner',field:part,claim:m[0],verified_winner:winner});
    else verified.push({field:part,type:'game_result',proof:'replay_checkmate'});
   }
@@ -221,6 +237,7 @@ export function validateWrittenGameReview({pgn, review, userColor='white'}){
  return {status:findings.length?'rejected':verified.length?
   (unassessed.length?'partial_claims_verified':'limited_claims_passed'):'not_evaluated',
   findings,verified,unassessed,
-   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Quoted, denied, hypothetical and conditional contexts are not evaluated. Partial/unrecognized prose is NOT certified.',
-   result_proven_by_mate:!!forcedWinner,full_factuality_certified:false};
+   scope:'English literal result and explicit owner-piece-square claims with recognized Before/After the move anchors only, bound to legal source PGN replay. Nonterminal PGN metadata cannot prove resignation or clock loss. Independently drawn terminal boards contradict winner assertions. Quoted, denied, hypothetical and conditional contexts are not evaluated. Partial/unrecognized prose is NOT certified.',
+   result_proven_by_mate:!!forcedWinner,draw_proven_by_board:provenDraw,
+   full_factuality_certified:false};
 }
