@@ -167,6 +167,32 @@ describe('explainCoaching — the facts behind a blunder', () => {
     expect(c.eval_after_cp).toBe(10000);
   });
 
+  it('does not turn an unknown engine score into a made-up neutral evaluation', async () => {
+    const prev = coaching.setCoachEngine(async () => [{ cp: null, mate: null, pv: [] }]);
+    try {
+      const facts = await coaching.explainCoaching(blunderInput, 'en', 'beginner');
+      expect(facts.eval_before_cp).toBeNull();
+      expect(facts.eval_after_cp).toBeNull();
+    } finally {
+      coaching.setCoachEngine(prev);
+    }
+  });
+
+  it('does not label unscored engine candidates near-equal alternatives', async () => {
+    const prev = coaching.setCoachEngine(async (fen) => fen === SCHOLAR ? [
+      { cp: null, mate: null, pv: ['g7g6'] },
+      { cp: null, mate: null, pv: ['d8e7'] },
+    ] : null);
+    try {
+      const facts = await coaching.explainCoaching(blunderInput, 'en', 'beginner');
+      expect(facts.facts.other_good_moves).toEqual([]);
+      const hint = await coaching.hintCoaching(SCHOLAR, 1, 'en', 'beginner');
+      expect(hint.facts.evaluation_state).toBeNull();
+    } finally {
+      coaching.setCoachEngine(prev);
+    }
+  });
+
   it('keeps the opponent\'s moves and other players out of "your history"', async () => {
     const theirs = await coaching.explainCoaching({ ...blunderInput, ownMove: false }, 'en', 'beginner');
     expect(theirs.facts.player_history).toEqual([]);
@@ -367,6 +393,31 @@ describe('POST /explain (regression #37)', () => {
     expect(user).toContain('No praise at all.');
     // Play sends no evaluation; the coach's engine run fills it in.
     expect(user).toContain('"win_pct_after": 0');
+  });
+
+  it('does not let stale client evaluations override position-verified engine evidence', async () => {
+    replies = [GOOD_ANSWER];
+    await post('/explain', { ...explainBody, eval_before_cp: -10000, eval_after_cp: -10000 });
+    expect(prompts).toHaveLength(1);
+    const facts = JSON.parse(prompts[0]!.user.split('FACTS:\n')[1]!.split('\n\nTASK:')[0]!) as {
+      win_pct_before: number | null; win_pct_after: number | null;
+    };
+    // Black was around equal before Nf6, then White obtained mate. The
+    // untrusted client claimed Black was winning 100% both before and after.
+    expect(facts.win_pct_before).toBeGreaterThan(20);
+    expect(facts.win_pct_before).toBeLessThan(80);
+    expect(facts.win_pct_after).toBe(0);
+  });
+
+  it('preserves an unknown before-score when only the after-score is available', async () => {
+    const { factsForExplain } = await import('../src/coach/facts.js');
+    const facts = factsForExplain({
+      ...explainBody, player: 'Black', classification: 'blunder',
+      eval_before_cp: null, eval_after_cp: 10000,
+    }, 'en', 'beginner');
+    expect(facts.win_pct_before).toBeNull();
+    expect(facts.win_pct_after).toBe(0);
+    expect(facts.win_pct_delta).toBeNull();
   });
 
   it('lets a correct answer through on the first try', async () => {

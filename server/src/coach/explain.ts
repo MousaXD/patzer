@@ -89,9 +89,12 @@ export async function coachExplain(
 
   const input = {
     ...params,
-    // Play doesn't send evaluations; the coach's own engine run fills them in.
-    eval_before_cp: params.eval_before_cp ?? coaching.eval_before_cp,
-    eval_after_cp: params.eval_after_cp ?? coaching.eval_after_cp,
+    // Request-supplied scores can be stale, inverted, or fabricated. Only
+    // the independently obtained engine scores for this FEN are licensed
+    // to appear as win percentages in the LLM's FACTS. When unavailable,
+    // keep the value unknown rather than falling back to client numbers.
+    eval_before_cp: coaching.eval_before_cp,
+    eval_after_cp: coaching.eval_after_cp,
   };
   const sys = systemPrompt(aud, lang);
   const usr = explainMovePrompt(input, lang, aud, coaching.facts);

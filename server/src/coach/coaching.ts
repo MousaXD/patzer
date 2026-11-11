@@ -87,10 +87,11 @@ function naturalLine(fen: string, pv: string[], max: number, lang: Language, aud
   return out;
 }
 
-/** White-POV engine score → centipawns for the side that is to move in `fen`. */
-function cpForMover(line: EngineLine, fen: string): number {
-  const white = line.mate != null ? (line.mate > 0 ? 10000 : -10000) : (line.cp ?? 0);
-  return fen.split(" ")[1] === "w" ? white : -white;
+/** White-POV engine score → centipawns for the side to move. A missing score
+ * is unknown, not a neutral 0cp score or permission to endorse a variation. */
+function cpForMover(line: EngineLine, fen: string): number | null {
+  const white = whiteCp(line);
+  return white == null ? null : fen.split(" ")[1] === "w" ? white : -white;
 }
 
 // ─── Phrases ────────────────────────────────────────────────────────────────
@@ -456,11 +457,13 @@ export async function explainCoaching(input: ExplainCoachingInput, lang: Languag
   const others: string[] = [];
   if (before && before.length > 1) {
     const top = cpForMover(before[0]!, input.fen);
-    for (const line of before.slice(1)) {
+    if (top != null) for (const line of before.slice(1)) {
       const san = line.pv[0] ? uciToSan(input.fen, line.pv[0]) : null;
       if (!san || san === bestSan || san === input.played_san) continue;
-      // Only moves that are nearly as good as the best one are alternatives.
-      if (top - cpForMover(line, input.fen) > 60) continue;
+      const candidate = cpForMover(line, input.fen);
+      // Only SCORED moves demonstrably within 60cp of a scored best move
+      // qualify as alternatives. Unknown scores prove no such relationship.
+      if (candidate == null || top - candidate > 60) continue;
       others.push(describe(san));
     }
   }
@@ -511,8 +514,13 @@ export async function explainCoaching(input: ExplainCoachingInput, lang: Languag
   };
 }
 
-function whiteCp(line: EngineLine): number {
-  return line.mate != null ? (line.mate > 0 ? 10000 : -10000) : (line.cp ?? 0);
+function whiteCp(line: EngineLine): number | null {
+  // An engine line may carry neither a finite cp score nor a valid mate
+  // score. Unknown evidence must not become an invented 0cp/50% position.
+  if (line.mate != null && Number.isFinite(line.mate)) {
+    return line.mate > 0 ? 10000 : line.mate < 0 ? -10000 : null;
+  }
+  return line.cp != null && Number.isFinite(line.cp) ? line.cp : null;
 }
 
 // ─── Hint ───────────────────────────────────────────────────────────────────
@@ -543,7 +551,7 @@ export async function hintCoaching(fen: string, userId: number, lang: Language, 
       idea = P.hint.topIdea(reasons.length ? reasons.join("; ") : P.quiet);
     }
     const cp = cpForMover(lines[0], fen);
-    state = evaluationStateNatural(cpToWinPct(cp), lang);
+    state = cp == null ? null : evaluationStateNatural(cpToWinPct(cp), lang);
   }
 
   // One habit worth remembering in this phase.
