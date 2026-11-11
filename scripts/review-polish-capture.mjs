@@ -400,6 +400,66 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
       'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}
+  // The saved mistake is displayed AFTER e5, but its alternative c5 is legal
+  // only on the position BEFORE that move. Exercise the entire honest flow:
+  // click the verified alternative, reveal the earlier position + source-
+  // matched arrow, play c5 by hand as an unsaved variation, then return.
+  const bestContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  try{
+    await bestContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await bestContext.newPage();
+    await page.goto(`${base}/review/${blackId}?ply=1`);
+    await page.locator('[data-review-jump-to-details]').click();
+    const bestButton=page.getByRole('button',{name:'Show c5 on board'});
+    await bestButton.waitFor({state:'visible'});
+    await page.screenshot({path:join(output,'black-first-best-alternative-before.png')});
+    await bestButton.click();
+    await page.waitForFunction(()=>{
+      const board=document.querySelector('.review-board-square');
+      const transport=document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim();
+      return board===document.activeElement && board.getBoundingClientRect().top>=40
+        && board.getBoundingClientRect().top<=95 && transport?.startsWith('0 /');
+    },undefined,{timeout:5000});
+    assert.ok(await page.locator('[data-review-best-arrow-note]').isVisible(),
+      'Showing the better move must reveal the board-level next-move arrow');
+    await page.screenshot({path:join(output,'black-first-best-alternative-ready.png')});
+    const board=await page.locator('cg-board').boundingBox();
+    assert.ok(board);
+    const from={x:board.x+board.width*2.5/8,y:board.y+board.height*1.5/8}; // c7
+    const to={x:board.x+board.width*2.5/8,y:board.y+board.height*3.5/8}; // c5
+    await page.mouse.move(from.x,from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x,to.y,{steps:12});
+    await page.mouse.up();
+    await page.getByText('Variation c5',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.ok((await page.locator('[data-move-transport]').innerText()).includes('var'),
+      'Trying the better move must create an ephemeral branch, not overwrite e5');
+    await page.screenshot({path:join(output,'black-first-best-alternative-variation.png')});
+    await page.getByRole('button',{name:'Return to game'}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('0 /'));
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
+      'Exploring the verified alternative must never change the original PGN');
+  }finally{await bestContext.close();}
+  const desktopBestContext=await browser.newContext({viewport:{width:1024,height:768},reducedMotion:'reduce'});
+  try{
+    await desktopBestContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await desktopBestContext.newPage();
+    await page.goto(`${base}/review/${blackId}?ply=1`);
+    await page.getByRole('button',{name:'Show c5 on board'}).click();
+    await page.waitForFunction(()=>{
+      const board=document.querySelector('.review-board-square');
+      const transport=document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim();
+      return board===document.activeElement && transport?.startsWith('0 /');
+    },undefined,{timeout:5000});
+    assert.ok(await page.locator('[data-review-best-arrow-note]').isVisible());
+    const board=await page.locator('.review-board-square').boundingBox();
+    assert.ok(board && board.y<768 && board.y+board.height>55,
+      'Desktop better-move preview must keep the board visible without losing the analysis rail');
+    await page.screenshot({path:join(output,'black-first-best-alternative-desktop.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn());
+  }finally{await desktopBestContext.close();}
   // AI Report and Key Moments share the mobile board-navigation contract.
   // Install a synthetic, source-attested report only in the disposable QA DB.
   // Its cached moment must use the real Black-first mover for the backend's

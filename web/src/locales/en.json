@@ -380,6 +380,7 @@
       "winChance": "Win chance for the side that moved: before → after",
       "evaluationUnavailable": "The engine has no complete before-and-after evaluation for this move, so its win-chance change cannot be shown.",
       "engineWanted": "The engine wanted:",
+      "showBestOnBoard": "Show {{san}} on board",
       "line": "Line",
       "coachSays": "In plain words",
       "coachUnavailable": "AI explanations need a model configured by an administrator in Admin → System.",

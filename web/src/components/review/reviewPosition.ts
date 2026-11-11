@@ -4,6 +4,20 @@ import { legalAnalysisMove } from '../../lib/analysisVariations';
  * different FEN, or reuse the saved mainline during a free variation. */
 export interface SuggestedMove { best_move_uci?: string | null }
 
+/** Offer an interactive best-move preview only when the cached suggestion is
+ *  a legal, correctly named alternative in the original pre-move position.
+ *  A raw UCI or SAN by itself is not sufficient evidence for a CTA. */
+export function verifiedBestAlternative(
+  move: { uci: string; fen_before: string; best_move_uci?: string | null; best_move_san?: string | null },
+  precedingFen: string | undefined,
+): { uci: string; san: string } | null {
+  if (!precedingFen || move.fen_before !== precedingFen
+    || !move.best_move_uci || !move.best_move_san) return null;
+  const legal = legalAnalysisMove(precedingFen, move.best_move_uci);
+  return legal && legal.uci !== move.uci && legal.san === move.best_move_san
+    ? { uci: legal.uci, san: legal.san } : null;
+}
+
 /** Stockfish's scorer derives absolute ply from FEN (fullmove and turn).
  * Do not submit a relative replay cursor: a setup game starting at Black's
  * move 12 would otherwise be classified as ply 1. */

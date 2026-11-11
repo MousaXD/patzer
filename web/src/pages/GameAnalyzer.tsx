@@ -6,7 +6,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Ar
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -1015,6 +1015,18 @@ function GameAnalyzerView() {
                       coachConfigured={coachConfigured}
                       coachRequest={coachReq}
                       playFrom={playOn ?? undefined}
+                      onShowBestMove={!isVariation && verifiedBestAlternative(move, positions[ply - 1]?.fen)
+                        ? () => {
+                            setPly(move.ply - 1);
+                            requestAnimationFrame(() => {
+                              if (window.matchMedia('(max-width: 959px)').matches) jumpToBoard();
+                              else {
+                                boardFocusRef.current?.scrollIntoView({ block: 'nearest' });
+                                boardFocusRef.current?.focus({ preventScroll: true });
+                              }
+                            });
+                          }
+                        : undefined}
                     />
                   )}
                   {tab === 'moves' && ply > 0 && !isVariation && !move && (

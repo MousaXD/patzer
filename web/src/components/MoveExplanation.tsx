@@ -7,7 +7,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Info, Swords } from 'lucide-react';
+import { ArrowUpRight, Info, Swords } from 'lucide-react';
 import { CLASS_STYLE } from '../lib/classification';
 import ClassificationIcon from './ClassificationIcon';
 import CoachPanel from './CoachPanel';
@@ -44,9 +44,11 @@ interface Props {
   /** "Play from here" link for the position after this move (the one on the
    *  board): play on against Patzer. Absent once the game is over. */
   playFrom?: string;
+  /** Only provided for a verified legal alternative from this move's FEN. */
+  onShowBestMove?: () => void;
 }
 
-export default function MoveExplanation({ move, userColor, coachConfigured, coachRequest, playFrom, startFen }: Props) {
+export default function MoveExplanation({ move, userColor, coachConfigured, coachRequest, playFrom, startFen, onShowBestMove }: Props) {
   const { t } = useTranslation();
   const s = CLASS_STYLE[move.classification];
   const side = moveSideForPly(move.ply, startFen);
@@ -90,6 +92,14 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
           <span className="font-mono font-semibold text-move-best">{move.best_move_san}</span>
           {line && (
             <div className="mt-0.5 font-mono text-[11px] text-chesscom-500 dark:text-chesscom-300">{t('review.why.line')}: {line}</div>
+          )}
+          {onShowBestMove && (
+            <button type="button" onClick={onShowBestMove}
+              className="btn-secondary mt-2 min-h-11 w-full justify-center text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+              data-review-show-best-move>
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              {t('review.why.showBestOnBoard', { san: move.best_move_san })}
+            </button>
           )}
         </div>
       )}

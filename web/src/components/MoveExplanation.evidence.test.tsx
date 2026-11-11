@@ -25,6 +25,20 @@ const render = (sample: AnalyzedMove, startFen?: string, userColor: 'white' | 'b
 }));
 
 describe('Game Review win-chance source integrity', () => {
+  it('offers an actionable best-move preview only when the parent verified a safe alternative', () => {
+    expect(render(move)).not.toContain('data-review-show-best-move');
+    const withPreview = renderToStaticMarkup(createElement(MoveExplanation, {
+      move, userColor:'white', coachConfigured:false, coachRequest:null,
+      onShowBestMove:() => {},
+    }));
+    expect(withPreview).toContain('data-review-show-best-move');
+    expect(withPreview).toContain('review.why.showBestOnBoard');
+    const sameMove = renderToStaticMarkup(createElement(MoveExplanation, {
+      move: { ...move, best_move_san:move.san }, userColor:'white',
+      coachConfigured:false, coachRequest:null, onShowBestMove:()=>{},
+    }));
+    expect(sameMove).not.toContain('data-review-show-best-move');
+  });
   it('shows a compact truthful coaching-unavailable note without a nested empty coach card', () => {
     const html=render(move);
     expect(html).toContain('data-review-coach-unavailable');
