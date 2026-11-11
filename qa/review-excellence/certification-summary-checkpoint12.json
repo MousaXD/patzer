@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T01:10:54.467Z",
+  "previous_qa_checkpoint": "22c2b175a7233e99ed909f0bead9c8e6c8023fb9",
+  "qa_checkout_sha": "22c2b175a7233e99ed909f0bead9c8e6c8023fb9",
+  "branch": "agent/review-benchmark-20261111",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "fixture_manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "engine": "Stockfish 16",
+  "analysis_depth": 8,
+  "threads": 1,
+  "hash_mib": 16,
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "synthetic_source_only": true,
+  "real_application_scope": "three authenticated SSE Game Review requests held at final JSON provider response",
+  "results": {
+    "reanalyzed_source_race_blocked": true,
+    "in_flight_profile_language_cache_defect_proven": true,
+    "last_model_request_cancellation_protected": true,
+    "model_calls": 9,
+    "full_product_certified": false
+  },
+  "failure_requiring_owner_remediation": "profile_language_change_during_generation_caches_old_language_and_skips_auto_regeneration",
+  "preserved_protections": [
+    "analysis_change_prevents_stale_cache_write",
+    "final_model_request_cancel_does_not_persist_review"
+  ],
+  "source_hashes": {
+    "runner": "93f05c81c6fa6405f95ef42f25055aee2f765e80a37d3bbc465493f825bc2a37",
+    "verifier": "742d67ac89b593dd8531489922d8f6972ddf9ceeba1598cd01d00ed8b640db0c"
+  },
+  "integration_approved": false,
+  "release_approved": false,
+  "limitations": [
+    "One in-process synthetic game per scenario, no real network proxy or external LLM",
+    "Profile language was changed only in disposable SQLite and the changed language was observed after completion",
+    "Cancellation was during the final model request, not inside the synchronous DB commit instruction",
+    "No sealed holdout, real model hallucination prevalence, real-browser study or Stockfish 17 parity"
+  ]
+}
