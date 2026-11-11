@@ -232,6 +232,8 @@ try {
       await page.locator('#learn-from-mistake').click();
       await page.locator('[data-practice-mode]').waitFor();
       await page.getByText('Practice position unavailable').waitFor({ timeout: 6000 });
+      await page.waitForFunction(() => document.activeElement?.id === 'practice-unavailable-heading',
+        null, { timeout: 2500 });
       await sleep(300);
       assert.ok(staleResponses >= 1, 'bookmark must trigger a real game-detail refetch');
       assert.equal(hiddenAnalysisPosts, 0,
@@ -239,6 +241,8 @@ try {
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(standard.id).pgn, baselinePgn);
       await page.getByRole('button', { name: 'Return to saved game' }).click();
       await page.locator('[data-analysis-workspace]').waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'full-game-review-heading',
+        null, { timeout: 2500 });
       await page.getByText('Engine analysis could not finish. Retry when Stockfish is available.').waitFor();
       assert.equal(hiddenAnalysisPosts, 1,
         'leaving a blind retry should resume one ordinary stale-analysis attempt, without an unbounded retry loop');

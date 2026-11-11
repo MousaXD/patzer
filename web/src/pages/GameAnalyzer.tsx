@@ -78,6 +78,23 @@ export default function GameAnalyzer() {
   return <GameAnalyzerView key={id} />;
 }
 
+/** A failed background refetch can replace the practice board without an
+ * explicit click. Announce the recovery destination to keyboard/screen-reader
+ * users instead of leaving focus on a detached practice control. */
+function PracticeUnavailable({ practicePicker, onExit }: { practicePicker: boolean; onExit: () => void }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { headingRef.current?.focus(); }, []);
+  return <section role="alert" aria-labelledby="practice-unavailable-heading"
+    className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
+    <h1 id="practice-unavailable-heading" ref={headingRef} tabIndex={-1}
+      className="font-semibold focus:outline-none">Practice position unavailable</h1>
+    <p className="mt-2 text-sm">This move no longer matches the saved game analysis. Return to the game and refresh its analysis.</p>
+    <button type="button" className="btn-secondary mt-3 min-h-11" onClick={onExit}>
+      {practicePicker ? 'Back to practice choices' : 'Return to saved game'}
+    </button>
+  </section>;
+}
+
 function GameAnalyzerView() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
@@ -583,13 +600,12 @@ function GameAnalyzerView() {
     }
     // A stale/corrupt analysis or a background refetch must not silently
     // drop blind mode and expose the original move or its engine hint.
-    return <section role="alert" className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
-      <h1 className="font-semibold">Practice position unavailable</h1>
-      <p className="mt-2 text-sm">This move no longer matches the saved game analysis. Return to the game and refresh its analysis.</p>
-      <button type="button" className="btn-secondary mt-3" onClick={() => setPracticePly(null)}>
-        {practicePicker ? 'Back to practice choices' : 'Return to saved game'}
-      </button>
-    </section>;
+    return <PracticeUnavailable practicePicker={practicePicker} onExit={() => {
+      setPracticePly(null);
+      requestAnimationFrame(() => document.getElementById(
+        practicePicker ? 'practice-picker-heading' : 'full-game-review-heading',
+      )?.focus());
+    }} />;
   }
 
   // This route is linked directly from the saved-game library. No chessboard,
