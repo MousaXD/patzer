@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "at_utc": "2026-11-11T00:24:58.257Z",
+  "agent_d_parent_sha": "4f45aa25306de22f628f97d31105b058a175a941",
+  "benchmark_git_sha": "4f45aa25306de22f628f97d31105b058a175a941",
+  "candidate_sha": "19c359ec3feb8e3c10c33415c403eaf5ab3d6c87",
+  "verified_engine_sha256": "00628bd9c9855c1b7ff93d7f8d51b413586cdc6336fe637f9a14a61531a05aca",
+  "manifest_v2_sha256": "2978e6962ca6cbd07184a5e5f3a078aa1bac32df8c4948c06f6afc5ea7077b44",
+  "fixture_id": "SYN-GAME-FOOLS-MATE",
+  "source_kind": "self-authored synthetic",
+  "text_source": "10 QA-authored, deliberately false short sentences injected through a local mock LLM",
+  "positive_control_claims": 10,
+  "corruptions_accepted_by_real_review": 10,
+  "counts": {
+    "languages_proved": 5,
+    "winner_escapes": 5,
+    "king_square_escapes": 5,
+    "model_requests": 30,
+    "certified": false
+  },
+  "evidence": [
+    {
+      "language": "en",
+      "false_winner_prose": "White won the game.",
+      "false_king_prose": "White's king is on e2.",
+      "winner_escape": true,
+      "king_square_escape": true
+    },
+    {
+      "language": "es",
+      "false_winner_prose": "Las blancas ganaron la partida.",
+      "false_king_prose": "El rey blanco está en e2.",
+      "winner_escape": true,
+      "king_square_escape": true
+    },
+    {
+      "language": "de",
+      "false_winner_prose": "Weiß hat die Partie gewonnen.",
+      "false_king_prose": "Der weiße König steht auf e2.",
+      "winner_escape": true,
+      "king_square_escape": true
+    },
+    {
+      "language": "bg",
+      "false_winner_prose": "Белите спечелиха партията.",
+      "false_king_prose": "Белият цар е на e2.",
+      "winner_escape": true,
+      "king_square_escape": true
+    },
+    {
+      "language": "ru",
+      "false_winner_prose": "Белые выиграли партию.",
+      "false_king_prose": "Белый король стоит на e2.",
+      "winner_escape": true,
+      "king_square_escape": true
+    }
+  ],
+  "source_hashes": {
+    "runner": "1b2b6ecd0a11566535ae1316f6b986a364ee9e8ab8db8f6864d2925a9938efa2"
+  },
+  "result": {
+    "candidate_factuality_certified": false,
+    "scoped_qa_attack_reproduced": true,
+    "release_approved": false,
+    "integration_approved": false
+  },
+  "limitations": [
+    "Only 10 deliberately injected sentences over five supported languages, not measured LLM error rate",
+    "Manually written sample translations; no independent native-speaker/human adjudication or sealed holdout",
+    "The independent gold is board/winner truth plus the explicit test-phrase meaning; no general language understanding",
+    "Candidate code was not modified; owner/integrator must decide remediation and cache invalidation",
+    "No coach pedagogical helpfulness or translated content robustness beyond these controlled claims"
+  ]
+}
