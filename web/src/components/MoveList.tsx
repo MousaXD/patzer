@@ -60,11 +60,11 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
         type="button"
         onClick={() => onSelect(0)}
         aria-current={current === 0 ? 'step' : undefined}
-        className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900' : 'text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-700'}`}
+        className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
       >
         {t('review.startingPosition', { defaultValue: 'Starting position' })}
       </button>
-      {moves.length === 0 && <p className="px-3 py-3 text-xs text-chesscom-500">No recorded moves.</p>}
+      {moves.length === 0 && <p className="px-3 py-3 text-xs text-chesscom-500 dark:text-chesscom-300">No recorded moves.</p>}
       {phaseSplit?.opening && (
         <PhaseDivider label={t('review.opening')} />
       )}
@@ -92,7 +92,7 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
 
 function PhaseDivider({ label }: { label: string }) {
   return (
-    <div className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40">
+    <div className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
       {label}
     </div>
   );

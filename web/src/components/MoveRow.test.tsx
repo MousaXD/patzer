@@ -29,6 +29,9 @@ describe('review move row', () => {
     expect(html).toContain('type="button"');
     expect(html).toContain('min-h-10');
     expect(html).toContain('focus-visible:outline');
+    expect(html).toContain('dark:bg-chesscom-600');
+    expect(html).toContain('dark:ring-gold-500/50');
+    expect(html).toContain('dark:text-chesscom-300');
   });
 
   it('uses the approved SVG asset for mistakes and preserves Brilliant and highlights', () => {

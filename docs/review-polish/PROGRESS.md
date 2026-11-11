@@ -13,6 +13,8 @@
 
 **Source truth commit:** `5ba9029` (pushed). This session also fixes Black-first FEN move labels and win-chance POV.
 
+**Black-first FEN commit:** `c5779e5` (pushed). Current work addresses dark-mode move history readability.
+
 ## Completed changes
 
 1. Reproduced and measured the original board-versus-controls conflict through real Chromium screenshot capture, both themes and all six target screen sizes.
@@ -26,6 +28,7 @@
 9. Fixed a real source-truth defect: `MoveExplanation.whiteWinPct` used to turn a missing cp into 0, implicitly claiming 50% odds. `moverWinPct` now refuses a comparison unless both positions have finite engine scores, hides numerical odds when unavailable, and displays a translated evidence-gap explanation. Independent prose for Book, Best, and Forced is retained. No scoring algorithm, classification or source revision changed.
 10. Added 8 unit regression cases for numerical cp, missing and non-finite scores, and evidence-independent classifications; added a disposable real-React browser capture that removes a score from the cached fixture and verifies no odds appear in the rendered explanation.
 11. Reused the existing `moveSideForPly`/`moveNumberForPly` helpers in `MoveExplanation`, preserving the actual mover, fullmove number and win-chance point-of-view for imported Black-first FEN games. Wired the already-available starting FEN through `GameAnalyzer` without altering the PGN or scoring. Added Black-first assertions and an isolated real browser screenshot; `12…e5` correctly appears as an opponent Black move with a Black-side 59% → 41% comparison in the synthetic fixture.
+12. Detected a concrete dark-mode accessibility/polish problem in the real Chromium move list: row numbers at **3.018:1** contrast, and a selected-move tile of **0.817** relative background luminance (near-white). Lightened secondary label text only in dark mode, used a subdued dark selected tile with a gold inset ring, and aligned Starting position/phase labels with the same contrast system. Post-fix measured **4.844:1** row-number contrast and **0.064** relative luminance of the selected tile. The light version is unchanged. The real dark/light 390px review-detail screenshots were opened and inspected after the fix.
 
 ## Before/after visual evidence
 
@@ -54,6 +57,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 - Mobile browser interaction checks at 390×844 light/dark: PASS. Two-way jump scrolls and focuses on the correct tab/board, keeps next-move keyboard navigation and does not alter saved PGN. The dark-theme run uses `prefers-reduced-motion: reduce`. Browser asserts minimum 4.5:1 contrast on board note and inactive-variation hint.
 - After the source-truth guard: `npm run typecheck` PASS; targeted 34 tests PASS (8 newly added), full suite **924 PASS / 12 skipped**, production build PASS; 12 viewport/theme browser captures PASS and actual missing-score browser assertion PASS. Additional details screenshot is captured separately under `qa-artifacts/review-polish/source-evidence/missing-eval-details.png`.
 - Black-first FEN follow-up: typecheck PASS, targeted 13 tests PASS including a new real-mover test, **full suite 925 passed / 12 skipped**, build PASS, all 12 layout captures PASS and Black-first real Chromium fixture PASS; screenshot `qa-artifacts/review-polish/black-first/black-first-details.png`.
+- Dark move-list readability: a new browser assertion intentionally failed against the preceding implementation, recording a 3.018:1 row-number contrast. After correction: typecheck PASS, 7 targeted tests PASS, **full suite 925 passed / 12 skipped**, production build PASS, 12/12 layout captures PASS, and dark-mode browser assertion PASS. Before/after captures: `qa-artifacts/review-polish/dark-list-baseline/dark-390x844-details.png` and `qa-artifacts/review-polish/dark-list-after/dark-390x844-details.png`.
 - Updated mobile implementation: typecheck PASS, 916 tests PASS (12 skipped), build PASS, screenshot capture 12/12 PASS. The final explanation-metadata color change was followed by another successful typecheck, production build, and all 12 browser screenshots; actual dark mobile board and details views were inspected.
 - Screenshot fixtures are presentation-only: classifications/eval scores are synthetic and **do not** certify actual chess analysis.
 
@@ -61,7 +65,7 @@ The board resizing intentionally prioritizes simultaneous visibility of navigati
 
 - Mobile two-way navigation is verified using actual browser pointer/keyboard interaction. Verify physical touch gesture behavior separately when a device is available; it has not been claimed as tested.
 - Inspect actual Stockfish evaluation curves before changing graph presentation; synthetic samples are not representative.
-- Investigate remaining very low contrast on nonprimary scores and phase labels in the dark move table; avoid global palette changes without sufficient verification.
+- Dark move-number and phase-label foreground styles have been corrected; future passes can audit the rest of the interface's secondary labels quantitatively rather than globally overriding the palette.
 - Investigate whether the lengthy utilities below the core review distract users, without removing functionality merely for shorter pages.
 - Run independent real analysis source integrity/browser regression suite separately before eventual release. This iteration modifies frontend layout only.
 

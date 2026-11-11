@@ -48,7 +48,7 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
       'grid grid-cols-[2.25rem_1fr_1fr] items-stretch border-b border-chesscom-100 dark:border-chesscom-800',
       pickTint(white?.classification, black?.classification),
     )}>
-      <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400">{num}.</div>
+      <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400 dark:text-chesscom-300">{num}.</div>
       <Half move={white} num={num} side="white" current={wCur} onSelect={onSelect} t={t} highlight={highlight} />
       <Half move={black} num={num} side="black" current={bCur} onSelect={onSelect} t={t} highlight={highlight} />
     </div>
@@ -79,7 +79,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
       className={cn(
         'group flex min-h-10 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
         current
-          ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900'
+          ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50'
           : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800',
         picked && !current && 'bg-gold-50 ring-1 ring-inset ring-gold-500/60 dark:bg-gold-700/15',
         dimmed && 'opacity-35',

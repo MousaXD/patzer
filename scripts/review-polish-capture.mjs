@@ -192,6 +192,34 @@ try {
         const reviewTab=page.getByRole('tab',{name:'Moves'});
         assert.equal(await reviewTab.getAttribute('aria-selected'),'true');
         await page.screenshot({path:join(output,`${theme}-390x844-details.png`)});
+        if(theme==='dark'){
+          const readability=await page.evaluate(()=>{
+            const current=document.querySelector('[role="region"][aria-label="Moves"] button[aria-current="step"]');
+            const rowNumber=current?.parentElement?.firstElementChild;
+            if(!(current instanceof HTMLElement) || !(rowNumber instanceof HTMLElement)) return null;
+            const rgb=(value)=>{ const parts=value.match(/[\d.]+/g)?.map(Number)??[];
+              return [parts[0]??0,parts[1]??0,parts[2]??0,parts[3]??1]; };
+            const compositeBg=(element)=>{
+              const colors=[];
+              for(let el=element;el;el=el.parentElement)colors.unshift(rgb(getComputedStyle(el).backgroundColor));
+              return colors.reduce((base,color)=>color.slice(0,3).map((v,i)=>v*color[3]+base[i]*(1-color[3])),[255,255,255]);
+            };
+            const l=(r,g,b)=>[r,g,b].map(n=>{ const v=n/255; return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4; })
+              .reduce((sum,n,i)=>sum+n*[0.2126,0.7152,0.0722][i],0);
+            const f=l(...rgb(getComputedStyle(rowNumber).color));
+            const b=l(...compositeBg(rowNumber));
+            return { numberContrast:(Math.max(f,b)+0.05)/(Math.min(f,b)+0.05),
+              selectedBackgroundLuminance:l(...compositeBg(current)),
+              numberColor:getComputedStyle(rowNumber).color,
+              selectedColor:getComputedStyle(current).backgroundColor };
+          });
+          assert.ok(readability, 'Cannot inspect selected move and move number');
+          console.log('Dark move-list readability:',JSON.stringify(readability));
+          assert.ok(readability.numberContrast>=4.5,
+            `Move numbers must have readable contrast: ${JSON.stringify(readability)}`);
+          assert.ok(readability.selectedBackgroundLuminance<0.2,
+            `A selected move must not create a glaring white block in dark mode: ${JSON.stringify(readability)}`);
+        }
         const returnButton=page.locator('[data-review-jump-to-board]');
         assert.ok(await returnButton.isVisible(),'Return-to-board action missing');
         await returnButton.click();
