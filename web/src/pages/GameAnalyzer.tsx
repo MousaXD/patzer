@@ -1279,7 +1279,7 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative flex min-h-10 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:hover:text-chesscom-100'}`}
+      className={`relative flex min-h-10 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:text-chesscom-100'}`}
     >
       <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
       <span className="hidden sm:inline">{label}</span>

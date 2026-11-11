@@ -221,7 +221,8 @@ try {
           const readability=await page.evaluate(()=>{
             const current=document.querySelector('[role="region"][aria-label="Moves"] button[aria-current="step"]');
             const rowNumber=current?.parentElement?.firstElementChild;
-            if(!(current instanceof HTMLElement) || !(rowNumber instanceof HTMLElement)) return null;
+            const inactiveTab=document.getElementById('review-tab-report');
+            if(!(current instanceof HTMLElement) || !(rowNumber instanceof HTMLElement) || !(inactiveTab instanceof HTMLElement)) return null;
             const rgb=(value)=>{ const parts=value.match(/[\d.]+/g)?.map(Number)??[];
               return [parts[0]??0,parts[1]??0,parts[2]??0,parts[3]??1]; };
             const compositeBg=(element)=>{
@@ -233,7 +234,10 @@ try {
               .reduce((sum,n,i)=>sum+n*[0.2126,0.7152,0.0722][i],0);
             const f=l(...rgb(getComputedStyle(rowNumber).color));
             const b=l(...compositeBg(rowNumber));
+            const tf=l(...rgb(getComputedStyle(inactiveTab).color));
+            const tb=l(...compositeBg(inactiveTab));
             return { numberContrast:(Math.max(f,b)+0.05)/(Math.min(f,b)+0.05),
+              inactiveTabContrast:(Math.max(tf,tb)+0.05)/(Math.min(tf,tb)+0.05),
               selectedBackgroundLuminance:l(...compositeBg(current)),
               numberColor:getComputedStyle(rowNumber).color,
               selectedColor:getComputedStyle(current).backgroundColor };
@@ -242,6 +246,8 @@ try {
           console.log('Dark move-list readability:',JSON.stringify(readability));
           assert.ok(readability.numberContrast>=4.5,
             `Move numbers must have readable contrast: ${JSON.stringify(readability)}`);
+          assert.ok(readability.inactiveTabContrast>=4.5,
+            `Inactive review tabs must remain legible in dark mode: ${JSON.stringify(readability)}`);
           assert.ok(readability.selectedBackgroundLuminance<0.2,
             `A selected move must not create a glaring white block in dark mode: ${JSON.stringify(readability)}`);
         }
