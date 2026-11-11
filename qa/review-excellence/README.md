@@ -118,3 +118,7 @@ See `CONTINUE-AUDIT-CHECKPOINT-8.md` and `certification-summary-checkpoint8.json
 ## Checkpoint 12 — profile language changed during final AI response
 
 `CONTINUE-AUDIT-CHECKPOINT-12.md` documents three real source-route scenarios at the last JSON provider response, using disposable synthetic data: a changed analysis correctly rejects stale cache; canceling the final model request correctly avoids persistence; **changing the user's profile language during generation still commits/streams an old-language review**, while later GET recognizes it as stale and the automatic queue omits its non-NULL cache row. The independent evidence verifier checks raw SSE events, and its adversarial QA checker rejected **21/21 fabricated bad evidence packets**. This is a scoped profile-provenance defect, not permission to edit Agent B's implementation or a full release certificate.
+
+## Checkpoint 13 — audience preference changes during Game Review
+
+`CONTINUE-AUDIT-CHECKPOINT-13.md` and `certification-summary-checkpoint13.json` document an independent, bounded **real SSE + cache** test for an in-flight profile `audience` change. The final response started under `beginner` but was delivered and persisted after the user switched to `advanced`; GET marks it stale, yet the null-only auto-review worklist skips it. Positive control and manual regeneration to `advanced` both worked. The QA evidence checker rejected **20/20 corrupted packets**. No other agents' implementation or production data was modified, and successful attack reproduction is not release approval.
