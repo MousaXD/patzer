@@ -39,7 +39,7 @@ import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPos
 import type { AnalysisResult, AnalyzedMove } from '../types';
 
 interface GameDetail {
-  game: { id: number; pgn: string; white: string; black: string; result: string; user_color: 'white' | 'black' | null; eco?: string | null; opening_name?: string | null; bookmarked?: number | null; notes?: string | null; start_fen?: string | null };
+  game: { id: number; pgn: string; white: string; black: string; result: string; user_color: 'white' | 'black' | null; eco?: string | null; opening_name?: string | null; bookmarked?: number | null; notes?: string | null; start_fen?: string | null; source_revision?: number };
   analysis: {
     depth: number; accuracy_white: number; accuracy_black: number;
     estimated_elo_white: number | null; estimated_elo_black: number | null;
@@ -48,6 +48,10 @@ interface GameDetail {
     key_moments_json: string | null;
     phase_split_json: string | null;
     moves_json: string;
+    scoring_version?: number | null;
+    source_hash?: string | null;
+    source_revision?: number | null;
+    analysis_generation?: number | null;
   } | null;
   analysis_stale?: boolean;
 }
@@ -225,7 +229,8 @@ function GameAnalyzerView() {
     && decodedStoredReview.moves.every((move, index) =>
       move.fen_before === positions[index]?.fen && move.fen_after === positions[index + 1]?.fen);
   const sourceKey = !cachedAnalysisInvalid && fullEngineEvidence && data
-    ? reviewSourceKey(gameId, data.game.pgn, data.analysis, data.analysis_stale) : null;
+    ? reviewSourceKey(gameId, data.game.pgn, data.analysis, data.analysis_stale,
+      data.game.source_revision) : null;
   // This ref is updated DURING render, not in an effect: a late promise from
   // the prior commit must never win the race before effect cleanup runs.
   const currentSourceRef = useRef(sourceKey);

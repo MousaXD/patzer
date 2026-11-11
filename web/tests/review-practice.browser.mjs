@@ -236,6 +236,81 @@ try {
     }
   });
 
+  await test('Authoritative A-B-A revision blocks revived prose; a new engine generation accepts only new prose', async () => {
+    // The standalone Agent C branch predates Agent A's provenance columns.
+    // Overlay those *response fields only* on authenticated GETs, exercising
+    // the real browser and route state without pretending to test Agent A's DB
+    // triggers. Independent combined Hono/SQLite certification belongs to D.
+    const game = seed(user.id, 'report-aba', ['e4', 'e5', 'Nf3', 'Nc6'],
+      ['good', 'good', 'good', 'good']);
+    const saved = game.pgn;
+    const other = new Chess();
+    for (const san of ['d4', 'd5', 'c4', 'e6']) other.move(san);
+    const markerOld = 'QA_ABA_OLD_REPORT_MUST_NOT_REVIVE';
+    const markerNew = 'QA_ABA_NEW_REPORT_FROM_FRESH_ANALYSIS';
+    const makeReview = (summary) => ({ version: 4, language: 'en', audience: 'adult',
+      opening: null, summary, skill_assessment: 'QA fixture only',
+      phases: { opening: null, middlegame: null, endgame: null }, key_moments: [] });
+    let currentRevision = 0;
+    let analysisRevision = 0;
+    let generation = 1;
+    const gameUrl = `**/api/games/${game.id}`;
+    const reportUrl = `**/api/games/${game.id}/review`;
+    await page.route(gameUrl, async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      await route.fulfill({ response, contentType: 'application/json', body: JSON.stringify({
+        ...payload, game: { ...payload.game, source_revision: currentRevision },
+        analysis: payload.analysis ? { ...payload.analysis, source_revision: analysisRevision,
+          analysis_generation: generation, source_hash: 'a'.repeat(64) } : null,
+      }) });
+    });
+    await page.route(reportUrl, async (route) => {
+      if (route.request().method() === 'GET') return route.fulfill({ status: 200,
+        contentType: 'application/json', body: JSON.stringify({ review: makeReview(markerOld) }) });
+      await route.fulfill({ status: 200, contentType: 'text/event-stream',
+        body: `event: done\ndata: ${JSON.stringify({ review: makeReview(markerNew) })}\n\n` });
+    });
+    try {
+      await page.goto(`${base}/review/${game.id}`);
+      await page.getByRole('tab', { name: 'AI report' }).click();
+      await page.getByText(markerOld).waitFor();
+      const metadataRefresh = page.waitForResponse((res) => res.url().endsWith(`/api/games/${game.id}`) && res.status() === 200);
+      await page.getByRole('button', { name: 'Star', exact: true }).click();
+      await metadataRefresh;
+      assert.equal(await page.getByText(markerOld).count(), 1);
+
+      // The game becomes B and returns to identical A bytes, with NO
+      // reanalysis. A rev 0 engine result is no longer valid at game rev 2.
+      db.prepare('UPDATE games SET pgn=? WHERE id=?').run(other.pgn(), game.id);
+      db.prepare('UPDATE games SET pgn=? WHERE id=?').run(saved, game.id);
+      currentRevision = 2;
+      const staleRefresh = page.waitForResponse((res) => res.url().endsWith(`/api/games/${game.id}`) && res.status() === 200);
+      await page.getByRole('button', { name: 'Starred', exact: true }).click();
+      await staleRefresh;
+      await page.getByText('The engine analysis no longer matches this game. Reanalyze the game before writing a report.').waitFor();
+      assert.equal(await page.getByText(markerOld).count(), 0);
+      assert.equal(await page.getByRole('button', { name: 'Write AI report' }).isDisabled(), true);
+
+      // A fresh engine recomputation returns byte-identical chess evidence,
+      // but its provenance must be distinct. The hostile GET still offers
+      // the old cached report, which must NOT reappear.
+      analysisRevision = 2; generation = 2;
+      const freshRefresh = page.waitForResponse((res) => res.url().endsWith(`/api/games/${game.id}`) && res.status() === 200);
+      await page.getByRole('button', { name: 'Star', exact: true }).click();
+      await freshRefresh;
+      await page.getByRole('button', { name: 'Write AI report' }).waitFor();
+      assert.equal(await page.getByText(markerOld).count(), 0);
+      await page.getByRole('button', { name: 'Write AI report' }).click();
+      await page.getByText(markerNew).waitFor();
+      assert.equal(await page.getByText(markerOld).count(), 0);
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(game.id).pgn, saved);
+    } finally {
+      await page.unroute(gameUrl);
+      await page.unroute(reportUrl);
+    }
+  });
+
   await test('Library entry is independently spoiler free', async () => {
     await page.goto(base + '/review');
     const link = page.locator(`a[href="/review/${standard.id}?practice=1"]`);

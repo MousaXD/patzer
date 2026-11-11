@@ -24,4 +24,31 @@ describe('AI report source identity', () => {
     expect(reviewSourceKey(1, '', first)).toBeNull();
     expect(reviewSourceKey(1, pgn, first)).not.toBe(reviewSourceKey(2, pgn, first));
   });
+  it('rejects A -> B -> A resurrection using authoritative revisions even with identical PGN and analysis contents', () => {
+    const analyzedAtA = { ...first, scoring_version: 9, source_revision: 0,
+      analysis_generation: 1, source_hash: 'a'.repeat(64) };
+    const original = reviewSourceKey(1, pgn, analyzedAtA, false, 0);
+    expect(original).not.toBeNull();
+    expect(reviewSourceKey(1, pgn, analyzedAtA, false, 2)).toBeNull();
+    const reanalyzedAtA = { ...analyzedAtA, source_revision: 2, analysis_generation: 2 };
+    const updated = reviewSourceKey(1, pgn, reanalyzedAtA, false, 2);
+    expect(updated).not.toBeNull();
+    expect(updated).not.toBe(original);
+  });
+  it('distinguishes a recomputation of identical chess evidence without source changes', () => {
+    const original = { ...first, source_revision: 4, analysis_generation: 7,
+      source_hash: 'f'.repeat(64) };
+    expect(reviewSourceKey(1, pgn, original, false, 4)).not.toBe(reviewSourceKey(1, pgn,
+      { ...original, analysis_generation: 8 }, false, 4));
+  });
+  it('fails closed for missing, malformed or partially populated authoritative provenance', () => {
+    const old = { ...first, source_revision: 0, analysis_generation: 1,
+      source_hash: 'a'.repeat(64) };
+    expect(reviewSourceKey(1, pgn, old, false, undefined)).toBeNull();
+    expect(reviewSourceKey(1, pgn, { ...old, analysis_generation: null }, false, 0)).toBeNull();
+    expect(reviewSourceKey(1, pgn, { ...old, source_revision: null }, false, 0)).toBeNull();
+    expect(reviewSourceKey(1, pgn, { ...old, source_hash: null }, false, 0)).toBeNull();
+    expect(reviewSourceKey(1, pgn, { ...old, source_hash: 'invalid' }, false, 0)).toBeNull();
+    expect(reviewSourceKey(1, pgn, old, true, 0)).toBeNull();
+  });
 });
