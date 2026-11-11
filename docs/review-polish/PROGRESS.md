@@ -7,7 +7,7 @@
 **Base:** `origin/main` at `738dd75`
 
 **Worktree:** `/home/mousa/projects/my-creations/game/patzer-review-polish-20261111` (independent of production checkout)
-**Commit:** See final session handoff / `git log -1` after commit.
+**Last validated implementation commit:** `fdddebb` (initial review cockpit improvement and audit harness). This progress document may have a later documentation-only commit.
 
 ## Completed changes
 
