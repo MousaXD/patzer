@@ -601,7 +601,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
           <li key={g.id}>
             <Link
               to={`/review/${g.id}`}
-              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-chesscom-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus dark:hover:bg-chesscom-900/40 sm:px-4 sm:py-3"
+              className="flex items-start gap-[12px] px-[12px] py-[10px] transition-colors hover:bg-chesscom-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus dark:hover:bg-chesscom-900/40 sm:items-center sm:gap-3 sm:px-4 sm:py-3"
             >
               <ResultGlyph r={g.result} />
               <div className="min-w-0 flex-1">
@@ -609,9 +609,9 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                   {/* The account name is repeated on every Home row. Leading
                       with it on 320px phones hides the one detail that lets
                       people distinguish their games: the opponent. */}
-                  <div data-home-recent-name className="flex min-w-0 items-start gap-1 sm:hidden">
+                  <div data-home-recent-name className="flex min-w-0 flex-wrap items-start gap-x-[4px] sm:hidden">
                     <span className="shrink-0 text-ui-mutedText">{t('players.vs')}</span>
-                    <span data-home-recent-opponent className="line-clamp-2 min-w-0 break-words font-semibold text-ui-foreground">
+                    <span data-home-recent-opponent className="line-clamp-2 min-w-[120px] flex-1 break-words font-semibold text-ui-foreground">
                       {g.user_color === 'white' ? g.black : g.white}
                     </span>
                   </div>
@@ -637,13 +637,12 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     </span>
                   </div>
                 </div>
-                <div className="text-xs text-ui-mutedText">
-                  <span data-home-recent-date>{g.end_time ? new Date(g.end_time).toLocaleDateString(i18n.language) : t('review.inProgress', { defaultValue: 'In progress' })}</span>
-                  <span className="mx-1.5 text-chesscom-400">·</span>
-                  <span>{fmtTimeControl(g.time_control, t)}</span>
+                <div data-home-recent-metadata className="mt-[4px] flex min-w-0 flex-wrap items-baseline gap-x-[8px] gap-y-[2px] text-xs text-ui-mutedText sm:mt-0 sm:block">
+                  <span data-home-recent-date className="max-w-full break-words">{g.end_time ? new Date(g.end_time).toLocaleDateString(i18n.language) : t('review.inProgress', { defaultValue: 'In progress' })}</span>
+                  <span className="mx-1.5 hidden text-chesscom-400 sm:inline">·</span>
+                  <span data-home-recent-time-control className="max-w-full break-words">{fmtTimeControl(g.time_control, t)}</span>
                   {!g.analyzed && (
-                    <span className="sm:hidden">
-                      <span className="mx-1.5 text-chesscom-400">·</span>
+                    <span data-home-recent-unreviewed className="min-w-0 max-w-full break-words sm:hidden">
                       {t('home.unreviewed', { defaultValue: 'unreviewed' })}
                     </span>
                   )}
@@ -655,14 +654,14 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                   )}
                 </div>
                 {g.analyzed && (
-                  <div data-home-mobile-accuracy className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-ui-mutedText sm:hidden">
-                    <span className="whitespace-nowrap">
+                  <div data-home-mobile-accuracy className="mt-[4px] flex min-w-0 flex-wrap gap-x-[8px] gap-y-[2px] text-xs text-ui-mutedText sm:hidden">
+                    <span className="min-w-0 max-w-full break-words">
                       {t('players.you', { defaultValue: 'You' })}: {' '}
                       <span data-home-accuracy-self className="font-mono font-semibold text-ui-foreground">
                         {fmtAccuracy(g.user_color === 'white' ? g.accuracy_white : g.accuracy_black)}
                       </span>
                     </span>
-                    <span className="whitespace-nowrap">
+                    <span className="min-w-0 max-w-full break-words">
                       {t('home.opponent', { defaultValue: 'Opponent' })}: {' '}
                       <span data-home-accuracy-opponent className="font-mono text-ui-mutedText">
                         {fmtAccuracy(g.user_color === 'white' ? g.accuracy_black : g.accuracy_white)}
@@ -742,7 +741,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('home.outcome.win', { defaultValue: 'Win' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-ui-success">
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-green-500/15 text-[12px] font-bold text-ui-success sm:h-7 sm:w-7 sm:text-xs">
         W
       </span>
     );
@@ -751,7 +750,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('home.outcome.loss', { defaultValue: 'Loss' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-ui-danger">
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-bad/15 text-[12px] font-bold text-ui-danger sm:h-7 sm:w-7 sm:text-xs">
         L
       </span>
     );
@@ -760,7 +759,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('review.inProgress', { defaultValue: 'In progress' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText">
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-[12px] text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText sm:h-7 sm:w-7 sm:text-xs">
         •
       </span>
     );
@@ -768,7 +767,7 @@ function ResultGlyph({ r }: { r: string }) {
   const label = t('home.outcome.draw', { defaultValue: 'Draw' });
   return (
     <span role="img" aria-label={label} title={label}
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText">
+      className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-[12px] font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText sm:h-7 sm:w-7 sm:text-xs">
       D
     </span>
   );

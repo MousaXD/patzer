@@ -181,9 +181,17 @@ describe('Home statistics failure', () => {
     expect(recentGame.getAttribute('href')).toBe('/review/103');
     expect(recentGame.className).toContain('focus-visible:ring-inset');
     expect(recentGame.className).toContain('focus-visible:ring-ui-focus');
+    expect(recentGame.className).toContain('gap-[12px]');
+    expect(recentGame.className).toContain('px-[12px]');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('line-clamp-2');
+    expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('min-w-[120px]');
     expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex');
+    expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex-wrap');
+    expect(recentGame.querySelector('[data-home-recent-metadata]')?.className).toContain('flex-wrap');
+    expect(recentGame.querySelector('[data-home-recent-time-control]')?.className).toContain('break-words');
+    expect(recentGame.querySelector('[data-home-recent-unreviewed]')?.textContent).toContain('unreviewed');
+    expect(within(recentGame).getByRole('img', { name: 'Win' }).className).toContain('h-[28px]');
     expect(recentGame.querySelector('.tracking-wider')?.className).toContain('text-ui-mutedText');
     expect(recentGame.querySelector('[data-home-recent-desktop-matchup]')?.textContent).toContain('sample-player');
     const desktopOpponent = recentGame.querySelector('[data-home-recent-desktop-opponent]');
@@ -264,8 +272,13 @@ describe('Home statistics failure', () => {
     expect(link.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
     const mobileAccuracy = link.querySelector('[data-home-mobile-accuracy]');
     expect(mobileAccuracy?.className).toContain('sm:hidden');
+    expect(mobileAccuracy?.className).toContain('min-w-0');
     expect(mobileAccuracy?.textContent).toContain('You');
     expect(mobileAccuracy?.textContent).toContain('Opponent');
+    for (const item of Array.from(mobileAccuracy?.children ?? [])) {
+      expect(item.className).toContain('break-words');
+      expect(item.className).not.toContain('whitespace-nowrap');
+    }
     expect(link.querySelector('[data-home-accuracy-self]')?.textContent).toBe(ownScore);
     expect(link.querySelector('[data-home-accuracy-opponent]')?.textContent).toBe(opponentScore);
     const desktopScore = link.querySelector('.font-mono.text-xs.tabular-nums');

@@ -1716,3 +1716,35 @@
 ### Next audit
 
 - Finish the separately reproduced **Recent Games at 200% zoom** issue on 320/390px: opponent names currently reveal only a handful of glyphs in long translations, and unreviewed/time-control metadata runs outside the row despite the enclosing card hiding overflow. Verify both player colors, both themes, languages and actual keyboard navigation; fix only the Home list layout while preserving the result badges and game links.
+
+## 2026-11-13: Keep mobile Recent Games recognizable at enlarged text sizes
+
+### Reproduction and root cause
+
+- Continued from clean pushed `b51362e`, using the original failing local card-zoom audit rather than restarting earlier Home investigations.
+- In the initial **36-case** Chromium matrix (320/390px, 100%/150%/200% root font, English/German/Russian, both themes), **20 cases** had elements outside the Recent Games card. At 320px/200%, the opponent could be reduced to **3/21 visible nonspace characters** in Russian. Time control, Unreviewed and accuracy labels also overflowed as much as **218px** past the card while the document-level overflow remained zero.
+- Cause: root-relative row padding, result-glyph width and horizontal gap consumed most of the narrow link; a `shrink-0` localized "vs" prefix competed with the opponent's two-line name. Metadata used nested inline spans with unbreakable separators; accuracy labels had `whitespace-nowrap`. The list's `overflow-hidden` concealed the problem rather than addressing it.
+
+### Scope and implementation
+
+1. Keep mobile row padding/gap in **physical 12px** units and top-align its small result glyph, while preserving the existing larger-breakpoint styling. Size the four glyph variants at **28 physical pixels** under `sm`, retaining their localized `role=img` outcome names and visible W/L/D/progress indicators.
+2. Keep the existing mobile two-line opponent clamp and "vs" prefix at default scale (including the old baseline shell assertions). Give the opponent a **120px minimum** and allow the two elements to wrap at higher text scaling; the opponent receives a full line when a long localized prefix would otherwise squeeze it into a few pixels.
+3. Lay out mobile date, time control and Unreviewed as wrapping metadata items instead of a single overflowing inline run. Permit analyzed You/Opponent accuracy rows to wrap and remove their previously unbreakable label presentation.
+4. Extend Home unit tests to assert both playing colors, navigation destinations, unchanged desktop matchup, visible localized outcome badge, wrapped mobile opponent, time control, Unreviewed and accuracy structure.
+5. Add `web/src/components/navigation/capture-scaled-recent-games.mjs`: a local-only **60-case** Chromium regression covering all five languages, both themes, 320/390px and 100%/150%/200% root text. It measures each visible text glyph against its real rendered box and asserts readable opponent fractions, enclosed metadata, 28px result symbols, original game hrefs, original analysis scores and real keyboard Tab focus.
+
+### Verification
+
+- Initial negative control: **20/36** card-overflow cases; the most affected player name showed only **3/21 characters**, and one Unreviewed run extended **218px beyond the card**.
+- Final `node web/src/components/navigation/capture-scaled-recent-games.mjs`: **60/60 passed** across all five languages with no descendant horizontally escaping the visible card. The worst observed Spanish long name retains **17/21** visible characters within the intentional two-line clamp, instead of being effectively unidentifiable.
+- Inspected `artifacts/agent-02/home-cards-recent-after-recent-light-320-font32.png` and its dark equivalent: opponent names are readable and match result, dates, time controls, accuracies and review status remain inside each row.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **20/20 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including original 100%-size Recent Games opponent, analyzed accuracy and accessible outcome checks.
+- `npx vitest run web/src --maxWorkers=2`: **473/473 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' worktrees, owned feature pages, production data, main merge or deployment touched.
+
+### Next audit
+
+- Inspect the **Home Continue improving cards** (learning progress, weekly plan and achievements) at 320/390px and 200% root text. Their font-relative 40px icon pills, title/description clamps and arrow may be crowding actual content even when document overflow is zero. Check first-use and returning-player states in actual Chromium before deciding on any visual change.
