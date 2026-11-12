@@ -919,3 +919,29 @@
 ### Next audit
 
 - Verify first-run home activity tiles and recent-game links at **320px** under keyboard/touch input. The banner and hero are stable; look for a genuine focus or tap-target problem in the first navigation journey, without rebuilding already-polished cards.
+
+## 2026-11-12: Make returning-player recent-game navigation touch-friendly
+
+### Reproduction
+
+- Continued from clean, pushed `d2e8c57`, finishing the next documented narrow-mobile Home navigation audit rather than revisiting completed homepage, command palette or feature work.
+- The shared shell's activity cards already inherit the global visible keyboard focus ring and have large clickable surfaces. A returning-player recent-games fixture at **320x700px** exposed the real gap: the `View all →` heading link had a **58×16px** hit area, while the individual game-row link already met 44px sizing. The real Chromium negative control failed specifically on `View all`.
+
+### Implementation and verification
+
+1. Enlarged only Home's recent-games `View all` navigation link to a **minimum 44×44px target**, using inline-flex alignment, subtle hover background and the existing scoped keyboard-focus ring tokens. Its label remains compact instead of becoming a new large button.
+2. Extended `capture-shell.mjs` with a returning-player fixture including an actual recent game and consistent one-game stats; checked `View all` and game-row hit rectangles, no 320px horizontal overflow and captured `home-recent-games-mobile-320.png`. Chromium passed after the fix, and the screenshot shows a balanced header and legible row.
+3. Added an isolated Home regression verifying the `View all` target class/destination and that the returning player's latest game opens its correct `/review/:id` route.
+4. Kept Game Review, Games Library, imports, and game-record handling strictly outside this lane.
+
+### Results
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** the previous 1920/1440/1024/768/640/390/320px, dark/light, and new returning-game mobile assertions.
+- `npx vitest run web/src --maxWorkers=2`: **428/428 passed across 73 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No production operations, main merge, other agent worktrees or feature-owned page edits.
+
+### Next audit
+
+- Inspect first-run and returning-player Home controls in **German and Spanish at 320px** for long translated strings that may shrink effective touch targets or clip adjacent actions. Verify the actual rendered localized paths and light/dark focus behavior before changing shared layout or translations.

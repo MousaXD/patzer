@@ -592,7 +592,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
         <h2 className="text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">
           {t('home.recentGames', { defaultValue: 'Recent games' })}
         </h2>
-        <Link to="/review" className="text-xs font-medium text-board-dark hover:underline">
+        <Link to="/review" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold text-board-dark hover:bg-ui-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus dark:text-gold-400">
           {t('home.viewAll', { defaultValue: 'View all →' })}
         </Link>
       </div>

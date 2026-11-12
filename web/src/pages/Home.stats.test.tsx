@@ -80,6 +80,27 @@ describe('Home statistics failure', () => {
     }
   });
 
+  it('keeps recent-game navigation and View all accessible on small touch screens', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [{
+        id: 103, white: 'sample-player', black: 'OpponentWithALongName',
+        user_color: 'white', end_time: '2026-11-12T12:00:00Z',
+        result: 'win', time_control: '600', analyzed: false,
+      }] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+
+    mount();
+    const viewAll = await screen.findByRole('link', { name: /View all/ });
+    expect(viewAll.getAttribute('href')).toBe('/review');
+    expect(viewAll.className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: /OpponentWithALongName/ }).getAttribute('href')).toBe('/review/103');
+  });
+
   it('shows a retryable error instead of the no-games tagline after a failed stats request', async () => {
     let offline = true;
     mocks.get.mockImplementation((url: string) => {

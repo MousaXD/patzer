@@ -17,6 +17,7 @@ let theme = 'light';
 let role = 'user';
 let logoutMode = 'success';
 let signedIn = true;
+let homeGamesMode = 'empty';
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -34,8 +35,14 @@ const fixtures = (pathname) => {
   };
   if (pathname === '/api/meta') return { version: '7.19.0' };
   if (pathname === '/api/meta/update') return { enabled: false, updateAvailable: false, current: '7.19.0', latest: null };
-  if (pathname === '/api/games') return { games: [] };
-  if (pathname === '/api/stats/me') return { total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null };
+  if (pathname === '/api/games') return { games: homeGamesMode === 'recent' ? [{
+    id: 103, white: 'sample-player', black: 'OpponentWithALongName',
+    user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
+    result: 'win', time_control: '600', opening_name: 'Italian Game', analyzed: false,
+  }] : [] };
+  if (pathname === '/api/stats/me') return homeGamesMode === 'recent'
+    ? { total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null }
+    : { total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null };
   if (pathname === '/api/plan') return { goals: [] };
   if (pathname === '/api/achievements') return { achievements: [] };
   return {};
@@ -251,6 +258,29 @@ try {
   await page.screenshot({ path: resolve(output, 'home-missing-profile-390.png') });
   profile.display_name = 'Sample Player';
   profile.avatar_emoji = '';
+
+  // A returning player should be able to touch View all in the recent-games
+  // header, or jump into a game row, on the narrowest supported phone.
+  homeGamesMode = 'recent';
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  const viewAllGames = page.getByRole('link', { name: /View all/ });
+  await viewAllGames.waitFor();
+  const recentTargets = [];
+  for (const [label, locator] of [
+    ['View all', viewAllGames],
+    ['Recent game', page.locator('main a[href="/review/103"]')],
+  ]) {
+    const rect = await locator.boundingBox();
+    recentTargets.push({ label, width: rect?.width ?? 0, height: rect?.height ?? 0 });
+  }
+  const tooSmall = recentTargets.filter(({ width, height }) => width < 44 || height < 44);
+  if (tooSmall.length) {
+    throw new Error('Recent games mobile touch targets are undersized: ' + JSON.stringify(tooSmall));
+  }
+  await checkNoHorizontalOverflow(page, 'recent games at 320px');
+  await page.screenshot({ path: resolve(output, 'home-recent-games-mobile-320.png') });
+  homeGamesMode = 'empty';
 
   theme = 'dark';
   await openWithFixture(page, { width: 1440, height: 900 });
