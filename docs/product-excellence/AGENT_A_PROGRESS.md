@@ -1270,3 +1270,23 @@
 ### Next independent Game Review audit
 
 - Audit the actual **on-screen shortcut instructions** against the new focus-safe keyboard behavior. If the hint implies arrows/Home/End always navigate even when a button is focused, clarify it without cluttering narrow mobile UI; if existing text is accurate, investigate another user-visible reliability or learning gap instead.
+
+## 2026-11-12: retain Star focus during pending bookmark saves
+
+### Independent UX audit and browser-red regression
+
+- Reviewed all five desktop Review shortcut hints after `5cc84b7`. They describe key mappings without promising to override a focused native control, so no unwarranted copy/locale expansion. Instead audited a user-visible reliability gap in the Game Review toolbar: Star's native `disabled={star.isPending}` dropped keyboard focus during the pending authenticated bookmark PATCH.
+- Added a real Chromium regression to the already-isolated bookmark fail/retry scenario. It keyboard-activates Star at ply 15, holds the first PATCH before sending a synthetic 503, and verifies that focus remains on the same control while pending. The first attempt used a label-specific Star locator, which correctly changed to Starred on optimistic update; switched to the stable `[data-review-meta-toolbar] button[aria-pressed]` identity. The corrected baseline **failed** because pending native disabled dropped focus.
+- Replaced native disabled on the Star toggle with `aria-disabled` and `aria-busy` while preserving a keyboard-focusable native button. A synchronous in-flight ref locks duplicate click/Enter/Space toggles until `onSettled`, including retries. The pending button has subdued waiting styling; the existing failed-save alert, retriable original intent, optimistic rollback, `aria-pressed`, and mutation invalidation are unchanged. The error Retry itself still uses native disabled while pending, since it is a transient action that does not receive lasting focus from keyboard use.
+- The browser now verifies focus is retained and repeated Enter yields **exactly one** first PATCH; the same fixture checks failed star/unstar requests, retry target values `[true,true,false,false]`, source PGN isolation and persisted bookmark state.
+
+### Verification and isolation
+
+- `git diff --check`, `node --check scripts/review-polish-capture.mjs`, `npm run typecheck`, `npm run build`: PASS.
+- `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium desktop/mobile, theme/locale/source/PGN/keyboard/variation matrix: **PASS (exit 0)** on isolated port 8970.
+- No merge, deployment, running production service, personal data, or changes to other agent worktrees.
+
+### Next scoped keyboard audit
+
+- Inspect the **transient bookmark Retry** control on a delayed second request. Like the original Star, it uses native disabled during save, and its alert disappears after success. Confirm whether keyboard focus falls to document BODY and, if genuine, recover it to the persistent Star control without breaking retry/error semantics. Reuse this source-attested browser fixture before editing product code.

@@ -664,15 +664,34 @@ try {
     const page=await bookmarkContext.newPage();
     let bookmarkAttempts=0;
     const requestedBookmarkStates=[];
+    let releasePendingBookmark=()=>{};
+    const pendingBookmark=new Promise(resolve=>{releasePendingBookmark=resolve;});
     const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
     await page.route(`**/api/games/${id}/bookmark`,async route=>{
       bookmarkAttempts++;
       requestedBookmarkStates.push(route.request().postDataJSON().bookmarked);
+      if(bookmarkAttempts===1) await pendingBookmark;
       if(bookmarkAttempts===1 || bookmarkAttempts===3)await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
       else await route.continue();
     });
     await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
-    await page.getByRole('button',{name:'Star',exact:true}).click();
+    // The optimistic toggle changes the visible label from Star to Starred
+    // before the PATCH settles. Anchor focus checks to this stable control,
+    // not an accessible-name locator that legitimately changes mid-request.
+    const starButton=page.locator('[data-review-meta-toolbar] button[aria-pressed]');
+    await starButton.focus();
+    const startedBookmark=page.waitForRequest(req=>req.url().endsWith(`/api/games/${id}/bookmark`));
+    await page.keyboard.press('Enter');
+    await startedBookmark;
+    await page.waitForFunction(()=>document.querySelector('[data-review-meta-toolbar] button[aria-pressed]')?.getAttribute('aria-disabled')==='true',
+      undefined,{timeout:3000});
+    const pendingBookmarkFocused=await starButton.evaluate(element=>document.activeElement===element);
+    await page.keyboard.press('Enter');
+    assert.equal(bookmarkAttempts,1,
+      'Repeated Enter during the same pending bookmark must not issue another request');
+    releasePendingBookmark();
+    assert.ok(pendingBookmarkFocused,
+      'A pending keyboard-activated bookmark must retain focus until the result or provide a stable alternative');
     await page.getByRole('button',{name:'Star',exact:true}).waitFor({state:'visible',timeout:3000});
     assert.equal(await page.getByRole('button',{name:'Star',exact:true}).getAttribute('aria-pressed'),'false',
       'Failed bookmark PATCH must not leave a falsely selected star');

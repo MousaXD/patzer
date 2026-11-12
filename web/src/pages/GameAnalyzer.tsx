@@ -1407,6 +1407,10 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
+  // Keep the action focusable while its PATCH is pending. The synchronous
+  // ref also prevents repeated Enter/Space from queuing duplicate toggles
+  // before the pending React render has committed.
+  const bookmarkInFlightRef = useRef(false);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
@@ -1423,10 +1427,16 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
     },
     onSuccess: () => setBookmarkRetryTarget(null),
     onSettled: () => {
+      bookmarkInFlightRef.current = false;
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
   });
+  const submitBookmark = (next: boolean) => {
+    if (bookmarkInFlightRef.current) return;
+    bookmarkInFlightRef.current = true;
+    star.mutate(next);
+  };
   const [isStarred, setStarred] = useState(bookmarked);
   useEffect(() => { setStarred(bookmarked); }, [bookmarked]);
 
@@ -1450,9 +1460,10 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <button
           type="button"
           aria-pressed={isStarred}
-          disabled={star.isPending}
-          onClick={() => star.mutate(!isStarred)}
-          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
+          aria-disabled={star.isPending}
+          aria-busy={star.isPending}
+          onClick={() => submitBookmark(!isStarred)}
+          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${star.isPending ? 'cursor-wait opacity-70' : ''} ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
           title={t('shortcuts.bookmark', { defaultValue: 'Toggle bookmark' })}
         >
           <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-gold-500' : ''}`} />
@@ -1483,7 +1494,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <span>{t('review.bookmarkSaveFailed')}</span>
         <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs"
           disabled={star.isPending}
-          onClick={() => star.mutate(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
+          onClick={() => submitBookmark(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
       </div>}
       {shareCopyFailed && <ClipboardManualFallback
         label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
