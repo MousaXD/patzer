@@ -151,6 +151,15 @@ export default function Review() {
     (filters.source === 'chesscom' || filters.source === 'lichess') ? rawOpponent : '';
   const requestedToDate = validCalendarDate(searchParams.get('to_date'));
   const toDate = fromDate && requestedToDate && fromDate > requestedToDate ? '' : requestedToDate;
+  useEffect(() => {
+    if (!fromDate || !requestedToDate || fromDate <= requestedToDate) return;
+    // Deep-linked ranges can be inverted even though date-picker edits already
+    // clear the opposite boundary. Remove the hidden stale end date from the
+    // URL too; otherwise it unexpectedly reappears after clearing the start.
+    const next = new URLSearchParams(searchParams);
+    next.delete('to_date');
+    setSearchParams(next, {replace:true});
+  }, [fromDate, requestedToDate, searchParams, setSearchParams]);
   const filterSignature = [...Object.values(filters), fromDate, toDate, selectedOpening, selectedOpponent].join('|');
   const activeFilters = !!fromDate || !!toDate || !!selectedOpening || !!selectedOpponent ||
     Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));

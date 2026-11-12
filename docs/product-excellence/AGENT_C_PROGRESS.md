@@ -915,3 +915,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **date-range filter reconciliation** when users choose a start date newer than an existing end date. The Library derives a blank `toDate` display from an invalid range but may retain the outdated `to_date` URL parameter. Verify in Chromium that the visible controls, URL and backend query agree after editing either boundary, browser reload, and clearing filters. Fix only if a reproducible stale-range or misleading result appears.
+
+## 2026-11-13 — Normalize inverted date-range deep links before stale values can reappear
+
+- Resumed clean pushed `93c621b`, inspected Library URL date validation and confirmed a real stale-state defect. If a copied/hand-edited URL had `from_date=2026-11-09&to_date=2026-11-01`, the end-date input rendered blank while its invalid `to_date` query parameter remained present. **Clearing the start date silently revived the previously hidden end date**, unexpectedly filtering the saved history. The focused component regression failed before the fix.
+- Added a Library-only effect that detects an inverted pair of otherwise valid calendar dates and removes the obsolete `to_date` from the URL using `{replace:true}`. Normal date-picker edits already clear incompatible boundaries and are unchanged. The URL, visible controls, and server-side query now agree; the effect does not create a new history entry or modify API validation.
+- Expanded the isolated Chromium test to open an intentionally inverted deep link, verify the hidden end date is removed from the shareable URL, reload the page, clear the start date, and confirm the stale end cannot return. All existing inclusive date ranges, date formatting, mobile filter sizes, search, pagination and imports remained green.
+
+### Verification
+
+- Focused Library suite: **57/57 passed**. Full repository suite: **109 passed files, 2 skipped; 1,125 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full isolated Chromium desktop 1440px, 390/320px mobile light/dark, date-range deep-link reload/edit, German import and PGN keyboard flows, bookmark, Unicode and pagination: passed without JS exceptions or horizontal overflow.
+- Only Agent C's Library page, focused React regression, browser fixture and progress report changed. No production DB, provider logic, other-agent worktree, merge or deployment.
+
+### Next independent audit
+
+- Check whether **native `max` on the From date input and `min` on the Through date input prevent users from choosing a new boundary across the current one**. The Library's change handler intentionally clears the incompatible old boundary, but the HTML date-picker constraints may block that edit before the handler runs. Measure native input validity and current attributes in Chromium; remove only the obstructive Library-local bounds if confirmed, while preserving validation, URL normalization and date-range behavior.

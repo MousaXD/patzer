@@ -666,6 +666,24 @@ try {
     console.log('PASS German 320px filter layout, visible search and zero overflow');
   } finally {await narrowGerman.context.close();}
 
+  const invertedDates=await newPage('light',390,844);
+  try {
+    const {page,pageErrors}=invertedDates;
+    await page.goto(`${url}/review?from_date=2026-11-09&to_date=2026-11-01`);
+    const start=page.getByLabel('Games from date');
+    const end=page.getByLabel('Games through date');
+    assert.equal(await start.inputValue(),'2026-11-09');
+    assert.equal(await end.inputValue(),'');
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('to_date'));
+    await page.reload();
+    assert.equal(await end.inputValue(),'');
+    await start.fill('');
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('from_date'));
+    assert.equal(await end.inputValue(),'','Clearing a start date revived a previously rejected end date');
+    assert.deepEqual(pageErrors,[],'Inverted date deep link produced a browser error');
+    console.log('PASS inverted date range normalizes its URL and stays empty after reload and editing');
+  } finally {await invertedDates.context.close();}
+
   const emptyGerman=await newPage('light',390,844,{locale:'de'});
   try {
     const {page,pageErrors}=emptyGerman;

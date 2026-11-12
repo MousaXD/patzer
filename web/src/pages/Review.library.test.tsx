@@ -738,6 +738,18 @@ describe('Review library with large histories', () => {
     expect(end.value).toBe('');
   });
 
+  it('does not revive a hidden end date when an inverted deep-link start is cleared', async () => {
+    mount('/review?from_date=2026-11-09&to_date=2026-11-01');
+    await screen.findByText(/40 of 1,000 games/);
+    const start=screen.getByLabelText('Games from date') as HTMLInputElement;
+    const end=screen.getByLabelText('Games through date') as HTMLInputElement;
+    expect(start.value).toBe('2026-11-09');
+    expect(end.value).toBe('');
+    fireEvent.change(start,{target:{value:''}});
+    await waitFor(()=>expect(start.value).toBe(''));
+    expect(end.value).toBe('');
+  });
+
   it('ignores invalid date-range deep links instead of sending them to the API', async () => {
     mount('/review?from_date=2026-02-30&to_date=2026-13-01');
     await screen.findByText(/40 of 1,000 games/);
