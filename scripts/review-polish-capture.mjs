@@ -2159,6 +2159,38 @@ try {
     await partialContext.close();
     db.prepare('UPDATE analyses SET moves_json=? WHERE game_id=?').run(partialMovesJson,id);
   }
+  // A cached score may be unavailable at a single PGN ply. The graph's
+  // keyboard-slider announcement must use the account language, not a
+  // hardcoded English string or an invented 0.00 evaluation.
+  const noEvalContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await noEvalContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await noEvalContext.newPage();
+    const spanish=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let intercepted=false;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const detail=await response.json();
+      const moves=JSON.parse(detail.analysis.moves_json);
+      assert.equal(moves[0].uci,'e2e4');
+      moves[0].eval_after_cp=null;
+      detail.analysis.moves_json=JSON.stringify(moves);
+      intercepted=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(detail)});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    const graph=page.getByRole('slider',{name:spanish.review.evalGraph});
+    await graph.waitFor({state:'visible',timeout:5000});
+    assert.equal(await graph.getAttribute('aria-valuenow'),'1');
+    assert.equal(await graph.getAttribute('aria-valuetext'),spanish.review.variationEvalUnavailable,
+      'The missing evaluation in the review graph must be announced in Spanish');
+    assert.ok(intercepted,'The displayed game must include the unscored move fixture');
+    await graph.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'unscored-eval-graph-localized-es-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await noEvalContext.close();}
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},
   });

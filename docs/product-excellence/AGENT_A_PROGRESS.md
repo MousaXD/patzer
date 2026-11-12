@@ -481,3 +481,24 @@
 ### Next highest-impact investigation
 
 - Game Review's loading/empty analysis contexts for source-stale cached games: independently test that refreshing a valid saved game without engine data never describes scores as drawn (0.00), and its reanalysis action gives a useful, keyboard-recoverable result on transient engine failures. Existing imported-game and first-use work belongs to other agents; limit changes to Game Review presentation and source identity.
+
+## 2026-11-12: localized evaluation graph slider for unscored saved moves
+
+### Scope and evidence
+
+- Continued from clean `cf88d99` and the no-analysis recovery audit. Existing Spanish browser checks already covered an invalid cached engine report and the reanalysis failure/retry action, so did not repeat that investigation.
+- Found an uncovered Game Review-specific accessibility defect: `EvalGraph`'s `aria-valuetext` was hardcoded `Evaluation unavailable` when a move had no scored `eval_after_cp`, despite fully localized page/board/graph labels. A new static render test **failed** with the raw English announcement. A new disposable authenticated Chromium test injected `eval_after_cp:null` for the first saved `e4` move, without changing its PGN identity; **baseline failed** because the actual Spanish slider announced English rather than `Evaluación de la posición no disponible`.
+- Reused the existing localized `review.variationEvalUnavailable` message for the graph's unavailable `aria-valuetext`. No graph coordinate/score/shape behavior, move legality, database, scoring or engine computation changed. The original graph already leaves unknown evaluations unscored instead of falsely presenting a 0.00 draw.
+- The first focused test correction caught an overly broad `not.toContain('0.00')` assertion that matched an SVG path coordinate `100.00`; narrowed it to exclude only a fabricated `aria-valuetext="0.00"`. This was a test fixture adjustment, not a product regression.
+
+### Verification
+
+- Focused `EvalGraph.render` and `evalGraphModel` tests: **5/5 passed** after the correction.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **983 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)**, including the negative Spanish unscored-evaluation case, cached-source and retry checks, previous responsive/variation/coach/keyboard regressions. The saved game PGN remained unchanged. Opened/inspected `qa-artifacts/agent-a/unscored-graph-after-20261112/unscored-eval-graph-localized-es-390.png`: Spanish review, saved first move `e4`, visibly unavailable score (`—`), graph remains navigable; slider announces the localized unavailable message.
+- Test-only missing-score interception; no real Stockfish scoring certification, merge, deployment or production SQLite modification. Agent A branch/worktree only.
+
+### Next issue
+
+- The existing Spanish reanalysis failure test clicks Run engine with the mouse and checks the failure banner, but does not assert keyboard focus or meaningful retry after the enabled button is disabled during an in-flight request. Audit actual Chromium Enter→engine failure→retry focus and repeated request behavior. Correct only genuine Game Review interaction failures; do not change shared API error semantics or other agents' areas.

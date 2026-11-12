@@ -53,7 +53,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
   const currentX = current === 0 ? 0 : currentPoint?.x;
   const currentLabel = current === 0
     ? t('review.startingPosition', { defaultValue: 'Starting position' })
-    : currentPoint?.cp == null ? 'Evaluation unavailable' : fmtCp(currentPoint.cp);
+    : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp);
 
   function pickPly(clientX: number, rect: DOMRect): number {
     return evalPlyAtRatio(evals, (clientX - rect.left) / rect.width);

@@ -7,6 +7,16 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 import EvalGraph from './EvalGraph';
 
 describe('Game Review evaluation graph marker rendering', () => {
+  it('uses the translated unavailable-evaluation label for an unscored current ply', () => {
+    const html = renderToStaticMarkup(createElement(EvalGraph, {
+      evals: [{ ply: 1, cp: null }, { ply: 2, cp: 120 }],
+      current: 1,
+      onClick: () => undefined,
+    }));
+    expect(html).toContain('aria-valuetext="review.variationEvalUnavailable"');
+    expect(html).not.toContain('Evaluation unavailable');
+    expect(html).not.toContain('aria-valuetext="0.00"');
+  });
   it('uses non-interactive, fixed-pixel circular markers for scored points only', () => {
     const html = renderToStaticMarkup(createElement(EvalGraph, {
       evals: [{ ply: 1, cp: null }, { ply: 2, cp: 100 }, { ply: 3, cp: -120 }],
