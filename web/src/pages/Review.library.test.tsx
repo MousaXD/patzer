@@ -325,7 +325,9 @@ describe('Review library with large histories', () => {
     Object.defineProperty(huge,'size',{value:4*1024*1024+1});
     fireEvent.change(input,{target:{files:[huge]}});
     fireEvent.click(upload);
-    expect((await screen.findByRole('alert')).textContent).toContain('exceeds the 4 MB limit');
+    // The previous invalid-type alert is still mounted while the second
+    // mutation settles; findByRole would return that old alert immediately.
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('exceeds the 4 MB limit'));
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
