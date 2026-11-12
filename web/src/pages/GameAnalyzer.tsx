@@ -1621,7 +1621,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
           />
           <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
             <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
-            <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== notes ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
+            <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== acknowledgedDraft ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
           </div>
         </div>
       )}

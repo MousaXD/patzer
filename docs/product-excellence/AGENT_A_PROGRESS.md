@@ -1507,3 +1507,22 @@
 ### Next independent Game Review audit
 
 - Audit the **recovery focus after practice becomes unavailable during a background game refetch** (e.g., source revision changes while an attempt is mounted). Verify that the practice error surfaces the correct recovery action, doesn't reveal the saved solution, and returns focus safely. Test with a source-attested synthetic response before altering product behavior.
+
+## 2026-11-13: show acknowledged Notes saves without waiting for refetch
+
+### Verified user-feedback error and minimal correction
+
+- Continued from clean pushed `d535d4b`. Reviewed the private Notes save UI: after a successful mutation, `onSuccess` already updates `acknowledgedDraft`, but the visible status compared `draft !== notes`, where `notes` was the last **server-fetched prop**. A successful PATCH could therefore still announce **“Click outside to save”** until a background GET caught up, or even miss the brief Saved window entirely.
+- Added an authenticated disposable Chromium fixture that loads Review, starts an edited Notes PATCH, then intercepts and deliberately **holds the subsequent `/api/games/<id>` refetch**. The HTTP PATCH returned 200 and the backend contained the new draft, but the baseline **failed** waiting for the toolbar's exact `Saved` status. This established a real UI-truthfulness defect, not a mocked component assertion.
+- Changed only the status expression to compare `draft` with `acknowledgedDraft` (the existing source of truth used by Notes navigation protection). Pending serialized saves still display **Saving…**, genuinely different local drafts still display the Unsaved instruction, and an acknowledged successful save immediately shows **Saved** without requiring the follow-up GET. No mutation/server logic or saved PGN was changed.
+- Reused the entire real-browser suite after the fix. The held-refetch scenario now shows **Saved** while the GET remains pending; inspected `qa-artifacts/agent-a/notes-saved-status-after-20261113/review-notes-acknowledged-before-refetch-390.png` in dark 390px: draft and status are both visible and legible. Prior rapid-save checks still prove that a newer queued draft cannot be declared Saved by an older success.
+
+### Verification and boundaries
+
+- `git diff --check`, browser-script syntax, focused Notes/locale tests **54/54**, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium viewport, theme, locale, engine, source-integrity, keyboard, Notes and variation matrix: **PASS (exit 0)** on port 9001. No merge, deployment, production data/service access or changes to any other agent worktree.
+
+### Next independent source-safety audit
+
+- A background game GET initiated **before** a Notes PATCH might arrive **after** the save with an older `notes` field. Inspect whether the `notes` prop effect can incorrectly revert the acknowledged status or trigger a duplicate re-save despite a successful PATCH. Reproduce a source-valid but stale delayed GET in Chromium before changing reconciliation logic.

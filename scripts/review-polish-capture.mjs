@@ -714,6 +714,46 @@ try {
       body:{language:'en',site_theme:'dark'}});
     assert.equal(restored.status,200);
   }
+  // The persisted PATCH can succeed before a background GET refreshes the
+  // `notes` prop. The save label must trust the acknowledged mutation rather
+  // than misleadingly saying "Click outside to save" while refetch is held.
+  const acknowledgedStatusContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseStatusRefresh=()=>{};
+  try{
+    await acknowledgedStatusContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await acknowledgedStatusContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const oldPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    const heldStatusRefresh=new Promise(resolve=>{releaseStatusRefresh=resolve;});
+    let blockedRefreshes=0;
+    await page.route(`**/api/games/${id}`,async route=>{
+      if(route.request().method()==='GET'){
+        blockedRefreshes++;
+        await heldStatusRefresh;
+      }
+      await route.continue();
+    });
+    const draft='Saved on the server before the background refresh completes';
+    const savedResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/notes`)
+      && res.status()===200 && res.request().postDataJSON().notes===draft);
+    await editor.fill(draft);
+    await editor.press('Tab');
+    await savedResponse;
+    await page.locator('[data-review-meta-toolbar]').getByText(enNotes.common.saved,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    assert.ok(blockedRefreshes>0,'The background game refresh must actually be delayed');
+    assert.equal(await page.locator('[data-review-meta-toolbar]').getByText(enNotes.review.notesUnsaved,{exact:true}).count(),0,
+      'Successful acknowledged Notes PATCH must never continue to claim the saved draft is unsaved');
+    assert.equal(await editor.inputValue(),draft);
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,draft);
+    await page.screenshot({path:join(output,'review-notes-acknowledged-before-refetch-390.png')});
+    releaseStatusRefresh();
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,oldPgn);
+  }finally{releaseStatusRefresh();await acknowledgedStatusContext.close();}
   // Closing Notes blurs its editor and starts an asynchronous autosave. If
   // that PATCH fails *after* the editor collapses, the error cannot be left
   // inside its now-hidden content: the user must see and recover the draft.
