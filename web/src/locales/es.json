@@ -1,8 +1,20 @@
 {
   "app": {
     "name": "Patzer",
-    "tagline": "Tu propio Chess.com privado.",
+    "tagline": "Tus partidas. Tu progreso. Tu próxima jugada.",
     "home": "Inicio"
+  },
+  "navigation": {
+    "primary": "Navegación principal",
+    "mobile": "Navegación móvil",
+    "open": "Abrir menú",
+    "close": "Cerrar menú",
+    "language": "Idioma",
+    "skip": "Ir al contenido principal",
+    "loading": "Cargando página…",
+    "breadcrumb": "Ruta de navegación",
+    "gameAnalysis": "Detalles de la partida",
+    "playerProfile": "Perfil de jugador"
   },
   "common": {
     "save": "Guardar",
@@ -767,6 +779,8 @@
     "settingsDesc": "Idioma, entrenador, tablero y más",
     "firstRunTitle": "Juega tu primera partida",
     "firstRunReady": "Todo listo. Entra a Jugar — o importa tus partidas de Chess.com para analizarlas.",
+    "gettingStarted": "Tu punto de partida",
+    "firstRunFooter": "Tus partidas recientes aparecerán aquí cuando juegues o importes una.",
     "firstRunNoUsername": "Elige un rival y un ritmo de juego, o ingresa tu usuario de Chess.com en Ajustes para importar tus partidas.",
     "importGames": "Importar partidas",
     "setUsername": "Guardar usuario",

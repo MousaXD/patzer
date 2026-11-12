@@ -38,6 +38,9 @@ docs/launch/
 # Test coverage
 coverage/
 
+# Browser visual smoke snapshots (reproducible local artifacts)
+artifacts/
+
 # Local MCP secrets
 integrations/mcp/.env
 integrations/mcp/dist-plugin/

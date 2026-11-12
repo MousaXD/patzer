@@ -84,7 +84,7 @@ export default function Home() {
   const games = gamesData?.games ?? [];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
+    <div className="mx-auto w-full max-w-7xl space-y-5">
       <Hero
         displayName={user?.profile.display_name ?? ''}
         avatar={user?.profile.avatar_emoji ?? '♟'}
@@ -95,8 +95,11 @@ export default function Home() {
         tagline={t('app.tagline')}
       />
 
-      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,1fr)]">
-        <div className="min-w-0 lg:order-2">
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
+        <div className="min-w-0">
+          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
+        </div>
+        <div className="min-w-0">
           <ContinueRow
             goals={planData?.goals ?? null}
             achievements={achievementsData?.achievements ?? null}
@@ -107,9 +110,6 @@ export default function Home() {
             achievementsError={achievementsError}
             retryAchievements={() => void refetchAchievements()}
           />
-        </div>
-        <div className="min-w-0 lg:order-1">
-          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
         </div>
       </div>
     </div>
@@ -243,6 +243,7 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
   retryAchievements: () => void;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   // Stagger entrance — modest. 60ms between cards, no scale or rotate gimmicks.
   const variants = {
     hidden: { opacity: 0, y: 8 },
@@ -253,16 +254,16 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
     <section aria-label={t('home.continue', { defaultValue: 'Continue improving' })}>
       <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">{t('home.continue', { defaultValue: 'Continue improving' })}</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-        <motion.div initial="hidden" animate="show" custom={0} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={0} variants={variants}>
           <LearnTile />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={1} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={1} variants={variants}>
           <DailyPuzzleTile />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={2} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={2} variants={variants}>
           <PlanTile goals={goals} loading={planLoading} error={planError} retry={retryPlan} />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={3} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={3} variants={variants}>
           <AchievementsTile achievements={achievements} loading={achievementsLoading} error={achievementsError} retry={retryAchievements} />
         </motion.div>
       </div>
@@ -295,7 +296,7 @@ function LearnTile() {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <Kicker>{t('learn.nav')}</Kicker>
-          <span className="flex items-center gap-0.5 font-mono text-[11px] tabular-nums text-chesscom-500">
+          <span className="flex items-center gap-0.5 font-mono text-[11px] tabular-nums text-ui-mutedText">
             {t('learn.levelShort', { n: levelOf(stars).level })} · <Star className="h-3 w-3 fill-gold-500 text-gold-600" />{stars}
           </span>
         </div>
@@ -381,7 +382,7 @@ function DailyPuzzleTile() {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <Kicker>{t('home.todayPuzzle')}</Kicker>
-          {data?.puzzle && <span className="font-mono text-[11px] tabular-nums text-chesscom-500">{data.puzzle.rating}</span>}
+          {data?.puzzle && <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">{data.puzzle.rating}</span>}
         </div>
         <Title>{title}</Title>
         <Sub>
@@ -430,7 +431,7 @@ function PlanTile({ goals, loading, error, retry }: {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <Kicker>{t('home.planLabel', { defaultValue: "This week's plan" })}</Kicker>
-          <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+            <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {active.length} {t('home.planActive', { defaultValue: 'active' })}
           </span>
         </div>
@@ -446,7 +447,7 @@ function PlanTile({ goals, loading, error, retry }: {
                   className="h-full bg-board-dark"
                 />
               </div>
-              <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+              <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
                 {imminent.progress}/{imminent.target}
               </span>
             </div>
@@ -478,7 +479,7 @@ function AchievementsTile({ achievements, loading, error, retry }: {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <Kicker>{t('home.achievementsLabel', { defaultValue: 'Achievements' })}</Kicker>
-          <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+          <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {unlocked.length}/{list.length || '—'}
           </span>
         </div>
@@ -499,7 +500,7 @@ function AchievementsTile({ achievements, loading, error, retry }: {
                 );
               })}
               {unlocked.length > 3 && (
-                <span className="text-[11px] text-chesscom-500">+{unlocked.length - 3}</span>
+                <span className="text-[11px] text-ui-mutedText">+{unlocked.length - 3}</span>
               )}
             </div>
           </>
@@ -519,9 +520,10 @@ function AchievementsTile({ achievements, loading, error, retry }: {
 
 function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loading: boolean; error: boolean; retry: () => void }) {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   if (loading) return (
     <section className="card p-5" role="status" aria-live="polite">
-      <p className="text-sm text-chesscom-500">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
+      <p className="text-sm text-ui-mutedText">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
       <div className="mt-4 space-y-2" aria-hidden="true">
         {[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-md bg-chesscom-100 dark:bg-chesscom-700" />)}
       </div>
@@ -536,21 +538,54 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
   if (games.length === 0) {
     return (
       <motion.section
-        initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25, duration: 0.3 }}
-        className="card flex items-start gap-3 p-5"
+        className="card overflow-hidden"
+        aria-labelledby="home-first-game-heading"
+        data-home-onboarding
       >
-        <Pill tone="board" Icon={Sparkles} />
-        <div className="min-w-0 flex-1">
-          <Title>{t('home.firstRunTitle', { defaultValue: 'Play your first game' })}</Title>
-          <Sub>{t('home.firstRunReady', { defaultValue: 'Hop into Play vs Bot — or import your Chess.com games to review.' })}</Sub>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <Pill tone="board" Icon={Sparkles} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-mutedText">
+                {t('home.gettingStarted', { defaultValue: 'Your starting point' })}
+              </p>
+              <h2 id="home-first-game-heading" className="mt-1 text-lg font-bold tracking-tight text-ui-foreground">
+                {t('home.firstRunTitle', { defaultValue: 'Play your first game' })}
+              </h2>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-ui-mutedText">
+                {t('home.firstRunReady', { defaultValue: 'Play a game here or import one to review.' })}
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            {[
+              { to: '/play', icon: Swords, title: t('home.playTitle'), description: t('home.playDesc') },
+              { to: '/review', icon: BookOpen, title: t('home.importGames'), description: t('home.reviewDesc') },
+            ].map(({ to, icon: Icon, title, description }) => (
+              <Link key={to} to={to}
+                className="group flex min-w-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-muted p-3.5 transition-colors hover:border-ui-strong hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus"
+              >
+                <Icon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-ui-primary" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-ui-foreground">{title}</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-ui-mutedText">{description}</span>
+                </span>
+                <ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-ui-mutedText transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
+              </Link>
+            ))}
+          </div>
         </div>
+        <p className="border-t border-ui-border bg-ui-muted px-5 py-3 text-xs text-ui-mutedText sm:px-6">
+          {t('home.firstRunFooter', { defaultValue: 'Your recent games will appear here after you play or import one.' })}
+        </p>
       </motion.section>
     );
   }
   return (
     <motion.section
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.18, duration: 0.3 }}
     >
       <div className="mb-2 flex items-center justify-between">
@@ -575,17 +610,17 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     <>
                       <span className="text-chesscom-900 dark:text-chesscom-100">{g.white}</span>
                       <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                      <span className="text-chesscom-500">{g.black}</span>
+                      <span className="text-ui-mutedText">{g.black}</span>
                     </>
                   ) : (
                     <>
-                      <span className="text-chesscom-500">{g.white}</span>
+                      <span className="text-ui-mutedText">{g.white}</span>
                       <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
                       <span className="text-chesscom-900 dark:text-chesscom-100">{g.black}</span>
                     </>
                   )}
                 </div>
-                <div className="text-xs text-chesscom-500">
+                <div className="text-xs text-ui-mutedText">
                   <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
                   <span className="mx-1.5 text-chesscom-400">·</span>
                   <span>{fmtTimeControl(g.time_control, t)}</span>
@@ -600,11 +635,11 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
               <div className="shrink-0 text-right">
                 {g.analyzed ? (
                   <div className="font-mono text-xs tabular-nums">
-                    <span className={g.user_color === 'white' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500'}>
+                    <span className={g.user_color === 'white' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_white)}
                     </span>
                     <span className="mx-1 text-chesscom-400">/</span>
-                    <span className={g.user_color === 'black' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500'}>
+                    <span className={g.user_color === 'black' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_black)}
                     </span>
                   </div>
@@ -626,7 +661,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
 
 function Kicker({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-chesscom-500">{children}</div>
+    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-mutedText">{children}</div>
   );
 }
 
@@ -638,7 +673,7 @@ function Title({ children }: { children: React.ReactNode }) {
 
 function Sub({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 line-clamp-2 text-xs text-chesscom-500">{children}</div>
+    <div className="mt-1 line-clamp-2 text-xs text-ui-mutedText">{children}</div>
   );
 }
 

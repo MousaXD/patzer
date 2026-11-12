@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const output = resolve(root, 'artifacts/agent-02');
-const origin = 'http://127.0.0.1:4173';
+const origin = 'http://127.0.0.1:4186';
 const paths = ['/', '/play', '/review', '/insights', '/train', '/learn', '/openings', '/plan', '/players', '/lab'];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 let server;
@@ -50,6 +50,38 @@ async function checkNoHorizontalOverflow(page, label) {
   }
 }
 
+// Verify the real, computed colors of secondary text on activity cards.
+// `text-chesscom-500` used to be near-invisible on dark surfaces (about 2:1),
+// despite screenshots and unit tests otherwise looking healthy.
+async function checkHomeCardContrast(page, label) {
+  const result = await page.evaluate(() => {
+    function luminance(color) {
+      const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
+      if (channels.length !== 3) return NaN;
+      const linear = channels.map((channel) => {
+        const unit = channel / 255;
+        return unit <= 0.04045 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    }
+    const candidates = [...document.querySelectorAll('a.card-hover .text-ui-mutedText')];
+    const contrasts = candidates.map((element) => {
+      const foreground = luminance(getComputedStyle(element).color);
+      const background = luminance(getComputedStyle(element.closest('a.card-hover')).backgroundColor);
+      return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+    return { count: candidates.length, minimum: Math.min(...contrasts) };
+  });
+  if (result.count < 4 || result.minimum < 4.5) {
+    const state = await page.evaluate(() => ({
+      body: document.querySelector('main')?.innerText.slice(0, 800),
+      cards: document.querySelectorAll('a.card-hover').length,
+      muted: document.querySelectorAll('.text-ui-mutedText').length,
+    }));
+    throw new Error(`${label}: insufficient activity text contrast ${JSON.stringify({ ...result, ...state })}`);
+  }
+}
+
 async function openWithFixture(page, viewport) {
   await page.setViewportSize(viewport);
   await page.goto(origin, { waitUntil: 'domcontentloaded' });
@@ -60,12 +92,27 @@ async function openWithFixture(page, viewport) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(1100);
   await checkNoHorizontalOverflow(page, viewport.width + 'x' + viewport.height);
+  await checkHomeCardContrast(page, `${theme} ${viewport.width}x${viewport.height}`);
+  const onboarding = page.locator('[data-home-onboarding]');
+  if ((await onboarding.locator('a[href="/play"]').count()) !== 1 ||
+      (await onboarding.locator('a[href="/review"]').count()) !== 1) {
+    throw new Error('First-run dashboard lost its Play / Game Review entry points');
+  }
+  if (viewport.width <= 390) {
+    const onboardingY = await onboarding.evaluate((element) => element.getBoundingClientRect().top);
+    const activityY = await page.getByRole('heading', { name: 'Continue improving' }).evaluate((element) => element.getBoundingClientRect().top);
+    if (onboardingY >= activityY) {
+      throw new Error(`${viewport.width}px: onboarding is hidden below continuation tiles`);
+    }
+  }
 }
 
 try {
   await mkdir(output, { recursive: true });
-  server = spawn('npm', ['run', 'dev', '-w', 'web', '--', '--host', '127.0.0.1', '--port', '4173', '--strictPort'], {
-    cwd: root, stdio: 'inherit', env: { ...process.env, CI: '1' },
+  // Launch Vite directly instead of through npm's shell wrapper, which can
+  // leave an orphaned dev server after the capture process exits.
+  server = spawn(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', '4186', '--strictPort'], {
+    cwd: resolve(root, 'web'), stdio: 'inherit', env: { ...process.env, CI: '1' },
   });
   let ready = false;
   for (let attempt = 0; attempt < 80; attempt++) {
@@ -79,7 +126,12 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixtures(url.pathname)) });
+    const missingFixture = url.pathname === '/api/players/42' || url.pathname === '/api/games/42';
+    await route.fulfill({
+      status: missingFixture ? 404 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(missingFixture ? { error: 'Not found' } : fixtures(url.pathname)),
+    });
   });
 
   await openWithFixture(page, { width: 1440, height: 900 });
@@ -90,6 +142,37 @@ try {
   await page.screenshot({ path: resolve(output, 'desktop-light.png') });
   await openWithFixture(page, { width: 1024, height: 768 });
   await page.screenshot({ path: resolve(output, 'laptop-light.png') });
+
+  // Full responsive matrix, including the narrowest supported viewport.
+  const viewports = [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+    { width: 320, height: 700 },
+  ];
+  for (const nextTheme of ['light', 'dark']) {
+    theme = nextTheme;
+    for (const viewport of viewports) {
+      await openWithFixture(page, viewport);
+      await page.waitForFunction((mode) => document.documentElement.classList.contains('dark') === (mode === 'dark'), nextTheme);
+      await page.screenshot({ path: resolve(output, `${nextTheme}-${viewport.width}x${viewport.height}.png`) });
+      if (viewport.width <= 390) {
+        const open = page.getByRole('button', { name: 'Open menu' });
+        await open.click();
+        const mobileDrawer = page.getByRole('dialog', { name: 'Mobile navigation' });
+        await mobileDrawer.waitFor();
+        for (const to of paths) {
+          if ((await mobileDrawer.locator('a[href="' + to + '"]').count()) !== 1) {
+            throw new Error(`${nextTheme} ${viewport.width}: missing mobile route ${to}`);
+          }
+        }
+        await page.keyboard.press('Escape');
+        await mobileDrawer.waitFor({ state: 'detached' });
+        await checkNoHorizontalOverflow(page, `${nextTheme} ${viewport.width} after drawer`);
+      }
+    }
+  }
 
   theme = 'dark';
   await openWithFixture(page, { width: 1440, height: 900 });
@@ -120,6 +203,38 @@ try {
     if ((await rail.locator('a[href="' + to + '"]').count()) !== 1) throw new Error('Missing admin destination ' + to);
   }
   await page.screenshot({ path: resolve(output, 'desktop-admin.png') });
+
+  // A keyboard-only user needs a visible path past the persistent shell.
+  role = 'user';
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-app-shell]').waitFor();
+  await page.keyboard.press('Tab');
+  const focusedHref = await page.evaluate(() => document.activeElement?.getAttribute('href'));
+  if (focusedHref !== '#patzer-main') throw new Error(`Skip link was not first in tab order: ${focusedHref}`);
+
+  // Nested section headers must remain usable at 320px with longer translated
+  // labels. 404 fixture responses are intentional: no game or user data is
+  // needed to certify the independent global navigation shell.
+  theme = 'light';
+  profile.language = 'de';
+  await page.setViewportSize({ width: 320, height: 700 });
+  for (const nested of [
+    { path: '/players/42', parent: '/players', current: 'Spielerprofil' },
+    { path: '/review/42', parent: '/review', current: 'Partiedetails' },
+  ]) {
+    await page.goto(origin + nested.path, { waitUntil: 'domcontentloaded' });
+    const breadcrumb = page.getByRole('navigation', { name: 'Navigationspfad' });
+    await breadcrumb.waitFor();
+    if ((await breadcrumb.locator(`a[href="${nested.parent}"]`).count()) !== 1) {
+      throw new Error(`Missing nested parent link for ${nested.path}`);
+    }
+    if ((await breadcrumb.locator('[aria-current="page"]').textContent()) !== nested.current) {
+      throw new Error(`Wrong translated breadcrumb for ${nested.path}`);
+    }
+    await checkNoHorizontalOverflow(page, `German breadcrumb ${nested.path}`);
+    await page.screenshot({ path: resolve(output, `breadcrumb-${nested.path.split('/')[1]}-320-de.png`) });
+  }
+  profile.language = 'en';
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {
   await browser?.close();

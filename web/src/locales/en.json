@@ -1,8 +1,20 @@
 {
   "app": {
     "name": "Patzer",
-    "tagline": "Your private Chess.com.",
+    "tagline": "Your games. Your progress. Your next move.",
     "home": "Home"
+  },
+  "navigation": {
+    "primary": "Primary navigation",
+    "mobile": "Mobile navigation",
+    "open": "Open menu",
+    "close": "Close menu",
+    "language": "Language",
+    "skip": "Skip to main content",
+    "loading": "Loading page…",
+    "breadcrumb": "Breadcrumb",
+    "gameAnalysis": "Game analysis",
+    "playerProfile": "Player profile"
   },
   "common": {
     "save": "Save",
@@ -1225,6 +1237,8 @@
     "settingsDesc": "Language, coach, board, and more",
     "firstRunTitle": "Play your first game",
     "firstRunReady": "Ready to go. Hop into Play — or import your Chess.com games to review.",
+    "gettingStarted": "Your starting point",
+    "firstRunFooter": "Your recent games will appear here after you play or import one.",
     "firstRunNoUsername": "Pick an opponent and a time control, or set your Chess.com username in Settings to import existing games.",
     "importGames": "Import games",
     "setUsername": "Set username",

@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
@@ -284,10 +284,10 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             </NavLink>
             {nestedSection && nestedTitle ? (
               <nav aria-label={t('navigation.breadcrumb', { defaultValue: 'Breadcrumb' })} className="flex min-w-0 items-center gap-1 text-sm sm:text-base" data-current-section>
-                <NavLink
+                <Link
                   to={location.pathname.startsWith('/review/') ? '/review' : '/players'}
                   className="shrink-0 rounded px-1 py-1 font-medium text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:text-white"
-                >{nestedSection}</NavLink>
+                >{nestedSection}</Link>
                 <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-chesscom-400" />
                 <span className="min-w-0 truncate font-semibold" aria-current="page">{nestedTitle}</span>
               </nav>
