@@ -375,6 +375,8 @@
     "showAll": "Alle Partien anzeigen",
     "starred": "Markiert",
     "star": "Markieren",
+    "bookmarkGame": "Partie merken",
+    "removeBookmark": "Markierung entfernen",
     "bookmarkSaveFailed": "Die Markierung konnte nicht geändert werden. Der vorherige Zustand wurde wiederhergestellt; versuche es erneut.",
     "bookmarkRetry": "Markierung erneut versuchen",
     "flip": "Drehen",

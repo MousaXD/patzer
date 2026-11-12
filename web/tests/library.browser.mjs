@@ -116,6 +116,7 @@ async function newPage(theme, width, height,
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
   let hasPgnImports = false;
   let latestGameInserted = false;
+  let longPlayerBookmarked = false;
   const removedStars = new Set();
   const seenPgnFiles = [];
   page.on('pageerror', error => pageErrors.push(error.message));
@@ -157,6 +158,7 @@ async function newPage(theme, width, height,
       if (longPlayerNames) json = {games:[{
         ...games[0],id:9003,source:'imported',white:'棋手名'.repeat(40),
         black:'JOSÉ-'.repeat(22),user_color:null,result:null,end_time:null,
+        bookmarked:longPlayerBookmarked ? 1 : 0,
       }],total:1,offset:0,limit:40,has_more:false};
       else if (hasPgnImports && parsed.searchParams.get('source') === 'imported') {
         json = { games: [
@@ -179,6 +181,9 @@ async function newPage(theme, width, height,
       } else json = starredOnlyScenario
         ? list(parsed.searchParams, games.map(g=>removedStars.has(g.id) ? {...g,bookmarked:0} : g))
         : list(parsed.searchParams);
+    } else if (longPlayerNames && path === '/api/games/9003/bookmark' && request.method() === 'PATCH') {
+      longPlayerBookmarked = !!request.postDataJSON().bookmarked;
+      json = {bookmarked:Number(longPlayerBookmarked)};
     } else if (starredOnlyScenario && /^\/api\/games\/\d+\/bookmark$/.test(path) && request.method() === 'PATCH') {
       const id = Number(path.split('/')[3]);
       await sleep(450);
@@ -291,13 +296,13 @@ async function verifyViewport(theme, width, height) {
         const button=page.getByRole('button',{name:label}).first();
         if (!await button.count()) continue;
         const rect=await button.boundingBox();
-        assert.ok(rect && rect.x>=0 && rect.x+rect.width<=width+2,
-          `Mobile ${label} control was clipped at ${width}px: ${JSON.stringify(rect)}`);
+        assert.ok(rect && rect.x>=0 && rect.x+rect.width<=width+2 && rect.width>=44 && rect.height>=44,
+          `Mobile ${label} control was clipped or too small at ${width}px: ${JSON.stringify(rect)}`);
       }
       const practice=page.getByRole('link',{name:/Practice/}).first();
       assert.ok(await practice.isVisible(), 'Analyzed mobile cards must offer practice');
       const practiceRect=await practice.boundingBox();
-      assert.ok(practiceRect && practiceRect.x+practiceRect.width<=width+2,
+      assert.ok(practiceRect && practiceRect.x+practiceRect.width<=width+2 && practiceRect.height>=44,
         `Mobile practice link was clipped: ${JSON.stringify(practiceRect)}`);
     }
     assert.deepEqual(pageErrors, [],`Client JS errors: ${pageErrors}`);
@@ -435,6 +440,23 @@ try {
     const {page,pageErrors}=longPlayers;
     const card=page.locator('a[href="/review/9003"]');
     await card.scrollIntoViewIfNeeded();
+    const bookmark=page.getByRole('button',{name:'Bookmark game',exact:true});
+    const bookmarkBox=await bookmark.boundingBox();
+    assert.ok(bookmarkBox && bookmarkBox.width>=44 && bookmarkBox.height>=44,
+      `Mobile bookmark target is too small to tap reliably: ${JSON.stringify(bookmarkBox)}`);
+    await card.focus();
+    assert.ok(await card.evaluate(node=>document.activeElement===node),
+      'The long-name game should have its own keyboard-focusable Review link');
+    await page.keyboard.press('Tab');
+    assert.ok(await bookmark.evaluate(node=>document.activeElement===node),
+      'Tab must reach the bookmark action independently of the game link');
+    await page.keyboard.press('Enter');
+    const unbookmark=page.getByRole('button',{name:'Remove bookmark',exact:true});
+    await unbookmark.waitFor();
+    assert.equal(await unbookmark.getAttribute('aria-pressed'),'true',
+      'Keyboard activation must save and announce the newly starred game');
+    assert.equal(new URL(page.url()).pathname,'/review',
+      'Bookmarking must not accidentally open Game Review');
     const m=await metrics(page);
     assert.ok(m.overflow<=2,`Long imported player names create horizontal overflow: ${m.overflow}px`);
     const playerNames=await card.locator('span.truncate.font-semibold').evaluateAll(nodes=>nodes.map(node=>({
@@ -444,8 +466,11 @@ try {
     assert.ok(playerNames.every(name=>name.box.x>=0 && name.box.right<=322),
       `Long player names escaped the mobile game card: ${JSON.stringify(playerNames)}`);
     await page.screenshot({path:join(output,'library-long-player-names-light-320.png')});
+    await card.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/review/9003');
     assert.deepEqual(pageErrors,[], 'Long player names caused a browser exception');
-    console.log('PASS long Unicode/Latin player names fit the 320px mobile game card');
+    console.log('PASS long international names, mobile bookmark keyboard operation, and Review link navigation');
   } finally {await longPlayers.context.close();}
 
   const internationalHistory=await newPage('dark',390,844,{unicodeLibrary:true});

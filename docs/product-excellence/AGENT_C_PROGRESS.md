@@ -553,3 +553,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **keyboard and touch access to full long-name identity and the adjacent bookmark/review actions** on densely populated mobile cards. Verify focus, hit areas and correct navigation with a disposable fixture before changing UI behavior; preserve the Review ownership boundary and the account-local bookmark error semantics.
+
+## 2026-11-12 — Make mobile Library bookmarks easier to reach and operate by keyboard
+
+- Recovered `e64107d` with the exact unfinished `web/tests/library.browser.mjs` change; preserved the existing long-name regression instead of redoing it. The first real Chromium run reproduced a **test/locale mismatch**: English `review.star` exposed the label **Star**, not the component-mock fallback **Bookmark game**. After targeting the real label, Chromium reproduced a genuine **40×40px** bookmark control on 320px mobile, below the tested 44×44px touch target.
+- Enlarged only the Library card's bookmark action to `min-h-11 min-w-11` (44×44px), preserving focus-visible rings and the separate Review/practice links. Added explicit, action-oriented **Bookmark game** and **Remove bookmark** translations in all five UI languages; left the existing `review.star` string in place for other consumers. Both tooltip and accessible name now use the same localized action. Did not modify shared design system or Game Review internals.
+- Strengthened the component test and browser geometry assertions. Added a persisted synthetic bookmark response to the long international-player fixture. Actual Chromium keyboard flow now starts on the Review link, tabs to the bookmark, activates it with **Enter** and confirms `aria-pressed=true` and no accidental navigation; then focuses the independent Review link, presses **Enter**, and confirms navigation to `/review/9003`. Existing Starred-only pending/error/retry behavior remains covered.
+
+### Verification
+
+- Focused Library React tests: **45/45 passed**. Full repository suite: **109 files passed, 2 skipped; 1,058 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium **1440px desktop, 390px and 320px mobile, light and dark** passed the complete import/discovery/Unicode/cursor/bookmark suite. Inspected `qa-artifacts/agent-c-library/library-long-player-names-light-320.png` and the 390/320px mobile screenshots; no card clipping, page overflow or JS exceptions.
+- Changes stayed within Agent C's worktree. No production import, database, external provider, deployment or cross-agent files touched.
+
+### Next independent audit
+
+- Inspect **Library source and filter controls' accessible names and state synchronization** in languages other than English on narrow screens. The Library currently carries English-only filter `<select>` labels and fixture-specific hard-coded English locators; first reproduce any real a11y gap in a non-English browser fixture before implementing a localized, testable fix. Keep any changes Library-local and avoid shared navigation/localization infrastructure.

@@ -775,6 +775,8 @@ describe('Review library with large histories', () => {
     const bookmark = screen.getAllByRole('button', { name: 'Bookmark game' })[0]!;
     expect(bookmark.getAttribute('aria-pressed')).toBe('false');
     expect(bookmark.className).toContain('text-chesscom-400');
+    expect(bookmark.className).toContain('min-h-11');
+    expect(bookmark.className).toContain('min-w-11');
     expect(bookmark.className).toContain('md:opacity-0');
   });
 

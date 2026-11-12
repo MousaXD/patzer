@@ -375,6 +375,8 @@
     "showAll": "Show all games",
     "starred": "Starred",
     "star": "Star",
+    "bookmarkGame": "Bookmark game",
+    "removeBookmark": "Remove bookmark",
     "bookmarkSaveFailed": "Could not update the bookmark. The previous state is restored; you can retry.",
     "bookmarkRetry": "Retry bookmark",
     "flip": "Flip",

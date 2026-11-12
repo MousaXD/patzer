@@ -904,12 +904,12 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
       ) : null}
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); star.mutate(!isStarred); }}
-        title={isStarred ? t('review.unstar', { defaultValue: 'Remove bookmark' }) : t('review.star', { defaultValue: 'Bookmark game' })}
-        aria-label={isStarred ? t('review.unstar', { defaultValue: 'Remove bookmark' }) : t('review.star', { defaultValue: 'Bookmark game' })}
+        title={isStarred ? t('review.removeBookmark', { defaultValue: 'Remove bookmark' }) : t('review.bookmarkGame', { defaultValue: 'Bookmark game' })}
+        aria-label={isStarred ? t('review.removeBookmark', { defaultValue: 'Remove bookmark' }) : t('review.bookmarkGame', { defaultValue: 'Bookmark game' })}
         aria-pressed={isStarred}
         disabled={star.isPending || accountId == null}
         className={cn(
-          'min-h-10 min-w-10 shrink-0 rounded-md p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
+          'min-h-11 min-w-11 shrink-0 rounded-md p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
           isStarred
             ? 'text-gold-500 hover:bg-gold-500/15'
             : 'text-chesscom-400 hover:bg-chesscom-100 hover:text-gold-500 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus:opacity-100 dark:hover:bg-chesscom-700',

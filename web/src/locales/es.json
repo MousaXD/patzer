@@ -370,6 +370,8 @@
     "showAll": "Mostrar todas las partidas",
     "starred": "Destacada",
     "star": "Destacar",
+    "bookmarkGame": "Guardar partida en favoritos",
+    "removeBookmark": "Quitar de favoritos",
     "bookmarkSaveFailed": "No se pudo actualizar el marcador. Se restauró el estado anterior; puedes reintentarlo.",
     "bookmarkRetry": "Reintentar marcador",
     "flip": "Girar",
