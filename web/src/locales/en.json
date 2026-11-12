@@ -775,7 +775,9 @@
     "navGroup": "Navigate",
     "actionGroup": "Actions",
     "gameGroup": "Recent games",
-    "esc": "esc"
+    "esc": "esc",
+    "actionBusy": "Applying change…",
+    "actionFailed": "That action could not be completed. Please try again."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",

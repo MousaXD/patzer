@@ -445,3 +445,33 @@
 ### Next audit
 
 - Inspect shell-level keyboard interaction discoverability and the consistency of shared empty/error states at narrow widths, prioritizing real usability defects over speculative visual changes.
+
+## 2026-11-12: Recoverable global command actions and reliable busy feedback
+
+### Reproduced
+
+- Resumed from clean pushed `b59a448`, without repeating the finished layout/focus investigations.
+- Audited the globally available theme actions in `CommandPalette`. A real Chromium fixture returning **503** from `PATCH /api/settings/profile` reproduced a broken experience: the palette stayed open with **no explanation or retry feedback** after the asynchronous action failed.
+- The existing Enter/click dispatch paths invoked async `run` callbacks without catching rejections; repeat submissions could be triggered while the first update was still in flight.
+
+### Implementation
+
+1. Routed keyboard Enter and option-button clicks through one guarded, async-aware command executor. It catches failures and presents a **localized, accessible inline error**, never exposing raw server errors or stack traces.
+2. Added a visible `role=status` progress state and `aria-busy` while an action runs. The executing palette disables its options and ignores repeated Enter until the active operation completes; Close remains accessible.
+3. Failed actions remain searchable and retryable without reloading. Search edits clear stale action errors; returning to a newly opened palette clears previous errors.
+4. Added progress/failure translations in English, German, Spanish, Russian and Bulgarian.
+5. Extended the real Chromium dialog fixture: a 503 theme update must expose an alert while remaining open, retry must succeed against a slow successful response, pressing Enter twice must send **exactly one retry request**, and the palette should close only after the theme/profile refresh succeeds.
+6. Added two focused `CommandPalette.actions.test.tsx` cases for click failure and retry, keyboard Enter with an in-flight promise, and suppression of duplicate requests.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **402/402 passed across 69 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the new simulated 503, delayed retry and action-submission safety assertions.
+- Inspected the 390px light-theme error screenshot: message remains visible, result remains selected, and both the input and Close button are accessible.
+- `git diff --check`: **passed**.
+- All browser API responses were local fixtures; no production settings, other agent branches, deployments or game records were modified.
+
+### Next investigation
+
+- Audit global navigation behavior when the user changes language from the command palette and when the app shell is in temporary loading or empty states. Prefer reproducible focus, selection or discoverability failures rather than speculative component restyling.

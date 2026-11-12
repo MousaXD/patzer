@@ -13,6 +13,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let server;
 let browser;
 let theme = 'light';
+let profilePatchMode = 'success';
+let patchAttempts = 0;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '',
@@ -89,6 +91,18 @@ try {
   page.setDefaultTimeout(5000);
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/settings/profile' && route.request().method() === 'PATCH') {
+      patchAttempts += 1;
+      if (profilePatchMode === 'error') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
+        return;
+      }
+      if (profilePatchMode === 'slow') await sleep(600);
+      const update = route.request().postDataJSON();
+      theme = update.site_theme;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(update) });
+      return;
+    }
     const result = path === '/api/setup/status' ? { setup_required: false }
       : path === '/api/auth/me' ? { user: { id: 1, username: 'sample-player', role: 'user', created_at: '2026-01-01',
         profile: { ...profile, site_theme: theme } } }
@@ -262,6 +276,35 @@ try {
       await shortcuts.waitFor({ state: 'detached' });
     }
   }
+
+  // Global theme actions perform server writes. An unavailable settings
+  // endpoint must provide a visible retry state rather than an unhandled
+  // rejection while the dialog silently remains open.
+  theme = 'light';
+  profilePatchMode = 'error';
+  patchAttempts = 0;
+  await visit(page, 390, 844);
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  const themePalette = page.getByRole('dialog', { name: 'Search' });
+  const themeQuery = themePalette.getByRole('combobox', { name: 'Search' });
+  await themeQuery.fill('Dark theme');
+  await themeQuery.press('Enter');
+  await themePalette.getByRole('alert').waitFor();
+  await assertNoOverflow(page, 'failed theme action at 390px');
+  await page.screenshot({ path: resolve(output, 'palette-theme-action-error-390.png') });
+  if (patchAttempts !== 1) throw new Error('Theme action did not submit exactly one server request');
+  await themeQuery.fill('Dark theme');
+  profilePatchMode = 'slow';
+  await themeQuery.press('Enter');
+  await themePalette.getByRole('status').waitFor();
+  if (!(await themePalette.getByRole('option', { name: 'Dark theme' }).isDisabled())) {
+    throw new Error('Busy palette did not disable duplicate action submission');
+  }
+  await themeQuery.press('Enter');
+  await themePalette.waitFor({ state: 'detached' });
+  if (patchAttempts !== 2) throw new Error('Duplicate submissions occurred while a theme update was in progress');
+  await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
+
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {
   await browser?.close();

@@ -25,7 +25,7 @@ interface Action {
   hint?: string;
   icon: React.ElementType;
   group: 'nav' | 'action' | 'game';
-  run: () => void;
+  run: () => void | Promise<void>;
   keywords?: string;
 }
 
@@ -37,6 +37,9 @@ export default function CommandPalette({ open, onClose }: Props) {
   const nav = useNavigate();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+  const actionRunningRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -54,6 +57,7 @@ export default function CommandPalette({ open, onClose }: Props) {
     if (open) {
       setQ('');
       setActive(0);
+      setActionError('');
     }
   }, [open]);
 
@@ -110,6 +114,22 @@ export default function CommandPalette({ open, onClose }: Props) {
 
   useEffect(() => { setActive(0); }, [q]);
 
+  async function executeAction(action?: Action) {
+    if (!action || actionRunningRef.current) return;
+    actionRunningRef.current = true;
+    setActionError('');
+    setPendingAction(action.id);
+    try {
+      await action.run();
+    } catch {
+      // Avoid leaking API errors or stack traces; users can retry the action.
+      setActionError(t('palette.actionFailed', { defaultValue: 'That action could not be completed. Please try again.' }));
+    } finally {
+      actionRunningRef.current = false;
+      setPendingAction(null);
+    }
+  }
+
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -119,7 +139,7 @@ export default function CommandPalette({ open, onClose }: Props) {
       setActive((i) => Math.max(0, i - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      filtered[active]?.run();
+      void executeAction(filtered[active]);
     }
   }
 
@@ -134,14 +154,14 @@ export default function CommandPalette({ open, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center px-3 pt-[min(12vh,5rem)] sm:px-4 [@media(max-height:500px)]:pb-3 [@media(max-height:500px)]:pt-3" data-global-palette>
       <button type="button" tabIndex={-1} aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('palette.search', { defaultValue: 'Search' })} tabIndex={-1}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('palette.search', { defaultValue: 'Search' })} aria-busy={pendingAction !== null} tabIndex={-1}
         className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-xl min-h-0 flex-col overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-ui-foreground shadow-lift motion-safe:animate-fade-in">
         <div className="flex shrink-0 items-center gap-2 border-b border-ui-border px-3 py-2">
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-ui-mutedText" />
           <input
             ref={inputRef}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => { setQ(e.target.value); setActionError(''); }}
             onKeyDown={onSearchKeyDown}
             placeholder={t('palette.placeholder', { defaultValue: 'Type to search nav, actions, games…' })}
             role="combobox"
@@ -165,9 +185,20 @@ export default function CommandPalette({ open, onClose }: Props) {
               {t('palette.empty', { defaultValue: 'No matches.' })}
             </div>
           ) : (
-            <PaletteSection items={filtered} active={active} setActive={setActive} />
+            <PaletteSection items={filtered} active={active} setActive={setActive}
+              busy={pendingAction !== null} onExecute={(action) => { void executeAction(action); }} />
           )}
         </div>
+        {pendingAction !== null && (
+          <div role="status" aria-live="polite" className="shrink-0 border-t border-ui-border px-3 py-2 text-xs text-ui-mutedText">
+            {t('palette.actionBusy', { defaultValue: 'Applying change…' })}
+          </div>
+        )}
+        {actionError && (
+          <div role="alert" className="shrink-0 border-t border-ui-border bg-ui-muted px-3 py-2 text-xs text-ui-danger">
+            {actionError}
+          </div>
+        )}
         <div className="flex shrink-0 items-center justify-between border-t border-ui-border bg-ui-muted px-3 py-2 text-[11px] text-ui-mutedText">
           <div className="flex items-center gap-3">
             <span><kbd className="rounded border border-ui-border px-1">↑</kbd> <kbd className="rounded border border-ui-border px-1">↓</kbd> {t('palette.navigate', { defaultValue: 'navigate' })}</span>
@@ -180,7 +211,13 @@ export default function CommandPalette({ open, onClose }: Props) {
   );
 }
 
-function PaletteSection({ items, active, setActive }: { items: Action[]; active: number; setActive: (i: number) => void }) {
+function PaletteSection({ items, active, setActive, busy, onExecute }: {
+  items: Action[];
+  active: number;
+  setActive: (i: number) => void;
+  busy: boolean;
+  onExecute: (action: Action) => void;
+}) {
   const { t } = useTranslation();
   const groups: Record<Action['group'], Action[]> = { nav: [], action: [], game: [] };
   for (const a of items) groups[a.group].push(a);
@@ -204,8 +241,9 @@ function PaletteSection({ items, active, setActive }: { items: Action[]; active:
                   id={`patzer-palette-option-${i}`}
                   role="option"
                   aria-selected={isActive}
+                  disabled={busy}
                   onMouseMove={() => setActive(i)}
-                  onClick={a.run}
+                  onClick={() => onExecute(a)}
                   className={cn(
                     'flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus',
                     isActive ? 'bg-ui-pressed text-ui-foreground' : 'text-ui-foreground hover:bg-ui-hover',

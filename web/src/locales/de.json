@@ -775,7 +775,9 @@
     "navGroup": "Navigation",
     "actionGroup": "Aktionen",
     "gameGroup": "Letzte Partien",
-    "esc": "Esc"
+    "esc": "Esc",
+    "actionBusy": "Änderung wird angewendet…",
+    "actionFailed": "Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen."
   },
   "shortcuts": {
     "title": "Tastenkürzel",

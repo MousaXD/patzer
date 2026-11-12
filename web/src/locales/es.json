@@ -622,7 +622,9 @@
     "tip": "⌘K / Ctrl+K para abrir · ? para atajos",
     "bookmarks": "Partidas destacadas",
     "themeLight": "Tema claro",
-    "themeDark": "Tema oscuro"
+    "themeDark": "Tema oscuro",
+    "actionBusy": "Aplicando cambio…",
+    "actionFailed": "No se pudo completar la acción. Inténtalo de nuevo."
   },
   "shortcuts": {
     "title": "Atajos de teclado",
