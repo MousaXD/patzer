@@ -99,12 +99,30 @@ describe('Home statistics failure', () => {
 
     mount();
     const name = screen.getByRole('heading', { level: 1, name: 'sample-player' });
-    expect(name.parentElement?.previousElementSibling?.textContent).toBe('♟');
+    expect(name.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent).toBe('♟');
+    expect(name.className).toContain('line-clamp-2');
+    expect(name.className).toContain('col-span-2');
     const hero = name.closest('section');
     for (const path of ['/play', '/review']) {
       const action = hero?.querySelector<HTMLAnchorElement>(`a[href="${path}"]`);
       expect(action?.className).toContain('min-h-11');
     }
+  });
+
+  it('keeps a long first-use display name accessible while allowing two readable lines on phones', () => {
+    const name = 'GrandmasterCandidateAccountWithAnExtraordinarilyLongDisplayName2026';
+    mocks.displayName = name;
+    mocks.get.mockResolvedValue({ games: [], goals: [], achievements: [], total: 0, wins: 0, losses: 0, draws: 0 });
+    mount();
+    const heading = screen.getByRole('heading', { level: 1, name });
+    expect(heading.getAttribute('title')).toBe(name);
+    expect(heading.className).toContain('line-clamp-2');
+    expect(heading.className).toContain('break-words');
+    expect(heading.className).toContain('col-span-2');
+    expect(heading.parentElement?.className).toContain('grid-cols-[auto_minmax(0,1fr)]');
+    expect(heading.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent).toBe('♟');
+    const continuation = screen.getByRole('region', { name: 'Continue improving' });
+    expect(continuation.querySelector('.grid')?.className).toContain('grid-cols-1');
   });
 
   it('keeps recent-game navigation and View all accessible on small touch screens', async () => {

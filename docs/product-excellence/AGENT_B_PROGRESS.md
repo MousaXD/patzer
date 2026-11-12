@@ -1193,3 +1193,34 @@
 ### Next audit
 
 - Examine the first-use Home hero with a *very long display name* and with increased system text size at 320px. Verify whether the greeting, action labels and player identity remain readable and the Play/Review actions retain 44px targets. Do not change otherwise-stable onboarding without an actual browser reproduction.
+
+## 2026-11-12: Keep long first-use identities readable at mobile sizes and enlarged text
+
+### Independent reproduction and cause
+
+- Continued from clean pushed `aa4e2d8`, checked Home's first-use hero in Chromium with a 65-character unbroken display name, 320/390/768px viewports, light/dark themes and root font sizes of 16px, 20px and 24px.
+- **Before:** the avatar and name shared a single narrow flex row, and the heading used a single-line ellipsis. At 320px/16px the name's visible area was just 192px, showing roughly `GrandmasterC…`; at 320px/24px it shrank to 128px and showed only `Gran…`. The full name was present semantically, but not discoverable visually.
+- **After first adjustment:** a separate full-width, two-line heading made more of the name legible while keeping the avatar and greeting. The extended browser fixture then **caught a separate genuine 2px horizontal overflow at 320px/24px** (`document.body.scrollWidth = 322`). The source was the Home activity-card grid's implicit `auto` minimum column, not the hero. An explicit shrinkable `grid-cols-1 min-w-0` column removed this overflow without changing card content.
+
+### Scoped implementation
+
+1. Replace the narrow identity flex row with a small grid: avatar and greeting share the first line on phones, while the heading gets the full second line; at `sm`+ the avatar spans both rows and the heading stays in the second column.
+2. Use a maximum of two breakable lines for the display name (rather than a hard one-line truncation), and preserve its complete value in the heading text and native title for hover.
+3. Give Continue Improving's activity grid an explicit shrinkable single-column mobile layout so enlarged browser text cannot stretch it beyond a 320px viewport.
+4. Update Home identity unit coverage and browser fixture's avatar lookup to match the new structure. Add a durable Chromium matrix for long names across **320, 390 and 768px**, **both themes**, and **100% and 150% root text sizes**, asserting the heading's two-line clamp, no overflow, full accessible title, and Play/Review links at least 44px and inside the hero.
+
+### Evidence and verification
+
+- Negative control: `artifacts/agent-02/audit-home-hero-long-320-16.png` and `audit-home-hero-long-320-24.png` demonstrated single-line identity loss.
+- Explicit overflow negative control: **322px body scroll width at a 320px viewport** after the initial hero change, with activity cards exceeding the right edge. Post-fix Chromium measured **320px** body width and no out-of-viewport descendants in both themes.
+- Inspected post-fix screenshots `home-long-identity-dark-320-font24.png` and normal `light-320x700.png`; full avatar, more meaningful first two name lines, usable Play and Game Review buttons, and stable first-use card hierarchy.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including prior responsive, localization, keyboard, recent-game, error-recovery and contrast cases.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **15/15 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **442/442 passed across 74 files**.
+- `npm run build -w web`: **passed** (TypeScript and Vite production bundle).
+- `git diff --check`: **passed**.
+- No changes to feature agents' worktrees, main, deployment or production data.
+
+### Next audit
+
+- Investigate **first-use onboarding links and their focus treatment** at 320px, especially at enlarged font sizes: the four learning/activity tiles may contain clipped focus rings or unreadable shortcut labels. Reproduce the actual problem using keyboard + Chromium before editing. Do not repeat completed hero or recent-game audits.

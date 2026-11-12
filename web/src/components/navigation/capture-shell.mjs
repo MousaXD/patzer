@@ -137,7 +137,7 @@ async function openWithFixture(page, viewport) {
   await checkHomeCardContrast(page, `${theme} ${viewport.width}x${viewport.height}`);
   const heroHeading = page.getByRole('heading', { level: 1, name: 'Sample Player' });
   const heroAvatar = await heroHeading.evaluate((heading) =>
-    heading.parentElement?.previousElementSibling?.textContent?.trim() ?? '');
+    heading.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent?.trim() ?? '');
   const hero = page.locator('main section').first();
   const actionSizes = [];
   for (const [name, path] of [['Play', '/play'], ['Game Review', '/review']]) {
@@ -292,11 +292,67 @@ try {
   await page.goto(origin, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { level: 1, name: 'sample-player' }).waitFor();
   const defaultAvatar = await page.getByRole('heading', { level: 1, name: 'sample-player' })
-    .evaluate((heading) => heading.parentElement?.previousElementSibling?.textContent?.trim() ?? '');
+    .evaluate((heading) => heading.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent?.trim() ?? '');
   if (!defaultAvatar) throw new Error('Homepage hero has no fallback avatar for an empty profile');
   await page.screenshot({ path: resolve(output, 'home-missing-profile-390.png') });
   profile.display_name = 'Sample Player';
   profile.avatar_emoji = '';
+
+  // Long first-use names were visually reduced to "Gran..." at 320px and
+  // to just a few letters with enlarged type: the name shared the avatar's
+  // narrow row and used a single-line ellipsis. Keep two readable lines
+  // across the full hero width without displacing the primary actions.
+  const longDisplayName = 'GrandmasterCandidateAccountWithAnExtraordinarilyLongDisplayName2026';
+  profile.display_name = longDisplayName;
+  for (const longNameTheme of ['light', 'dark']) {
+    theme = longNameTheme;
+    for (const viewport of [
+      { width: 320, height: 700 },
+      { width: 390, height: 844 },
+      { width: 768, height: 1024 },
+    ]) {
+      for (const rootFont of [16, 24]) {
+        await page.setViewportSize(viewport);
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        const heading = page.getByRole('heading', { level: 1, name: longDisplayName });
+        await heading.waitFor();
+        await page.waitForFunction((dark) =>
+          document.documentElement.classList.contains('dark') === dark, longNameTheme === 'dark');
+        await page.addStyleTag({ content: `html { font-size: ${rootFont}px !important; }` });
+        await page.evaluate(() => document.fonts.ready);
+        const state = await heading.evaluate((element) => {
+          const style = getComputedStyle(element);
+          const bounds = element.getBoundingClientRect();
+          const hero = element.closest('section');
+          const heroBounds = hero.getBoundingClientRect();
+          const actions = [...hero.querySelectorAll('a[href="/play"], a[href="/review"]')].map((link) => {
+            const box = link.getBoundingClientRect();
+            return { width: box.width, height: box.height,
+              withinHero: box.left >= heroBounds.left - 1 && box.right <= heroBounds.right + 1,
+              aboveFold: box.bottom <= window.innerHeight + 1 };
+          });
+          return {
+            title: element.getAttribute('title'), clamp: style.webkitLineClamp,
+            lines: bounds.height / parseFloat(style.lineHeight),
+            width: bounds.width, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+            actions,
+          };
+        });
+        if (state.title !== longDisplayName || state.clamp !== '2' || state.lines > 2.05 ||
+            state.scrollWidth > state.clientWidth + 1 ||
+            (viewport.width <= 390 && state.width < 200) ||
+            state.actions.length !== 2 ||
+            state.actions.some((action) => action.width < 44 || action.height < 44 ||
+              !action.withinHero || !action.aboveFold)) {
+          throw new Error(`Long Home identity ${longNameTheme}/${viewport.width}px/root${rootFont}: ${JSON.stringify(state)}`);
+        }
+        await checkNoHorizontalOverflow(page, `long Home identity ${longNameTheme}/${viewport.width}px/root${rootFont}`);
+        await page.screenshot({ path: resolve(output, `home-long-identity-${longNameTheme}-${viewport.width}-font${rootFont}.png`) });
+      }
+    }
+  }
+  profile.display_name = 'Sample Player';
+  theme = 'light';
 
   // A returning player should be able to touch View all in the recent-games
   // header, or jump into a game row, on the narrowest supported phone.

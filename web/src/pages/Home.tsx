@@ -155,14 +155,12 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
       <div className="relative grid gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] md:items-end">
         <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+            <div data-home-hero-avatar className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur sm:row-span-2">
               {avatar}
             </div>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.18em] text-white/55">{greeting}</div>
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{displayName}</h1>
-            </div>
+            <div className="min-w-0 text-xs uppercase tracking-[0.18em] text-white/55">{greeting}</div>
+            <h1 title={displayName} className="col-span-2 line-clamp-2 min-w-0 break-words text-2xl font-bold tracking-tight sm:col-span-1 sm:text-3xl">{displayName}</h1>
           </div>
 
           {loading ? (
@@ -253,7 +251,7 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
   return (
     <section aria-label={t('home.continue', { defaultValue: 'Continue improving' })}>
       <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">{t('home.continue', { defaultValue: 'Continue improving' })}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={0} variants={variants}>
           <LearnTile />
         </motion.div>
