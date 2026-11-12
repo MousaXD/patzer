@@ -13,6 +13,7 @@ const homeKeys = [
   'tileUnavailable', 'loadingGames', 'gamesUnavailable',
   'learnNext', 'learnResume', 'learnDesc', 'unreviewed',
   'streak.win', 'streak.loss', 'streak.draw',
+  'outcome.win', 'outcome.loss', 'outcome.draw',
 ] as const;
 
 function lookup(source: Record<string, unknown>, key: string): unknown {

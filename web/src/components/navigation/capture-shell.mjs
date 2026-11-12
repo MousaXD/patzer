@@ -20,6 +20,7 @@ let signedIn = true;
 let homeGamesMode = 'empty';
 let homeFailureMode = false;
 let fixtureUsername = 'sample-player';
+let fixtureGameResult = 'win';
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -40,7 +41,7 @@ const fixtures = (pathname) => {
   if (pathname === '/api/games') return { games: homeGamesMode === 'recent' ? [{
     id: 103, white: 'sample-player', black: 'OpponentWithALongName',
     user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
-    result: 'win', time_control: '600', opening_name: 'Italian Game', analyzed: false,
+    result: fixtureGameResult, time_control: '600', opening_name: 'Italian Game', analyzed: false,
   }] : [] };
   if (pathname === '/api/stats/me') return homeGamesMode === 'recent'
     ? { total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null }
@@ -286,8 +287,31 @@ try {
   if (tooSmall.length) {
     throw new Error('Recent games mobile touch targets are undersized: ' + JSON.stringify(tooSmall));
   }
+  const outcomeBadge = page.locator('main a[href="/review/103"]').getByRole('img', { name: 'Win' });
+  if (!(await outcomeBadge.count())) {
+    throw new Error('Recent-game W result badge does not announce the Win outcome accessibly');
+  }
   await checkNoHorizontalOverflow(page, 'recent games at 320px');
   await page.screenshot({ path: resolve(output, 'home-recent-games-mobile-320.png') });
+  for (const { result, label } of [
+    { result: 'loss', label: 'Loss' },
+    { result: 'draw', label: 'Draw' },
+    { result: 'ongoing', label: 'In progress' },
+  ]) {
+    fixtureGameResult = result;
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    const row = page.locator('main a[href="/review/103"]');
+    await row.getByRole('img', { name: label }).waitFor();
+    if (!(await page.getByRole('link', { name: new RegExp(label, 'i') }).count())) {
+      throw new Error(result + ' result missing from accessible game link name');
+    }
+  }
+  profile.language = 'es';
+  fixtureGameResult = 'win';
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.locator('main a[href="/review/103"]').getByRole('img', { name: 'Victoria' }).waitFor();
+  profile.language = 'en';
+  fixtureGameResult = 'win';
   homeGamesMode = 'empty';
 
   // Broken API dependencies must not strand a touch user with microscopic

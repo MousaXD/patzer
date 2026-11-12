@@ -998,3 +998,29 @@
 ### Next audit
 
 - Audit the **returning-player Home recent-game result glyphs** under a screen reader and keyboard. The list currently renders W/L/D letters without explanatory accessible names; verify actual link names with Chromium and fix only if they fail to communicate win/loss/draw outcomes.
+
+## 2026-11-12: Make recent-game results understandable to screen readers
+
+### Verified failure
+
+- Recovered clean, pushed Agent B `bc122cb`, then audited the Home recent-game links as documented, without altering Game Review/Library internals or replaying previous audits.
+- Real Chromium at **320×700px** confirmed that the visual `W` status badge had **no accessible Win graphic/name** inside the game link. Equivalent L/D letters and the in-progress bullet lacked reliably announced outcome meanings.
+
+### Scoped fix
+
+1. Kept the existing compact W/L/D/bullet visuals, colors and row dimensions, but assigned each result badge `role=img` with an explicit, localized accessible label and matching hover title. A screen reader now announces **Win / Loss / Draw / In progress** rather than isolated letters or an unexplained dot.
+2. Added Home-specific win/loss/draw names in all five supported locale dictionaries (English, German, Spanish, Russian, Bulgarian); the existing translated `review.inProgress` label remains the source for ongoing games.
+3. Added four Home unit regressions checking each actual badge's accessible name, visible symbol and title, plus locale coverage for the new result labels.
+4. Extended the real Chromium returning-player fixture through win, loss, draw, ongoing and Spanish victory cases. Verified that both the nested result graphic and containing `/review/:id` link expose the expected spoken outcome. The Win negative control failed before the implementation and passed afterward.
+
+### Verification
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including the new outcome accessibility matrix and earlier responsive/localized/error scenarios.
+- `npx vitest run web/src --maxWorkers=2`: **438/438 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No main merge, deployment, production-game changes or other agent worktree modifications.
+
+### Next audit
+
+- In the **320px returning-player recent-game row**, check whether the player's own name pushes the opponent completely out of view. If verified, prioritize the opponent identifier on narrow screens while retaining full white-vs-black names on larger screens and preserving accessibility.

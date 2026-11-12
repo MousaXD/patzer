@@ -1328,6 +1328,11 @@
     "tileUnavailable": "Progress temporarily unavailable",
     "loadingGames": "Loading recent games…",
     "gamesUnavailable": "Recent games could not be loaded.",
+    "outcome": {
+      "win": "Win",
+      "loss": "Loss",
+      "draw": "Draw"
+    },
     "greet": {
       "morning": "Good morning",
       "afternoon": "Good afternoon",

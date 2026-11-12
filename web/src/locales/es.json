@@ -875,6 +875,11 @@
     "tileUnavailable": "Progreso no disponible temporalmente",
     "loadingGames": "Cargando partidas recientes…",
     "gamesUnavailable": "No se pudieron cargar tus partidas recientes.",
+    "outcome": {
+      "win": "Victoria",
+      "loss": "Derrota",
+      "draw": "Tablas"
+    },
     "greet": {
       "morning": "Buenos días",
       "afternoon": "Buenas tardes",

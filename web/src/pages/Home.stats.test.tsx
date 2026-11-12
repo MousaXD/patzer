@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -58,6 +58,32 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
+  it.each([
+    ['win', 'Win', 'W'],
+    ['loss', 'Loss', 'L'],
+    ['draw', 'Draw', 'D'],
+    ['ongoing', 'In progress', '•'],
+  ])('announces recent-game %s as %s instead of a bare glyph', async (result, label, symbol) => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [{
+        id: 103, white: 'sample-player', black: 'OpponentWithALongName',
+        user_color: 'white', end_time: '2026-11-12T12:00:00Z',
+        result, time_control: '600', analyzed: false,
+      }] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    const link = await screen.findByRole('link', { name: /OpponentWithALongName/ });
+    expect(link.getAttribute('href')).toBe('/review/103');
+    const badge = within(link).getByRole('img', { name: label });
+    expect(badge.textContent?.trim()).toBe(symbol);
+    expect(badge.getAttribute('title')).toBe(label);
+  });
+
   it('shows a recognizable first-run identity and touch-sized hero actions when profile fields are blank', () => {
     mocks.displayName = '   ';
     mocks.avatarEmoji = '';

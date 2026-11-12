@@ -698,26 +698,36 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
 function ResultGlyph({ r }: { r: string }) {
   const { t } = useTranslation();
   if (r === 'win') {
+    const label = t('home.outcome.win', { defaultValue: 'Win' });
     return (
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
         W
       </span>
     );
   }
   if (r === 'loss') {
+    const label = t('home.outcome.loss', { defaultValue: 'Loss' });
     return (
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-bad">
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-bad">
         L
       </span>
     );
   }
-  if (r !== 'draw') return (
-    <span aria-label={t('review.inProgress', { defaultValue: 'In progress' })} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
-      •
-    </span>
-  );
+  if (r !== 'draw') {
+    const label = t('review.inProgress', { defaultValue: 'In progress' });
+    return (
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+        •
+      </span>
+    );
+  }
+  const label = t('home.outcome.draw', { defaultValue: 'Draw' });
   return (
-    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+    <span role="img" aria-label={label} title={label}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
       D
     </span>
   );

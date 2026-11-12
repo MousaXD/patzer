@@ -1328,6 +1328,11 @@
     "tileUnavailable": "Fortschritt derzeit nicht verfügbar",
     "loadingGames": "Letzte Partien werden geladen…",
     "gamesUnavailable": "Deine letzten Partien konnten nicht geladen werden.",
+    "outcome": {
+      "win": "Sieg",
+      "loss": "Niederlage",
+      "draw": "Remis"
+    },
     "greet": {
       "morning": "Guten Morgen",
       "afternoon": "Guten Tag",
