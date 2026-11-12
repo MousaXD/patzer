@@ -1408,6 +1408,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
   const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
+  const notesEditorRef = useRef<HTMLTextAreaElement>(null);
   // Keep the action focusable while its PATCH is pending. The synchronous
   // ref also prevents repeated Enter/Space from queuing duplicate toggles
   // before the pending React render has committed.
@@ -1512,6 +1513,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
       {showNotes && (
         <div id={`review-notes-${gameId}`} className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
           <textarea
+            ref={notesEditorRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => { if (draft !== notes) saveNotes.mutate(draft); }}
@@ -1522,7 +1524,13 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
           {saveError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
                 <span>{t(saveError)}</span>
                 <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
-                  onClick={() => saveNotes.mutate(draft)}>{t('review.notesRetrySave')}</button>
+                  onClick={(event) => {
+                    // Keyboard Retry disappears on success. Return focus to
+                    // the mounted draft before its transient alert unmounts;
+                    // pointer users keep their original scroll and focus.
+                    if (event.detail === 0) notesEditorRef.current?.focus({ preventScroll: true });
+                    saveNotes.mutate(draft);
+                  }}>{t('review.notesRetrySave')}</button>
               </div>}
               <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
                 <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>

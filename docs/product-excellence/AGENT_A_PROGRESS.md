@@ -1328,3 +1328,21 @@
 ### Next independent Game Review accessibility audit
 
 - Notes' **transient failed-save Retry** button unmounts after success, similarly to the already-fixed bookmark Retry. Audit keyboard Enter on it and verify focus recovers to the persistent Notes editor or Notes disclosure after success. Fix only if demonstrated in a real browser; preserve the existing draft and save-retry behavior.
+
+## 2026-11-12: recover keyboard focus to Notes editor after Retry
+
+### Actual browser failure and focused correction
+
+- Resumed from clean pushed `2c6dcc8`; updated the existing **Spanish authenticated notes failure + Retry + delayed dual-write** browser fixture. Focused the error banner's Retry and pressed Enter after the first synthetic 503. The saved draft retried successfully, but the error alert was removed and the keyboard focus was lost. New assertion requiring focus on the durable text editor **failed before the change** (`When Notes Retry succeeds and removes its own error banner, keyboard focus should return to the persistent editor`).
+- Added a mounted `notesEditorRef` to the existing textarea. On **keyboard activation only** (`event.detail===0`), the Retry button synchronously moves focus to that existing editor with `preventScroll` before beginning the original mutation. Pointer Retry and its page/scroll behavior remain unchanged. No change to saveNotes sequencing, error recovery, draft persistence, localized statuses, source analysis or saved PGN.
+- The same real-browser scenario is green after the change: keyboard Enter retries once, focus stays in the durable editor after the alert disappears, the original draft persists, and two subsequently queued drafts still save in order with the latest ultimately stored.
+
+### Verification and boundaries
+
+- `git diff --check`, `node --check scripts/review-polish-capture.mjs`, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium viewport/locale/keyboard/engine/variation/source/PGN matrix: **PASS (exit 0)** on port 8976. No deployment, main merge, active database, or other agent worktree changes.
+
+### Next independent Game Review discoverability audit
+
+- Inspect the **Flip board** action next to Star. It reverses the board and has a readable label but may not expose the **current flipped state** to screen readers, unlike Star's `aria-pressed`. Check the button's actual accessibility state and the board orientation in Chromium before adding an accessible toggle state; preserve the current board behavior and keyboard controls.

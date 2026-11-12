@@ -648,11 +648,13 @@ try {
     assert.ok(retryBox && retryBox.height>=44,`Notes retry is too small: ${JSON.stringify(retryBox)}`);
     await retry.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'review-notes-save-failure-es-390.png')});
-    await Promise.all([
-      page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`) && response.status()===200),
-      retry.click(),
-    ]);
+    const keyboardNotesRetryResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`) && response.status()===200);
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await keyboardNotesRetryResponse;
     await page.getByText(spanishNotes.review.notesSaveFailed,{exact:true}).waitFor({state:'hidden'});
+    assert.ok(await editor.evaluate(element=>document.activeElement===element),
+      'When Notes Retry succeeds and removes its own error banner, keyboard focus should return to the persistent editor');
     assert.equal(noteAttempts,2,'Notes retry must send exactly one new PATCH');
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,
       'Nota de ensayo: revisar la partida','Successful retry must persist the unchanged draft');
