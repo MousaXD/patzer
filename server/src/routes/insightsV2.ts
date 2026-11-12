@@ -232,6 +232,9 @@ router.get('/', (c) => {
         // Keep the API key stable; the UI labels the measured event precisely.
         if (m.centipawn_loss >= 200) tax.hung_pieces++;
         if (m.classification === 'blunder' && hasBackRankSignature(m.fen_after, userColor)) tax.back_rank++;
+        // Legacy `opening_pitfalls` covers all mistakes in the opening phase,
+        // not only opening traps or a fixed "before move 15" range. `phaseFor`
+        // respects stored phase boundaries and falls back when unavailable.
         if (phase === 'opening') tax.opening_pitfalls++;
         if (phase === 'endgame') tax.endgame_drift++;
         if (m.classification === 'blunder') {

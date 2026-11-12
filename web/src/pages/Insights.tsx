@@ -164,7 +164,7 @@ function NextStepCard({ data }: { data: InsightsV2 }) {
     { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }) },
     { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }) },
     { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }) },
-    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening pitfalls' }) },
+    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening mistakes' }) },
     { key: 'endgame_drift', label: t('insights.tax.endgameDrift', { defaultValue: 'Endgame drift' }) },
     { key: 'promising_to_losing', label: t('insights.tax.promisingLosing', { defaultValue: 'Squandered advantages' }) },
   ];
@@ -705,7 +705,7 @@ function MistakeTaxonomyCard({ data }: { data: InsightsV2['mistake_taxonomy'] })
     { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }), desc: t('insights.tax.oneMoveDesc', { defaultValue: 'Sudden cliff edges' }) },
     { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }), desc: t('insights.tax.backRankDesc', { defaultValue: 'King exposed on home rank' }) },
     { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }), desc: t('insights.tax.missedMateDesc', { defaultValue: 'You had it — and walked away' }) },
-    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening pitfalls' }), desc: t('insights.tax.openingTrapDesc', { defaultValue: 'Mistakes before move 15' }) },
+    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening mistakes' }), desc: t('insights.tax.openingTrapDesc', { defaultValue: 'Mistakes in positions classified as the opening phase.' }) },
     { key: 'endgame_drift', label: t('insights.tax.endgameDrift', { defaultValue: 'Endgame drift' }), desc: t('insights.tax.endgameDriftDesc', { defaultValue: 'Errors in technical positions' }) },
     { key: 'promising_to_losing', label: t('insights.tax.promisingLosing', { defaultValue: 'Squandered advantages' }), desc: t('insights.tax.promisingLosingDesc', { defaultValue: '+1.5 → flat in one move' }) },
   ];

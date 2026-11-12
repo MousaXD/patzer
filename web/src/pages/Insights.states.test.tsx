@@ -34,6 +34,28 @@ function mount() {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Insights data states', () => {
+  it('labels opening-phase mistakes without inventing a move-15 cutoff or a specific trap', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 1, games_analyzed: 1, activity_heatmap: [], rating_trajectory: {},
+        time_class_stats: {}, opening_repertoire: [], accuracy_trend: [],
+        phase_accuracy: { opening: 70, middlegame: 0, endgame: 0 },
+        phase_samples: { opening: 1, middlegame: 0, endgame: 0 },
+        mistake_taxonomy: {
+          hung_pieces: 0, one_move_blunders: 0, back_rank: 0, missed_mate: 0,
+          opening_pitfalls: 1, endgame_drift: 0, promising_to_losing: 0,
+        },
+      });
+    });
+    mount();
+    expect(await screen.findByText('Your next chess step')).toBeTruthy();
+    expect(screen.getAllByText('Opening mistakes')).toHaveLength(2);
+    expect(screen.getByText('Mistakes in positions classified as the opening phase.')).toBeTruthy();
+    expect(screen.queryByText('Opening pitfalls')).toBeNull();
+    expect(screen.queryByText('Mistakes before move 15')).toBeNull();
+  });
+
   it('describes centipawn evaluation losses without claiming a player hung material', async () => {
     mocks.get.mockImplementation((url: string) => {
       if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
@@ -112,7 +134,7 @@ describe('Insights data states', () => {
     });
     mount();
     expect(await screen.findByText('Your next chess step')).toBeTruthy();
-    expect(screen.getAllByText('Opening pitfalls').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Opening mistakes').length).toBeGreaterThan(0);
     // The test translation mock returns default templates verbatim.
     expect(screen.getByText(/tagged moves across your analyzed games/)).toBeTruthy();
     expect(screen.getByText('Not measured')).toBeTruthy();
