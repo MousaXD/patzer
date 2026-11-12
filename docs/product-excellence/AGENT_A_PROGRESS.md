@@ -652,3 +652,29 @@
 ### Next scope issue
 
 - The MoveList empty message `No recorded moves.` is hard-coded English while Game Review's other empty states support all five locales. Verify in a component render for an analysis-less/empty saved game and improve only this Review-specific text. Investigate whether phase banners and starting-position announcements stay sensible for a valid zero-move PGN, without changing PGN or analysis source requirements.
+
+## 2026-11-12: replay saved PGNs without Stockfish and localize zero-move recovery
+
+### Reproduced product defect
+
+- Continued from clean, pushed `a5c461d` and the recorded empty-history localization audit. Inspection showed a more consequential related problem: `GameAnalyzer` mounted the entire saved `MoveList` only inside `analysis && (...)`. If Stockfish was not run, had failed, or its cached analysis was unusable, the legal PGN could still be stepped through on the board but its actual SAN move history disappeared from Game Review. This prevented direct learning/navigation without an engine.
+- Added disposable authenticated Spanish Chromium interception preserving the saved game but returning `analysis:null` on `/api/games/:id`, plus a separate legal zero-move PGN (`*`). **Before the fix**, the real browser failed waiting for the `Jugadas` history region. Focused empty-state/localization tests also deliberately failed for missing translation keys and hardcoded English.
+
+### Narrow correction and independent audit
+
+- Mounted a small, explicit Game Review-only PGN history panel when full engine analysis is unavailable. It reuses `buildSavedReviewTimeline(positions, analysis?.moves)`, the same legal replay move list, existing pointer/keyboard controls and starting FEN; no classifications, imaginary 0.00 evaluation, AI advice, or source-inconsistent scores are introduced. Run Engine remains available as before.
+- Replaced `No recorded moves.` with translated `review.noRecordedMoves` (announced as status), and added a short localized explanation that saved legal moves are replayable before engine analysis is ready. Added matching natural strings for English, German, Spanish, Russian and Bulgarian and explicit locale parity tests.
+- Fixed a new accessibility integration issue caught by the first post-fix Chromium run: the outer `<section aria-labelledby>` and inner MoveList both exposed duplicate named `Jugadas` regions. Removed the outer named region while retaining its visible heading; MoveList is now the single accessible history region.
+- Added unit evidence that an empty but legal PGN replays to one starting position, never to an invalid/blank review.
+
+### Verified evidence
+
+- Focused MoveList/PGN-replay/locales tests: **59 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **985 passed / 12 skipped**, 107 passing files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**, including both new Spanish no-engine states, complete saved PGN navigation via `e5` (ply 2/24), no fabricated evaluated equality, correct Spanish starting position and zero-move text, and unchanged persisted PGN. All prior responsive, source, retry, variation, keyboard and AI coach checks also passed.
+- Independently opened `qa-artifacts/agent-a/saved-history-no-engine-verified-20261112/saved-pgn-without-engine-{unscored,empty}-es-390.png`: the game is navigable in Spanish without an engine; zero-move games render their real initial board, `0 / 0`, and `Esta partida no tiene jugadas registradas.` The green engine action stays available for appropriate games.
+- All browser engine scores remain synthetic fixtures, not Stockfish scoring certification. No merge/deploy, production SQLite mutation or other agents' edits.
+
+### Next priority
+
+- The partial-analysis Moves tab contains the hardcoded English status `This move is saved in the game but has no engine evaluation yet.` and an action labeled `Reanalyze the full game` which only opens engine-depth settings. Investigate in a real partial-score saved PGN whether this call-to-action actually exposes the intended recovery path, localize the status in all five languages, and ensure the retry is discoverable, labeled truthfully and keyboard recoverable. Avoid changing backend scoring/source semantics.

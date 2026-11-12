@@ -282,6 +282,8 @@
     "depth": "Depth",
     "accuracy": "Accuracy",
     "moves": "Moves",
+    "noRecordedMoves": "No recorded moves.",
+    "savedMovesWithoutAnalysis": "You can replay saved moves even before engine analysis is ready.",
     "jumpToMoveDetails": "Move details",
     "returnToBoard": "Back to board",
     "exploreLabel": "Explore:",

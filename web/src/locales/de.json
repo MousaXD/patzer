@@ -282,6 +282,8 @@
     "depth": "Tiefe",
     "accuracy": "Genauigkeit",
     "moves": "Züge",
+    "noRecordedMoves": "In dieser Partie wurden keine Züge aufgezeichnet.",
+    "savedMovesWithoutAnalysis": "Du kannst gespeicherte Züge auch ansehen, bevor die Engine-Analyse bereit ist.",
     "jumpToMoveDetails": "Zugdetails",
     "returnToBoard": "Zurück zum Brett",
     "exploreLabel": "Erkunden:",

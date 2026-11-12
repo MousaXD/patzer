@@ -282,6 +282,8 @@
     "depth": "Глубина",
     "accuracy": "Точность",
     "moves": "Ходы",
+    "noRecordedMoves": "В этой партии нет записанных ходов.",
+    "savedMovesWithoutAnalysis": "Вы можете просматривать сохранённые ходы, даже пока анализ движка не готов.",
     "jumpToMoveDetails": "Разбор хода",
     "returnToBoard": "Вернуться к доске",
     "exploreLabel": "Изучить:",

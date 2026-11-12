@@ -50,7 +50,8 @@ describe('Game Review move history', () => {
     const html = renderToStaticMarkup(createElement(MoveList, {
       moves: [], current: 0, onSelect: () => undefined,
     }));
-    expect(html).toContain('No recorded moves.');
+    expect(html).toContain('review.noRecordedMoves');
+    expect(html).not.toContain('No recorded moves.');
     expect(html).toContain('Starting position');
   });
 });

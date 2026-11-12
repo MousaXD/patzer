@@ -1085,6 +1085,20 @@ function GameAnalyzerView() {
             </button>
           )}
 
+          {/* Engine scores are optional; a legal saved PGN is still a usable
+              replay. Never hide its actual move history behind Stockfish
+              availability, and never imply that unscored moves are equal. */}
+          {!analysis && (
+            <div className="card p-3">
+              <h2 id="review-unscored-moves-heading" className="text-sm font-semibold">{t('review.moves')}</h2>
+              <p className="mb-3 mt-1 text-xs text-chesscom-500 dark:text-chesscom-300">
+                {t('review.savedMovesWithoutAnalysis')}
+              </p>
+              <MoveList moves={timeline.moves} current={isVariation ? -1 : ply}
+                onSelect={selectSavedFromRail} startFen={positions[0]?.fen} />
+            </div>
+          )}
+
           {analysis && (
             <>
               <OpeningBanner eco={eco} name={openingName} prose={reviewProse?.opening?.prose} />

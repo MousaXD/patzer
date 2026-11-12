@@ -2378,6 +2378,61 @@ try {
     await page.screenshot({path:join(output,'unscored-eval-graph-localized-es-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await noEvalContext.close();}
+  // Engine analysis is optional evidence; the saved PGN must remain usable
+  // as a move-by-move review even before the engine starts or after an outage.
+  // Check real Spanish Game Review with normal and zero-move legal PGNs.
+  const originalPgnWithoutEngine=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+  const spanishWithoutEngine=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+  const emptyLocale=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,
+    body:{language:'es',site_theme:'dark'}});
+  assert.equal(emptyLocale.status,200);
+  for(const [label,fixturePgn] of [['unscored',originalPgnWithoutEngine],['empty','*']]){
+    const noEngineContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await noEngineContext.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await noEngineContext.newPage();
+      await page.route(`**/api/games/${id}`,async route=>{
+        const response=await route.fetch();
+        const details=await response.json();
+        details.game.pgn=fixturePgn;
+        details.analysis=null;
+        details.analysis_stale=false;
+        details.analysis_unverified=false;
+        await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+      });
+      await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+      await page.locator('cg-board').waitFor({state:'visible'});
+      await page.getByRole('button',{name:spanishWithoutEngine.review.runEngine}).waitFor({state:'visible'});
+      const moveList=page.getByRole('region',{name:spanishWithoutEngine.review.moves});
+      await moveList.waitFor({state:'visible',timeout:4000});
+      if(label==='unscored'){
+        const first=moveList.getByRole('button',{name:/^1\. Blancas e4/});
+        const second=moveList.getByRole('button',{name:/^1… Negras e5/});
+        await first.waitFor({state:'visible'});
+        await second.click();
+        await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')
+          ?.textContent?.trim()==='2 / 24',undefined,{timeout:4000});
+        assert.equal(await second.getAttribute('aria-current'),'step',
+          'An unscored saved PGN must allow SAN selection without engine classifications');
+        assert.equal(await page.locator('[data-review-move-summary]').getByText('0.00',{exact:true}).count(),0,
+          'Unscored saved moves must never be presented as engine-evaluated equality');
+      }else{
+        await page.getByText(spanishWithoutEngine.review.noRecordedMoves,{exact:true})
+          .waitFor({state:'visible'});
+        const starting=moveList.getByRole('button',{name:spanishWithoutEngine.review.startingPosition});
+        assert.equal(await starting.getAttribute('aria-current'),'step');
+        await starting.click();
+        assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'0 / 0');
+        assert.equal(await page.getByText('No recorded moves.',{exact:true}).count(),0,
+          'A Spanish zero-move game must not fall back to the English empty state');
+      }
+      await moveList.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`saved-pgn-without-engine-${label}-es-390.png`)});
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgnWithoutEngine,
+        'Unscored Review navigation must never mutate persisted game PGN');
+    }finally{await noEngineContext.close();}
+  }
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},
   });

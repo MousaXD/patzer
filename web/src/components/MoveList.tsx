@@ -95,7 +95,9 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
       >
         {t('review.startingPosition', { defaultValue: 'Starting position' })}
       </button>
-      {moves.length === 0 && <p className="px-3 py-3 text-xs text-chesscom-500 dark:text-chesscom-300">No recorded moves.</p>}
+      {moves.length === 0 && <p role="status" className="px-3 py-3 text-xs text-chesscom-500 dark:text-chesscom-300">
+        {t('review.noRecordedMoves')}
+      </p>}
       {phaseSplit?.opening && (
         <PhaseDivider label={t('review.opening')} />
       )}

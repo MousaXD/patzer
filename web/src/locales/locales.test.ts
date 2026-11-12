@@ -83,6 +83,10 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       }
     });
     it('provides distinct, translated review recovery and retry messages', () => {
+      for (const key of ['noRecordedMoves', 'savedMovesWithoutAnalysis'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
       for (const reason of ['invalid', 'unreadable', 'notFound', 'loadFailed'] as const) {
         expect(locale.review.unavailableReason[reason]?.trim().length).toBeGreaterThan(0);
         if (lang !== 'en') {
