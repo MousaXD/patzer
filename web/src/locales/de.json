@@ -344,6 +344,8 @@
     "clipboardUnavailable": "Kopieren in die Zwischenablage ist nicht verfügbar. Markiere den Text unten und kopiere ihn manuell.",
     "notes": "Notizen",
     "notesSaveFailed": "Die Notizen konnten nicht gespeichert werden. Dein Entwurf bleibt erhalten; versuche es erneut.",
+    "notesLeaveTitle": "Notizen noch nicht gespeichert",
+    "notesLeaveSaving": "Deine privaten Notizen werden vor dem Verlassen dieser Partie gespeichert…",
     "notesRetrySave": "Erneut speichern",
     "notesPlaceholder": "Deine privaten Notizen zu dieser Partie…",
     "notesPrivate": "Nur du kannst das sehen.",

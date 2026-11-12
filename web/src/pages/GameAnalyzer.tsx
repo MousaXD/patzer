@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate, useLocation, useBlocker } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUp, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
@@ -1406,11 +1406,16 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
   const [saveError, setSaveError] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
+  const [acknowledgedDraft, setAcknowledgedDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
   const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
   const notesToggleRef = useRef<HTMLButtonElement>(null);
   const notesEditorRef = useRef<HTMLTextAreaElement>(null);
+  const notesStayRef = useRef<HTMLButtonElement>(null);
+  const notesLeaveDialogRef = useRef<HTMLDivElement>(null);
+  const queuedNoteTextsRef = useRef(new Set<string>());
+  const navigationAutoSaveRef = useRef<string | null>(null);
   // Keep the action focusable while its PATCH is pending. The synchronous
   // ref also prevents repeated Enter/Space from queuing duplicate toggles
   // before the pending React render has committed.
@@ -1419,6 +1424,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
     confirmedNotesRef.current = notes;
+    setAcknowledgedDraft(notes);
   }, [notes]);
 
   const star = useMutation({
@@ -1449,17 +1455,101 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
     // cannot overwrite a newer note on the server.
     scope: { id: `review-notes:${gameId}` },
     mutationFn: (text: string) => api.patch(`/api/games/${gameId}/notes`, { notes: text }),
-    onSuccess: () => {
+    onMutate: () => setSaveError(''),
+    onSuccess: (_response, text) => {
+      setAcknowledgedDraft(text);
       setSaveError('');
       setSavedAt(Date.now()); setTimeout(() => setSavedAt(null), 1400);
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
     onError: () => setSaveError('review.notesSaveFailed'),
+    onSettled: (_response, _error, text) => { queuedNoteTextsRef.current.delete(text); },
   });
+
+  const submitNotes = (text: string) => {
+    // Blur and an attempted navigation can happen in the same event turn.
+    // Keep exactly one outstanding PATCH per draft; different drafts still
+    // use the existing ordered mutation scope.
+    if (queuedNoteTextsRef.current.has(text)) return;
+    queuedNoteTextsRef.current.add(text);
+    saveNotes.mutate(text);
+  };
+  const notesNotSafelyStored = draft !== acknowledgedDraft || saveNotes.isPending || !!saveError;
+  const notesBlocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (!notesNotSafelyStored) return false;
+    if (currentLocation.pathname !== nextLocation.pathname) return true;
+    // Normal move navigation only updates ?ply= and keeps this editor
+    // mounted. Practice pickers can replace the Review workspace entirely.
+    const current = new URLSearchParams(currentLocation.search);
+    const next = new URLSearchParams(nextLocation.search);
+    return current.get('practice') !== next.get('practice') ||
+      current.get('practicePly') !== next.get('practicePly');
+  });
+  useEffect(() => {
+    if (notesBlocker.state !== 'blocked') { navigationAutoSaveRef.current = null; return; }
+    if (saveNotes.isPending || saveError) return;
+    if (draft === acknowledgedDraft) { notesBlocker.proceed(); return; }
+    if (navigationAutoSaveRef.current !== draft) {
+      navigationAutoSaveRef.current = draft;
+      submitNotes(draft);
+    }
+  }, [notesBlocker.state, saveNotes.isPending, saveError, draft, acknowledgedDraft]);
+  useEffect(() => {
+    if (!notesNotSafelyStored) return;
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', preventLoss);
+    return () => window.removeEventListener('beforeunload', preventLoss);
+  }, [notesNotSafelyStored]);
+  const stayWithDraft = () => {
+    if (notesBlocker.state === 'blocked') notesBlocker.reset();
+    setShowNotes(true);
+    requestAnimationFrame(() => notesEditorRef.current?.focus({ preventScroll: true }));
+  };
+  useEffect(() => {
+    if (notesBlocker.state !== 'blocked') return;
+    notesStayRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); stayWithDraft(); return; }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(notesLeaveDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (first && last && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();last.focus();
+      } else if (first && last && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [notesBlocker.state]);
 
   return (
     <div className="card overflow-hidden" data-review-meta-toolbar>
+      {notesBlocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+          <div ref={notesLeaveDialogRef} role="alertdialog" aria-modal="true"
+            aria-labelledby={`review-notes-leave-title-${gameId}`}
+            aria-describedby={`review-notes-leave-description-${gameId}`}
+            className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-ink-900 shadow-2xl dark:border-ink-700 dark:bg-ink-800 dark:text-cream">
+            <h2 id={`review-notes-leave-title-${gameId}`} className="text-lg font-semibold">{t('review.notesLeaveTitle')}</h2>
+            <p id={`review-notes-leave-description-${gameId}`} className="mt-2 text-sm text-ink-500 dark:text-ink-300">
+              {saveError ? t(saveError) : t('review.notesLeaveSaving')}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button ref={notesStayRef} type="button" className="btn-secondary min-h-11" onClick={stayWithDraft}>
+                {t('settings.keepEditing')}
+              </button>
+              {saveError && <button type="button" className="btn-primary min-h-11" onClick={() => submitNotes(draft)}>
+                {t('review.notesRetrySave')}
+              </button>}
+              {saveError && <button type="button" className="btn-secondary min-h-11" onClick={() => notesBlocker.proceed()}>
+                {t('settings.discardChanges')}
+              </button>}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
           ref={bookmarkButtonRef}
@@ -1519,7 +1609,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
             ref={notesEditorRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => { if (draft !== notes) saveNotes.mutate(draft); }}
+            onBlur={() => { if (draft !== acknowledgedDraft) submitNotes(draft); }}
             maxLength={4000}
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
@@ -1544,7 +1634,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
             if (event.detail === 0) {
               (showNotes ? notesEditorRef : notesToggleRef).current?.focus({ preventScroll: true });
             }
-            saveNotes.mutate(draft);
+            submitNotes(draft);
           }}>{t('review.notesRetrySave')}</button>
       </div>}
     </div>

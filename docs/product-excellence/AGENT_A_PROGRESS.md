@@ -1405,3 +1405,23 @@
 ### Next high-value saved-notes reliability audit
 
 - Notes autosaves on textarea blur, including when navigating away from Game Review. Investigate an in-app navigation from the unsaved editor with a **delayed or rejected PATCH**: confirm whether the pending save continues, and whether a failed save can silently lose a private draft when the page unmounts. Do not alter routing or introduce blockers without a verified failure and a minimally invasive, accessible solution.
+
+## 2026-11-13: prevent private Notes loss on navigation before save settles
+
+### Source audit, independent browser failure, and correction
+
+- Continued from clean pushed `f6e72fd`. Unlike Settings, Game Review's Notes autosave on blur did not protect SPA navigation while its PATCH was pending: the new authenticated Chromium test typed a private draft, held the PATCH, then clicked the real Back link. **Before the fix**, route changed to `/review` while the save was unresolved; after a synthetic 503, the only copy of the draft had unmounted, and there was no visible Retry. The baseline asserted `/review/<game>` but got `/review`.
+- Added a narrowly scoped `useBlocker` within `GameMetaToolbar`, not a site-wide navigation intercept. It guards only an unacknowledged or pending Notes draft / save error when the route pathname or practice workspace changes, and adds the matching `beforeunload` protection for a tab close. Ordinary move navigation via `?ply=` remains unblocked. The existing serialized mutation scope is retained; a synchronous per-draft queued-text Set avoids duplicate blur/navigation PATCHes. The last acknowledged draft is tracked separately so an older successful response cannot falsely release a newer edit.
+- While a pending navigation waits, a keyboard-accessible, focus-contained `alertdialog` explains that private Notes are saving. A successful response automatically continues the original navigation; a failed response preserves the mounted draft with **Keep editing**, **Retry save**, and an explicit **Discard changes** action. Escape cancels the blocked navigation and focuses the surviving textarea. No failure silently discards a note; Discard is deliberate and does not overwrite last acknowledged text. Both new dialog strings are translated in all five locales and covered by locale parity tests.
+- Authenticated disposable Chromium tested **five distinct paths** at 390px: held request blocks Back, synthetic 503 shows recovery, keyboard Retry persists the same draft before navigating, normal successful autosave navigates automatically, and deliberate Discard keeps previously saved backend text. Added the final **Keep editing** path after a fresh 503: it cancels navigation, keeps the entire typed draft, restores keyboard focus to its textarea, and the next blur successfully saves. The saved PGN is unchanged throughout. Inspected `qa-artifacts/agent-a/notes-leave-protection-after-20261113/review-notes-leave-while-saving-390.png` and `review-notes-leave-save-failed-390.png`: modal text and buttons are legible on mobile with accessible targets.
+
+### Verification and isolation
+
+- `git diff --check`, `node --check scripts/review-polish-capture.mjs`: PASS. Focused Notes/locale tests: **54 passed**. `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium desktop/mobile, theme/locale, board, engine, keyboard, source/PGN/variation matrix **PASS (exit 0)** on port 8987 (final Keep editing coverage). Prior complete run on port 8986 also passed successful autosave, failure/retry and explicit discard.
+- No merge, deployment, active production database/service modification or other agent branch/worktree edits. All HTTP failures and note drafts are synthetic fixtures in an isolated browser and database.
+
+### Next scoped reliability audit
+
+- Check the guarded Notes flow for a **second edit while the first save is pending**, followed by a navigation attempt. The first completion must not auto-leave before the newer draft has been acknowledged; guard against that only if a real browser shows a race. Verify modal keyboard focus and state updates stay consistent before changing the feature further.

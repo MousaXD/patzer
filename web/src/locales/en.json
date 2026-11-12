@@ -344,6 +344,8 @@
     "clipboardUnavailable": "Clipboard access is blocked. Select the text below and copy it manually.",
     "notes": "Notes",
     "notesSaveFailed": "Could not save your notes. Your draft is still here; try again.",
+    "notesLeaveTitle": "Notes not saved yet",
+    "notesLeaveSaving": "Saving your private notes before leaving this game…",
     "notesRetrySave": "Retry save",
     "notesPlaceholder": "Your private notes on this game…",
     "notesPrivate": "Only you can see this.",

@@ -339,6 +339,8 @@
     "clipboardUnavailable": "No se puede copiar al portapapeles. Selecciona el texto de abajo y cópialo manualmente.",
     "notes": "Notas",
     "notesSaveFailed": "No se pudieron guardar tus notas. El borrador sigue aquí; inténtalo de nuevo.",
+    "notesLeaveTitle": "Las notas aún no se han guardado",
+    "notesLeaveSaving": "Guardando tus notas privadas antes de salir de esta partida…",
     "notesRetrySave": "Reintentar guardado",
     "notesPlaceholder": "Tus notas privadas sobre esta partida…",
     "notesPrivate": "Solo tú puedes ver esto.",

@@ -764,6 +764,116 @@ try {
       'Reopening Notes must display the latest successful draft');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await collapsedNotesContext.close();}
+  // Leaving Review while a blurred note PATCH is unresolved must not silently
+  // discard the only copy of a private draft. Hold a failing request while a
+  // user follows the real Back link; source PGN must never be affected.
+  const leaveNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseLeavingNotes=()=>{};
+  try{
+    await leaveNotesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await leaveNotesContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const held=new Promise(resolve=>{releaseLeavingNotes=resolve;});
+    let failures=0;
+    await page.route(`**/api/games/${id}/notes`,async route=>{
+      failures++;
+      if(failures===1 || failures===4 || failures===5){
+        if(failures===1) await held;
+        await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+      } else await route.continue();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const draft='Draft must survive leaving Review after a save failure';
+    await page.getByPlaceholder(enNotes.review.notesPlaceholder).fill(draft);
+    const pending=page.waitForRequest(request=>request.url().endsWith(`/api/games/${id}/notes`)
+      && request.postDataJSON().notes===draft);
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    await pending;
+    assert.equal(new URL(page.url()).pathname,`/review/${id}`,
+      'A pending note PATCH must keep the user in Review until the new draft is safely stored');
+    const leaveDialog=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
+    await leaveDialog.getByText(enNotes.review.notesLeaveSaving,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    await page.screenshot({path:join(output,'review-notes-leave-while-saving-390.png')});
+    releaseLeavingNotes();
+    await leaveDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.ok(await leaveDialog.getByRole('button',{name:'Discard changes'}).isVisible(),
+      'A failed save must permit a deliberate, clearly labeled leave-without-saving choice');
+    assert.equal(failures,1);
+    assert.equal(await page.getByPlaceholder(enNotes.review.notesPlaceholder).inputValue(),draft);
+    await page.screenshot({path:join(output,'review-notes-leave-save-failed-390.png')});
+    const retry=leaveDialog.getByRole('button',{name:enNotes.review.notesRetrySave,exact:true});
+    await retry.focus();
+    const savedRequest=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===draft);
+    await page.keyboard.press('Enter');
+    await savedRequest;
+    await page.waitForURL(`${base}/review`,{timeout:5000});
+    assert.equal(failures,2,'Retry from the leave guard must save the latest draft once');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,draft,
+      'Successful recovery must persist the draft before leaving Game Review');
+    await page.locator(`a[href="/review/${id}"]`).first().click();
+    await page.waitForURL(`${base}/review/${id}`);
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    assert.equal(await page.getByPlaceholder(enNotes.review.notesPlaceholder).inputValue(),draft,
+      'Reopening Game Review must show the last safely stored note');
+    // A normal successful blur save must continue the user's originally
+    // requested navigation automatically, without an unnecessary discard.
+    const nextDraft='Autosave succeeds and navigation continues automatically';
+    await page.getByPlaceholder(enNotes.review.notesPlaceholder).fill(nextDraft);
+    const automaticSave=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===nextDraft);
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    await automaticSave;
+    await page.waitForURL(`${base}/review`,{timeout:5000});
+    assert.equal(failures,3);
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,nextDraft);
+    // After an explicit 503, users who choose Discard changes may still
+    // leave. That choice must never overwrite the last acknowledged draft.
+    await page.locator(`a[href="/review/${id}"]`).first().click();
+    await page.waitForURL(`${base}/review/${id}`);
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    await page.getByPlaceholder(enNotes.review.notesPlaceholder).fill('Intentionally discarded notes after a failed save');
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    const discardDialog=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
+    await discardDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.equal(new URL(page.url()).pathname,`/review/${id}`);
+    await discardDialog.getByRole('button',{name:'Discard changes'}).click();
+    await page.waitForURL(`${base}/review`,{timeout:5000});
+    assert.equal(failures,4);
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,nextDraft,
+      'An explicit discard must not overwrite previously stored notes');
+    // Keep editing must restore the draft and keyboard focus, rather than
+    // trapping a player in the blocked navigation dialog after a 503.
+    await page.locator(`a[href="/review/${id}"]`).first().click();
+    await page.waitForURL(`${base}/review/${id}`);
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const retainedDraft='Keep editing retains this private note after a failed save';
+    const reopenedEditor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    await reopenedEditor.fill(retainedDraft);
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    const keepDialog=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
+    await keepDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    await keepDialog.getByRole('button',{name:'Keep editing'}).click();
+    await keepDialog.waitFor({state:'hidden',timeout:3000});
+    assert.equal(new URL(page.url()).pathname,`/review/${id}`);
+    assert.equal(await reopenedEditor.inputValue(),retainedDraft);
+    assert.ok(await reopenedEditor.evaluate(element=>document.activeElement===element),
+      'Keep editing should return keyboard focus to the surviving note draft');
+    const nextSave=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===retainedDraft);
+    await reopenedEditor.press('Tab');
+    await nextSave;
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,retainedDraft);
+    assert.equal(failures,6);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{releaseLeavingNotes();await leaveNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
