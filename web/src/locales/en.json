@@ -386,6 +386,8 @@
     },
     "libraryFilterGroup": "Filter and sort games",
     "clearLibraryFilters": "Clear filters",
+    "libraryVisibleCount": "{{visible}} of {{total}} games",
+    "libraryUpdating": "Updating",
     "libraryFilterOptions": {
       "source": {
         "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",

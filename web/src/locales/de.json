@@ -386,6 +386,8 @@
     },
     "libraryFilterGroup": "Partien filtern und sortieren",
     "clearLibraryFilters": "Filter zurücksetzen",
+    "libraryVisibleCount": "Partien: {{visible}} von {{total}}",
+    "libraryUpdating": "Wird aktualisiert",
     "libraryFilterOptions": {
       "source": {
         "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",

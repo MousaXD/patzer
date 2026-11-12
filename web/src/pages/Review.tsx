@@ -86,7 +86,7 @@ function updateBookmarkInCache(value: unknown, id: number, bookmarked: number): 
 }
 
 export default function Review() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const accountIdRef = useRef(user?.id);
   accountIdRef.current = user?.id;
@@ -697,8 +697,12 @@ export default function Review() {
         <span className="text-xs text-chesscom-500" aria-live="polite" aria-atomic="true">
           {isLoading ? t('common.loading', { defaultValue: 'Loading games…' }) : initialError
             ? t('review.loadError', { defaultValue: 'Could not load games' })
-            : `${games.length.toLocaleString()} of ${total.toLocaleString()} ${t('review.games', { defaultValue: 'games' })}`}
-          {isFetching && !isLoading && <span className="sr-only"> · Updating</span>}
+            : t('review.libraryVisibleCount', {
+              visible: games.length.toLocaleString(i18n?.language || 'en'),
+              total: total.toLocaleString(i18n?.language || 'en'),
+              defaultValue: `${games.length.toLocaleString()} of ${total.toLocaleString()} ${t('review.games', { defaultValue: 'games' })}`,
+            })}
+          {isFetching && !isLoading && <span className="sr-only"> · {t('review.libraryUpdating', {defaultValue:'Updating'})}</span>}
         </span>
       </div>
 

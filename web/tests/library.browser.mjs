@@ -337,6 +337,7 @@ try {
   const germanFilters=await newPage('dark',390,844,{locale:'de'});
   try {
     const {page,pageErrors}=germanFilters;
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
     assert.equal(await page.getByRole('group',{name:'Partien filtern und sortieren'}).count(),1,
       'German Library controls must have a localized accessible group name');
     for (const label of ['Partiequelle','Partiegeschwindigkeit','Partieergebnis',

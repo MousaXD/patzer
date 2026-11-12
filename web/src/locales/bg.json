@@ -377,6 +377,8 @@
     },
     "libraryFilterGroup": "Филтриране и сортиране на партии",
     "clearLibraryFilters": "Изчисти филтрите",
+    "libraryVisibleCount": "Партии: {{visible}} от {{total}}",
+    "libraryUpdating": "Обновяване",
     "libraryFilterOptions": {
       "source": {
         "all": "Всички източници", "chesscom": "Chess.com", "lichess": "Lichess",

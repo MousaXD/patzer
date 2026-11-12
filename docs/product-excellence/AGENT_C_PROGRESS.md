@@ -599,3 +599,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **Library result-count and loading feedback** in the German mobile session. Current `40 of 620 Partien` mixes an English connective with German text; determine whether locale-specific count phrases can be shown without breaking pagination, loading/error announcements, English test expectations or translated number formats. Reproduce and fix within the Library page only.
+
+## 2026-11-12 — Translate the complete Library result count and refresh announcement
+
+- Resumed clean pushed `c02f596` and reproduced the documented English/German mixing: the Library count composed an English `of` between separately formatted numbers and the translated `games` noun, displaying **40 of 620 Partien** for German users. The live status also announced hard-coded English **Updating** to screen readers. Added a failing locale regression in all five languages for a complete count phrase with `{{visible}}` and `{{total}}` placeholders plus a translated refresh-announcement string.
+- Added `review.libraryVisibleCount` and `review.libraryUpdating` in English, German, Spanish, Russian and Bulgarian. Each language now owns the whole count phrasing rather than interpolating English connectors. German displays **Partien: 40 von 620**, which stays grammatical even for single-game libraries. Visible and total counts continue to come directly from the authenticated paginated response; formatting uses the active UI locale, with the existing English component-stub fallback preserved. No paging/filter/API logic changed.
+- Expanded the synthetic 390px German Chromium scenario to wait for the exact translated count. Rechecked the existing 320px light mobile fixture, opening discovery, native source filtering and filter reset. Inspected `qa-artifacts/agent-c-library/library-german-count-dark-390.png` and confirmed the mixed-language counter is gone and there is no layout shift.
+
+### Verification
+
+- Focused Library+locales tests: **101/101 passed**. Full repository suite: **109 passed files, 2 skipped; 1,073 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium passed 1440px desktop and 390/320px mobile in light/dark, plus 390px dark and 320px light German, including previous import, keyboard, Unicode, cursor, bookmark and source-selection tests. No browser JavaScript exceptions or horizontal overflow.
+- All changes remained isolated to the Library page, its translations, regression tests and this durable progress report. No production services/data, providers, Game Review internals, other agents, merge or deployment touched.
+
+### Next independent audit
+
+- Inspect **localized Game Library card actions on desktop**: the unanalyzed-game card currently shows the literal English badge text `review` next to the book icon in every locale, even though the card itself navigates by a separate accessible link. Reproduce in a non-English desktop fixture, decide whether it should be a descriptive translated status or a translated action, and verify keyboard/screen-reader clarity without changing Game Review internals.

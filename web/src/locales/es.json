@@ -381,6 +381,8 @@
     },
     "libraryFilterGroup": "Filtrar y ordenar partidas",
     "clearLibraryFilters": "Borrar filtros",
+    "libraryVisibleCount": "Partidas: {{visible}} de {{total}}",
+    "libraryUpdating": "Actualizando",
     "libraryFilterOptions": {
       "source": {
         "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",

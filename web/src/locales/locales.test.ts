@@ -101,6 +101,17 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         }
       }
     });
+    it('provides a localizable Library count and non-English refresh announcement', () => {
+      expect(locale.review.libraryVisibleCount?.trim().length,lang).toBeGreaterThan(0);
+      expect(placeholders(locale.review.libraryVisibleCount ?? ''),lang).toEqual([
+        '{{total}}','{{visible}}',
+      ]);
+      expect(locale.review.libraryUpdating?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.libraryVisibleCount).not.toBe(en.review.libraryVisibleCount);
+        expect(locale.review.libraryUpdating).not.toBe(en.review.libraryUpdating);
+      }
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
