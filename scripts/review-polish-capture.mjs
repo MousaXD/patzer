@@ -874,6 +874,61 @@ try {
     assert.equal(failures,6);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{releaseLeavingNotes();await leaveNotesContext.close();}
+  // A successful old notes PATCH must not release a blocked navigation while
+  // the player's newer edit is still queued behind it in the mutation scope.
+  const noteRaceContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseRaceOlder=()=>{};
+  let releaseRaceNewer=()=>{};
+  try{
+    await noteRaceContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await noteRaceContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const oldText='First draft, not the final note';
+    const newText='Second draft must be saved before leaving';
+    const heldOlder=new Promise(resolve=>{releaseRaceOlder=resolve;});
+    const heldNewer=new Promise(resolve=>{releaseRaceNewer=resolve;});
+    const submitted=[];
+    await page.route(`**/api/games/${id}/notes`,async route=>{
+      const text=route.request().postDataJSON().notes;
+      submitted.push(text);
+      if(text===oldText) await heldOlder;
+      if(text===newText) await heldNewer;
+      await route.continue();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    const oldRequest=page.waitForRequest(req=>req.url().endsWith(`/api/games/${id}/notes`) && req.postDataJSON().notes===oldText);
+    await editor.fill(oldText);
+    await editor.press('Tab');
+    await oldRequest;
+    await editor.fill(newText);
+    await editor.press('Tab');
+    const newRequest=page.waitForRequest(req=>req.url().endsWith(`/api/games/${id}/notes`) && req.postDataJSON().notes===newText);
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    const leaveDialog=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
+    await leaveDialog.getByText(enNotes.review.notesLeaveSaving,{exact:true}).waitFor({state:'visible',timeout:4000});
+    const oldResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/notes`) && res.status()===200 && res.request().postDataJSON().notes===oldText);
+    releaseRaceOlder();
+    await oldResponse;
+    await newRequest;
+    assert.equal(new URL(page.url()).pathname,`/review/${id}`,
+      'Old successful notes save must not leave Game Review while a newer edit is unresolved');
+    assert.equal(await editor.inputValue(),newText);
+    assert.equal(await leaveDialog.getByText(enNotes.review.notesLeaveSaving,{exact:true}).count(),1);
+    await page.screenshot({path:join(output,'review-notes-two-saves-pending-390.png')});
+    const newResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/notes`) && res.status()===200 && res.request().postDataJSON().notes===newText);
+    releaseRaceNewer();
+    await newResponse;
+    await page.waitForURL(`${base}/review`,{timeout:5000});
+    assert.deepEqual(submitted,[oldText,newText],
+      'Only one ordered PATCH should be sent per draft, including the blur/navigation race');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,newText,
+      'Only the final acknowledged edit may release navigation');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{releaseRaceOlder();releaseRaceNewer();await noteRaceContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});

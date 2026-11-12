@@ -1425,3 +1425,14 @@
 ### Next scoped reliability audit
 
 - Check the guarded Notes flow for a **second edit while the first save is pending**, followed by a navigation attempt. The first completion must not auto-leave before the newer draft has been acknowledged; guard against that only if a real browser shows a race. Verify modal keyboard focus and state updates stay consistent before changing the feature further.
+
+## 2026-11-13: certify latest-draft ordering during guarded navigation
+
+- Recovered from clean pushed `2825440` and reused the authenticated, disposable browser fixture rather than repeating the original navigation-loss investigation. Added a 390px race with two distinct Notes drafts: blur the first into an intentionally held PATCH, edit and blur the second while React Query serializes its PATCH, click the real Back link, release only the old PATCH, and leave the new PATCH held. Chromium confirmed that the Review page and the **Notes not saved yet** dialog remain mounted even after the *older* save succeeds; the newer draft remains in the editor and the modal still announces saving.
+- After releasing the second response, navigation proceeds automatically to the saved-games library. The disposable backend contains **only the second, newest draft**, the request trace has exactly `[firstDraft, secondDraft]` without a duplicate blur/navigation save, and the source PGN is byte-for-byte unchanged. Inspected `qa-artifacts/agent-a/notes-queued-navigation-20261113/review-notes-two-saves-pending-390.png`; the dialog remains legible at mobile width while awaiting the final save.
+- Full authenticated disposable Chromium viewport, locale, saved-source, keyboard, variation, notes and PGN matrix: **PASS (exit 0)** on port 8988. `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. The application code is unchanged, so the preceding 1006-test run, typecheck and build remain applicable. This checkpoint is **browser regression coverage only**; no new product defect was reproduced.
+- No merge, deployment, production database/service modification or edits to the other agents' worktrees.
+
+### Next scoped user-experience audit
+
+- Verify the Notes leave-dialog's keyboard focus **when a pending save transitions to an error**. The Retry and Discard actions appear dynamically, so Shift+Tab and Tab should cycle through the enabled dialog controls without sending keys to the chessboard. Check Escape/Keep editing and any unwanted window shortcuts on the focused modal; only change UI if Chromium reproduces a genuine focus or navigation issue.
