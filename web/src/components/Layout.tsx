@@ -419,24 +419,29 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
             <Menu aria-hidden="true" className="h-5 w-5" />
           </button>
         </header>
-        {languageError && (
-          <div role="alert" className="fixed right-3 top-[4.25rem] z-[60] flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-language-save-error>
-            <span className="min-w-0 flex-1">{t('navigation.languageSaveFailed', { defaultValue: 'Could not save your language. Check your connection and try again.' })}</span>
-            <button type="button" onClick={() => setLanguageError(false)}
-              aria-label={t('common.close', { defaultValue: 'Close' })}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        {logoutError && (
-          <div role="alert" className="fixed right-3 top-[4.25rem] z-[60] flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-logout-error>
-            <span className="min-w-0 flex-1">{t('navigation.logoutFailed', { defaultValue: 'Could not sign out. Check your connection and try again.' })}</span>
-            <button type="button" onClick={() => setLogoutError(false)}
-              aria-label={t('common.close', { defaultValue: 'Close' })}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
-              <X aria-hidden="true" className="h-4 w-4" />
-            </button>
+        {(languageError || logoutError) && (
+          <div data-shell-feedback
+            className="fixed right-3 top-[4.25rem] z-[60] flex max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2 overflow-y-auto">
+            {languageError && (
+              <div role="alert" className="flex shrink-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-language-save-error>
+                <span className="min-w-0 flex-1">{t('navigation.languageSaveFailed', { defaultValue: 'Could not save your language. Check your connection and try again.' })}</span>
+                <button type="button" onClick={() => setLanguageError(false)}
+                  aria-label={t('common.close', { defaultValue: 'Close' })}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            {logoutError && (
+              <div role="alert" className="flex shrink-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-logout-error>
+                <span className="min-w-0 flex-1">{t('navigation.logoutFailed', { defaultValue: 'Could not sign out. Check your connection and try again.' })}</span>
+                <button type="button" onClick={() => setLogoutError(false)}
+                  aria-label={t('common.close', { defaultValue: 'Close' })}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 

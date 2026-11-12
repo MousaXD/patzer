@@ -45,7 +45,7 @@ async function openChangelog(page, mobile) {
   if (mobile) {
     await page.getByRole('button', { name: 'Open menu' }).click();
     const drawer = page.getByRole('dialog', { name: 'Mobile navigation' });
-    await drawer.getByRole('button', { name: /Patzer v7.19.0/ }).click();
+    await drawer.getByRole('button', { name: /Patzer version 7.19.0, view changelog/ }).click();
   } else {
     await page.getByRole('button', { name: /Patzer version 7.19.0, view changelog/ }).click();
   }
@@ -166,6 +166,26 @@ try {
   if (!scrollable) throw new Error('Long release notes cannot be scrolled on narrow mobile');
   await page.keyboard.press('Escape');
   await longDialog.waitFor({ state: 'detached' });
+
+  // Long localized release notices must remain legible and dismissible at the
+  // narrowest screen width. This is a real shell notice, not feature content.
+  for (const { lang, text, dismiss } of [
+    { lang: 'es', text: 'Patzer 7.20.0 ya está disponible', dismiss: 'Ocultar hasta la próxima versión' },
+    { lang: 'bg', text: 'Излезе Patzer 7.20.0', dismiss: 'Скрий до следващата версия' },
+  ]) {
+    profile.language = lang;
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('status').getByText(new RegExp(text)).waitFor();
+    const dismissButton = page.getByRole('button', { name: dismiss });
+    const target = await dismissButton.boundingBox();
+    if (!target || target.width < 44 || target.height < 44) {
+      throw new Error(lang + ' localized release dismissal is not touch accessible: ' + JSON.stringify(target));
+    }
+    await noOverflow(page, lang + ' localized update notice at 320px');
+    await page.screenshot({ path: resolve(output, 'release-notice-' + lang + '-320.png') });
+  }
+  profile.language = 'en';
 
   role = 'admin';
   await visit(page, 1440, 900);

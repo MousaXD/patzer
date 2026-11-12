@@ -100,6 +100,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Patzer navigation rail', () => {
+  it('keeps independent failures dismissible inside one shared notification area', async () => {
+    harness.changeLanguage.mockRejectedValueOnce(new Error('Profile unavailable'));
+    harness.endSession.mockRejectedValueOnce(new Error('Logout unavailable'));
+    mount();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'de' } });
+    await waitFor(() => expect(document.querySelector('[data-language-save-error]')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(document.querySelectorAll('[data-shell-feedback] [role="alert"]')).toHaveLength(2));
+    const stack = document.querySelector('[data-shell-feedback]');
+    expect(stack?.className).toContain('flex-col');
+    fireEvent.click(within(document.querySelector('[data-language-save-error]') as HTMLElement)
+      .getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('[data-language-save-error]')).toBeNull();
+    expect(document.querySelector('[data-logout-error]')).toBeTruthy();
+    fireEvent.click(within(document.querySelector('[data-logout-error]') as HTMLElement)
+      .getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('[data-shell-feedback]')).toBeNull();
+  });
+
   it('reports failed sign-out and permits retry without navigating on the error', async () => {
     harness.endSession.mockRejectedValueOnce(new Error('HTTP 503'))
       .mockResolvedValueOnce(false);

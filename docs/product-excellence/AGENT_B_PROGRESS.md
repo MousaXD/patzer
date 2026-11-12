@@ -832,3 +832,33 @@
 ### Next audit
 
 - Audit the shared `UpdateNotice` and changelog-related shell affordances in dark/light and localized mobile layouts, looking for real clipping, missing labels or intrusive focus changes. Prefer high-impact shared navigation issues, not feature-owned content.
+
+## 2026-11-12: Prevent overlapping shell error alerts; confirm localized release notices
+
+### Recovery and audit
+
+- Continued from clean pushed Agent B `db8d7d8` and inspected the next documented shared-update-notice/changelog lane.
+- The existing update banner and changelog **already handle** long content, touch targets, keyboard trapping, focus return, backend error and empty states without substantive product failures. The old Chromium notice fixture was expecting the pre-localization mobile version-button name, so its locator was updated to the new accessible label rather than weakening the new UX.
+- Expanded the actual Chromium notice test to **320px Spanish and Bulgarian**. The full translated copy and linked release destination fit, the dismissal controls measured at least 44x44px, and no horizontal overflow occurred. Screenshot inspection confirmed the banner remains compact and readable in both languages. No speculative notice redesign was introduced.
+- Auditing adjacent shared-shell error feedback identified a **real collision**: the independent language-save and logout error alerts were both positioned `fixed right-3 top-[4.25rem]`. Real Chromium reproduced both failures sequentially at 390px and measured both alerts at **exactly the same bounds** (`x=12, y=68, right=378, bottom=138`), so one obscured the other.
+
+### Fix
+
+1. Replaced the two independently fixed-position error overlays with **one bounded, scrollable, responsive notification stack** in the shared Layout. Both alerts retain their distinct `role=alert` semantics, localized messages, 44px dismiss targets and individual retry paths, while never occupying the same space.
+2. Added a real Chromium 320px screenshot and no-overflow assertions after a failed language save followed by failed logout. Verified the two alerts do **not** intersect, closing the first preserves the second and closing both removes the empty feedback container.
+3. Added a focused Layout unit test for two failures, proper shared containment and independent dismissal. Visually inspected the dark-theme 320px screenshot: both messages remain legible and their close controls accessible.
+4. Updated the release/changelog browser fixture for the new localized version accessible name and added Spanish/Bulgarian update-banner regression checks.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **424/424 passed across 72 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the pre-fix failure and corrected multi-alert test.
+- `node web/src/components/navigation/capture-notices.mjs`: **passed** for prior release-note/error/dismissal checks and new localized mobile notices.
+- Shared-shell responsive Chromium rerun is tracked with this batch.
+- `git diff --check`: **passed**.
+- No game data or production services, main merge, deployment, other agents' worktrees or feature-owned pages were changed.
+
+### Next audit
+
+- Inspect the shared shell's **update-notice contrast and focus accessibility** at narrow widths, plus banner behavior in reduced-motion and high-zoom conditions. Preserve its already healthy responsive layout; only fix genuine reproduced faults.

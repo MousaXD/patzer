@@ -574,6 +574,55 @@ try {
     throw new Error('Keyboard selection points to a removed option after account results shrink: ' + activeId);
   }
 
+  // Consecutive shell failures must not create overlapping fixed-position
+  // alerts that obscure the latest actionable error or dismiss control.
+  profilePatchMode = 'error';
+  logoutMode = 'error';
+  activeUserId = 1;
+  await visit(page, 390, 844);
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  const failingDrawer = page.getByRole('dialog', { name: 'Mobile navigation' });
+  await failingDrawer.getByRole('combobox', { name: 'Language' }).selectOption('es');
+  await page.locator('[data-language-save-error]').waitFor();
+  await page.keyboard.press('Escape');
+  await failingDrawer.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await page.getByRole('dialog', { name: 'Mobile navigation' })
+    .getByRole('button', { name: 'Log out' }).click();
+  const logoutAlert = page.locator('[data-logout-error]');
+  await logoutAlert.waitFor();
+  await page.setViewportSize({ width: 320, height: 700 });
+  await assertNoOverflow(page, 'consecutive shell failure notices at 320px');
+  await page.screenshot({ path: resolve(output, 'shell-stacked-failure-notices-320.png') });
+  const shellAlerts = await page.locator('[data-language-save-error], [data-logout-error]').count();
+  if (shellAlerts > 1) {
+    const placements = await page.locator('[data-language-save-error], [data-logout-error]')
+      .evaluateAll((elements) => elements.map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom };
+      }));
+    if (placements.length === 2) {
+      const intersectionWidth = Math.min(placements[0].right, placements[1].right)
+        - Math.max(placements[0].x, placements[1].x);
+      const intersectionHeight = Math.min(placements[0].bottom, placements[1].bottom)
+        - Math.max(placements[0].y, placements[1].y);
+      if (intersectionWidth > 0 && intersectionHeight > 0) {
+        throw new Error('Global error notices overlap and obscure one another: ' + JSON.stringify(placements));
+      }
+    }
+  }
+  const firstAlert = page.locator('[data-language-save-error]');
+  await firstAlert.getByRole('button', { name: 'Close' }).click();
+  await firstAlert.waitFor({ state: 'detached' });
+  if (!(await logoutAlert.isVisible())) {
+    throw new Error('Dismissing a language error also hid the logout failure');
+  }
+  await logoutAlert.getByRole('button', { name: 'Close' }).click();
+  await logoutAlert.waitFor({ state: 'detached' });
+  if (await page.locator('[data-shell-feedback]').count()) {
+    throw new Error('Empty shell feedback stack remained in the workspace');
+  }
+
   // Logout is a security-sensitive action. A rejected server request must
   // keep the dialog and the session intact with actionable error feedback.
   activeUserId = 1;
