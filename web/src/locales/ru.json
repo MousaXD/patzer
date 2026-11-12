@@ -292,6 +292,7 @@
     "variationMove": "Вариант {{san}}",
     "variationOption": "Вариант {{number}} · ходов: {{moves}}",
     "variationOptionTitle": "Вариант {{number}}, ходов: {{moves}}, от полухода {{ply}} партии",
+    "variationForkOf": "Ответвление от варианта {{number}}",
     "variationProgress": "Вар. {{current}} / {{total}}",
     "variationMoveNavigation": "Навигация по ходам варианта",
     "variationBranchPoint": "Точка разветвления",

@@ -1220,6 +1220,14 @@ try {
       assert.notDeepEqual(childSquares,parentSquares,'The child move d2-d4 must have its own board highlight');
       const parent=page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true});
       const child=page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true});
+      assert.ok((await parent.innerText()).includes('c5 Nf3'),
+        'A variation pill must preview the moves to distinguish its line');
+      assert.ok((await child.innerText()).includes('c5 d4'),
+        'A nested child must preview its ancestral c5 and own d4 move');
+      const childDescription=await child.getAttribute('aria-describedby');
+      assert.ok(childDescription,'Nested branch picker needs a screen-reader description');
+      assert.ok((await page.locator(`#${childDescription}`).innerText()).includes('Fork of variation 1'),
+        'A child must identify its parent without forcing the learner to open it');
       await parent.click();
       await expectProgress('Var 1 / 2');
       assert.equal((await trace.innerText()).trim(),'c5');

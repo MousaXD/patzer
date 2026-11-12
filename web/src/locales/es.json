@@ -285,6 +285,7 @@
     "variationMove": "Variante {{san}}",
     "variationOption": "Variante {{number}} · {{moves}} jugadas",
     "variationOptionTitle": "Variante {{number}}, {{moves}} jugadas, desde el medio movimiento {{ply}} de la partida",
+    "variationForkOf": "Rama de la variante {{number}}",
     "variationProgress": "Var. {{current}} / {{total}}",
     "variationMoveNavigation": "Navegación de jugadas de variante",
     "variationBranchPoint": "Punto de bifurcación",

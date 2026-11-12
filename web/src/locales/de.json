@@ -292,6 +292,7 @@
     "variationMove": "Variante {{san}}",
     "variationOption": "Variante {{number}} · {{moves}} Züge",
     "variationOptionTitle": "Variante {{number}}, {{moves}} Züge, ab Halbzug {{ply}} der Partie",
+    "variationForkOf": "Abzweig von Variante {{number}}",
     "variationProgress": "Var. {{current}} / {{total}}",
     "variationMoveNavigation": "Zugnavigation in Varianten",
     "variationBranchPoint": "Verzweigungspunkt",

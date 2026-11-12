@@ -120,9 +120,11 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
     });
     it('describes variation-local progress instead of the saved PGN move count', () => {
       expect(placeholders(locale.review.variationProgress), lang).toEqual(['{{current}}', '{{total}}']);
+      expect(placeholders(locale.review.variationForkOf), lang).toEqual(['{{number}}']);
       expect(locale.review.variationMoveNavigation?.trim().length, lang).toBeGreaterThan(0);
       if (lang !== 'en') {
         expect(locale.review.variationProgress).not.toEqual(en.review.variationProgress);
+        expect(locale.review.variationForkOf).not.toEqual(en.review.variationForkOf);
         expect(locale.review.variationMoveNavigation).not.toEqual(en.review.variationMoveNavigation);
       }
     });

@@ -33,7 +33,7 @@ import ThreatPanel from '../components/ThreatPanel';
 import ExplorerPanel from '../components/ExplorerPanel';
 import { soundForMove, inferMoveFlagsFromSan } from '../lib/sounds';
 import { useAnalysisVariations } from '../lib/useAnalysisVariations';
-import { legalAnalysisMove } from '../lib/analysisVariations';
+import { legalAnalysisMove, analysisVariationPreview } from '../lib/analysisVariations';
 import { qualityMatchesVariationMove, type VariationMoveQuality } from '../lib/classification';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -969,9 +969,13 @@ function GameAnalyzerView() {
               </p>
             )}
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
-              {variations.variations.map((branch, index) => (
-                <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
-                  className={`inline-flex min-h-11 items-center rounded-md px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
+              {variations.variations.map((branch, index) => {
+                const parentIndex = variations.variations.findIndex(other => other.id === branch.parentId);
+                const descriptionId = `review-variation-description-${branch.id}`;
+                return <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
+                  aria-label={t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
+                  aria-describedby={descriptionId}
+                  className={`inline-flex min-h-14 min-w-[9.5rem] max-w-full flex-[1_1_9.5rem] flex-col items-start justify-center gap-1 rounded-md px-3 py-2 text-left text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
                   onClick={() => {
                     variations.selectVariation(branch.id);
                     // The branch picker sits below the board on phones. The
@@ -981,9 +985,17 @@ function GameAnalyzerView() {
                       requestAnimationFrame(jumpToBoard);
                     }
                   }} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
-                  {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
-                </button>
-              ))}
+                  <span>{t('review.variationOption', { number: index + 1, moves: branch.moves.length })}</span>
+                  <span id={descriptionId} className="block w-full min-w-0">
+                    <span className="block truncate font-mono text-[11px]">{analysisVariationPreview(branch, variations.variations)}</span>
+                    {parentIndex >= 0 && (
+                      <span className="block text-[10px] opacity-85">
+                        {t('review.variationForkOf', { number: parentIndex + 1 })}
+                      </span>
+                    )}
+                  </span>
+                </button>;
+              })}
             </div>}
             {isVariation && <div className="mt-2 text-sm">
               <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>

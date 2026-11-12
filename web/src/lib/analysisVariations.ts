@@ -117,6 +117,17 @@ function variationPrefix(branch: AnalysisVariation, variations: AnalysisVariatio
   return segments.flat();
 }
 
+/** Compact, legal SAN preview for the branch picker, including ancestor
+ * moves through each fork. Show the newest moves so nearby sibling branches
+ * remain distinguishable even after a long common opening. */
+export function analysisVariationPreview(
+  branch: AnalysisVariation,
+  variations: AnalysisVariation[],
+): string {
+  const sans = [...variationPrefix(branch, variations), ...branch.moves].map(move => move.san);
+  return `${sans.length > 4 ? '… ' : ''}${sans.slice(-4).join(' ')}`;
+}
+
 /** Always derive the board FEN from an immutable move record and the cursor. */
 export function getAnalysisVariationView(
   state: AnalysisVariationState,

@@ -292,6 +292,7 @@
     "variationMove": "Variation {{san}}",
     "variationOption": "Variation {{number}} · {{moves}} moves",
     "variationOptionTitle": "Variation {{number}}, {{moves}} moves, from game ply {{ply}}",
+    "variationForkOf": "Fork of variation {{number}}",
     "variationProgress": "Var {{current}} / {{total}}",
     "variationMoveNavigation": "Variation move navigation",
     "variationBranchPoint": "Branch point",

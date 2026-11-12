@@ -283,6 +283,7 @@
     "variationMove": "Вариант {{san}}",
     "variationOption": "Вариант {{number}} · {{moves}} хода",
     "variationOptionTitle": "Вариант {{number}}, {{moves}} хода, от полуход {{ply}} на партията",
+    "variationForkOf": "Разклонение от вариант {{number}}",
     "variationProgress": "Вар. {{current}} / {{total}}",
     "variationMoveNavigation": "Навигация по ходовете на варианта",
     "variationBranchPoint": "Точка на разклонение",

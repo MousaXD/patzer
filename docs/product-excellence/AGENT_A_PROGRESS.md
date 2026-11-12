@@ -392,3 +392,25 @@
 ### Next highest-impact issue
 
 - On mobile and desktop, the branch picker shows only `Variation 1 · 2 moves` and `Variation 2 · 1 moves` without revealing the chess moves or ancestry. In nested scenarios a learner cannot tell which branch they are reopening without selecting it. Reproduce the discoverability issue, then show a concise legal SAN preview and fork relationship with translated accessible labels, keeping the UI compact and Game Review-only.
+
+## 2026-11-12: identifiable variation choices with legal move previews
+
+### Resumed exact unfinished work
+
+- Continued from pushed `186f003`, the clean nested-cursor milestone. The next recorded issue was branch discoverability: variation pills showed only a number and count; a player could not tell sibling continuations or ancestry without opening them. Preserved the existing variation controller and branch identity.
+- Added `analysisVariationPreview` using already-validated, immutable branch and ancestor SAN moves. The compact, newest-four-moves display differentiates sibling forks (`c5 Nf3` vs `c5 d4`) and shows ellipsis when the common opening exceeds four plies; it never invents a move or engine evaluation.
+- Branch buttons now display a concise SAN preview and, for nested branches, a visible parent cue (`Fork of variation 1`). Their existing accessible button names remain stable; `aria-describedby` connects the SAN and ancestry text to assistive technology. The self-contained Game Review change preserves keyboard, click, source and PGN semantics.
+- Added localized parent-fork strings for English, German, Spanish, Russian and Bulgarian, including exact `{{number}}` placeholder-parity checks.
+
+### Verification
+
+- New preview/unit regression intentionally failed before the helper was implemented; focused variation/localization tests **66 passed** after correction.
+- `npm run typecheck`: PASS. `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **981 passed / 12 skipped**, 107 passed test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**, including a live nested branch test asserting rendered SAN labels, accessible description/parent relationship, independent cursors, correct highlighted squares, previous variation, source, keyboard, locale and PGN invariance.
+- Opened/inspected `qa-artifacts/agent-a/variation-preview-20261112/nested-variation-cursors-390.png` and `nested-variation-cursors-1024.png`: the branch choices are distinct, legible and fit both phone and side-by-side desktop widths without horizontal overflow.
+- All engine figures in browser fixtures are test-only; no Stockfish correctness certification is claimed. No merge, deployment, production SQLite or cross-agent edits.
+
+### Next priority
+
+- Review usability of **longer variations**: a short SAN preview is useful, but after exploring several moves, the branch timeline still presents a single truncated text string. Audit whether a player can navigate individual moves in the exploratory line without repeatedly pressing transport controls. Reproduce in Chromium and prioritize a compact, keyboard-accessible clickable variation move trail within Agent A's rail.

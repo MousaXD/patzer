@@ -3,7 +3,7 @@ import { Chess } from 'chess.js';
 import {
   getAnalysisVariationView, initialAnalysisVariationState, legalAnalysisMove,
   restoreOriginalAnalysisGame, selectAnalysisVariation, selectOriginalAnalysisPly,
-  stepAnalysisBackward, stepAnalysisForward, submitAnalysisVariationMove,
+  stepAnalysisBackward, stepAnalysisForward, submitAnalysisVariationMove, analysisVariationPreview,
   type OriginalGamePosition,
 } from './analysisVariations';
 
@@ -142,6 +142,25 @@ describe('local analysis variations', () => {
     state = selectAnalysisVariation(state, 'v2');
     expect(state.variationCursor).toBe(0);
     expect(JSON.stringify(history)).toBe(original);
+  });
+
+  it('shows move evidence and ancestor context in branch-picker previews', () => {
+    let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
+    state = submitAnalysisVariationMove(state, history, 'c7c5');
+    state = submitAnalysisVariationMove(state, history, 'g1f3');
+    state = stepAnalysisBackward(state, history);
+    state = submitAnalysisVariationMove(state, history, 'd2d4');
+    expect(analysisVariationPreview(state.variations[0]!, state.variations))
+      .toBe('c5 Nf3');
+    expect(analysisVariationPreview(state.variations[1]!, state.variations))
+      .toBe('c5 d4');
+    state = submitAnalysisVariationMove(state, history, 'e7e6');
+    expect(analysisVariationPreview(state.variations[1]!, state.variations))
+      .toBe('c5 d4 e6');
+    state = submitAnalysisVariationMove(state, history, 'g1f3');
+    state = submitAnalysisVariationMove(state, history, 'g8f6');
+    expect(analysisVariationPreview(state.variations[1]!, state.variations))
+      .toBe('… d4 e6 Nf3 Nf6');
   });
 
   it('redo restores the original variation after undo crosses to saved game', () => {
