@@ -1364,3 +1364,15 @@
 ### Next independent Game Review audit
 
 - Verify that a **Black-side saved-game review** starts with the flipped perspective announced as `false` (player-facing default), changes to `true` when Flip rotates to White's perspective, and preserves keyboard focus and source FEN through move navigation. The current test uses the ordinary White-side imported game; the Black-side perspective should receive equivalent browser evidence before changing any orientation/labeling logic.
+
+## 2026-11-13: certify Flip accessibility with Black as the user
+
+- Continued from clean pushed `3292be5`. The existing Black-to-move, custom-start game fixture intentionally has `user_color='white'` for its opponent-perspective teaching tests. Editing that value would invalidate the source fingerprint and analysis revision. Created a **separate disposable, fully source-attested** clone of the exact PGN with `user_color='black'`, original move JSON and recalculated `source_hash`/`source_revision`; no real accounts or games affected.
+- In a real 390px Chromium Review, verified the player's normal view shows **Black at the bottom** with Flip `aria-pressed=false`. Keyboard Enter on Flip switched Chessground's actual orientation class to White and `aria-pressed=true` without stepping or rewriting the saved position; Space restored Black and `aria-pressed=false`, keeping focus on the toggle. The original custom-start PGN stayed byte-for-byte unchanged.
+- Inspected `qa-artifacts/agent-a/flip-black-player-20261113/flip-black-player-default-390.png` and `flip-black-player-white-perspective-390.png`. The top/bottom players, coordinates and board orientation visually agree with each state; the move and score remain readable.
+- Full authenticated disposable Chromium theme/viewport/locale/source/variation/keyboard/PGN browser matrix: **PASS (exit 0)** on port 8980. Test-only coverage; `node --check scripts/review-polish-capture.mjs`, `git diff --check` PASS. Prior product checkpoint passed **1006 unit tests / 12 skipped**, typecheck and build. No product changes were needed.
+- No merge, deployment, production service/data, or other agent worktree changed.
+
+### Next independent data-safety audit
+
+- Notes save errors are currently rendered **inside the expandable editor**. Audit the sequence **type unsaved note → collapse Notes (blur starts async save) → server responds 503**. Confirm whether the error is visible and recoverable without silently losing user text. If collapsed Notes hides the failure, provide visible, keyboard-accessible recovery without changing existing successful autosave or saved-game PGN behavior.

@@ -2491,6 +2491,21 @@ try {
       ply:1,side:'white',san:'e5',fen_before:before,classification:'inaccuracy',
       cp_loss:200,win_pct_delta:blackWinDelta,best_san:'c5',best_pv:['c5'],
     }]),blackId);
+  // Keep a separate, source-attested Black-player fixture. Editing the first
+  // fixture's user_color would invalidate its analysis source fingerprint and
+  // interfere with the White-player learning/Key Moment checks below.
+  const blackPlayerId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-black-player-flip',?,'Example White','Example Black','*','600',datetime('now'),'black')`)
+    .run(user.id,blackGame.pgn()).lastInsertRowid);
+  const blackPlayerSource=loadAnalysisGameSource(db,blackPlayerId);
+  assert.ok(blackPlayerSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,80,80,?,?,?,1)`)
+    .run(blackPlayerId,JSON.stringify([blackMove]),SCORING_VERSION,
+      analysisSourceHash(blackPlayerSource),blackPlayerSource.source_revision);
   const blackContext=await browser.newContext({viewport:{width:390,height:844}});
   try{
     await blackContext.addCookies([{name:account.cookie.split('=')[0],
@@ -2536,6 +2551,36 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),
       'Jumping from a Black-first Key Moment must preserve the original PGN');
   }finally{await blackContext.close();}
+  const blackPlayerContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await blackPlayerContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await blackPlayerContext.newPage();
+    await page.goto(`${base}/review/${blackPlayerId}?ply=1`,{waitUntil:'domcontentloaded'});
+    const flipButton=page.getByRole('button',{name:'Flip',exact:true});
+    await flipButton.waitFor({state:'visible',timeout:5000});
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-black'));
+    assert.equal(await flipButton.getAttribute('aria-pressed'),'false',
+      'Black-player initial orientation must be announced as the unflipped player perspective');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'1 / 1');
+    await page.locator('.review-board-square').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'flip-black-player-default-390.png')});
+    await flipButton.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-white'));
+    assert.equal(await flipButton.getAttribute('aria-pressed'),'true');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'1 / 1',
+      'Flipping Black player perspective must not step through the saved moves');
+    await page.locator('.review-board-square').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'flip-black-player-white-perspective-390.png')});
+    await page.keyboard.press('Space');
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-black'));
+    assert.equal(await flipButton.getAttribute('aria-pressed'),'false');
+    assert.ok(await flipButton.evaluate(element=>document.activeElement===element),
+      'Black-player flip must preserve keyboard focus in both directions');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(blackPlayerId).pgn,blackGame.pgn(),
+      'Changing the board perspective must preserve the Black-player saved PGN');
+  }finally{await blackPlayerContext.close();}
   // The saved mistake is displayed AFTER e5, but its alternative c5 is legal
   // only on the position BEFORE that move. Exercise the entire honest flow:
   // click the verified alternative, reveal the earlier position + source-
