@@ -71,6 +71,28 @@ describe('cached review analysis decoder', () => {
     });
   });
 
+  it('rejects a cached Key Moment that contradicts its scored move or duplicates a ply', () => {
+    const withMoment = (item: typeof moment | typeof moment[]) => ({
+      ...valid, key_moments_json: JSON.stringify(Array.isArray(item) ? item : [item]),
+    });
+    expect(decodeStoredReviewJson(withMoment(moment))?.key_moments).toEqual([moment]);
+    for (const altered of [
+      { ...moment, classification: 'brilliant' },
+      { ...moment, san: 'd4' },
+      { ...moment, fen_before: 'other-source-fen' },
+      { ...moment, cp_loss: 900 },
+      { ...moment, best_san: 'Nf3' },
+      { ...moment, best_pv: ['Nf3'] },
+    ]) {
+      expect(decodeStoredReviewJson(withMoment(altered), undefined), JSON.stringify(altered)).toBeNull();
+    }
+    // Legacy black-to-move FEN summaries may contain an old ply-parity side;
+    // the actual side is read from the saved FEN when displaying Key Moments.
+    expect(decodeStoredReviewJson(withMoment({ ...moment, side: 'black' }))?.key_moments)
+      .toEqual([{ ...moment, side: 'black' }]);
+    expect(decodeStoredReviewJson(withMoment([moment, moment]))).toBeNull();
+  });
+
   it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
     const expected = [{ fen: 'before' },
       { uci: 'e2e4', san: 'e4', fen: 'after' },

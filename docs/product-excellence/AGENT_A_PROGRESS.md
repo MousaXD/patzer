@@ -208,3 +208,29 @@
 ### Next high-impact source-integrity audit
 
 - Key Moments summaries have their own cached `san`, `fen_before`, `classification`, `best_san`, and prose and are currently structurally checked but not bound to the corresponding analyzed ply. Confirm whether a mismatched cached moment can display a false Brilliant/mistake for another move; reproduce first, then fail closed if verified. Do not change AI prose generation contracts or server semantics without need.
+
+## 2026-11-12: Key Moments source binding with historical FEN-game compatibility
+
+### Baseline, defect and user impact
+
+- Resumed from clean pushed commit `130c123` and audited the independently serialized cached `key_moments_json`. The decoder previously checked shapes but not whether a moment's SAN, source FEN, classification, centipawn loss or preferred continuation agreed with `moves_json` for that ply.
+- A new unit test intentionally failed when the same scored `Book e4` was repackaged as a `Brilliant` Key Moment. Added disposable authenticated Chromium interception of `/api/games/:id`, injecting a false Brilliant moment for ply 1 without touching the scored move or the persistent PGN. Before fix, the browser failed to show the expected corrupt-analysis recovery state.
+- The decoder now binds each Key Moment's classification, SAN, FEN before, centipawn loss, best SAN and best PV to its authoritative analyzed move. It rejects duplicate moment plies and out-of-range win-percentage deltas, instead of presenting conflicting coaching. Legitimate partial analyses, null evaluations and non-contradictory moments continue to work.
+
+### Independent regression review and correction
+
+- The first strict implementation inadvertently rejected a pre-existing **black-to-move custom FEN fixture**. Its legacy Key Moment `side` metadata used historical ply-parity convention, while the actual UI correctly derives the mover from FEN. Removed that redundant side check; kept classification/FEN/move/continuation source binding. Added a unit regression preserving legacy side metadata.
+- The same fixture had an inconsistent synthetic `best_pv` (`[]` in scored move versus `['c5']` in Key Moment). Corrected the disposable test's scored move to contain the matching legal `['c5']` line; no real engine result or production database was altered. The full Chromium test then passed the black-first Key Moment, move details, and alternate-move flows.
+
+### Verification and evidence
+
+- `npx vitest run web/src/components/review/storedReview.test.ts` PASS (9 tests); new source-identity test failed before fix.
+- `npm run typecheck`: PASS. `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000`: **977 passed / 12 skipped**, 107 passing files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including new negative Key Moment source test, legitimate black-first FEN Key Moment, mobile/desktop, variations, focus, locale and PGN invariance.
+- Inspected real 390px screenshots `qa-artifacts/agent-a/key-moment-compatible-20261112/stored-key-moment-mismatch-rejected-390.png` (false Brilliant suppressed; saved board and recovery intact) and `black-first-key-moments.png` (correct `#12... e5` and `Opponent's move`). Browser engine responses and scored fixtures are synthetic, not real Stockfish accuracy certification.
+- No merges, deployments, production SQLite modifications or cross-agent edits.
+
+### Next source-integrity candidate
+
+- The Key Moment `win_pct_delta` is currently range-checked but not verified against its source move's before/after engine evaluations; the black-first QA fixture shows a historical 9wp while the displayed complete -100 to +100 scores imply a different swing. Audit actual presentation and source calculation, preserve the explicit missing-evaluation fallback, and reproduce before adding a targeted check. Avoid altering server scoring semantics.

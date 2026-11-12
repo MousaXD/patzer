@@ -727,6 +727,38 @@ try {
     await page.screenshot({path:join(output,'stored-fen-mismatch-rejected-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await storedFenContext.close();}
+  // A cached Key Moment is independently serialized from the scored move.
+  // Matching the game source is insufficient if that moment mislabels the
+  // same ply as Brilliant while the authoritative engine move says Book.
+  const mismatchedMomentContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await mismatchedMomentContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await mismatchedMomentContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let received=false;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      const firstMove=JSON.parse(details.analysis.moves_json)[0];
+      assert.equal(firstMove.classification,'book');
+      details.analysis.key_moments_json=JSON.stringify([{
+        ply:firstMove.ply,side:'white',san:firstMove.san,fen_before:firstMove.fen_before,
+        classification:'brilliant',cp_loss:750,win_pct_delta:80,
+        best_san:'Nf3',best_pv:['Nf3'],
+      }]);
+      received=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByText(locale.review.storedAnalysisUnreadable,{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.ok(received,'Browser must receive the contaminated Key Moment payload');
+    assert.equal(await page.getByText(locale.classification.brilliant,{exact:true}).count(),0,
+      'Contradictory Key Moment classification must never appear as a truthful score');
+    await page.screenshot({path:join(output,'stored-key-moment-mismatch-rejected-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await mismatchedMomentContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.
@@ -1054,7 +1086,7 @@ try {
   assert.ok(blackSource);
   const blackMove={ply:1,san:'e5',uci:'e7e5',fen_before:before,
     fen_after:blackGame.fen(),eval_before_cp:-100,eval_after_cp:100,
-    best_move_uci:'c7c5',best_move_san:'c5',best_pv:[],
+    best_move_uci:'c7c5',best_move_san:'c5',best_pv:['c5'],
     centipawn_loss:200,classification:'inaccuracy'};
   db.prepare(`INSERT INTO analyses
     (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,

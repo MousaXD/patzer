@@ -114,6 +114,28 @@ export function decodeStoredReviewJson(
         || move.fen_before !== replayPositions[index]?.fen
         || move.fen_after !== replayPositions[index + 1]?.fen))) return null;
     if (!moments.every((m: unknown) => validMoment(m, moves.length))) return null;
+    // Key Moments are independently serialized from the engine's scored
+    // moves. Structural validity alone is unsafe: a cached summary could
+    // claim Brilliant, a different SAN or a better move for the correct ply.
+    // Only trust claims identical to their authoritative scored move. Some
+    // historical FEN-start games have a stale `side` field; the review UI
+    // derives the actual mover from FEN instead, so don't reject that legacy
+    // metadata or use it as evidence for evaluation/classification.
+    const scored = moves as AnalyzedMove[];
+    const seenMomentPlies = new Set<number>();
+    for (const moment of moments as KeyMomentSummary[]) {
+      const source = scored[moment.ply - 1];
+      if (!source || seenMomentPlies.has(moment.ply)
+        || moment.san !== source.san
+        || moment.fen_before !== source.fen_before
+        || moment.classification !== source.classification
+        || moment.cp_loss !== source.centipawn_loss
+        || moment.best_san !== source.best_move_san
+        || moment.best_pv.length !== source.best_pv.length
+        || moment.best_pv.some((san, index) => san !== source.best_pv[index])
+        || moment.win_pct_delta < 0 || moment.win_pct_delta > 100) return null;
+      seenMomentPlies.add(moment.ply);
+    }
     if (!validPhases(phases)) return null;
 
     return {
