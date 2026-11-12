@@ -197,6 +197,19 @@ describe('Patzer navigation rail', () => {
     expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
   });
 
+  it.each([
+    ['/review/42', '/review', 'Review', 'Game analysis'],
+    ['/players/42', '/players', 'Players', 'Player profile'],
+  ])('keeps the nested %s breadcrumb back target touch-sized and correctly routed', (route, parent, parentLabel, title) => {
+    mount(route);
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const back = within(breadcrumb).getByRole('link', { name: parentLabel });
+    expect(back.getAttribute('href')).toBe(parent);
+    expect(back.className).toContain('h-[44px]');
+    expect(back.className).toContain('w-[44px]');
+    expect(within(breadcrumb).getByText(title).getAttribute('aria-current')).toBe('page');
+  });
+
   it('does not leak administrator destinations to ordinary users', () => {
     mount();
     expect(screen.queryByRole('link', { name: 'System' })).toBeNull();

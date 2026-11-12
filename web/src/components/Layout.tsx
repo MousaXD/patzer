@@ -354,7 +354,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               <nav aria-label={t('navigation.breadcrumb', { defaultValue: 'Breadcrumb' })} className="flex min-w-0 items-center gap-1 text-sm sm:text-base" data-current-section>
                 <Link
                   to={location.pathname.startsWith('/review/') ? '/review' : '/players'}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded px-1 font-medium text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white md:h-auto md:w-auto md:py-1"
+                  className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded px-1 font-medium text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white md:h-auto md:w-auto md:py-1"
                   title={nestedSection}
                 >
                   <ArrowLeft aria-hidden="true" className="h-4 w-4 md:hidden" />

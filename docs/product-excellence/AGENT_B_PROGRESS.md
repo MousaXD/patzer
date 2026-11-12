@@ -1557,3 +1557,34 @@
 ### Next audit
 
 - Check the **nested mobile breadcrumb header** on real detail routes (`/review/:id`, `/players/:id`) at 320px with 150%–200% text scaling: the back affordance currently uses font-relative `h-8 w-8` and may fall below the 44px physical touch target at default scale while consuming excessive space at larger text sizes. Reproduce with real Chromium and change only if measured.
+
+## 2026-11-13: Make nested detail-page breadcrumb back buttons reliably touch-accessible
+
+### Chromium defect
+
+- Resumed from clean pushed `8a1feaf` and audited the **shared nested header** on real `/review/:id` and `/players/:id` routes in light/dark, English/German/Spanish/Russian/Bulgarian, 320/390px and 100%/150%/200% text sizes.
+- All **40 normal-font cases** rendered the mobile breadcrumb back link at only **32×32px**. At 200% root scaling the link expanded to **64×64px**, consuming otherwise useful title space; some long translations were necessarily ellipsized. No horizontal overflow was found.
+- Root cause: a mobile `h-8 w-8` class on the shared breadcrumb link scaled with font size, unlike the main mobile header's fixed 44px controls.
+
+### Scoped fix
+
+1. Use a fixed **44×44px mobile breadcrumb back target** in `web/src/components/Layout.tsx`, retaining the established desktop `md:h-auto md:w-auto` rules, the parent route destination, localized accessible link name, focus ring and arrow icon.
+2. Add two navigation unit assertions for Review and Player Profile detail routes, preserving both parent destinations and the named current-page title.
+3. Add `web/src/components/navigation/capture-scaled-breadcrumbs.mjs`, a local-only Chromium matrix with **120 route/theme/language/width/font combinations**. Check actual back hit geometry, title width, both header and document overflow, language synchronization, and keyboard Tab/Enter navigation back to the parent.
+4. Reuse the established fixture contract: a missing Game Review record returns explicit 404, not an empty successful object. The latter initially caused the feature page to render invalid data during extended keyboard checks; this was a **fixture problem**, not an app regression. Player Profile uses synthetic profile data.
+
+### Verification
+
+- Negative control: **40/120** configurations had an undersized breadcrumb, all at normal text scaling (32×32px).
+- Final `node web/src/components/navigation/capture-scaled-breadcrumbs.mjs`: **120/120 passed**, with 44×44px back targets, preserved keyboard navigation and no horizontal overflow.
+- Inspected `artifacts/agent-02/nested-header-verified-review-light-16.png` and `nested-header-verified-players-dark-16.png`: Review and Player Profile breadcrumbs remain distinct and readable in the mobile header.
+- `npx vitest run web/src/components/navigation/Layout.navigation.test.tsx --maxWorkers=2`: **21/21 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **472/472 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No feature-owned Review or Players pages, production data, main branch, deployment or other agents' worktrees modified.
+
+### Next audit
+
+- Audit the **tablet and compact-desktop navigation shell** (768/1024px) at enlarged 150%–200% root text across languages and themes. The desktop rail and header use font-relative widths for some controls; check actual available workspace width, inner horizontal overflow, focus visibility and control hit sizes before editing.
