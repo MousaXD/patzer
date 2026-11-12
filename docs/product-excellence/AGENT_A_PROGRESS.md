@@ -1668,3 +1668,14 @@
 ### Next independent Game Review learning/share audit
 
 - **Share position during an exploratory variation** creates a Lab hash URL from the visible FEN. Verify in a real browser that the copied link opens Lab on the exact variation board, including side to move and legal move context, without misrepresenting that hypothetical line as the saved game. Confirm keyboard Share and denied-copy recovery generate the same link. Correct only a demonstrated link/parsing or focus defect.
+
+## 2026-11-13: certify that shared variation URLs open the exact Lab board
+
+- Continued from clean pushed `f1ac37b` without redoing completed clipboard/source investigations. Reused the authenticated nested-variation Chromium fixture on 390px mobile and 1024px desktop at a legal exploratory `e4 c5 d4` child position, keeping original saved PGN separate from the hypothetical branch.
+- Copied the visible **Share branch FEN** action in the real browser, parsed its `/lab#<encoded FEN>` URL, and checked that decoding the hash yields **exactly the current variation FEN**. Opened that URL in a second authenticated page and verified Lab's FEN input and displayed board state both match, with **Black to move**. Inspected `qa-artifacts/agent-a/variation-share-lab-20261113/shared-variation-in-lab-390.png`: the Lab board visibly shows White pawns on e4/d4 and Black pawn on c5; its turn label agrees with the FEN.
+- Verified the keyboard `S` shortcut copies the same Lab link, then blocked clipboard permission and verified the manual Share fallback offers **that identical link** with the full field focused and selected for copying. The independent Copy FEN and saved-game PGN checks continue to prove this link is a sandbox position, not a fabricated PGN. All screenshots and links were generated from synthetic data; no production content or user clipboard was affected.
+- Full authenticated disposable Chromium desktop/mobile, locale, variation, Notes, source, export, clipboard, keyboard, PGN, and engine matrix **PASS (exit 0)** on isolated port 9020; `git diff --check` and browser-script syntax PASS. Test-only addition: the previous source-code checkpoint already passed **1006 tests / 12 skipped**, typecheck and build. No application code, merge, deployment or other agent worktree changes.
+
+### Next independent product audit
+
+- Review the Agent A master plan and outstanding checkpoints for the highest-value unexplored Game Review flow. Prioritize source-aware teaching, action discoverability and keyboard reliability over ornamental changes. Begin with a real browser reproduction and preserve isolation from the other product-excellence agents.

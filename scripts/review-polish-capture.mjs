@@ -2740,6 +2740,53 @@ try {
       await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
       assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),branchPosition.fen(),
         'Copy FEN must reflect the current nested variation, not the original PGN line');
+      // Sharing an unsaved variation must lead to Lab on that *exact* board,
+      // not a misleading saved Review PGN link. Exercise the real generated
+      // hash in a separate authenticated browser page and verify its turn.
+      await page.getByRole('button',{name:'Share branch FEN',exact:true}).click();
+      const branchShareUrl=await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied);
+      const branchShareAddress=new URL(branchShareUrl);
+      assert.equal(branchShareAddress.pathname,'/lab');
+      assert.equal(decodeURI(branchShareAddress.hash.slice(1)),branchPosition.fen(),
+        'The shared Lab hash must contain the exact current variation FEN');
+      const labPage=await nestedContext.newPage();
+      try{
+        await labPage.goto(branchShareUrl,{waitUntil:'domcontentloaded'});
+        const en=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+        const labFen=labPage.getByPlaceholder(en.lab.fenPlaceholder);
+        await labFen.waitFor({state:'visible',timeout:5000});
+        assert.equal(await labFen.inputValue(),branchPosition.fen(),
+          'A clicked shared variation link must load the exact position in Lab');
+        await labPage.getByText(en.lab.blackToMove,{exact:true}).waitFor({state:'visible',timeout:3000});
+        assert.ok(await labPage.getByText(branchPosition.fen(),{exact:true}).count()>0,
+          'Lab must display the current board FEN, not just leave it in an input');
+        if(width===390)await labPage.screenshot({path:join(output,'shared-variation-in-lab-390.png')});
+      }finally{await labPage.close();}
+      await page.locator('.review-board-square').focus();
+      await page.keyboard.press('s');
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),branchShareUrl,
+        'Keyboard S must share the same hypothetical Lab board as the toolbar');
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async()=>{throw new DOMException('Share denied','NotAllowedError');}},
+      }));
+      await page.locator('.review-board-square').focus();
+      await page.keyboard.press('s');
+      const branchShareFallback=page.locator('[data-review-meta-toolbar] [data-review-clipboard-fallback]');
+      await branchShareFallback.waitFor({state:'visible',timeout:3000});
+      const branchShareField=branchShareFallback.locator('textarea');
+      assert.equal(await branchShareField.inputValue(),branchShareUrl,
+        'Denied variation Share must expose the exact same playable Lab link');
+      const shareSelection=await branchShareField.evaluate(field=>({
+        focused:document.activeElement===field,
+        selected:field.selectionStart===0 && field.selectionEnd===field.value.length,
+      }));
+      assert.ok(shareSelection.focused && shareSelection.selected,
+        'Denied keyboard Share must focus and select its full variation link');
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async text=>{document.documentElement.dataset.qaBranchCopied=text;}},
+      }));
+      await exportRow.locator('button').first().click();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),branchPosition.fen());
       await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();
       assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),savedPgn,
         'Copy PGN during exploration must remain the untouched saved game');
