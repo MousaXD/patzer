@@ -27,7 +27,12 @@ export function buildSavedReviewTimeline(
       san: position.san ?? '',
       ...(scored ? { classification: match.classification } : {}),
     });
-    evals.push({ ply, cp: scored ? (match.eval_after_cp ?? null) : null });
+    evals.push({
+      ply,
+      cp: scored ? (match.eval_after_cp ?? null) : null,
+      // Mate provenance has the same ply/uci requirements as the evaluation.
+      ...(scored && match?.mate_after != null ? { mate: match.mate_after } : {}),
+    });
   }
   return { moves, evals };
 }

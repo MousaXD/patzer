@@ -1,6 +1,11 @@
 /** Pure Game Review graph geometry. The initial position is ply 0 and is
  * navigable, but it must never be assigned an invented 0.00 evaluation. */
-export interface EvalSample { ply: number; cp: number | null }
+export interface EvalSample {
+  ply: number;
+  cp: number | null;
+  /** Source-matched, White-perspective mate distance. Never infer one from cp. */
+  mate?: number | null;
+}
 export interface EvalPoint extends EvalSample { x: number; y: number | null }
 
 function winShare(cp: number): number {

@@ -30,4 +30,9 @@ describe('saved Game Review PGN replay', () => {
   it('rejects broken PGN instead of throwing and blanking the review', () => {
     expect(parseReviewGamePositions('1. e4 impossible-move')).toBeNull();
   });
+
+  it('distinguishes a legal PGN without moves from corrupt notation', () => {
+    const positions = parseReviewGamePositions('*');
+    expect(positions).toEqual([{ fen: new Chess().fen() }]);
+  });
 });

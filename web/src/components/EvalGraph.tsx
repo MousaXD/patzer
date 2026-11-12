@@ -2,29 +2,30 @@ import { useMemo, useState } from 'react';
 import { buildEvalGraphPoints, scoredEvalSegments, evalPlyAtRatio, type EvalSample } from './review/evalGraphModel';
 import { useTranslation } from 'react-i18next';
 import { styleFor } from '../lib/classification';
+import { displayableMate, formatReviewMate } from './review/reviewMateScore';
 
 interface Mistake { ply: number; classification: string }
 
 interface Props {
   evals: EvalSample[];
   current?: number;
-  onClick?: (ply: number) => void;
+  /** Keep keyboard slider scrubbing separate from pointer selection: a phone
+   * tap can reveal the board without stealing focus after each arrow key. */
+  onClick?: (ply: number, input: 'keyboard' | 'pointer') => void;
   /** Plies where blunders/mistakes/inaccuracies happened, drawn as colored dots. */
   markers?: Mistake[];
   /** Pixel height; defaults to 96 (chess.com Game Review). */
   height?: number;
 }
 
-function fmtCp(cp: number | null): string {
-  if (cp == null) return '0.0';
-  if (cp >= 9000) {
-    const moves = Math.max(1, Math.round((10000 - cp) / 10));
-    return `M${moves}`;
-  }
-  if (cp <= -9000) {
-    const moves = Math.max(1, Math.round((10000 - Math.abs(cp)) / 10));
-    return `-M${moves}`;
-  }
+function fmtCp(cp: number | null, mate?: number | null): string {
+  if (cp == null) return '—';
+  const verifiedMate = displayableMate(mate, cp);
+  const preciseLabel = formatReviewMate(verifiedMate);
+  if (preciseLabel != null) return preciseLabel;
+  // A very large cp can be a saved mate proxy, but without a consistent
+  // explicit mate field even a bare # incorrectly asserts a forced mate.
+  // Keep the actual recorded numeric score instead of inventing that claim.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }
@@ -51,9 +52,11 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
   const hoverPoint = points.find((point) => point.ply === hoverPly);
   const currentPoint = points.find((point) => point.ply === current);
   const currentX = current === 0 ? 0 : currentPoint?.x;
-  const currentLabel = current === 0
-    ? t('review.startingPosition', { defaultValue: 'Starting position' })
-    : currentPoint?.cp == null ? 'Evaluation unavailable' : fmtCp(currentPoint.cp);
+  const currentLabel = current === undefined
+    ? t('review.variationTimelineHint')
+    : current === 0
+      ? t('review.startingPosition', { defaultValue: 'Starting position' })
+      : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp, currentPoint.mate);
 
   function pickPly(clientX: number, rect: DOMRect): number {
     return evalPlyAtRatio(evals, (clientX - rect.left) / rect.width);
@@ -83,7 +86,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
           else if (e.key === 'End') next = evals.length;
           else return;
           e.preventDefault(); e.stopPropagation();
-          onClick(next === 0 ? 0 : evals[next - 1]!.ply);
+          onClick(next === 0 ? 0 : evals[next - 1]!.ply, 'keyboard');
         }}
         onPointerMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -93,7 +96,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
         onClick={(e) => {
           if (!onClick) return;
           const rect = e.currentTarget.getBoundingClientRect();
-          onClick(pickPly(e.clientX, rect));
+          onClick(pickPly(e.clientX, rect), 'pointer');
         }}
       >
         {/* Unknown evaluations are neutral rather than fabricated as equality. */}
@@ -154,12 +157,12 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
             transform: (hoverPoint?.x ?? 0) > 80 ? 'translateX(-100%)' : undefined,
           }}
         >
-          {hoverPly === 0 ? t('review.startingPosition', { defaultValue: 'Starting position' }) : (hoverPoint?.cp == null ? '—' : fmtCp(hoverPoint.cp))}
+          {hoverPly === 0 ? t('review.startingPosition', { defaultValue: 'Starting position' }) : (hoverPoint?.cp == null ? '—' : fmtCp(hoverPoint.cp, hoverPoint.mate))}
         </div>
       )}
       {currentPoint?.cp != null && (
         <div className="pointer-events-none absolute right-2 top-2 rounded-sm bg-chesscom-900/85 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white backdrop-blur-sm">
-          {fmtCp(currentPoint.cp)}
+          {fmtCp(currentPoint.cp, currentPoint.mate)}
         </div>
       )}
     </div>

@@ -5,6 +5,8 @@ interface Props {
   cp: number | null;       // white-perspective centipawns; null = unscored/unknown
   mate?: number | null;    // mate-in-N from white's POV (positive = white mates)
   orientation?: 'white' | 'black';
+  /** Accessible presentation supplied by the Game Review locale. */
+  ariaLabel?: string;
   /** Optional explicit height. If omitted, fills parent height (use with align-self: stretch). */
   height?: number;
 }
@@ -20,13 +22,13 @@ function cpToShare(cp: number): number {
 
 function fmtCp(cp: number | null): string {
   if (cp == null) return '—';
-  if (cp >= 9000) return '#';
-  if (cp <= -9000) return '-#';
+  // A high cp without a verified mate distance represents an extreme score,
+  // not a proven checkmate. Mate chips are handled separately above.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(1)}`;
 }
 
-export default function EvalBar({ cp, mate, orientation = 'white', height }: Props) {
+export default function EvalBar({ cp, mate, orientation = 'white', height, ariaLabel }: Props) {
   const share = useMemo(() => {
     if (mate != null) return mate > 0 ? 1 : 0;
     return cpToShare(cp ?? 0);
@@ -51,7 +53,7 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
   const ease = [0.22, 1, 0.36, 1] as const;
 
   return (
-    <div className="relative" style={wrapStyle} aria-label={unknown ? 'Evaluation unavailable' : mate != null ? `Mate in ${Math.abs(mate)} for ${mate > 0 ? 'White' : 'Black'}` : `Evaluation ${label} for White`} role="img">
+    <div className="relative" style={wrapStyle} aria-label={ariaLabel ?? (unknown ? 'Evaluation unavailable' : mate != null ? `Mate in ${Math.abs(mate)} for ${mate > 0 ? 'White' : 'Black'}` : `Evaluation ${label} for White`)} role="img">
       <div
         className={`relative flex h-full w-full ${flip ? 'flex-col-reverse' : 'flex-col'} overflow-hidden rounded-l-md border border-chesscom-300 bg-chesscom-200 shadow-soft dark:border-chesscom-700 ${isMate ? 'shadow-glow' : ''}`}
       >
@@ -81,7 +83,12 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
         />}
       </div>
       {/* Floating score chip on the advantaged side, outside the bar. */}
-      {!unknown && <div
+      {/* The thin 18px rail has room for only a short score. Longer values
+          escape the viewport and cover board squares on 320px phones; the
+          full score remains visible in Review's move header and accessible
+          on this role=img. Do not truncate or shrink factual numbers. */}
+      {!unknown && label.length <= 4 && <div
+        data-review-eval-chip
         className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-sm px-1 py-0.5 text-[11px] font-bold tabular-nums shadow-soft ${
           whiteAdvantage
             ? 'bg-white text-chesscom-900 ring-1 ring-chesscom-200'

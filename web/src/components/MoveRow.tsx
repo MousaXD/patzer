@@ -11,12 +11,14 @@ interface Props {
   white?: Move;
   black?: Move;
   current: number;
-  onSelect: (ply: number) => void;
+  onSelect: (ply: number, input: 'keyboard' | 'pointer') => void;
+  /** A move pair split by a phase boundary retains its move number above. */
+  hideNumber?: boolean;
   /** Plies singled out by a game report filter; others are dimmed. */
   highlight?: Set<number> | null;
 }
 
-export default function MoveRow({ num, white, black, current, onSelect, highlight }: Props) {
+export default function MoveRow({ num, white, black, current, onSelect, highlight, hideNumber = false }: Props) {
   const { t } = useTranslation();
   const wCur = white?.ply === current;
   const bCur = black?.ply === current;
@@ -48,7 +50,7 @@ export default function MoveRow({ num, white, black, current, onSelect, highligh
       'grid grid-cols-[2.25rem_1fr_1fr] items-stretch border-b border-chesscom-100 dark:border-chesscom-800',
       pickTint(white?.classification, black?.classification),
     )}>
-      <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400 dark:text-chesscom-300">{num}.</div>
+      <div className="flex items-center justify-end pr-2 text-xs tabular-nums text-chesscom-400 dark:text-chesscom-300">{hideNumber ? null : `${num}.`}</div>
       <Half move={white} num={num} side="white" current={wCur} onSelect={onSelect} t={t} highlight={highlight} />
       <Half move={black} num={num} side="black" current={bCur} onSelect={onSelect} t={t} highlight={highlight} />
     </div>
@@ -60,7 +62,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
   num: number;
   side: 'white' | 'black';
   current: boolean;
-  onSelect: (p: number) => void;
+  onSelect: (p: number, input: 'keyboard' | 'pointer') => void;
   t: (key: string) => string;
   highlight?: Set<number> | null;
 }) {
@@ -72,12 +74,13 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
   return (
     <button
       type="button"
-      onClick={() => onSelect(move.ply)}
+      data-review-ply={move.ply}
+      onClick={(event) => onSelect(move.ply, event.detail === 0 ? 'keyboard' : 'pointer')}
       aria-current={current ? 'step' : undefined}
       aria-label={`${num}${side === 'white' ? '.' : '…'} ${t(`review.${side}`)} ${move.san}${label ? `: ${label}` : ''}`}
       title={label ?? undefined}
       className={cn(
-        'group flex min-h-10 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
+        'group flex min-h-11 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
         current
           ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50'
           : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800',

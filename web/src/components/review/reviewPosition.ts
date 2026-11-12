@@ -1,8 +1,52 @@
+import { Chess } from 'chess.js';
 import { legalAnalysisMove } from '../../lib/analysisVariations';
 
 /** Review-only presentation rules. Never suggest a move evaluated on a
  * different FEN, or reuse the saved mainline during a free variation. */
 export interface SuggestedMove { best_move_uci?: string | null }
+
+export interface SavedBestAdvice extends SuggestedMove {
+  fen_before: string;
+  best_move_san?: string | null;
+  best_pv?: readonly string[];
+}
+
+/** Cached engine advice is descriptive data, not a license to draw arbitrary
+ * arrows or tell a learner an impossible move was best. The current FEN,
+ * legal UCI and canonical SAN must all match before it is presented. */
+export function verifiedSavedBestMove(
+  move: SavedBestAdvice | null | undefined,
+  precedingFen: string | undefined,
+): { uci: string; san: string } | null {
+  if (!move || !precedingFen || move.fen_before !== precedingFen
+    || !move.best_move_uci || !move.best_move_san) return null;
+  const legal = legalAnalysisMove(precedingFen, move.best_move_uci);
+  return legal && legal.san === move.best_move_san
+    ? { uci: legal.uci, san: legal.san } : null;
+}
+
+/** The engine may offer a sound best move alongside a corrupted or truncated
+ * PV. Keep the legally verified move visible, but do not invent or echo a
+ * continuation unless every SAN can be replayed from that exact position. */
+export function verifiedSavedBestContinuation(
+  move: SavedBestAdvice | null | undefined,
+  precedingFen: string | undefined,
+): string[] {
+  const best = verifiedSavedBestMove(move, precedingFen);
+  if (!best || !Array.isArray(move?.best_pv) || move.best_pv.length === 0
+    || move.best_pv[0] !== best.san) return [];
+  try {
+    const replay = new Chess(precedingFen);
+    for (const san of move.best_pv) {
+      if (typeof san !== 'string') return [];
+      const played = replay.move(san, { strict: true });
+      if (!played || played.san !== san) return [];
+    }
+    return [...move.best_pv];
+  } catch {
+    return [];
+  }
+}
 
 /** Offer an interactive best-move preview only when the cached suggestion is
  *  a legal, correctly named alternative in the original pre-move position.
@@ -11,11 +55,8 @@ export function verifiedBestAlternative(
   move: { uci: string; fen_before: string; best_move_uci?: string | null; best_move_san?: string | null },
   precedingFen: string | undefined,
 ): { uci: string; san: string } | null {
-  if (!precedingFen || move.fen_before !== precedingFen
-    || !move.best_move_uci || !move.best_move_san) return null;
-  const legal = legalAnalysisMove(precedingFen, move.best_move_uci);
-  return legal && legal.uci !== move.uci && legal.san === move.best_move_san
-    ? { uci: legal.uci, san: legal.san } : null;
+  const best = verifiedSavedBestMove(move, precedingFen);
+  return best && best.uci !== move.uci ? best : null;
 }
 
 /** Stockfish's scorer derives absolute ply from FEN (fullmove and turn).
@@ -35,34 +76,73 @@ export function visibleEngineLines<T>(lines: T[], resultFen: string, displayedFe
   return resultFen === displayedFen ? lines : [];
 }
 
+/** A legal position's terminal state comes from the board, not an absent
+ * engine evaluation. Other drawn states can depend on game history, so do
+ * not infer them from a standalone FEN. */
+export function reviewTerminalPosition(fen: string): 'checkmate' | 'stalemate' | null {
+  try {
+    const position = new Chess(fen);
+    if (position.isCheckmate()) return 'checkmate';
+    if (position.isStalemate()) return 'stalemate';
+  } catch {
+    // A malformed FEN must not be described as a finished game.
+  }
+  return null;
+}
+
 /** Reject a mismatched or malformed engine response before presenting arrows.
- * A late result claiming another FEN must not be labelled as the current one.
+ * A matching position and legal UCI are not enough: the visible SAN and PV
+ * must also describe that exact move and a legal continuation. Otherwise the
+ * analysis panel could invite the player to try e4 while claiming it is d4.
  */
 export function verifiedPositionEngineLines<T>(
   payload: { fen?: unknown; lines?: unknown },
   requestedFen: string,
 ): T[] | null {
   if (!requestedFen || payload.fen !== requestedFen || !Array.isArray(payload.lines)) return null;
-  if (!payload.lines.every((line: unknown) => {
+  const seenFirstMoves = new Set<string>();
+  if (!payload.lines.every((line: unknown, index: number) => {
     if (!line || typeof line !== 'object' || Array.isArray(line)) return false;
     const record = line as Record<string, unknown>;
-    return typeof record.uci === 'string'
-      && legalAnalysisMove(requestedFen, record.uci) !== null
-      && typeof record.san === 'string'
-      && Array.isArray(record.pv_san)
-      && record.pv_san.every((san: unknown) => typeof san === 'string')
-      && (record.cp === null || (typeof record.cp === 'number' && Number.isFinite(record.cp)))
-      && (record.mate === null || (typeof record.mate === 'number' && Number.isFinite(record.mate)))
-      && (record.cp !== null || record.mate !== null)
-      && Number.isSafeInteger(record.multipv) && (record.multipv as number) >= 1;
+    const first = typeof record.uci === 'string' ? legalAnalysisMove(requestedFen, record.uci) : null;
+    if (!first || record.san !== first.san
+      || !Array.isArray(record.pv_san) || record.pv_san.length === 0 || record.pv_san.length > 8
+      || !record.pv_san.every((san: unknown) => typeof san === 'string')
+      || (record.cp !== null && (typeof record.cp !== 'number' || !Number.isFinite(record.cp)))
+      || (record.mate !== null && (typeof record.mate !== 'number' || !Number.isFinite(record.mate)))
+      // A UCI mate distance is a signed count of moves, never a fraction or
+      // an arbitrary floating-point score. Keep this aligned with the live
+      // renderer's exact, bounded mate-distance display.
+      || (record.mate !== null && (!Number.isSafeInteger(record.mate) || Math.abs(record.mate) > 999))
+      || (record.cp === null && record.mate === null)
+      // Stockfish UCI and the hosted engine return one scored verdict per
+      // line, not a nonzero mate *and* cp. Do not promote contradictory
+      // evidence to a definite mate or a best-move claim. The separate
+      // unsigned mate-zero sentinel remains a neutral/unknown display.
+      || (record.mate !== null && record.mate !== 0 && record.cp !== null)
+      || !Number.isSafeInteger(record.multipv) || record.multipv !== index + 1
+      || seenFirstMoves.has(first.uci)) return false;
+    try {
+      const replay = new Chess(requestedFen);
+      for (const [index, san] of record.pv_san.entries()) {
+        const actual = replay.move(san);
+        if (!actual || actual.san !== san) return false;
+        if (index === 0 && actual.from + actual.to + (actual.promotion || '') !== first.uci) return false;
+      }
+      seenFirstMoves.add(first.uci);
+      return true;
+    } catch {
+      return false;
+    }
   })) return null;
   return payload.lines as T[];
 }
 
 export function bestMoveForDisplayedBoard(args: {
   ply: number;
+  displayedFen: string;
   isVariation: boolean;
-  mainline?: readonly SuggestedMove[];
+  mainline?: readonly SavedBestAdvice[];
   liveLines?: readonly { uci: string }[];
   liveReady: boolean;
 }): string | undefined {
@@ -70,5 +150,5 @@ export function bestMoveForDisplayedBoard(args: {
   // Move N is evaluated from the position before move N, so the displayed
   // position after ply P can only use move P+1's saved suggestion.
   if (args.isVariation) return undefined;
-  return args.mainline?.[args.ply]?.best_move_uci ?? undefined;
+  return verifiedSavedBestMove(args.mainline?.[args.ply], args.displayedFen)?.uci;
 }

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import MoveRow from './MoveRow';
-import { buildMovePairs, pairIndexForPly } from './review/moveHistoryModel';
+import { buildMovePairs } from './review/moveHistoryModel';
 import type { PhaseSplit } from '../types';
 
 interface Move { ply: number; san: string; classification?: string }
@@ -9,7 +9,7 @@ interface Move { ply: number; san: string; classification?: string }
 interface Props {
   moves: Move[];
   current: number;
-  onSelect: (ply: number) => void;
+  onSelect: (ply: number, input: 'keyboard' | 'pointer') => void;
   /** Optional phase split — when present, inserts OPENING / MIDDLEGAME /
    *  ENDGAME divider rows between move-pairs to match chess.com Game Review. */
   phaseSplit?: PhaseSplit | null;
@@ -32,22 +32,54 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
   }, [current]);
   const rows = buildMovePairs(moves, startFen);
 
-  // Build a map from "move-pair number" to "phase label to insert BEFORE it".
-  // The first phase label sits at the top (no insertion above row 1 needed —
-  // chess.com renders OPENING as a banner above the list).
-  const phaseAtPair: Map<number, 'opening' | 'middlegame' | 'endgame'> = new Map();
+  // Phase evidence is tied to an exact saved PGN ply, not its containing
+  // two-column display pair. A phase can begin on Black's half of a row;
+  // placing a divider before that whole row would mislabel White's move.
+  const phaseAtPly: Map<number, 'middlegame' | 'endgame'> = new Map();
   if (phaseSplit?.middlegame?.from_ply) {
-    phaseAtPair.set(pairIndexForPly(phaseSplit.middlegame.from_ply, startFen), 'middlegame');
+    phaseAtPly.set(phaseSplit.middlegame.from_ply, 'middlegame');
   }
   if (phaseSplit?.endgame?.from_ply) {
-    phaseAtPair.set(pairIndexForPly(phaseSplit.endgame.from_ply, startFen), 'endgame');
+    phaseAtPly.set(phaseSplit.endgame.from_ply, 'endgame');
   }
+  const phaseLabel = (phase: 'middlegame' | 'endgame') =>
+    t(phase === 'middlegame' ? 'review.middlegame' : 'review.endgame');
 
   return (
     <div
       ref={scrollRef}
       role="region"
       aria-label={t('review.moves', { defaultValue: 'Game move history' })}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const focused = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-review-ply]');
+        if (!focused || !event.currentTarget.contains(focused)) return;
+        const focusedPly = Number(focused.dataset.reviewPly);
+        if (!Number.isSafeInteger(focusedPly)) return;
+        const maxPly = moves.length ? moves[moves.length - 1]!.ply : 0;
+        let target: number;
+        if (event.key === 'ArrowRight') target = Math.min(maxPly, focusedPly + 1);
+        else if (event.key === 'ArrowLeft') target = Math.max(0, focusedPly - 1);
+        else if (event.key === 'ArrowDown') target = focusedPly === 0
+          ? Math.min(1, maxPly)
+          : focusedPly + 2 <= maxPly ? focusedPly + 2 : focusedPly;
+        else if (event.key === 'ArrowUp') target = focusedPly <= 2 ? 0 : focusedPly - 2;
+        else if (event.key === 'Home') target = 0;
+        else if (event.key === 'End') target = maxPly;
+        else return;
+        // The window-level Game Review shortcuts update the board, but leave
+        // focus on the previous SAN. Keep selection and focus together while
+        // navigating *inside* the move history; up/down follow the same side
+        // across rows, rather than unexpectedly moving to the other color
+        // when the final saved row is incomplete. Don't intercept other areas.
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(target, 'keyboard');
+        requestAnimationFrame(() => {
+          scrollRef.current?.querySelector<HTMLButtonElement>(`button[data-review-ply="${target}"]`)
+            ?.focus({ preventScroll: true });
+        });
+      }}
       className="max-h-[20rem] overflow-auto overscroll-contain rounded-md border border-chesscom-200 bg-white dark:border-chesscom-700 dark:bg-chesscom-800/60 sm:max-h-[min(55dvh,32rem)]"
       style={maxHeight == null ? undefined : { maxHeight }}
     >
@@ -58,31 +90,36 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
       </div>
       <button
         type="button"
-        onClick={() => onSelect(0)}
+        data-review-ply={0}
+        onClick={(event) => onSelect(0, event.detail === 0 ? 'keyboard' : 'pointer')}
         aria-current={current === 0 ? 'step' : undefined}
-        className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
+        className={`block min-h-11 w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
       >
         {t('review.startingPosition', { defaultValue: 'Starting position' })}
       </button>
-      {moves.length === 0 && <p className="px-3 py-3 text-xs text-chesscom-500 dark:text-chesscom-300">No recorded moves.</p>}
+      {moves.length === 0 && <p role="status" className="px-3 py-3 text-xs text-chesscom-500 dark:text-chesscom-300">
+        {t('review.noRecordedMoves')}
+      </p>}
       {phaseSplit?.opening && (
         <PhaseDivider label={t('review.opening')} />
       )}
       {rows.map((r) => {
-        const phaseHere = phaseAtPair.get(r.pairIndex);
+        const firstPly = r.white?.ply ?? r.black?.ply;
+        const phaseHere = firstPly == null ? undefined : phaseAtPly.get(firstPly);
+        const phaseAtBlack = r.white && r.black ? phaseAtPly.get(r.black.ply) : undefined;
         return (
-          <Fragment key={r.num}>
+          <Fragment key={r.pairIndex}>
             {phaseHere && (
-              <PhaseDivider label={phaseHere === 'middlegame' ? t('review.middlegame') : t('review.endgame')} />
+              <PhaseDivider label={phaseLabel(phaseHere)} />
             )}
-            <MoveRow
-              num={r.num}
-              white={r.white}
-              black={r.black}
-              current={current}
-              onSelect={onSelect}
-              highlight={highlight}
-            />
+            {phaseAtBlack ? <>
+              <MoveRow num={r.num} white={r.white} current={current}
+                onSelect={onSelect} highlight={highlight} />
+              <PhaseDivider label={phaseLabel(phaseAtBlack)} />
+              <MoveRow num={r.num} black={r.black} hideNumber current={current}
+                onSelect={onSelect} highlight={highlight} />
+            </> : <MoveRow num={r.num} white={r.white} black={r.black}
+              current={current} onSelect={onSelect} highlight={highlight} />}
           </Fragment>
         );
       })}
@@ -92,8 +129,8 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
 
 function PhaseDivider({ label }: { label: string }) {
   return (
-    <div className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
+    <h3 className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
       {label}
-    </div>
+    </h3>
   );
 }

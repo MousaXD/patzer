@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate, useLocation, useBlocker } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUp, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation, reviewTerminalPosition } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -18,6 +18,9 @@ import { reviewAnalysisErrorKind } from '../components/review/reviewAnalysisErro
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
+import ReviewClassificationGuide from '../components/review/ReviewClassificationGuide';
+import { displayableMate, formatReviewMate } from '../components/review/reviewMateScore';
+import { formatReviewEngineLineScore } from '../components/review/reviewEngineLineScore';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
@@ -33,8 +36,8 @@ import ThreatPanel from '../components/ThreatPanel';
 import ExplorerPanel from '../components/ExplorerPanel';
 import { soundForMove, inferMoveFlagsFromSan } from '../lib/sounds';
 import { useAnalysisVariations } from '../lib/useAnalysisVariations';
-import { legalAnalysisMove } from '../lib/analysisVariations';
-import { qualityMatchesPosition, type VariationMoveQuality } from '../lib/classification';
+import { legalAnalysisMove, analysisVariationPreview, analysisVariationTrail } from '../lib/analysisVariations';
+import { qualityMatchesVariationMove, type VariationMoveQuality } from '../lib/classification';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPosition';
@@ -68,8 +71,8 @@ interface EngineLine {
 
 function fmtCp(cp: number | null | undefined): string {
   if (cp == null) return '0.00';
-  if (cp >= 9000) return '#';
-  if (cp <= -9000) return '-#';
+  // Saved analysis can contain mate-like cp proxies without a consistent
+  // explicit mate distance. Only formatReviewMate may claim an actual mate.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }
@@ -91,7 +94,7 @@ function PracticeUnavailable({ practicePicker, onExit }: { practicePicker: boole
   const { t } = useTranslation();
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
-  return <section role="alert" aria-labelledby="practice-unavailable-heading"
+  return <section role="alert" data-practice-unavailable="true" aria-labelledby="practice-unavailable-heading"
     className="mx-auto max-w-xl rounded-lg border border-amber-500/40 p-4">
     <h1 id="practice-unavailable-heading" ref={headingRef} tabIndex={-1}
       className="font-semibold focus:outline-none">{t('practice.unavailableHeading')}</h1>
@@ -130,42 +133,58 @@ function GameAnalyzerView() {
   const setAnalysis = useCallback((value: AnalysisResult | null) => {
     setAnalysisSnapshot({ gameId, value });
   }, [gameId]);
+  const runAnalysisButtonRef = useRef<HTMLButtonElement>(null);
+  const missingMoveRetryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    // The native disabled state stops duplicate engine requests, but can drop
+    // keyboard focus to BODY while Stockfish runs. Restore the enabled retry
+    // after failure only when focus was lost, not when the user navigated to
+    // a different control during the request.
+    if (!analyzing && analysisError && document.activeElement === document.body) {
+      (missingMoveRetryRef.current ?? runAnalysisButtonRef.current)?.focus({ preventScroll: true });
+    }
+  }, [analyzing, analysisError, analysis]);
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [requestedDepth, setRequestedDepth] = useState(16);
   const [showDepthControl, setShowDepthControl] = useState(false);
   const [storedProse, setStoredProse] = useState<{ source: string; prose: GameReviewProse } | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
-  // An in-review retry is transient. A blind attempt entered from the
-  // library uses a separate URL history entry so Back returns to its
-  // spoiler-free picker instead of unexpectedly leaving the saved game.
-  const [reviewPracticePly, setReviewPracticePly] = useState<number | null>(null);
+  // A blind attempt entered from the library uses a separate URL history
+  // entry so Back returns to its spoiler-free picker. In-review attempts
+  // instead replace the current URL: this exposes the same guarded route
+  // transition to Notes before practice unmounts the review workspace.
   // A category picked in the Game Report table (e.g. Black's misses): those
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const boardFocusRef = useRef<HTMLDivElement | null>(null);
+  const moveSummaryRef = useRef<HTMLDivElement | null>(null);
+  const variationTrailRef = useRef<HTMLElement | null>(null);
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [shareCopyFailed, setShareCopyFailed] = useState(false);
+  const [shareCopyAttempt, setShareCopyAttempt] = useState(0);
   useEffect(() => { setShareCopyFailed(false); }, [gameId]);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
   const routeAttempt = searchParams.get('practicePly');
-  const routePracticePly = practicePicker && routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
+  // An invalid target is still a blind-practice request. Do not let a
+  // malformed shared link fall through to the scored Review workspace.
+  const practiceTargetRequested = routeAttempt !== null;
+  const routePracticePly = routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
     ? Number(routeAttempt) : null;
-  const practicePly = practicePicker
-    ? routePracticePly !== null && Number.isSafeInteger(routePracticePly) ? routePracticePly : null
-    : reviewPracticePly;
+  const practicePly = routePracticePly !== null && Number.isSafeInteger(routePracticePly)
+    ? routePracticePly : null;
   // Blind practice must not compete with a previously started full-game
   // reanalysis, whether entered through the library or from normal Review.
   useEffect(() => {
-    if ((practicePicker || practicePly !== null) && analysisRequestRef.current) {
+    if ((practicePicker || practiceTargetRequested) && analysisRequestRef.current) {
       analysisRequestRef.current.abort();
       analysisRequestRef.current = null;
       setAnalyzing(false);
     }
-  }, [practicePicker, practicePly]);
+  }, [practicePicker, practiceTargetRequested]);
   // Replaying a PGN is work proportional to game length. Rebuild only when
   // its text changes (not when notes/bookmarks or cached analysis refresh).
   // A corrupted PGN is represented as an empty result, not a render-time throw.
@@ -291,10 +310,10 @@ function GameAnalyzerView() {
   // stale analysis. Deliberately exclude 'analyzing': a failed request must
   // not create an immediate retry loop on the same stale snapshot.
   useEffect(() => {
-    if (!data?.analysis_stale || data.analysis_unverified || analyzing || practicePicker || practicePly !== null) return;
+    if (!data?.analysis_stale || data.analysis_unverified || analyzing || practicePicker || practiceTargetRequested) return;
     void analyze(16, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, practicePicker, practicePly]);
+  }, [data, practicePicker, practiceTargetRequested]);
 
   // Load prose only for the source that was observed at request admission.
   // Game-detail refetches can arrive without remounting the route. Do not
@@ -303,7 +322,7 @@ function GameAnalyzerView() {
     let active = true;
     // Cached AI prose contains conclusions/engine lines; neither mount nor
     // request it in the blind exercise. Fetch it only in the full review.
-    if (!practicePicker && sourceKey && Number.isSafeInteger(gameId) && gameId > 0) {
+    if (!practicePicker && !practiceTargetRequested && sourceKey && Number.isSafeInteger(gameId) && gameId > 0) {
       api.get<{ review: GameReviewProse | null }>(`/api/games/${gameId}/review`)
         .then((r) => {
           if (!active || currentSourceRef.current !== sourceKey) return;
@@ -317,16 +336,16 @@ function GameAnalyzerView() {
         .catch(() => { if (active && currentSourceRef.current === sourceKey) setStoredProse(null); });
     }
     return () => { active = false; };
-  }, [gameId, practicePicker, sourceKey]);
+  }, [gameId, practicePicker, practiceTargetRequested, sourceKey]);
 
   useEffect(() => {
-    if (practicePicker) { setCoachConfigured(false); return; }
+    if (practicePicker || practiceTargetRequested) { setCoachConfigured(false); return; }
     let active = true;
     api.get<{ configured: boolean }>('/api/coach/status')
       .then((s) => { if (active) setCoachConfigured(s.configured); })
       .catch(() => { if (active) setCoachConfigured(false); });
     return () => { active = false; };
-  }, [practicePicker]);
+  }, [practicePicker, practiceTargetRequested]);
 
   // Read initial ?ply= from the URL so deep-links to a specific position
   // open at that move on first render. After that we keep them in sync.
@@ -350,7 +369,12 @@ function GameAnalyzerView() {
       // Push one history entry for browser Back/Forward and mark its actual
       // origin. A bookmarked attempt URL has no guaranteed picker to pop to.
     } else {
-      setReviewPracticePly(selected);
+      // This transition replaces the Review UI. Route through the existing
+      // Notes leave guard rather than unmounting an unsaved draft by local
+      // state alone. Keep the original no-extra-history behavior.
+      const next = new URLSearchParams(searchParams);
+      next.set('practicePly', String(selected));
+      setSearchParams(next, { replace: true });
     }
   };
   const leavePractice = (restoreSelectedMove: boolean) => {
@@ -366,38 +390,99 @@ function GameAnalyzerView() {
       }
     } else {
       if (restoreSelectedMove && practicePly !== null) setPly(practicePly);
-      setReviewPracticePly(null);
+      const next = new URLSearchParams(searchParams);
+      next.delete('practicePly');
+      setSearchParams(next, { replace: true });
       requestAnimationFrame(() => document.getElementById(
         restoreSelectedMove ? 'learn-from-mistake' : 'full-game-review-heading',
       )?.focus());
     }
   };
   const isVariation = variations.activeVariationId !== null;
+  const activeBranch = isVariation
+    ? variations.variations.find((branch) => branch.id === variations.activeVariationId)
+    : null;
+  const activeTrail = activeBranch ? analysisVariationTrail(activeBranch, variations.variations) : [];
+  useEffect(() => {
+    const nav = variationTrailRef.current;
+    const current = nav?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!nav || !current) return;
+    // Only scroll the horizontal move strip. scrollIntoView() also shifts the
+    // document vertically, stealing the chessboard from mobile players who
+    // are stepping through moves using the board or transport controls.
+    const container = nav.getBoundingClientRect();
+    const selected = current.getBoundingClientRect();
+    const edge = 6;
+    if (selected.right > container.right - edge) {
+      nav.scrollLeft += selected.right - container.right + edge;
+    } else if (selected.left < container.left + edge) {
+      nav.scrollLeft -= container.left - selected.left + edge;
+    }
+  }, [activeBranch?.id, variations.variationCursor, activeTrail.length]);
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
-  const [qualityError, setQualityError] = useState('');
+  // A failed branch must not contaminate another branch whose source-matched
+  // score is already cached. The effect below is skipped on cache hits, so a
+  // global error string would otherwise survive every branch switch.
+  const [qualityFailure, setQualityFailure] = useState<{
+    key: string; reason: 'source_mismatch' | 'engine_unavailable';
+  } | null>(null);
+  const qualityError = qualityKey && qualityFailure?.key === qualityKey ? qualityFailure.reason : '';
   const [qualityRetry, setQualityRetry] = useState(0);
-  const variationQuality = qualityKey && qualityMatchesPosition(qualityCache[qualityKey], variations.currentFen)
+  const retryVariationScoring = () => {
+    setQualityFailure(null);
+    setQualityRetry((previous) => previous + 1);
+    // Retry hides its own button while a new score is loading. Without a
+    // durable focus target, keyboard users are thrown back to document BODY.
+    requestAnimationFrame(() => moveSummaryRef.current?.focus({ preventScroll: true }));
+  };
+  const variationQuality = qualityKey && qualityMatchesVariationMove(qualityCache[qualityKey], branchMove)
     ? qualityCache[qualityKey] : null;
-  const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
   // A branch is an ephemeral sequence, not part of the saved game's PGN.
   // Share the exact displayed board in Lab, not a misleading original-game URL.
   const shareCurrentPosition = () => isVariation
     ? `${window.location.origin}/lab#${encodeURI(variations.currentFen)}`
     : window.location.href;
+  const currentShareUrl = shareCurrentPosition();
+  const currentShareUrlRef = useRef(currentShareUrl);
+  const shareRequestVersionRef = useRef(0);
+  // Update during render so an async clipboard settlement cannot win a race
+  // against the next position before effect cleanup has run.
+  currentShareUrlRef.current = currentShareUrl;
+  const previousShareUrlRef = useRef(currentShareUrl);
+  useEffect(() => {
+    if (previousShareUrlRef.current === currentShareUrl) return;
+    previousShareUrlRef.current = currentShareUrl;
+    shareRequestVersionRef.current += 1;
+    // Manual share text belongs to one exact mainline/variation position.
+    // Do not leave the previous copy fallback open after the board URL moves.
+    setShareCopyFailed(false);
+    setLinkCopied(false);
+  }, [currentShareUrl]);
   // Both the toolbar button and the S keyboard shortcut must share the same
   // copy success/error feedback. A denied clipboard still offers a manual URL.
   const copySharePosition = async () => {
+    const requestedUrl = currentShareUrlRef.current;
+    const requestVersion = ++shareRequestVersionRef.current;
+    const stillCurrent = () => requestVersion === shareRequestVersionRef.current
+      && currentShareUrlRef.current === requestedUrl;
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
-      await navigator.clipboard.writeText(shareCurrentPosition());
+      await navigator.clipboard.writeText(requestedUrl);
+      if (!stillCurrent()) return;
       setShareCopyFailed(false);
       setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 1400);
+      setTimeout(() => { if (stillCurrent()) setLinkCopied(false); }, 1400);
     } catch {
+      // Permission can settle after the learner moves to another saved ply
+      // or exploratory branch. Ignore feedback for an obsolete source URL.
+      if (!stillCurrent()) return;
       setLinkCopied(false);
       setShareCopyFailed(true);
+      // The same denied action or keyboard S shortcut can be invoked again
+      // while the fallback is mounted. Remount its textarea to reselect it.
+      setShareCopyAttempt((current) => current + 1);
     }
   };
   const displayedLastMove = variations.lastMove;
@@ -406,21 +491,21 @@ function GameAnalyzerView() {
   // endpoint. A response for a deselected branch is cached but never rendered
   // against another FEN; failed/429 searches never invent a label.
   useEffect(() => {
-    if (practicePicker || practicePly !== null || !qualityKey || !branchMove || qualityCache[qualityKey]) return;
+    if (practicePicker || practiceTargetRequested || !qualityKey || !branchMove || qualityCache[qualityKey]) return;
     const controller = new AbortController();
     let cancelled = false;
     let retry: number | undefined;
-    setQualityError('');
+    setQualityFailure(null);
     const evaluate = async (attempt: number) => {
       try {
         const result = await postReviewAnalysis<{quality: VariationMoveQuality}>(
           '/api/analyze/variation-move', reviewVariationScoringRequest(branchMove), controller.signal,
         );
         if (!cancelled) {
-          if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
+          if (qualityMatchesVariationMove(result.quality, branchMove)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
           } else {
-            setQualityError('source_mismatch');
+            setQualityFailure({ key: qualityKey, reason: 'source_mismatch' });
           }
         }
       } catch (e) {
@@ -429,7 +514,7 @@ function GameAnalyzerView() {
         if (status === 429 && attempt === 0) {
           retry = window.setTimeout(() => void evaluate(1), 1100);
         } else {
-          setQualityError('engine_unavailable');
+          setQualityFailure({ key: qualityKey, reason: 'engine_unavailable' });
         }
       }
     };
@@ -438,8 +523,8 @@ function GameAnalyzerView() {
   // qualityKey and fen are the selection identity; avoid replaying a search
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qualityKey, variations.currentFen, qualityRetry, practicePicker, practicePly]);
-  useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
+  }, [qualityKey, variations.currentFen, qualityRetry, practicePicker, practiceTargetRequested]);
+  useEffect(() => { setQualityCache({}); setQualityFailure(null); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
     const move = legalAnalysisMove(variations.currentFen, uci);
@@ -453,7 +538,8 @@ function GameAnalyzerView() {
   const first = () => isVariation && variations.activeVariationId
     ? variations.selectVariation(variations.activeVariationId, 0) : setPly(0);
   const last = () => isVariation && variations.activeVariationId
-    ? variations.selectVariation(variations.activeVariationId) : setPly(positions.length - 1);
+    ? variations.selectVariation(variations.activeVariationId, activeBranch?.moves.length ?? 0)
+    : setPly(positions.length - 1);
 
   // Keep ?ply= in the URL so refresh + share work. Replace, don't push.
   useEffect(() => {
@@ -482,11 +568,13 @@ function GameAnalyzerView() {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
-      if (document.querySelector('[data-practice-mode], [data-practice-picker]')) return;
+      if (document.querySelector('[data-practice-mode], [data-practice-picker], [data-practice-unavailable]')) return;
       const target = e.target instanceof Element ? e.target : null;
-      // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
-      // or a modal/command palette. Arrow/Home/End are native controls there.
-      if (target?.closest('input, textarea, select, [contenteditable], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
+      // Global Review shortcuts apply to the board and document, never to a
+      // focused action. A Move details/Star/transport button is as much a
+      // keyboard control as an ARIA disclosure: Home/Arrow must not change
+      // the saved PGN position while focus stays on that other action.
+      if (target?.closest('button, a[href], input, textarea, select, summary, [contenteditable], [role="button"], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')) return;
       const key = e.key;
       if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {
@@ -508,6 +596,10 @@ function GameAnalyzerView() {
   }, []);
 
   async function analyze(depth: number, force = false) {
+    // A saved PGN with no played moves has no move classifications, accuracy,
+    // or learning report to compute. Keep position exploration available,
+    // but never launch an expensive full-game job for an empty history.
+    if (positions.length <= 1) return;
     if (analysisRequestRef.current || analyzing) return;
     const controller = new AbortController();
     analysisRequestRef.current = controller;
@@ -537,13 +629,13 @@ function GameAnalyzerView() {
   const [linesRetry, setLinesRetry] = useState(0);
   const [linesLoading, setLinesLoading] = useState(false);
   const [linesError, setLinesError] = useState<'busy' | 'unavailable' | null>(null);
-  const [linesHover, setLinesHover] = useState<EngineLine | null>(null);
+  const [linesHover, setLinesHover] = useState<{ fen: string; uci: string } | null>(null);
   const [explorerHover, setExplorerHover] = useState<string | null>(null);
   const pos = data ? (positions[ply] ?? positions[0]) : undefined;
   const currentFen = variations.currentFen || pos?.fen || '';
   const freshLines = visibleEngineLines(lines, linesFen, currentFen);
   useEffect(() => {
-    if (practicePly !== null || practicePicker || !linesEnabled || !currentFen) return;
+    if (practiceTargetRequested || practicePicker || !linesEnabled || !currentFen) return;
     const controller = new AbortController();
     let cancelled = false;
     setLinesError(null);
@@ -569,7 +661,7 @@ function GameAnalyzerView() {
         });
     }, 400);
     return () => { cancelled = true; controller.abort(); window.clearTimeout(handle); };
-  }, [linesEnabled, currentFen, linesRetry, practicePly, practicePicker]);
+  }, [linesEnabled, currentFen, linesRetry, practiceTargetRequested, practicePicker]);
   useEffect(() => { setLinesHover(null); setExplorerHover(null); }, [currentFen]);
 
   if (isLoading) return <AnalyzerSkeleton />;
@@ -588,6 +680,7 @@ function GameAnalyzerView() {
   const evaluatedMove = analysis?.moves[ply - 1];
   const move: AnalyzedMove | undefined = !isVariation && evaluatedMove?.uci === pos?.uci
     ? evaluatedMove : undefined;
+  const currentSavedBest = move ? verifiedSavedBestMove(move, positions[ply - 1]?.fen) : null;
   const startFen = positions[0]?.fen;
   // A partially imported / still-running game is not an eligible blind drill.
   const eligiblePractice = !data.analysis_stale && !cachedAnalysisInvalid
@@ -607,6 +700,21 @@ function GameAnalyzerView() {
     : userColor;
   // Never claim a drawn (0.00) position when a variation has not been scored.
   const currentEvalCp = isVariation ? (variationQuality?.eval_after_cp ?? null) : (move?.eval_after_cp ?? null);
+  // Saved and source-matched exploratory reports use White-perspective mate
+  // signs. Zero is ambiguous after checkmate, so leave that to the signed cp
+  // fallback rather than mistakenly showing a Black mate.
+  const currentMate = displayableMate(isVariation ? variationQuality?.mate_after : move?.mate_after, currentEvalCp);
+  const variationScorePending = isVariation && !!branchMove && !qualityError && !variationQuality;
+  const currentScoreLabel = formatReviewMate(currentMate) ?? (currentEvalCp === null ? null : fmtCp(currentEvalCp));
+  const evalStatusText = currentScoreLabel ?? (variationScorePending ? t('review.variationAnalyzing') : '—');
+  const evalStatusAccessible = currentScoreLabel === null
+    ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
+    : t('review.variationEvalLabel', { score: currentScoreLabel });
+  const evalBarAriaLabel = currentMate !== null
+    ? t(currentMate > 0 ? 'review.evalBarMateWhite' : 'review.evalBarMateBlack', { count: Math.abs(currentMate) })
+    : currentScoreLabel === null
+      ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
+      : t('review.evalBarScoreWhite', { score: currentScoreLabel });
 
   const historySoFar = analysis?.moves.slice(0, ply - 1).map((m) => m.san) ?? [];
   const coachReq = move ? () => ({
@@ -615,7 +723,10 @@ function GameAnalyzerView() {
       fen: move.fen_before,
       player: reviewedMoveSide === 'white' ? 'White' : 'Black',
       played_san: move.san,
-      best_san: move.best_move_san,
+      // The displayed coaching card and the model's FACTS must agree: an
+      // unsupported cached best SAN/PV cannot be smuggled into LLM context
+      // after the visible advice was suppressed by source verification.
+      best_san: currentSavedBest?.san ?? null,
       classification: move.classification,
       cp_loss: move.centipawn_loss,
       // Sending eval before/after lets the server build win-probability and
@@ -623,7 +734,7 @@ function GameAnalyzerView() {
       // small local model stops inventing winning attacks from training data.
       eval_before_cp: move.eval_before_cp,
       eval_after_cp: move.eval_after_cp,
-      pv_san: move.best_pv,
+      pv_san: verifiedSavedBestContinuation(move, positions[ply - 1]?.fen),
       history: historySoFar,
       // Your own moves get "you" and your history (past mistakes of the same
       // kind, weakest phase, the opening trainer); the opponent's get neither.
@@ -635,6 +746,7 @@ function GameAnalyzerView() {
   // suggestion (or a fresh live line) is legal on the displayed board.
   const bestUci = bestMoveForDisplayedBoard({
     ply,
+    displayedFen: currentFen,
     isVariation,
     mainline: analysis?.moves,
     liveLines: freshLines,
@@ -645,7 +757,15 @@ function GameAnalyzerView() {
     dest: bestUci.slice(2, 4) as never,
     brush: 'paleBlue',
   }] : [];
-  const hoverUci = linesHover?.uci ?? explorerHover;
+  // A hover/focus preview is valid only for the FEN from which that engine
+  // line was verified. Moving to another saved ply or exploratory branch may
+  // unmount the old button without a mouseleave event; never draw its arrow
+  // on an unrelated position, even if the same UCI happens to be legal.
+  const activeLinesHoverUci = linesEnabled && !linesLoading && !linesError
+    && linesHover?.fen === currentFen
+    && freshLines.some((candidate) => candidate.uci === linesHover.uci)
+    ? linesHover.uci : null;
+  const hoverUci = activeLinesHoverUci ?? explorerHover;
   const hoverArrow = hoverUci ? [{
     orig: hoverUci.slice(0, 2) as never,
     dest: hoverUci.slice(2, 4) as never,
@@ -707,9 +827,35 @@ function GameAnalyzerView() {
       document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
     });
   };
+  const jumpToGameActions = () => {
+    requestAnimationFrame(() => {
+      const toolbar = document.querySelector<HTMLElement>('[data-review-meta-toolbar]');
+      if (!toolbar) return;
+      toolbar.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      // Even without engine analysis these are active game controls. Focus
+      // the first real action so keyboard users don't remain on the board.
+      toolbar.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    });
+  };
   const jumpToBoard = () => {
     boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     boardFocusRef.current?.focus({ preventScroll: true });
+  };
+  // Engine suggestions are buttons tied to one exact FEN. Playing a line
+  // changes that position and unmounts the focused button; send keyboard
+  // users to the updated board instead of leaving focus on document BODY.
+  const focusBoardAfterEngineLine = () => requestAnimationFrame(() => {
+    if (window.matchMedia('(max-width: 959px)').matches) jumpToBoard();
+    else boardFocusRef.current?.focus({ preventScroll: true });
+  });
+  /** A mobile tap in the rail should reveal the board that changed above.
+   * Keep focus in the rail for keyboard/assistive selections so successive
+   * moves can be compared without losing the active control. */
+  const selectSavedFromRail = (selectedPly: number, input: 'keyboard' | 'pointer') => {
+    setPly(selectedPly);
+    if (input === 'pointer' && window.matchMedia('(max-width: 959px)').matches) {
+      requestAnimationFrame(jumpToBoard);
+    }
   };
   // In the stacked/mobile layout the board is above the analysis rail.
   // Merely updating the ply after selecting a Key Moment leaves the actual
@@ -724,10 +870,10 @@ function GameAnalyzerView() {
 
   // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
   // blind practice. The original PGN is read-only; attempts use a separate board.
-  if (practicePly !== null) {
-    const selected = analysis?.moves[practicePly - 1];
-    const saved = positions[practicePly];
-    if (eligiblePractice.some((candidate) => candidate.ply === practicePly)
+  if (practiceTargetRequested) {
+    const selected = practicePly !== null ? analysis?.moves[practicePly - 1] : undefined;
+    const saved = practicePly !== null ? positions[practicePly] : undefined;
+    if (practicePly !== null && eligiblePractice.some((candidate) => candidate.ply === practicePly)
       && selected && saved?.uci === selected.uci && saved.fen === selected.fen_after
       && selected.fen_before === positions[practicePly - 1]?.fen) {
       return <MistakePractice key={`${gameId}:${practicePly}:${selected.fen_before}`} fenBefore={selected.fen_before}
@@ -749,7 +895,6 @@ function GameAnalyzerView() {
       const next = new URLSearchParams(searchParams);
       next.delete('practice');
       next.delete('practicePly');
-      setReviewPracticePly(null);
       setSearchParams(next, { replace: true });
       requestAnimationFrame(() => document.getElementById('full-game-review-heading')?.focus());
     };
@@ -818,12 +963,13 @@ function GameAnalyzerView() {
           {/* The board fills its responsive grid track. Page-level scrolling
               replaces a short viewport's clipped workspace. */}
           <div className="relative my-2 flex items-stretch justify-center gap-2">
-            <EvalBar cp={currentEvalCp} orientation={orientation} />
+            <EvalBar cp={currentEvalCp} mate={currentMate} orientation={orientation} ariaLabel={evalBarAriaLabel} />
             <div
               ref={boardFocusRef}
               role="group"
               tabIndex={-1}
               aria-label={t('review.boardLabel', { defaultValue: 'Chessboard' })}
+              data-review-live-preview-uci={activeLinesHoverUci ?? undefined}
               className={`review-board-square relative aspect-square w-full min-w-0 scroll-mt-16 board-theme-${user?.profile.board_theme ?? 'green'}`}
             >
               <ChessBoard
@@ -856,33 +1002,53 @@ function GameAnalyzerView() {
             highlighted
           />
 
-          <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft dark:bg-chesscom-800">
+          <div ref={moveSummaryRef} data-review-move-summary tabIndex={-1}
+            className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:bg-chesscom-800">
             <div className="min-w-0 truncate text-chesscom-500">
               {isVariation ? (
                 <><span className="font-medium text-amber-600">{t('review.variationMove', { san: branchMove?.san ?? t('review.startingPosition') })}</span>
-                  {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
+                  {variationQuality && <span data-review-variation-quality className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
                 </>
               ) : ply > 0 && pos?.san ? (
                 <>
                   <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{reviewedMoveSide === 'white' ? t('review.sideShort.white') : t('review.sideShort.black')}: {pos.san}</span>
-                  {move?.best_move_san && move.best_move_san !== pos.san && (
-                    <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: move.best_move_san })}</span>
+                  {currentSavedBest && currentSavedBest.san !== pos.san && (
+                    <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: currentSavedBest.san })}</span>
                   )}
                 </>
               ) : <span className="italic">{t('review.startingPosition')}</span>}
             </div>
-            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? t('review.variationEvalUnavailable') : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) })}>
-              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
+            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={evalStatusAccessible}>
+              {evalStatusText}
             </div>
           </div>
-          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label={t('review.moveNavigation')}>
+          {/* Scoring feedback belongs beside the move it describes, not below
+              the lengthy variation selector. On phones the previous warning
+              was entirely below the viewport while the board showed '—'. */}
+          {isVariation && qualityError && (
+            <div data-review-variation-scoring-feedback role="status"
+              className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              <span className="min-w-0 flex-1">
+                {t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}
+              </span>
+              <button type="button" className="min-h-11 shrink-0 rounded border border-amber-500/50 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                onClick={retryVariationScoring}>
+                {t('review.variationRetryScoring')}
+              </button>
+            </div>
+          )}
+          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport
+            aria-label={t(isVariation ? 'review.variationMoveNavigation' : 'review.moveNavigation')}>
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
-            <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
-              {isVariation ? `${displayedPly} · var` : ply} / {positions.length - 1}
+            <div data-review-move-progress role="status"
+              className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
+              {isVariation
+                ? t('review.variationProgress', { current: variations.variationCursor, total: activeBranch?.moves.length ?? 0 })
+                : `${ply} / ${positions.length - 1}`}
             </div>
-            <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
-            <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
+            <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (activeBranch?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
+            <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (activeBranch?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
           {analysis && !isVariation && (
             <button type="button" data-review-jump-to-details
@@ -890,6 +1056,15 @@ function GameAnalyzerView() {
               onClick={jumpToReviewSection}>
               <FileText className="h-4 w-4" aria-hidden="true" />
               {t('review.jumpToMoveDetails')}
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          {!analysis && !isVariation && (
+            <button type="button" data-review-jump-to-actions
+              className="review-mobile-jump btn-secondary mt-2 min-h-11 w-full justify-center text-sm"
+              onClick={jumpToGameActions}>
+              <NotebookPen className="h-4 w-4" aria-hidden="true" />
+              {t('review.jumpToGameActions')}
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
@@ -910,7 +1085,13 @@ function GameAnalyzerView() {
                   <p className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationHelp')}</p>
                 </div>
                 <button type="button" className="btn-secondary min-h-11 shrink-0 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                  onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                  onClick={() => {
+                    variations.restoreOriginalGame();
+                    // This button becomes disabled as soon as its branch is
+                    // exited. Return the keyboard user to the saved board
+                    // instead of leaving focus on a disabled action/BODY.
+                    requestAnimationFrame(jumpToBoard);
+                  }} disabled={!isVariation}>
                   {t('review.variationReturn')}
                 </button>
               </div>
@@ -921,33 +1102,90 @@ function GameAnalyzerView() {
               </p>
             )}
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
-              {variations.variations.map((branch, index) => (
-                <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
-                  className={`inline-flex min-h-11 items-center rounded-md px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
-                  onClick={() => variations.selectVariation(branch.id)} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
-                  {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
-                </button>
-              ))}
+              {variations.variations.map((branch, index) => {
+                const parentIndex = variations.variations.findIndex(other => other.id === branch.parentId);
+                const descriptionId = `review-variation-description-${branch.id}`;
+                return <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
+                  aria-label={t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
+                  aria-describedby={descriptionId}
+                  className={`inline-flex min-h-14 min-w-[9.5rem] max-w-full flex-[1_1_9.5rem] flex-col items-start justify-center gap-1 rounded-md px-3 py-2 text-left text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
+                  onClick={() => {
+                    variations.selectVariation(branch.id);
+                    // The branch picker sits below the board on phones. The
+                    // changed position would otherwise remain out of view;
+                    // preserve the in-place, side-by-side workflow on desktop.
+                    if (window.matchMedia('(max-width: 959px)').matches) {
+                      requestAnimationFrame(jumpToBoard);
+                    }
+                  }} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
+                  <span>{t('review.variationOption', { number: index + 1, moves: branch.moves.length })}</span>
+                  <span id={descriptionId} className="block w-full min-w-0">
+                    <span className="block truncate font-mono text-[11px]">{analysisVariationPreview(branch, variations.variations)}</span>
+                    {parentIndex >= 0 && (
+                      <span className="block text-[10px] opacity-85">
+                        {t('review.variationForkOf', { number: parentIndex + 1 })}
+                      </span>
+                    )}
+                  </span>
+                </button>;
+              })}
             </div>}
-            {isVariation && <div role="status" className="mt-2 text-sm">
-              <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
-              {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
-                <span>{t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}</span>
-                <button type="button" className="min-h-11 rounded border border-amber-500/40 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
-                  onClick={() => setQualityRetry((previous) => previous + 1)}>{t('review.variationRetryScoring')}</button>
-              </div>}
+            {isVariation && activeBranch && <div className="mt-3 min-w-0" data-review-variation-trail>
+              <p className="mb-1 text-xs font-semibold text-chesscom-600 dark:text-chesscom-300">
+                {t('review.variationMoveTrail')}
+              </p>
+              <nav ref={variationTrailRef} aria-label={t('review.variationMoveTrail')}
+                className="flex max-w-full gap-1.5 overflow-x-auto pb-2">
+                <button type="button" aria-current={variations.variationCursor === 0 ? 'step' : undefined}
+                  aria-label={t('review.variationJumpFork')}
+                  onClick={() => {
+                    variations.selectVariation(activeBranch.id, 0);
+                    if (window.matchMedia('(max-width: 959px)').matches) requestAnimationFrame(jumpToBoard);
+                  }}
+                  className={`min-h-11 shrink-0 rounded-md border px-2.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.variationCursor === 0 ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'border-chesscom-300 text-chesscom-600 hover:bg-chesscom-100 dark:border-chesscom-600 dark:text-chesscom-200 dark:hover:bg-chesscom-700'}`}>
+                  {t('review.variationBranchPoint')}
+                </button>
+                {activeTrail.map((step) => {
+                  const number = variations.variations.findIndex((v) => v.id === step.branchId) + 1;
+                  const current = step.branchId === activeBranch.id && step.cursor === variations.variationCursor;
+                  return <button type="button" key={`${step.branchId}-${step.cursor}`}
+                    data-review-trail-move aria-current={current ? 'step' : undefined}
+                    aria-label={t('review.variationJumpMove', { san: step.move.san, number })}
+                    onClick={() => {
+                      variations.selectVariation(step.branchId, step.cursor);
+                      if (window.matchMedia('(max-width: 959px)').matches) requestAnimationFrame(jumpToBoard);
+                    }}
+                    className={`min-h-11 min-w-11 shrink-0 rounded-md border px-2.5 font-mono text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${current ? 'border-amber-500 bg-amber-500 text-chesscom-950' : 'border-chesscom-300 text-chesscom-700 hover:bg-chesscom-100 dark:border-chesscom-600 dark:text-chesscom-100 dark:hover:bg-chesscom-700'}`}>
+                    {step.move.san}
+                  </button>;
+                })}
+              </nav>
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{t(analysisError)}</div>}
           {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
-          {!analysis && (
-            <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
+          {!analysis && positions.length > 1 && (
+            <button ref={runAnalysisButtonRef} onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
               {analyzing
                 ? t('review.analyzing', { progress: '…' })
                 : t('review.runEngine', { defaultValue: 'Run engine analysis' })}
             </button>
+          )}
+
+          {/* Engine scores are optional; a legal saved PGN is still a usable
+              replay. Never hide its actual move history behind Stockfish
+              availability, and never imply that unscored moves are equal. */}
+          {!analysis && (
+            <div className="card p-3">
+              <h2 id="review-unscored-moves-heading" className="text-sm font-semibold">{t('review.moves')}</h2>
+              <p role="status" className="mb-3 mt-1 text-xs text-chesscom-500 dark:text-chesscom-300">
+                {positions.length > 1 ? t('review.savedMovesWithoutAnalysis') : t('review.noMovesToAnalyze')}
+              </p>
+              <MoveList moves={timeline.moves} current={isVariation ? -1 : ply}
+                onSelect={selectSavedFromRail} startFen={positions[0]?.fen} />
+            </div>
           )}
 
           {analysis && (
@@ -961,7 +1199,7 @@ function GameAnalyzerView() {
                 <EvalGraph
                   evals={timeline.evals}
                   current={isVariation ? undefined : ply}
-                  onClick={(p) => setPly(p)}
+                  onClick={selectSavedFromRail}
                   markers={analysis.moves
                     .filter((m) => ['blunder','mistake','inaccuracy','miss','brilliant','great'].includes(m.classification))
                     .map((m) => ({ ply: m.ply, classification: m.classification }))}
@@ -979,7 +1217,7 @@ function GameAnalyzerView() {
                     <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> {t('review.returnToBoard')}
                   </button>
                 </div>
-                <div role="tablist" aria-label="Review detail sections" onKeyDown={(event) => {
+                <div role="tablist" aria-label={t('review.detailSections')} onKeyDown={(event) => {
                   if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab') return;
                   const tabs: Tab[] = ['moves', 'report', 'moments'];
                   const index = tabs.indexOf(tab);
@@ -1028,6 +1266,15 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'moves' && move && (
                     <MoveExplanation
+                      // A different authoritative engine generation can
+                      // change the meaning of the *same* ply. Remount the
+                      // coach to cancel its old request, clear old narration
+                      // and fetch fresh source-bound facts. Notes/bookmarks
+                      // leave reviewSourceKey stable and do not retrigger it.
+                      key={JSON.stringify([sourceKey ?? [gameId, data.game.source_revision,
+                        data.analysis?.analysis_generation, move.fen_before, move.fen_after,
+                        move.classification, move.eval_before_cp, move.eval_after_cp,
+                        move.best_move_uci, move.best_move_san, move.best_pv], move.ply])}
                       move={move}
                       startFen={startFen}
                       userColor={data.game.user_color}
@@ -1050,20 +1297,26 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'moves' && ply > 0 && !isVariation && !move && (
                     <div role="status" className="mb-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-2 text-xs text-chesscom-600 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
-                      This move is saved in the game but has no engine evaluation yet.
-                      <button type="button" className="ml-1 font-semibold underline underline-offset-2" onClick={() => setShowDepthControl(true)}>Reanalyze the full game</button>
+                      <p>{t('review.partialMoveUnavailable')}</p>
+                      <button ref={missingMoveRetryRef} type="button" data-review-partial-retry="true"
+                        className="btn-secondary mt-2 min-h-11 px-3 py-2 text-xs"
+                        disabled={analyzing} onClick={() => void analyze(requestedDepth, true)}>
+                        {analyzing ? t('review.analyzing', { progress: '…' }) : t('review.partialReanalyze')}
+                      </button>
                     </div>
                   )}
                   {tab === 'moves' && (
-                    <MoveList
-                      moves={timeline.moves}
-                      current={isVariation ? -1 : ply}
-                      onSelect={setPly}
-                      phaseSplit={analysis.phase_split}
-                      startFen={positions[0]?.fen}
-                      highlight={pickedSet}
-
-                    />
+                    <>
+                      <ReviewClassificationGuide moves={timeline.moves} />
+                      <MoveList
+                        moves={timeline.moves}
+                        current={isVariation ? -1 : ply}
+                        onSelect={selectSavedFromRail}
+                        phaseSplit={analysis.phase_split}
+                        startFen={positions[0]?.fen}
+                        highlight={pickedSet}
+                      />
+                    </>
                   )}
                   {tab === 'report' && (
                     <GameReportPanel
@@ -1095,7 +1348,7 @@ function GameAnalyzerView() {
                           classification: m.classification,
                           cp_loss: m.cp_loss,
                           win_pct_delta: m.win_pct_delta,
-                          best_san: m.best_san,
+                          best_san: verifiedSavedBestMove(measuredMove, positions[m.ply - 1]?.fen)?.san ?? null,
                           title: proseHit?.title,
                           prose: proseHit?.prose,
                           mine: data.game.user_color ? moveSideForPly(m.ply, startFen) === data.game.user_color : undefined,
@@ -1143,13 +1396,15 @@ function GameAnalyzerView() {
                 enabled={linesEnabled}
                 onToggle={() => setLinesEnabled((s) => !s)}
                 lines={freshLines}
+                terminalPosition={reviewTerminalPosition(currentFen)}
+                scoreTurn={currentFen.split(' ')[1] === 'b' ? 'b' : 'w'}
                 loading={linesLoading}
                 error={linesError}
                 onRetry={() => setLinesRetry((n) => n + 1)}
                 playedUci={!isVariation ? positions[ply + 1]?.uci ?? null : null}
-                onAdvance={forward}
-                onTryMove={onAnalysisMove}
-                onHover={setLinesHover}
+                onAdvance={() => { forward(); focusBoardAfterEngineLine(); }}
+                onTryMove={(uci) => { onAnalysisMove(uci); focusBoardAfterEngineLine(); }}
+                onHover={(line) => setLinesHover(line ? { fen: currentFen, uci: line.uci } : null)}
               />
 
               <GameReportCard
@@ -1172,45 +1427,65 @@ function GameAnalyzerView() {
               <ThreatPanel fen={currentFen} currentCpWhite={currentEvalCp} />
 
               <ExplorerPanel fen={currentFen} onPreview={setExplorerHover} />
-
-              <GameMetaToolbar
-                key={gameId}
-                gameId={gameId}
-                bookmarked={!!data.game.bookmarked}
-                notes={data.game.notes ?? ''}
-                onFlip={() => setFlipped((f) => !f)}
-                linkCopied={linkCopied}
-                shareCopyFailed={shareCopyFailed}
-                sharingVariation={isVariation}
-                shareUrl={shareCurrentPosition()}
-                onShare={copySharePosition}
-              />
-
-              <ExportRow
-                pgn={data.game.pgn}
-                fen={currentFen}
-                fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
-              />
             </>
           )}
+          {/* Notes are private game data, not an engine-analysis feature.
+              Keep this component mounted when a changed source invalidates
+              the analysis; unmounting it would discard an unsaved draft and
+              bypass the existing Notes navigation/recovery protections. */}
+          <GameMetaToolbar
+            key={gameId}
+            gameId={gameId}
+            bookmarked={!!data.game.bookmarked}
+            notes={data.game.notes ?? ''}
+            flipped={flipped}
+            onFlip={() => setFlipped((f) => !f)}
+            linkCopied={linkCopied}
+            shareCopyFailed={shareCopyFailed}
+            shareCopyAttempt={shareCopyAttempt}
+            sharingVariation={isVariation}
+            shareUrl={currentShareUrl}
+            onShare={copySharePosition}
+          />
+          {/* Export is derived from the legal saved PGN/current FEN, never
+              from Stockfish. Keep it available if analysis is stale, missing
+              or offline so users can still take their own game elsewhere. */}
+          <ExportRow
+            pgn={data.game.pgn}
+            fen={currentFen}
+            fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, shareCopyAttempt, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; flipped: boolean; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; shareCopyAttempt: number; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
+  const [acknowledgedDraft, setAcknowledgedDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
+  const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
+  const notesToggleRef = useRef<HTMLButtonElement>(null);
+  const notesEditorRef = useRef<HTMLTextAreaElement>(null);
+  const notesStayRef = useRef<HTMLButtonElement>(null);
+  const notesLeaveDialogRef = useRef<HTMLDivElement>(null);
+  const queuedNoteTextsRef = useRef(new Set<string>());
+  const navigationAutoSaveRef = useRef<string | null>(null);
+  // Keep the action focusable while its PATCH is pending. The synchronous
+  // ref also prevents repeated Enter/Space from queuing duplicate toggles
+  // before the pending React render has committed.
+  const bookmarkInFlightRef = useRef(false);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
     confirmedNotesRef.current = notes;
+    setAcknowledgedDraft(notes);
   }, [notes]);
 
   const star = useMutation({
@@ -1223,10 +1498,16 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
     },
     onSuccess: () => setBookmarkRetryTarget(null),
     onSettled: () => {
+      bookmarkInFlightRef.current = false;
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
   });
+  const submitBookmark = (next: boolean) => {
+    if (bookmarkInFlightRef.current) return;
+    bookmarkInFlightRef.current = true;
+    star.mutate(next);
+  };
   const [isStarred, setStarred] = useState(bookmarked);
   useEffect(() => { setStarred(bookmarked); }, [bookmarked]);
 
@@ -1235,30 +1516,116 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
     // cannot overwrite a newer note on the server.
     scope: { id: `review-notes:${gameId}` },
     mutationFn: (text: string) => api.patch(`/api/games/${gameId}/notes`, { notes: text }),
-    onSuccess: () => {
+    onMutate: () => setSaveError(''),
+    onSuccess: (_response, text) => {
+      setAcknowledgedDraft(text);
       setSaveError('');
       setSavedAt(Date.now()); setTimeout(() => setSavedAt(null), 1400);
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
     onError: () => setSaveError('review.notesSaveFailed'),
+    onSettled: (_response, _error, text) => { queuedNoteTextsRef.current.delete(text); },
   });
 
+  const submitNotes = (text: string) => {
+    // Blur and an attempted navigation can happen in the same event turn.
+    // Keep exactly one outstanding PATCH per draft; different drafts still
+    // use the existing ordered mutation scope.
+    if (queuedNoteTextsRef.current.has(text)) return;
+    queuedNoteTextsRef.current.add(text);
+    saveNotes.mutate(text);
+  };
+  const notesNotSafelyStored = draft !== acknowledgedDraft || saveNotes.isPending || !!saveError;
+  const notesBlocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (!notesNotSafelyStored) return false;
+    if (currentLocation.pathname !== nextLocation.pathname) return true;
+    // Normal move navigation only updates ?ply= and keeps this editor
+    // mounted. Practice pickers can replace the Review workspace entirely.
+    const current = new URLSearchParams(currentLocation.search);
+    const next = new URLSearchParams(nextLocation.search);
+    return current.get('practice') !== next.get('practice') ||
+      current.get('practicePly') !== next.get('practicePly');
+  });
+  useEffect(() => {
+    if (notesBlocker.state !== 'blocked') { navigationAutoSaveRef.current = null; return; }
+    if (saveNotes.isPending || saveError) return;
+    if (draft === acknowledgedDraft) { notesBlocker.proceed(); return; }
+    if (navigationAutoSaveRef.current !== draft) {
+      navigationAutoSaveRef.current = draft;
+      submitNotes(draft);
+    }
+  }, [notesBlocker.state, saveNotes.isPending, saveError, draft, acknowledgedDraft]);
+  useEffect(() => {
+    if (!notesNotSafelyStored) return;
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', preventLoss);
+    return () => window.removeEventListener('beforeunload', preventLoss);
+  }, [notesNotSafelyStored]);
+  const stayWithDraft = () => {
+    if (notesBlocker.state === 'blocked') notesBlocker.reset();
+    setShowNotes(true);
+    requestAnimationFrame(() => notesEditorRef.current?.focus({ preventScroll: true }));
+  };
+  useEffect(() => {
+    if (notesBlocker.state !== 'blocked') return;
+    notesStayRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); stayWithDraft(); return; }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(notesLeaveDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (first && last && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();last.focus();
+      } else if (first && last && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [notesBlocker.state]);
+
   return (
-    <div className="card overflow-hidden" data-review-meta-toolbar>
+    <div className="card overflow-hidden scroll-mt-16" data-review-meta-toolbar>
+      {notesBlocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+          <div ref={notesLeaveDialogRef} role="alertdialog" aria-modal="true"
+            aria-labelledby={`review-notes-leave-title-${gameId}`}
+            aria-describedby={`review-notes-leave-description-${gameId}`}
+            className="w-full max-w-md rounded-2xl border border-ink-200 bg-white p-6 text-ink-900 shadow-2xl dark:border-ink-700 dark:bg-ink-800 dark:text-cream">
+            <h2 id={`review-notes-leave-title-${gameId}`} className="text-lg font-semibold">{t('review.notesLeaveTitle')}</h2>
+            <p id={`review-notes-leave-description-${gameId}`} className="mt-2 text-sm text-ink-500 dark:text-ink-300">
+              {saveError ? t(saveError) : t('review.notesLeaveSaving')}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button ref={notesStayRef} type="button" className="btn-secondary min-h-11" onClick={stayWithDraft}>
+                {t('settings.keepEditing')}
+              </button>
+              {saveError && <button type="button" className="btn-primary min-h-11" onClick={() => submitNotes(draft)}>
+                {t('review.notesRetrySave')}
+              </button>}
+              {saveError && <button type="button" className="btn-secondary min-h-11" onClick={() => notesBlocker.proceed()}>
+                {t('settings.discardChanges')}
+              </button>}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
+          ref={bookmarkButtonRef}
           type="button"
           aria-pressed={isStarred}
-          disabled={star.isPending}
-          onClick={() => star.mutate(!isStarred)}
-          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
+          aria-disabled={star.isPending}
+          aria-busy={star.isPending}
+          onClick={() => submitBookmark(!isStarred)}
+          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${star.isPending ? 'cursor-wait opacity-70' : ''} ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
           title={t('shortcuts.bookmark', { defaultValue: 'Toggle bookmark' })}
         >
           <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-gold-500' : ''}`} />
           {isStarred ? t('review.starred', { defaultValue: 'Starred' }) : t('review.star', { defaultValue: 'Star' })}
         </button>
-        <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
+        <button type="button" aria-pressed={flipped} onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
         <button type="button" onClick={() => { void onShare(); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
@@ -1266,6 +1633,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
           {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
         <button
+          ref={notesToggleRef}
           type="button"
           onClick={() => setShowNotes((s) => !s)}
           aria-expanded={showNotes}
@@ -1283,33 +1651,53 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <span>{t('review.bookmarkSaveFailed')}</span>
         <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs"
           disabled={star.isPending}
-          onClick={() => star.mutate(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
+          onClick={(event) => {
+            // The Retry lives in a transient error alert that disappears
+            // when the request starts. Keyboard activation must land on a
+            // persistent control before this focused button unmounts;
+            // pointer users keep their scroll/focus position.
+            if (event.detail === 0) bookmarkButtonRef.current?.focus({ preventScroll: true });
+            submitBookmark(bookmarkRetryTarget);
+          }}>{t('review.bookmarkRetry')}</button>
       </div>}
-      {shareCopyFailed && <ClipboardManualFallback
+      {shareCopyFailed && <ClipboardManualFallback key={shareCopyAttempt}
         label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
         value={shareUrl}
       />}
       {showNotes && (
         <div id={`review-notes-${gameId}`} className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
           <textarea
+            ref={notesEditorRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => { if (draft !== notes) saveNotes.mutate(draft); }}
+            onBlur={() => { if (draft !== acknowledgedDraft) submitNotes(draft); }}
             maxLength={4000}
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
           />
-          {saveError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
-                <span>{t(saveError)}</span>
-                <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
-                  onClick={() => saveNotes.mutate(draft)}>{t('review.notesRetrySave')}</button>
-              </div>}
-              <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
-                <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
-            <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== notes ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
+            <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
+            <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== acknowledgedDraft ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
           </div>
         </div>
       )}
+      {/* An autosave may fail *after* the user closes Notes and the editor
+          unmounts. Keep the error and its retry visible in both states so a
+          hidden failure cannot masquerade as a successfully saved draft. */}
+      {saveError && <div data-review-notes-save-error data-review-notes-collapsed-error={!showNotes ? 'true' : undefined}
+        role="alert" className="flex flex-wrap items-center justify-between gap-2 border-t border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200">
+        <span className="min-w-0 flex-1">{t(saveError)}</span>
+        <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
+          onClick={(event) => {
+            // The alert disappears after a successful retry. Restore keyboard
+            // focus to the open draft editor or, when closed, its durable
+            // Notes disclosure. Pointer users are not scrolled elsewhere.
+            if (event.detail === 0) {
+              (showNotes ? notesEditorRef : notesToggleRef).current?.focus({ preventScroll: true });
+            }
+            submitNotes(draft);
+          }}>{t('review.notesRetrySave')}</button>
+      </div>}
     </div>
   );
 }
@@ -1361,17 +1749,55 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   const { t } = useTranslation();
   const [copied, setCopied] = useState<'fen' | 'pgn' | null>(null);
   const [manualCopy, setManualCopy] = useState<'fen' | 'pgn' | null>(null);
+  const [manualCopyAttempt, setManualCopyAttempt] = useState(0);
+  const previousExportRef = useRef({ fen, pgn });
+  const currentExportRef = useRef({ fen, pgn });
+  const exportGenerationRef = useRef({ fen: 0, pgn: 0 });
+  const exportRequestRef = useRef(0);
+  // React may commit the next board before an older clipboard permission
+  // promise settles. Keep the rendered source values current immediately.
+  currentExportRef.current = { fen, pgn };
+
+  useEffect(() => {
+    const previous = previousExportRef.current;
+    const fenChanged = previous.fen !== fen;
+    const pgnChanged = previous.pgn !== pgn;
+    previousExportRef.current = { fen, pgn };
+    if (!fenChanged && !pgnChanged) return;
+    if (fenChanged) exportGenerationRef.current.fen += 1;
+    if (pgnChanged) exportGenerationRef.current.pgn += 1;
+    // A failed FEN copy describes one *visible board position*. Never leave
+    // that old/manual value active when a variation or saved move changes.
+    // PGN export is source-based, so keep that fallback across board moves.
+    const noLongerCurrent = (kind: 'fen' | 'pgn' | null) =>
+      (kind === 'fen' && fenChanged) || (kind === 'pgn' && pgnChanged) ? null : kind;
+    setManualCopy(noLongerCurrent);
+    setCopied(noLongerCurrent);
+  }, [fen, pgn]);
 
   async function copy(kind: 'fen' | 'pgn', text: string) {
+    const request = ++exportRequestRef.current;
+    const sourceGeneration = exportGenerationRef.current[kind];
+    const stillCurrent = () => request === exportRequestRef.current
+      && sourceGeneration === exportGenerationRef.current[kind]
+      && currentExportRef.current[kind] === text;
     try {
       await navigator.clipboard.writeText(text);
+      if (!stillCurrent()) return;
       setCopied(kind);
       setManualCopy(null);
-      setTimeout(() => setCopied(null), 1400);
+      setTimeout(() => { if (stillCurrent()) setCopied(null); }, 1400);
     } catch {
+      if (!stillCurrent()) return;
+      // A denied FEN/PGN action supersedes any earlier successful copy.
+      // Otherwise the old button can still say Copied while this new value
+      // is in its manual fallback, hiding the other Copy action's label.
+      setCopied(null);
       // Clipboard can be unavailable on self-hosted HTTP or denied by the
-      // browser. Show the exact source text without altering the saved game.
+      // browser. Give each failure a new mounted fallback so even switching
+      // FEN -> PGN (or repeating Copy FEN) focuses and selects the new value.
       setManualCopy(kind);
+      setManualCopyAttempt((current) => current + 1);
     }
   }
 
@@ -1398,7 +1824,7 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
         <span className="min-w-0 truncate">{t('common.download')}</span>
       </button>
       {manualCopy && <div className="col-span-3 min-w-0">
-        <ClipboardManualFallback label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
+        <ClipboardManualFallback key={manualCopyAttempt} label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
           value={manualCopy === 'fen' ? fen : pgn} />
       </div>}
     </div>
@@ -1431,10 +1857,12 @@ function ClipboardManualFallback({ label, value }: { label: string; value: strin
   );
 }
 
-function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
+function LinesPanel({ enabled, onToggle, lines, terminalPosition, scoreTurn, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
   enabled: boolean;
   onToggle: () => void;
   lines: EngineLine[];
+  terminalPosition: 'checkmate' | 'stalemate' | null;
+  scoreTurn: 'w' | 'b';
   loading: boolean;
   error: 'busy' | 'unavailable' | null;
   onRetry: () => void;
@@ -1444,41 +1872,90 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
   onHover: (l: EngineLine | null) => void;
 }) {
   const { t } = useTranslation();
+  const linesContentRef = useRef<HTMLDivElement>(null);
+  const retryLines = () => {
+    onRetry();
+    // Retry disappears when a new engine request starts. Focus this persistent
+    // content region rather than dropping keyboard users back to document BODY.
+    requestAnimationFrame(() => linesContentRef.current?.focus({ preventScroll: true }));
+  };
   return (
     <div className="card overflow-hidden">
       <ReviewDisclosureHeader icon={Search} label={t('review.lines', { defaultValue: 'Engine lines' })}
         expanded={enabled} onToggle={onToggle} controlsId="review-engine-lines-content"
         title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })} />
-      <div id="review-engine-lines-content" hidden={!enabled} className="space-y-1 p-2">
+      <div ref={linesContentRef} id="review-engine-lines-content" role="region"
+        aria-label={t('review.lines')} tabIndex={-1} hidden={!enabled}
+        onKeyDown={(event) => {
+          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          const focused = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLButtonElement>('button[data-review-engine-line]') : null;
+          if (!focused || !event.currentTarget.contains(focused)) return;
+          const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-review-engine-line]:not(:disabled)')];
+          const index = choices.indexOf(focused);
+          if (index < 0) return;
+          let next = index;
+          if (event.key === 'ArrowDown') next = Math.min(choices.length - 1, index + 1);
+          else if (event.key === 'ArrowUp') next = Math.max(0, index - 1);
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = choices.length - 1;
+          else if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          // This list previews moves in the *current* FEN. Global Review
+          // Arrow/Home/End shortcuts must never step the saved game while a
+          // candidate has focus. Vertical keys compare candidates instead.
+          event.preventDefault();
+          event.stopPropagation();
+          if (next !== index) choices[next]?.focus({ preventScroll: true });
+        }}
+        className="space-y-1 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
         {enabled && (
           <>
+          {lines.length > 0 && <p className="px-2 text-[11px] text-chesscom-500 dark:text-chesscom-300">
+            {t('review.linesScorePerspective')}
+          </p>}
           {loading && lines.length === 0 && (
-            <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500">
+            <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500 dark:text-chesscom-200">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
             </div>
           )}
           {!loading && !error && lines.length === 0 && (
-            <div className="px-2 py-3 text-xs text-chesscom-400">—</div>
-          )}
-          {error && (
-            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-500">
-              <span>{error === 'busy' ? 'Stockfish is busy with another request.' : 'Engine lines are unavailable.'}</span>
-              <button type="button" onClick={onRetry} disabled={loading} className="btn-secondary px-2 py-1 text-xs">Retry</button>
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
+              <span>{t(terminalPosition === 'checkmate' ? 'review.linesCheckmate'
+                : terminalPosition === 'stalemate' ? 'review.linesStalemate' : 'review.linesNoMoves')}</span>
+              {terminalPosition === null && (
+                <button type="button" onClick={retryLines}
+                  className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
+                  {t('review.linesRetry')}
+                </button>
+              )}
             </div>
           )}
-          {lines.map((l) => {
+          {error && (
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
+              <span>{t(error === 'busy' ? 'review.linesBusy' : 'review.linesUnavailable')}</span>
+              <button type="button" onClick={retryLines} disabled={loading}
+                className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">{t('review.linesRetry')}</button>
+            </div>
+          )}
+          {lines.map((l, index) => {
             const isPlayed = playedUci != null && l.uci === playedUci;
             const pv = l.pv_san.slice(0, 6).join(' ');
+            const scoreId = `review-engine-line-score-${index}`;
+            const pvId = `review-engine-line-pv-${index}`;
             return (
               <button
-                key={l.multipv}
+                key={`${l.multipv}-${l.uci}`}
+                data-review-engine-line
                 type="button"
                 disabled={loading}
                 onClick={() => { if (isPlayed) onAdvance(); else onTryMove(l.uci); }}
-                aria-label={`${isPlayed ? 'Follow played move' : 'Try engine move'} ${l.san}`}
+                aria-label={t(isPlayed ? 'review.linesFollowMove' : 'review.linesTryMove', { san: l.san })}
+                aria-describedby={`${scoreId} ${pvId}`}
                 onMouseEnter={() => onHover(l)}
                 onMouseLeave={() => onHover(null)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                onFocus={() => onHover(l)}
+                onBlur={() => onHover(null)}
+                className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${
                   isPlayed
                     ? 'cursor-pointer bg-board-dark/10 hover:bg-board-dark/15'
                     : 'cursor-pointer hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40'
@@ -1487,17 +1964,17 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
                 <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                   l.multipv === 1 ? 'bg-gold-500/20 text-gold-600' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800'
                 }`}>{l.multipv}</span>
-                <span className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
-                  {l.mate != null ? (l.mate > 0 ? `#${l.mate}` : `-#${Math.abs(l.mate)}`) : fmtCp(l.cp)}
+                <span id={scoreId} data-review-engine-line-score className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
+                  {formatReviewEngineLineScore(l, scoreTurn)}
                 </span>
                 <span className="w-12 shrink-0 truncate font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{l.san}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-500">{pv}</span>
-                {isPlayed && <span className="shrink-0 text-[10px] uppercase text-board-dark">{t('review.linesPlayed', { defaultValue: 'played' })}</span>}
+                <span id={pvId} className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>
+                {isPlayed && <span className="shrink-0 text-[10px] uppercase text-board-dark dark:text-chesscom-200">{t('review.linesPlayed', { defaultValue: 'played' })}</span>}
               </button>
             );
           })}
           {loading && lines.length > 0 && (
-            <div className="flex items-center gap-2 px-2 pt-1 text-[11px] text-chesscom-400">
+            <div className="flex items-center gap-2 px-2 pt-1 text-[11px] text-chesscom-500 dark:text-chesscom-200">
               <Loader2 className="h-3 w-3 animate-spin" /> {t('review.linesRefreshing', { defaultValue: 'refreshing…' })}
             </div>
           )}

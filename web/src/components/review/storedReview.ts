@@ -35,6 +35,13 @@ const stringArray = (x: unknown): x is string[] =>
 const classification = (x: unknown): boolean =>
   typeof x === 'string' && classes.has(x);
 
+/** The absolute Lichess win-chance swing used by the server's Key Moments
+ * extractor. The absolute delta is independent of which player moved. */
+function winChanceSwing(beforeCp: number, afterCp: number): number {
+  const winPct = (cp: number) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+  return Math.abs(winPct(beforeCp) - winPct(afterCp));
+}
+
 /** Validate the values that the timeline, explanation and report actually
  * render. Checking only that the array exists can still cause a render-time
  * crash, e.g. unknown classifications or null centipawn_loss. */
@@ -89,11 +96,13 @@ function validPhases(value: unknown): boolean {
   });
 }
 
-/** Optional replay positions bind cached move UCI data to the current saved
- * PGN, so a stale cache cannot show classifications for another game. */
+/** Optional replay positions bind *each* cached score to its exact saved
+ * board state. Identical UCI/SAN can occur from unrelated positions with
+ * different evaluations; accepting only UCI can show a false Brilliant or
+ * engine score even though the current PGN has a different source FEN. */
 export function decodeStoredReviewJson(
   data: StoredReviewJson,
-  replayPositions?: readonly { uci?: string }[],
+  replayPositions?: readonly { fen?: string; uci?: string; san?: string }[],
 ): DecodedReviewJson | null {
   try {
     const moves: unknown = JSON.parse(data.moves_json);
@@ -101,11 +110,48 @@ export function decodeStoredReviewJson(
     const phases: unknown = data.phase_split_json ? JSON.parse(data.phase_split_json) : null;
     if (!Array.isArray(moves) || !Array.isArray(moments)) return null;
     if (!moves.every(validMove)) return null;
-    // Allow valid partial analyses of very long games but never show cached
-    // evaluations beside moves from a different saved PGN.
+    // Allow valid partial analyses of very long games, but never show a cached
+    // evaluation alongside a move whose source, destination or notation does
+    // not match the exact saved PGN replay. The engine's own source_hash and
+    // revision are checked separately when accepting stored AI prose.
     if (replayPositions && (moves.length > replayPositions.length - 1
-      || moves.some((move: AnalyzedMove, index: number) => move.uci !== replayPositions[index + 1]?.uci))) return null;
+      || moves.some((move: AnalyzedMove, index: number) =>
+        move.uci !== replayPositions[index + 1]?.uci
+        || move.san !== replayPositions[index + 1]?.san
+        || move.fen_before !== replayPositions[index]?.fen
+        || move.fen_after !== replayPositions[index + 1]?.fen))) return null;
     if (!moments.every((m: unknown) => validMoment(m, moves.length))) return null;
+    // Key Moments are independently serialized from the engine's scored
+    // moves. Structural validity alone is unsafe: a cached summary could
+    // claim Brilliant, a different SAN or a better move for the correct ply.
+    // Only trust claims identical to their authoritative scored move. Some
+    // historical FEN-start games have a stale `side` field; the review UI
+    // derives the actual mover from FEN instead, so don't reject that legacy
+    // metadata or use it as evidence for evaluation/classification.
+    const scored = moves as AnalyzedMove[];
+    const seenMomentPlies = new Set<number>();
+    for (const moment of moments as KeyMomentSummary[]) {
+      const source = scored[moment.ply - 1];
+      if (!source || seenMomentPlies.has(moment.ply)
+        || moment.san !== source.san
+        || moment.fen_before !== source.fen_before
+        || moment.classification !== source.classification
+        || moment.cp_loss !== source.centipawn_loss
+        || moment.best_san !== source.best_move_san
+        || moment.best_pv.length !== source.best_pv.length
+        || moment.best_pv.some((san, index) => san !== source.best_pv[index])
+        || moment.win_pct_delta < 0 || moment.win_pct_delta > 100) return null;
+      // A claimed 90% win-chance swing backed by two scores implying only
+      // 18% is misleading coaching, even when SAN/FEN/classification match.
+      // Historical caches can round to whole percentage points, so allow
+      // half a point plus a small margin. Without both engine scores, the UI
+      // already suppresses the wp comparison; keep such legacy games usable.
+      if (source.eval_before_cp != null && source.eval_after_cp != null
+        && Math.abs(moment.win_pct_delta - winChanceSwing(
+          source.eval_before_cp, source.eval_after_cp,
+        )) > 0.55) return null;
+      seenMomentPlies.add(moment.ply);
+    }
     if (!validPhases(phases)) return null;
 
     return {

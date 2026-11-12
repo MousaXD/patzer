@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Chess } from 'chess.js';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from './storedReview';
 
 const move = {
@@ -70,13 +71,82 @@ describe('cached review analysis decoder', () => {
     });
   });
 
+  it('rejects a cached Key Moment that contradicts its scored move or duplicates a ply', () => {
+    const withMoment = (item: typeof moment | typeof moment[]) => ({
+      ...valid, key_moments_json: JSON.stringify(Array.isArray(item) ? item : [item]),
+    });
+    expect(decodeStoredReviewJson(withMoment(moment))?.key_moments).toEqual([moment]);
+    for (const altered of [
+      { ...moment, classification: 'brilliant' },
+      { ...moment, san: 'd4' },
+      { ...moment, fen_before: 'other-source-fen' },
+      { ...moment, cp_loss: 900 },
+      { ...moment, best_san: 'Nf3' },
+      { ...moment, best_pv: ['Nf3'] },
+    ]) {
+      expect(decodeStoredReviewJson(withMoment(altered), undefined), JSON.stringify(altered)).toBeNull();
+    }
+    // Legacy black-to-move FEN summaries may contain an old ply-parity side;
+    // the actual side is read from the saved FEN when displaying Key Moments.
+    expect(decodeStoredReviewJson(withMoment({ ...moment, side: 'black' }))?.key_moments)
+      .toEqual([{ ...moment, side: 'black' }]);
+    expect(decodeStoredReviewJson(withMoment([moment, moment]))).toBeNull();
+  });
+
+  it('does not trust a Key Moment win-chance swing that contradicts two known engine evaluations', () => {
+    const winPct = (cp: number) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+    const actualDelta = Math.abs(winPct(-100) - winPct(100));
+    const scored = { ...move, eval_before_cp: -100, eval_after_cp: 100 };
+    const data = (win_pct_delta: number, before: number | null = -100) => ({
+      ...valid,
+      moves_json: JSON.stringify([{ ...scored, eval_before_cp: before }]),
+      key_moments_json: JSON.stringify([{ ...moment, win_pct_delta }]),
+    });
+    expect(decodeStoredReviewJson(data(actualDelta))).not.toBeNull();
+    expect(decodeStoredReviewJson(data(90))).toBeNull();
+    // Missing source evaluation must not become a fabricated comparison, but
+    // legacy cached moments remain replayable; the UI hides their wp label.
+    expect(decodeStoredReviewJson(data(90, null))).not.toBeNull();
+  });
+
   it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
-    const expected = [{}, { uci: 'e2e4' }, { uci: 'e7e5' }];
+    const expected = [{ fen: 'before' },
+      { uci: 'e2e4', san: 'e4', fen: 'after' },
+      { uci: 'e7e5', san: 'e5', fen: 'later' }];
     expect(decodeStoredReviewJson(valid, expected)?.moves).toEqual([move]);
-    const mismatch = [{}, { uci: 'd2d4' }];
+    const mismatch = [{ fen: 'before' }, { uci: 'd2d4', san: 'd4', fen: 'after' }];
     expect(decodeStoredReviewJson(valid, mismatch)).toBeNull();
     expect(decodeStoredReviewJson(valid, [{}])).toBeNull();
     expect(needsFreshReviewAnalysis(valid, decodeStoredReviewJson(valid, mismatch))).toBe(true);
+  });
+
+  it('rejects a false Brilliant for the same UCI move from a different legal board position', () => {
+    const mainline = new Chess();
+    const expectedBefore = mainline.fen();
+    mainline.move('e4');
+    const expectedAfter = mainline.fen();
+    const positions = [
+      { fen: expectedBefore },
+      { fen: expectedAfter, uci: 'e2e4', san: 'e4' },
+    ];
+    const legal = { ...move, fen_before: expectedBefore, fen_after: expectedAfter };
+    const analysisFor = (m: typeof legal) => ({ ...valid, moves_json: JSON.stringify([m]) });
+    expect(decodeStoredReviewJson(analysisFor(legal), positions)?.moves).toEqual([legal]);
+
+    // This unrelated position still has a legal e2e4, but Black already has
+    // a pawn on d5. The move can receive a different evaluation and label.
+    const unrelated = new Chess();
+    unrelated.move('Nf3');
+    unrelated.move('d5');
+    const unrelatedBefore = unrelated.fen();
+    unrelated.move('e4');
+    const unrelatedAfter = unrelated.fen();
+    const falseBrilliant = { ...legal, fen_before: unrelatedBefore, fen_after: unrelatedAfter,
+      classification: 'brilliant', eval_after_cp: 700 };
+    expect(decodeStoredReviewJson(analysisFor(falseBrilliant), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, fen_before: unrelatedBefore }), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, fen_after: unrelatedAfter }), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, san: 'd4' }), positions)).toBeNull();
   });
 
   it('handles cached records without optional moment/phase data', () => {

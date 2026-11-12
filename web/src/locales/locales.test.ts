@@ -188,16 +188,30 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.moveNavigation?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.keyboardShortcuts?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.common.saving?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.notesLeaveTitle?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.notesLeaveSaving?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.detailSections?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.linesScorePerspective?.trim().length, lang).toBeGreaterThan(0);
       expect(placeholders(locale.review.why.showBestOnBoard), lang).toEqual(['{{san}}']);
       if (lang !== 'en') {
         expect(locale.review.startingPosition).not.toEqual(en.review.startingPosition);
         expect(locale.review.bestArrowNote).not.toEqual(en.review.bestArrowNote);
         expect(locale.review.moveNavigation).not.toEqual(en.review.moveNavigation);
         expect(locale.review.keyboardShortcuts).not.toEqual(en.review.keyboardShortcuts);
+        expect(locale.common.saving).not.toEqual(en.common.saving);
+        expect(locale.review.notesLeaveTitle).not.toEqual(en.review.notesLeaveTitle);
+        expect(locale.review.notesLeaveSaving).not.toEqual(en.review.notesLeaveSaving);
+        expect(locale.review.detailSections).not.toEqual(en.review.detailSections);
+        expect(locale.review.linesScorePerspective).not.toEqual(en.review.linesScorePerspective);
         expect(locale.review.why.showBestOnBoard).not.toEqual(en.review.why.showBestOnBoard);
       }
     });
     it('provides distinct, translated review recovery and retry messages', () => {
+      for (const key of ['noRecordedMoves', 'noMovesToAnalyze', 'savedMovesWithoutAnalysis', 'partialMoveUnavailable', 'partialReanalyze', 'moveSymbolGuide', 'evalBarMateWhite', 'evalBarMateBlack', 'evalBarScoreWhite'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
       for (const reason of ['invalid', 'unreadable', 'notFound', 'loadFailed'] as const) {
         expect(locale.review.unavailableReason[reason]?.trim().length).toBeGreaterThan(0);
         if (lang !== 'en') {
@@ -232,6 +246,32 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
       }
+    });
+    it('describes variation-local progress instead of the saved PGN move count', () => {
+      expect(placeholders(locale.review.variationProgress), lang).toEqual(['{{current}}', '{{total}}']);
+      expect(placeholders(locale.review.variationForkOf), lang).toEqual(['{{number}}']);
+      expect(placeholders(locale.review.variationJumpMove), lang).toEqual(['{{number}}', '{{san}}']);
+      expect(locale.review.variationMoveTrail?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.variationJumpFork?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.variationMoveNavigation?.trim().length, lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.variationProgress).not.toEqual(en.review.variationProgress);
+        expect(locale.review.variationForkOf).not.toEqual(en.review.variationForkOf);
+        expect(locale.review.variationJumpMove).not.toEqual(en.review.variationJumpMove);
+        expect(locale.review.variationMoveTrail).not.toEqual(en.review.variationMoveTrail);
+        expect(locale.review.variationJumpFork).not.toEqual(en.review.variationJumpFork);
+        expect(locale.review.variationMoveNavigation).not.toEqual(en.review.variationMoveNavigation);
+      }
+    });
+    it('localizes Engine Lines recovery and safe move-action names', () => {
+      for (const key of ['linesBusy', 'linesUnavailable', 'linesRetry', 'linesFollowMove', 'linesTryMove',
+        'linesCheckmate', 'linesStalemate', 'linesNoMoves'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        expect(placeholders(locale.review[key]), `${lang}: ${key}`).toEqual(placeholders(en.review[key]));
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+      expect(placeholders(locale.review.linesFollowMove), lang).toEqual(['{{san}}']);
+      expect(placeholders(locale.review.linesTryMove), lang).toEqual(['{{san}}']);
     });
   },
 );
