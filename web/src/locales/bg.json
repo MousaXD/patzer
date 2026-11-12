@@ -472,6 +472,7 @@
   "challenge": {
     "incoming": "Ново предизвикателство",
     "someoneChallenges": "Някой иска да играе с теб.",
+    "noLongerAvailable": "Поканата е изтекла или вече не е налична.",
     "incomingList": "Входящи предизвикателства",
     "waiting": "Чакам приемане",
     "players": "Играчи",

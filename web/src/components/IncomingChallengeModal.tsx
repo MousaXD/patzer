@@ -13,7 +13,9 @@ export default function IncomingChallengeModal() {
   const nav = useNavigate();
   const incoming = useLobby((s) => s.incoming);
   const refresh = useLobby((s) => s.refreshChallenges);
+  const forgetChallenge = useLobby((s) => s.forgetChallenge);
   const [error, setError] = useState<'accept' | 'decline' | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
   const inFlight = useRef(false);
   const actionSession = useRef({ account: accountId, generation: 0 });
@@ -24,8 +26,14 @@ export default function IncomingChallengeModal() {
     inFlight.current = false;
     setBusy(null);
     setError(null);
+    setUnavailable(false);
     return () => { actionSession.current.generation += 1; };
   }, [accountId]);
+  useEffect(() => {
+    if (!unavailable) return;
+    const timeout = setTimeout(() => setUnavailable(false), 8000);
+    return () => clearTimeout(timeout);
+  }, [unavailable]);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // Show only the most-recent
@@ -51,16 +59,26 @@ export default function IncomingChallengeModal() {
       if (action === 'accept') {
         const result = await api.post<{ game_id: number }>(`/api/challenges/${id}/accept`);
         if (actionSession.current.generation !== generation) return;
-        useLobby.setState((s) => ({ incoming: s.incoming.filter((challenge) => challenge.id !== id) }));
+        forgetChallenge('incoming', id);
         nav(`/play?game=${result.game_id}`);
       } else {
         await api.post(`/api/challenges/${id}/decline`);
         if (actionSession.current.generation !== generation) return;
-        useLobby.setState((s) => ({ incoming: s.incoming.filter((challenge) => challenge.id !== id) }));
+        forgetChallenge('incoming', id);
       }
       void refresh().catch(() => {});
-    } catch {
-      if (actionSession.current.generation === generation) setError(action);
+    } catch (err) {
+      if (actionSession.current.generation !== generation) return;
+      const failure = err as { status?: number; data?: { error?: string } };
+      if (failure.status === 409 && failure.data?.error === 'not_pending') {
+        // The invitation may have expired while this tab was open, or the
+        // opponent changed it elsewhere. It is not a network error to retry.
+        forgetChallenge('incoming', id);
+        setUnavailable(true);
+        void refresh().catch(() => {});
+      } else {
+        setError(action);
+      }
     } finally {
       if (actionSession.current.generation === generation) {
         inFlight.current = false;
@@ -73,7 +91,17 @@ export default function IncomingChallengeModal() {
   const decline = (id: number) => { void act('decline', id); };
 
   return (
-    <AnimatePresence>
+    <>
+      {unavailable && (
+        <div role="status" className="fixed bottom-4 left-1/2 z-[65] flex w-[min(92vw,28rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-amber-500/40 bg-white p-3 text-sm text-chesscom-800 shadow-lift dark:bg-chesscom-900 dark:text-chesscom-100">
+          <span className="flex-1">{t('challenge.noLongerAvailable', { defaultValue: 'This invitation has expired or is no longer available.' })}</span>
+          <button type="button" className="btn-ghost min-h-11 min-w-11 p-2"
+            aria-label={t('common.close')} onClick={() => setUnavailable(false)}>
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      <AnimatePresence>
       {c && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -145,6 +173,7 @@ export default function IncomingChallengeModal() {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+    </>
   );
 }

@@ -41,6 +41,35 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('rechecks pending invitations while connected and stops polling once they disappear or on sign-out', async () => {
+    let shouldExpire = false;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/incoming') {
+        return Promise.resolve({ challenges: shouldExpire ? [] : [invitation(91)] });
+      }
+      return Promise.resolve(url === '/api/lobby/users' ? { users: [] } : { challenges: [] });
+    });
+    useLobby.getState().connect(1);
+    FakeSocket.opened[0]!.onopen?.({} as Event);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([91]);
+
+    const countReads = () => mocks.get.mock.calls.filter(([url]) => url === '/api/challenges/incoming').length;
+    expect(countReads()).toBe(1);
+    shouldExpire = true;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(countReads()).toBe(2);
+    expect(useLobby.getState().incoming).toEqual([]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(countReads()).toBe(2); // empty lobby does not poll
+
+    useLobby.setState({ incoming: [invitation(92)] });
+    useLobby.getState().disconnect();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(countReads()).toBe(2); // logout cancels scheduled work
+  });
+
   it('keeps acknowledged changes ahead of a stale GET and mirrors server replacement of an older sent challenge', async () => {
     let finishIncoming!: (value: { challenges: Challenge[] }) => void;
     mocks.get.mockImplementation((url: string) => {

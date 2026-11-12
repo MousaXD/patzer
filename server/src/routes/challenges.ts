@@ -153,6 +153,10 @@ router.get('/history', (c) => {
 router.post('/:id/accept', (c) => {
   const me = c.get('user');
   const id = Number(c.req.param('id'));
+  // A player can leave an invitation open without fetching either list.
+  // Enforce the same 15-minute TTL at the mutation boundary, otherwise an
+  // expired challenge can still create a fresh, unwanted PvP game.
+  expireStaleChallenges();
   const row = loadChallenge(id);
   if (!row) return c.json({ error: 'not_found' }, 404);
   if (row.to_user_id !== me.id) return c.json({ error: 'forbidden' }, 403);
@@ -203,6 +207,7 @@ router.post('/:id/accept', (c) => {
 router.post('/:id/decline', (c) => {
   const me = c.get('user');
   const id = Number(c.req.param('id'));
+  expireStaleChallenges();
   const row = loadChallenge(id);
   if (!row) return c.json({ error: 'not_found' }, 404);
   if (row.to_user_id !== me.id) return c.json({ error: 'forbidden' }, 403);
@@ -216,6 +221,7 @@ router.post('/:id/decline', (c) => {
 router.delete('/:id', (c) => {
   const me = c.get('user');
   const id = Number(c.req.param('id'));
+  expireStaleChallenges();
   const row = loadChallenge(id);
   if (!row) return c.json({ error: 'not_found' }, 404);
   if (row.from_user_id !== me.id) return c.json({ error: 'forbidden' }, 403);

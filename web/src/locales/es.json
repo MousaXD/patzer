@@ -432,6 +432,7 @@
   "challenge": {
     "incoming": "Nuevo reto",
     "someoneChallenges": "Alguien quiere jugar contigo.",
+    "noLongerAvailable": "Esta invitación ha caducado o ya no está disponible.",
     "incomingList": "Retos recibidos",
     "waiting": "Esperando respuesta",
     "players": "Jugadores",

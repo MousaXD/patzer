@@ -49,6 +49,7 @@ export const useLobby = create<LobbyState>((set, get) => {
   let currentUserId: number | null = null;
   let generation = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let challengeRefreshTimer: ReturnType<typeof setInterval> | null = null;
   let challengesRequestId = 0;
   let usersRequestId = 0;
 
@@ -83,6 +84,14 @@ export const useLobby = create<LobbyState>((set, get) => {
       if (epoch !== generation || get().ws !== ws) return;
       void get().refreshUsers();
       void get().refreshChallenges();
+      // GET /challenges expires old invitations. An always-open tab might
+      // otherwise show an unanswerable modal long after its 15-minute TTL.
+      // Poll only while there is a pending invitation; empty lobbies stay idle.
+      if (challengeRefreshTimer !== null) clearInterval(challengeRefreshTimer);
+      challengeRefreshTimer = setInterval(() => {
+        if (epoch !== generation || get().ws !== ws || currentUserId !== userId) return;
+        if (get().incoming.length || get().outgoing.length) void get().refreshChallenges();
+      }, 60_000);
     };
     ws.onmessage = (ev) => {
       if (epoch !== generation || get().ws !== ws) return;
@@ -110,6 +119,8 @@ export const useLobby = create<LobbyState>((set, get) => {
     };
     ws.onclose = () => {
       if (epoch !== generation || get().ws !== ws) return;
+      if (challengeRefreshTimer !== null) clearInterval(challengeRefreshTimer);
+      challengeRefreshTimer = null;
       set({ ws: null, online: new Set() });
       // Only an unexpectedly dropped *current* session may reconnect. An
       // explicit logout and a switch to another player invalidate this epoch.
@@ -128,6 +139,8 @@ export const useLobby = create<LobbyState>((set, get) => {
     usersRequestId++;
     if (reconnectTimer !== null) clearTimeout(reconnectTimer);
     reconnectTimer = null;
+    if (challengeRefreshTimer !== null) clearInterval(challengeRefreshTimer);
+    challengeRefreshTimer = null;
     const ws = get().ws;
     set({
       ws: null, online: new Set(), users: [], incoming: [], outgoing: [],

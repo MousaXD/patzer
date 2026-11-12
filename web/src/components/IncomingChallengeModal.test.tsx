@@ -51,11 +51,31 @@ beforeEach(() => {
   mocks.account = 1;
   mocks.post.mockReset();
   mocks.refresh.mockReset().mockResolvedValue(undefined);
+  // Model an authenticated lobby connection: confirmed mutations are fenced
+  // through the same account-scoped store action used in the real App.
+  vi.stubGlobal('WebSocket', class { close() {} });
+  useLobby.getState().connect(1);
   useLobby.setState({ incoming: [{ ...incoming }], outgoing: [], refreshChallenges: mocks.refresh });
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  useLobby.getState().disconnect();
+  vi.unstubAllGlobals();
+});
 
 describe('incoming challenge modal failure recovery', () => {
+  it('closes an already-expired invitation instead of trapping the player in futile Accept retries', async () => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error('not_pending'), {
+      status: 409, data: { error: 'not_pending' },
+    }));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'challenge.incoming' })).toBeNull());
+    expect((await screen.findByRole('status')).textContent).toContain('no longer available');
+    expect(useLobby.getState().incoming).toHaveLength(0);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores an old account acceptance after the modal switches to the new account', async () => {
     let confirm!: (value: unknown) => void;
     mocks.post.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));

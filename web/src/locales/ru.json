@@ -484,6 +484,7 @@
   "challenge": {
     "incoming": "Новый вызов",
     "someoneChallenges": "Кто-то хочет с тобой сыграть.",
+    "noLongerAvailable": "Срок действия приглашения истёк или оно больше недоступно.",
     "incomingList": "Входящие вызовы",
     "waiting": "Ждём ответа",
     "players": "Игроки",

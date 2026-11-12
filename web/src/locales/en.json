@@ -484,6 +484,7 @@
   "challenge": {
     "incoming": "New challenge",
     "someoneChallenges": "Someone wants to play with you.",
+    "noLongerAvailable": "This invitation has expired or is no longer available.",
     "incomingList": "Incoming challenges",
     "waiting": "Waiting for accept",
     "players": "Players",
