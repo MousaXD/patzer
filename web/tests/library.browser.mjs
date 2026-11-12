@@ -999,6 +999,15 @@ try {
     await page.getByRole('button',{name:'Import PGN file'}).click();
     await page.getByText('2 of 2 games').waitFor();
     await page.locator('a[href="/review/9001"]').waitFor();
+    const firstResult=page.getByRole('status').getByText(/1 new games saved from 2 PGNs/);
+    await firstResult.waitFor();
+    const firstResultRect=await firstResult.boundingBox();
+    assert.ok(firstResultRect && firstResultRect.y>=0 && firstResultRect.y<700,
+      `First-use import confirmation should remain visible after the panel collapses: ${JSON.stringify(firstResultRect)}`);
+    assert.equal(await page.getByRole('status').count(),1,
+      'First-use import must not duplicate the success announcement');
+    assert.equal(await page.getByRole('button',{name:'Import more games'}).getAttribute('aria-expanded'),'false',
+      'Import controls should return to their collapsed state after first-use completion');
     assert.equal(seenPgnFiles.at(-1),pgn);
     assert.equal(new URL(page.url()).searchParams.get('source'),'imported');
     assert.equal(await page.getByText('Your game history starts here').count(),0);

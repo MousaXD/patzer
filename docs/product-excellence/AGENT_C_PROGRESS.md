@@ -900,3 +900,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Verify **first-use PGN upload feedback after automatic transition from empty Library to imported games**. `firstUseEmpty` changes to false and the import-options container may close, so the success message must remain visible and the imported collection must become discoverable without hiding errors or losing the first-use path. Reproduce at 320px light/dark and preserve account-switch isolation and retryable PGN selection.
+
+## 2026-11-13 — Guard first-use import confirmation across automatic panel collapse
+
+- Recovered clean pushed `7f3a994` and audited the real first-use transition from **zero linked accounts and zero saved games** through the native PGN chooser to the newly populated imported collection. The first-use view automatically collapses its import controls once imported games arrive, making it an important regression path after introducing source-specific inline import feedback.
+- Strengthened the existing isolated **320px light Chromium** first-use fixture to assert that the success announcement remains visible inside the first 700px viewport, appears only once (`role=status`), and the new **Import more games** toggle correctly reports `aria-expanded=false` after the transition. Existing assertions still verify the imported source URL, correct new game cards, undated PGN messaging, native file content, and no browser JS errors or overflow. Inspected the saved first-use screenshot: feedback appears before discovery controls in the visible screen.
+- **No runtime defect reproduced**; retained only the focused browser regression rather than altering working first-use UI, timestamps, upload APIs or other components.
+
+### Verification
+
+- `node --check web/tests/library.browser.mjs`, complete isolated Chromium desktop/mobile light/dark matrix, provider/PGN imports, Unicode, bookmarks, pagination and first-use transition: **passed** with no browser errors or horizontal overflow. No runtime changes; the preceding code checkpoint passed **1,124 repository tests, 12 skipped**.
+- No production accounts, other agents, merges or deployments touched.
+
+### Next independent audit
+
+- Audit **date-range filter reconciliation** when users choose a start date newer than an existing end date. The Library derives a blank `toDate` display from an invalid range but may retain the outdated `to_date` URL parameter. Verify in Chromium that the visible controls, URL and backend query agree after editing either boundary, browser reload, and clearing filters. Fix only if a reproducible stale-range or misleading result appears.
