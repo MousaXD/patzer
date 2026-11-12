@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
-const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn() }));
+const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn(), account: 1 }));
 vi.mock('../api', () => ({ api: { post: mocks.post } }));
+vi.mock('../state/auth', () => ({ useAuth: (selector?: (state: { user: { id: number } }) => unknown) => {
+  const state = { user: { id: mocks.account } };
+  return selector ? selector(state) : state;
+} }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key }),
 }));
@@ -30,14 +34,21 @@ const incoming = {
   to: { id: 1, username: 'qa-player', display_name: 'QA player', avatar_emoji: '♟' },
 } satisfies Challenge;
 
-function mount() {
-  return render(<MemoryRouter initialEntries={['/play']}>
-    <IncomingChallengeModal />
-    <Routes><Route path="/play" element={<span>Play page</span>} /></Routes>
-  </MemoryRouter>);
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <span data-testid="route">{pathname + search}</span>;
 }
+function view() {
+  return <MemoryRouter initialEntries={['/play']}>
+    <IncomingChallengeModal />
+    <LocationProbe />
+    <Routes><Route path="/play" element={<span>Play page</span>} /></Routes>
+  </MemoryRouter>;
+}
+function mount() { return render(view()); }
 
 beforeEach(() => {
+  mocks.account = 1;
   mocks.post.mockReset();
   mocks.refresh.mockReset().mockResolvedValue(undefined);
   useLobby.setState({ incoming: [{ ...incoming }], outgoing: [], refreshChallenges: mocks.refresh });
@@ -45,6 +56,21 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('incoming challenge modal failure recovery', () => {
+  it('ignores an old account acceptance after the modal switches to the new account', async () => {
+    let confirm!: (value: unknown) => void;
+    mocks.post.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));
+    const page = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    mocks.account = 2;
+    act(() => useLobby.setState({ incoming: [{ ...incoming, id: 21, to: { ...incoming.to, id: 2 } }] }));
+    page.rerender(view());
+    await act(async () => { confirm({ game_id: 345 }); await Promise.resolve(); });
+    expect(screen.getByTestId('route').textContent).toBe('/play');
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([21]);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: 'challenge.accept' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('moves keyboard focus into the invitation and traps backward/forward Tab', () => {
     mount();
     const dialog = screen.getByRole('dialog', { name: 'challenge.incoming' });

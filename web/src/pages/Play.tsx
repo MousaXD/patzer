@@ -252,6 +252,7 @@ export default function Play() {
   const [live, setLive] = useState<LiveGames | null>(null);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
+  const accountRef = useRef<number | null>(user?.id ?? null);
   function socket(): ReconnectingSocket {
     if (!socketRef.current) {
       socketRef.current = new ReconnectingSocket({
@@ -283,11 +284,33 @@ export default function Play() {
     return socketRef.current;
   }
 
+  // The route stays mounted when a shared browser changes from one signed-in
+  // player to another. An active bot/PvP socket, board and resume card belong
+  // to the old player and must never survive that identity change.
   useEffect(() => {
+    const nextId = user?.id ?? null;
+    if (accountRef.current === nextId) return;
+    accountRef.current = nextId;
+    socketRef.current?.disconnect();
+    connectedRef.current = false;
+    setConnected(false);
+    resetGameState();
+    setLive(null);
+    setPhase('setup');
+    // Do not automatically reconnect player B to player A's ?game= link.
+    if (pvpGameId) nav('/play', { replace: true });
+    // The effect intentionally follows account identity, not route changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    setCoachConfigured(false);
     api.get<{ configured: boolean }>('/api/coach/status')
-      .then((s) => setCoachConfigured(s.configured))
-      .catch(() => setCoachConfigured(false));
-  }, []);
+      .then((s) => { if (active) setCoachConfigured(s.configured); })
+      .catch(() => { if (active) setCoachConfigured(false); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   // Once a bot game is over and saved there is nothing left to hold a socket
   // open for — and the server has already deleted the snapshot, so a
@@ -305,11 +328,12 @@ export default function Play() {
   useEffect(() => {
     if (phase !== 'setup' || pvpGameId) return;
     let alive = true;
+    setLive(null);
     api.get<LiveGames>('/api/games/live')
       .then((l) => { if (alive) setLive(l); })
       .catch(() => { if (alive) setLive(null); });
     return () => { alive = false; };
-  }, [phase, pvpGameId]);
+  }, [phase, pvpGameId, user?.id]);
 
   // A phone doesn't tell the page it went to sleep — it just stops running it,
   // and the socket is dead by the time you look again. These three events are
@@ -1026,7 +1050,7 @@ export default function Play() {
           </div>
         )}
 
-        {setupTab === 'friend' && <FriendTab onChallengeAccepted={(gid) => connectPvp(gid)} />}
+        {setupTab === 'friend' && <FriendTab key={user?.id} onChallengeAccepted={(gid) => connectPvp(gid)} />}
       </div>
     );
   }
@@ -1595,6 +1619,20 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
   const [busy, setBusy] = useState<ChallengeAction | null>(null);
   const inFlight = useRef(false);
   const [notice, setNotice] = useState<{ action: ChallengeAction; kind: 'error' | 'success' } | null>(null);
+  const actionSession = useRef({ account: user?.id ?? null, generation: 0 });
+  // A request that started for player A may finish after player B signs in.
+  // Invalidate its callbacks during render so even an immediate Promise
+  // resolution cannot open A's game under B's session.
+  if (actionSession.current.account !== (user?.id ?? null)) {
+    actionSession.current = { account: user?.id ?? null, generation: actionSession.current.generation + 1 };
+  }
+  useEffect(() => {
+    inFlight.current = false;
+    setBusy(null);
+    setTarget(null);
+    setNotice(null);
+    return () => { actionSession.current.generation += 1; };
+  }, [user?.id]);
 
   // Sort: online first, then by name
   const users = useMemo(() => {
@@ -1612,11 +1650,13 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
   // afterward is not evidence that the mutation itself failed.
   async function act<T>(action: ChallengeAction, mutate: () => Promise<T>, onSuccess?: (value: T) => void) {
     if (inFlight.current) return;
+    const generation = actionSession.current.generation;
     inFlight.current = true;
     setBusy(action);
     setNotice(null);
     try {
       const result = await mutate();
+      if (actionSession.current.generation !== generation) return;
       onSuccess?.(result);
       setNotice({ action, kind: 'success' });
       // The mutation has been acknowledged. Updating the sidebar is useful,
@@ -1624,10 +1664,12 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
       // blocked or turn a confirmed invitation into an apparent failure.
       void lobby.refreshChallenges().catch(() => {});
     } catch {
-      setNotice({ action, kind: 'error' });
+      if (actionSession.current.generation === generation) setNotice({ action, kind: 'error' });
     } finally {
-      inFlight.current = false;
-      setBusy(null);
+      if (actionSession.current.generation === generation) {
+        inFlight.current = false;
+        setBusy(null);
+      }
     }
   }
 

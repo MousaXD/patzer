@@ -5,15 +5,27 @@ import { Loader2, Swords, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api';
 import { useLobby, type Challenge } from '../state/lobby';
+import { useAuth } from '../state/auth';
 
 export default function IncomingChallengeModal() {
   const { t } = useTranslation();
+  const accountId = useAuth((s) => s.user?.id ?? null);
   const nav = useNavigate();
   const incoming = useLobby((s) => s.incoming);
   const refresh = useLobby((s) => s.refreshChallenges);
   const [error, setError] = useState<'accept' | 'decline' | null>(null);
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
   const inFlight = useRef(false);
+  const actionSession = useRef({ account: accountId, generation: 0 });
+  if (actionSession.current.account !== accountId) {
+    actionSession.current = { account: accountId, generation: actionSession.current.generation + 1 };
+  }
+  useEffect(() => {
+    inFlight.current = false;
+    setBusy(null);
+    setError(null);
+    return () => { actionSession.current.generation += 1; };
+  }, [accountId]);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // Show only the most-recent
@@ -31,24 +43,29 @@ export default function IncomingChallengeModal() {
   // and retryable. A failed follow-up list refresh must not undo success.
   async function act(action: 'accept' | 'decline', id: number) {
     if (inFlight.current) return;
+    const generation = actionSession.current.generation;
     inFlight.current = true;
     setBusy(action);
     setError(null);
     try {
       if (action === 'accept') {
         const result = await api.post<{ game_id: number }>(`/api/challenges/${id}/accept`);
+        if (actionSession.current.generation !== generation) return;
         useLobby.setState((s) => ({ incoming: s.incoming.filter((challenge) => challenge.id !== id) }));
         nav(`/play?game=${result.game_id}`);
       } else {
         await api.post(`/api/challenges/${id}/decline`);
+        if (actionSession.current.generation !== generation) return;
         useLobby.setState((s) => ({ incoming: s.incoming.filter((challenge) => challenge.id !== id) }));
       }
       void refresh().catch(() => {});
     } catch {
-      setError(action);
+      if (actionSession.current.generation === generation) setError(action);
     } finally {
-      inFlight.current = false;
-      setBusy(null);
+      if (actionSession.current.generation === generation) {
+        inFlight.current = false;
+        setBusy(null);
+      }
     }
   }
 

@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  post: vi.fn(), del: vi.fn(),
+  post: vi.fn(), del: vi.fn(), account: 1,
   refreshChallenges: vi.fn(),
   lobby: {
     online: new Set<number>([2]),
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../api', () => ({ api: { post: mocks.post, del: mocks.del } }));
 vi.mock('../state/lobby', () => ({ useLobby: () => ({ ...mocks.lobby, refreshChallenges: mocks.refreshChallenges }) }));
-vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: 1 } }) }));
+vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: mocks.account } }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
 }));
@@ -24,6 +24,7 @@ vi.mock('react-i18next', () => ({
 import { FriendTab } from './Play';
 
 beforeEach(() => {
+  mocks.account = 1;
   mocks.post.mockReset();
   mocks.del.mockReset();
   mocks.refreshChallenges.mockReset().mockResolvedValue(undefined);
@@ -33,6 +34,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Play friend challenges request recovery', () => {
+  it('does not open the old player\'s accepted game after a shared-browser account switch', async () => {
+    let confirm!: (value: unknown) => void;
+    mocks.lobby.incoming = [{
+      id: 10, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    }];
+    mocks.post.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));
+    const navigate = vi.fn();
+    const page = render(<FriendTab onChallengeAccepted={navigate} />);
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    mocks.account = 3;
+    page.rerender(<FriendTab onChallengeAccepted={navigate} />);
+    await act(async () => { confirm({ game_id: 802 }); await Promise.resolve(); });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(mocks.refreshChallenges).not.toHaveBeenCalled();
+  });
+
   it('explains a failed invitation, preserves the selected opponent, and allows one deliberate retry', async () => {
     mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ challenge: { id: 20 } });
     render(<FriendTab onChallengeAccepted={vi.fn()} />);

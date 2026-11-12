@@ -18,10 +18,11 @@ const lobbyHarness = vi.hoisted(() => ({
   refreshUsers: vi.fn(), refreshChallenges: vi.fn(),
   online: new Set<number>(), users: [], incoming: [], outgoing: [],
 }));
+const authHarness = vi.hoisted(() => ({ id: 1 }));
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ user: {
-    id: 1, profile: { display_name: 'Tester', board_theme: 'green', audience: 'beginner', blunder_warning: 0, coach_behavior: 'silent' },
+    id: authHarness.id, profile: { display_name: 'Tester', board_theme: 'green', audience: 'beginner', blunder_warning: 0, coach_behavior: 'silent' },
   } }),
 }));
 vi.mock('../state/lobby', () => ({ useLobby: (selector?: (state: typeof lobbyHarness) => unknown) =>
@@ -91,9 +92,25 @@ import Play from './Play';
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const snapshot = { type: 'game_started', fen: START, history: [], time_control: 'untimed' };
 
-afterEach(() => { cleanup(); socketHarness.current = null; });
+afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('disconnects a live game and hides its board when the authenticated player changes', () => {
+    const view = () => <MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>;
+    const page = render(view());
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive(snapshot); });
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+
+    authHarness.id = 2;
+    page.rerender(view());
+    expect(ws.disconnectCalls).toBe(1);
+    expect(screen.queryByTestId('chess-board')).toBeNull();
+    expect(screen.getByRole('button', { name: 'play.start' })).toBeTruthy();
+    expect(ws.sent).toEqual([]);
+  });
+
   it('refreshes the friend lobby on entry, not again for unrelated parent renders', () => {
     lobbyHarness.refreshUsers.mockClear();
     lobbyHarness.refreshChallenges.mockClear();
