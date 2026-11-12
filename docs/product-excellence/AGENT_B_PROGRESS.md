@@ -199,3 +199,30 @@
 ### Next verified-audit target
 
 - Investigate `/api/auth/config` capability-probe failures. The current fail-closed defaults suppress signup and SSO but may still render a password form despite an unreachable or SSO-only server; inspect and improve any misleading state, preserving the server's authoritative capability contract.
+
+## 2026-11-12: Authentication capability-probe failure and recovery
+
+### Recovery and reproduction
+
+- Recovered the clean, pushed Agent B worktree at `1ae6926` and resumed the exact outstanding `/api/auth/config` failure task.
+- Before editing, expanded the actual Chromium auth fixture to return HTTP 503. The regression failed because the login form appeared instead of a named error; on SSO-only installations that falsely offers password sign-in. Also verified a malformed HTTP 200 response should not be treated as valid capabilities.
+
+### Changes
+
+1. `useAuthConfig` explicitly separates **loading**, **ready** and **error** states, validates the complete public server capability payload, ignores responses after cleanup, and exposes an in-place retry. Passwords, SSO, signup and recovery affordances are hidden until a successfully validated response is available.
+2. Added a reusable, accessible `AuthOptionsUnavailable` presentation for sign-in and registration with understandable error text and a clear **Try again** action, rather than misleading disabled-signup/password-fallback states.
+3. On signup, deferred invite-code validation until the server has confirmed registration is enabled; no needless invitation API calls occur while the capability check is pending or unavailable.
+4. Localized capability failure, explanation and retry affordances across English, German, Spanish, Russian and Bulgarian.
+5. Added unit coverage for HTTP failures, malformed response behavior, retry into SSO-only, recovery into open registration, genuine registration-disabled results, and invite-probe gating.
+6. Expanded `capture-auth.mjs` to test both 503 and malformed responses at 1440px and 320px in both themes, retry recovery, SSO-only and signup behavior, no horizontal overflow, and a live switch to longer German error text.
+
+### Validation
+
+- `npm run build -w web`: **passed**, TypeScript + Vite.
+- `npx vitest run web/src --maxWorkers=2`: **387/387 passed across 64 test files**.
+- `node web/src/components/navigation/capture-auth.mjs`: **passed**, including new failure/retry matrix. Visually inspected English and German dark-theme 320px error screenshots.
+- No production credentials, servers or game data were used. Other agents' feature branches/worktrees were untouched; no merge or deployment.
+
+### Next audit
+
+- Verify how the public sign-in shell behaves when a capability-probe request **never resolves** rather than returning an HTTP error; investigate a bounded, abortable request with explicit retry instead of potentially infinite loading. Preserve server-driven SSO/signup rules.

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -81,5 +81,31 @@ describe('Login page and single sign-on', () => {
   it('an unknown error code still says something useful', async () => {
     renderLogin({ oidc_enabled: true }, '/login?sso_error=whatever');
     expect(await screen.findByText(/Single sign-on didn't work/)).toBeTruthy();
+  });
+
+  it('hides password and SSO controls after a failed capability request, then retries into SSO-only', async () => {
+    get.mockReset();
+    get.mockRejectedValueOnce(new Error('HTTP 503'))
+      .mockResolvedValueOnce({
+        ...baseConfig, oidc_enabled: true, oidc_only: true,
+        signup_enabled: false, signup_mode: 'closed', email_enabled: false,
+      });
+    render(<MemoryRouter initialEntries={['/login']}><Login /></MemoryRouter>);
+    expect(await screen.findByRole('alert', { name: 'Sign-in options unavailable' })).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.queryByText('Sign in with SSO')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Sign in with SSO')).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats incomplete capabilities as unavailable, not a password-enabled server', async () => {
+    get.mockReset();
+    get.mockResolvedValueOnce({ signup_enabled: false, oidc_only: false });
+    render(<MemoryRouter initialEntries={['/login']}><Login /></MemoryRouter>);
+    expect(await screen.findByRole('alert', { name: 'Sign-in options unavailable' })).toBeTruthy();
+    expect(screen.queryByLabelText('Username')).toBeNull();
+    expect(screen.queryByLabelText('Password')).toBeNull();
   });
 });

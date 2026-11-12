@@ -41,7 +41,10 @@
     "review": "Understand your decisions",
     "progress": "See how you improve",
     "footer": "Your chess. Your journey.",
-    "loadingAuth": "Checking sign-in options…"
+    "loadingAuth": "Checking sign-in options…",
+    "optionsUnavailable": "Sign-in options unavailable",
+    "optionsHelp": "Patzer could not check the sign-in methods supported by this server. Try again to continue.",
+    "optionsRetry": "Try again"
   },
   "common": {
     "save": "Save",

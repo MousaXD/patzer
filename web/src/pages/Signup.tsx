@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { useAuthConfig } from '../lib/useAuthConfig';
 import { humanizeError } from '../lib/errors';
 import AuthShell from '../components/AuthShell';
+import AuthOptionsUnavailable from '../components/AuthOptionsUnavailable';
 import { isLanguage, normalizeLanguage } from '../lib/languages';
 
 type InviteProblem = 'invalid' | 'revoked' | 'expired' | 'used_up';
@@ -27,7 +28,7 @@ const CODE_LENGTH = 12;
 export default function Signup() {
   const { t, i18n } = useTranslation();
   const { refresh } = useAuth();
-  const { config, loaded } = useAuthConfig();
+  const { config, loaded, error: configError, retry: retryConfig } = useAuthConfig();
   const nav = useNavigate();
   const [params] = useSearchParams();
   const linkCode = params.get('invite') ?? '';
@@ -46,7 +47,9 @@ export default function Signup() {
 
   // Check the code as soon as it is complete — straight away when it came in
   // the link — so a dead invite is reported before anyone fills in the form.
+  // Never probe invites until the server confirms signup is enabled.
   useEffect(() => {
+    if (!loaded || configError || !config.signup_enabled) { setCheck(null); return; }
     if (code.length !== CODE_LENGTH) { setCheck(null); return; }
     let alive = true;
     setCheck({ state: 'checking' });
@@ -62,7 +65,7 @@ export default function Signup() {
       // The server checks again on submit; a failed probe just shows nothing.
       .catch(() => { if (alive) setCheck(null); });
     return () => { alive = false; };
-  }, [code, i18n]);
+  }, [code, i18n, loaded, configError, config.signup_enabled]);
 
   const inviteOk = !inviteOnly || (code.length === CODE_LENGTH && check?.state !== 'invalid');
 
@@ -111,6 +114,15 @@ export default function Signup() {
           <div aria-hidden="true" className="ui-skeleton h-10 w-full motion-reduce:animate-none" />
           <p className="text-sm text-ui-mutedText">{t('authShell.loadingAuth', { defaultValue: 'Checking sign-in options…' })}</p>
         </div>
+      </AuthShell>
+    );
+  }
+
+  if (configError) {
+    return (
+      <AuthShell title={t('auth.signupTitle')}>
+        <AuthOptionsUnavailable onRetry={retryConfig} />
+        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }

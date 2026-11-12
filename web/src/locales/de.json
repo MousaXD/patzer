@@ -41,7 +41,10 @@
     "review": "Verstehe deine Entscheidungen",
     "progress": "Erkenne deine Fortschritte",
     "footer": "Dein Schach. Dein Weg.",
-    "loadingAuth": "Anmeldeoptionen werden geladen…"
+    "loadingAuth": "Anmeldeoptionen werden geladen…",
+    "optionsUnavailable": "Anmeldeoptionen nicht verfügbar",
+    "optionsHelp": "Patzer konnte die verfügbaren Anmeldemethoden nicht überprüfen. Bitte versuche es erneut.",
+    "optionsRetry": "Erneut versuchen"
   },
   "common": {
     "save": "Speichern",

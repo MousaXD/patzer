@@ -41,7 +41,10 @@
     "review": "Comprende tus decisiones",
     "progress": "Descubre tu progreso",
     "footer": "Tu ajedrez. Tu camino.",
-    "loadingAuth": "Comprobando las opciones de acceso…"
+    "loadingAuth": "Comprobando las opciones de acceso…",
+    "optionsUnavailable": "Opciones de acceso no disponibles",
+    "optionsHelp": "Patzer no pudo comprobar los métodos de acceso admitidos por este servidor. Inténtalo de nuevo.",
+    "optionsRetry": "Reintentar"
   },
   "common": {
     "save": "Guardar",

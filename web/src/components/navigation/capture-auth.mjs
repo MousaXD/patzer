@@ -15,6 +15,7 @@ let browser;
 let server;
 let ssoOnly = false;
 let slowConfig = false;
+let configProbe = 'ok';
 
 async function assertNoOverflow(page, label) {
   const metrics = await page.evaluate(() => ({
@@ -93,9 +94,18 @@ try {
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: 'light', reducedMotion: 'reduce' });
+  page.setDefaultTimeout(6500);
   await page.route('**/api/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/auth/config' && slowConfig) await sleep(350);
+    if (pathname === '/api/auth/config' && configProbe === 'error') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily_unavailable"}' });
+      return;
+    }
+    if (pathname === '/api/auth/config' && configProbe === 'invalid') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"signup_enabled":false}' });
+      return;
+    }
     const payload = pathname === '/api/setup/status' ? { setup_required: false }
       : pathname === '/api/auth/me' ? { user: null }
       : pathname === '/api/auth/config' ? {
@@ -164,9 +174,65 @@ try {
   await page.getByRole('link', { name: 'Back to sign in' }).waitFor();
   if ((await page.locator('#signup-username').count()) !== 0) throw new Error('Closed signup still rendered registration inputs');
 
+  // An unavailable or malformed capability probe must not silently fall back
+  // to password login on an SSO-only installation. Recheck without reload.
+  for (const colorScheme of ['light', 'dark']) {
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 320, height: 700 }]) {
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize(viewport);
+      for (const mode of ['error', 'invalid']) {
+        configProbe = mode;
+        slowConfig = false;
+        ssoOnly = true;
+        await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
+        await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor();
+        if (await page.locator('#login-username, #login-password').count()) {
+          throw new Error(`${colorScheme} ${viewport.width} ${mode}: password login exposed with unknown capabilities`);
+        }
+        if (await page.locator('a[href="/api/auth/oidc/start"]').count()) {
+          throw new Error('SSO affordance must not be guessed from a failed probe');
+        }
+        await assertNoOverflow(page, `${colorScheme} ${viewport.width} ${mode} capability failure`);
+        await page.screenshot({ path: resolve(output, `auth-config-${mode}-${colorScheme}-${viewport.width}.png`), fullPage: true });
+        configProbe = 'ok';
+        await page.getByRole('button', { name: 'Try again' }).click();
+        await page.getByRole('link', { name: 'Sign in with SSO' }).waitFor();
+        if (await page.locator('#login-password').count()) {
+          throw new Error('Retry into SSO-only capabilities still exposed password fields');
+        }
+      }
+    }
+  }
+
+  // On /signup, a failed capability probe should offer retry in place, not
+  // claim that registration is disabled. After recovery honor open signup.
+  await page.setViewportSize({ width: 320, height: 700 });
+  configProbe = 'error';
+  ssoOnly = false;
+  await page.goto(origin + '/signup', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor();
+  if (await page.locator('#signup-username').count()) throw new Error('Signup exposed an unverified registration form');
+  if (await page.getByText('Sign-up is currently disabled.').count()) throw new Error('Probe outage misreported as closed registration');
+  configProbe = 'ok';
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.getByRole('textbox', { name: 'Username' }).waitFor();
+
+  // Unavailable-sign-in messaging remains understandable when changed to a
+  // longer supported language on the narrowest mobile viewport.
+  configProbe = 'error';
+  await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor();
+  await page.getByRole('button', { name: 'Deutsch' }).click();
+  await page.getByRole('alert', { name: 'Anmeldeoptionen nicht verfügbar' }).waitFor();
+  await assertNoOverflow(page, 'German 320px failed sign-in capability probe');
+  await page.screenshot({ path: resolve(output, 'auth-config-error-dark-320-de.png'), fullPage: true });
+  await page.getByRole('button', { name: 'English' }).click();
+  await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor();
+
   // A remembered preference should survive sign-out, independent of OS mode.
   ssoOnly = false;
   slowConfig = false;
+  configProbe = 'ok';
   await page.emulateMedia({ colorScheme: 'light' });
   await page.evaluate(() => localStorage.setItem('patzer-site-theme', 'dark'));
   await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });

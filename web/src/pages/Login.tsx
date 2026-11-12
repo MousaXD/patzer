@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { useAuthConfig } from '../lib/useAuthConfig';
 import { humanizeError } from '../lib/errors';
 import AuthShell from '../components/AuthShell';
+import AuthOptionsUnavailable from '../components/AuthOptionsUnavailable';
 
 // /login?sso_error=<code> after a failed single sign-on (see server/src/auth/oidc.ts).
 const SSO_ERROR_KEYS: Record<string, string> = {
@@ -22,7 +23,7 @@ const SSO_ERROR_KEYS: Record<string, string> = {
 export default function Login() {
   const { t } = useTranslation();
   const { refresh } = useAuth();
-  const { config, loaded } = useAuthConfig();
+  const { config, loaded, error: configError, retry: retryConfig } = useAuthConfig();
   const [params] = useSearchParams();
   const ssoError = params.get('sso_error');
   const nav = useNavigate();
@@ -64,6 +65,8 @@ export default function Login() {
             {t('authShell.loadingAuth', { defaultValue: 'Checking sign-in options…' })}
           </p>
         </div>
+      ) : configError ? (
+        <AuthOptionsUnavailable onRetry={retryConfig} />
       ) : (
         <form onSubmit={submit} className="space-y-4" aria-busy={busy}>
           {ssoError && (
