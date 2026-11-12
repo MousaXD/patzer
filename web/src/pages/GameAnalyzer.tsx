@@ -1487,9 +1487,9 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
           )}
           {error && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
-              <span>{error === 'busy' ? 'Stockfish is busy with another request.' : 'Engine lines are unavailable.'}</span>
+              <span>{t(error === 'busy' ? 'review.linesBusy' : 'review.linesUnavailable')}</span>
               <button type="button" onClick={onRetry} disabled={loading}
-                className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">Retry</button>
+                className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">{t('review.linesRetry')}</button>
             </div>
           )}
           {lines.map((l) => {
@@ -1501,10 +1501,10 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
                 type="button"
                 disabled={loading}
                 onClick={() => { if (isPlayed) onAdvance(); else onTryMove(l.uci); }}
-                aria-label={`${isPlayed ? 'Follow played move' : 'Try engine move'} ${l.san}`}
+                aria-label={t(isPlayed ? 'review.linesFollowMove' : 'review.linesTryMove', { san: l.san })}
                 onMouseEnter={() => onHover(l)}
                 onMouseLeave={() => onHover(null)}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+                className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${
                   isPlayed
                     ? 'cursor-pointer bg-board-dark/10 hover:bg-board-dark/15'
                     : 'cursor-pointer hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40'

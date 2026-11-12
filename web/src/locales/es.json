@@ -333,6 +333,11 @@
     "linesFetching": "obteniendo…",
     "linesRefreshing": "actualizando…",
     "linesPlayed": "jugada",
+    "linesBusy": "Stockfish está ocupado con otra solicitud.",
+    "linesUnavailable": "Las variantes del motor no están disponibles.",
+    "linesRetry": "Reintentar",
+    "linesFollowMove": "Seguir la jugada realizada {{san}}",
+    "linesTryMove": "Probar la jugada del motor {{san}}",
     "importLichess": "Importar de Lichess",
     "importError": {
       "player_not_found": "No se encontró ningún jugador con ese nombre de usuario.",

@@ -743,6 +743,60 @@ try {
     assert.equal(engineRequests,2);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
+  // The Game Review shell is localized, but Engine Lines used to expose raw
+  // English-only 503/retry and move-action labels inside a German review. Its
+  // clickable engine rows also had hitboxes under 44px on actual phones.
+  const localizedLineContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    const languageSetting=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,
+      body:{language:'de',site_theme:'dark'}});
+    assert.equal(languageSetting.status,200);
+    await localizedLineContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await localizedLineContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const fen=new Chess().fen();
+    let requests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      const request=route.request().postDataJSON();
+      assert.equal(request.fen,fen);
+      requests++;
+      await route.fulfill(requests===1
+        ? {status:503,contentType:'application/json',body:'{"error":"engine_unavailable"}'}
+        : {status:200,contentType:'application/json',body:JSON.stringify({
+            fen,depth:18,lines:[{uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:36,mate:null,multipv:1}],
+          })});
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Engine-Varianten',exact:true}).click();
+    await page.getByText('Engine-Varianten sind derzeit nicht verfügbar.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    const retry=page.getByRole('button',{name:'Erneut versuchen',exact:true});
+    const retryBox=await retry.boundingBox();
+    assert.ok(retryBox && retryBox.height>=44 && retryBox.width>=44);
+    await page.screenshot({path:join(output,'engine-lines-localized-error-de-390.png')});
+    const scored=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position')&&response.status()===200);
+    await retry.click();
+    await scored;
+    const row=page.getByRole('button',{name:'Dem gespielten Zug e4 folgen',exact:true});
+    await row.waitFor({state:'visible'});
+    const hit=await row.boundingBox();
+    assert.ok(hit && hit.height>=44 && hit.width>=44,
+      `A playable engine line should have a 44px touch target: ${JSON.stringify(hit)}`);
+    await page.screenshot({path:join(output,'engine-lines-localized-row-de-390.png')});
+    await page.setViewportSize({width:320,height:760});
+    const narrowHit=await row.boundingBox();
+    assert.ok(narrowHit && narrowHit.height>=44 && narrowHit.width>=44,
+      `A playable German engine line should stay touch-friendly at 320px: ${JSON.stringify(narrowHit)}`);
+    const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
+    assert.ok(overflow<=2,`A long localized engine-row label must not force 320px overflow: ${overflow}`);
+    await page.screenshot({path:join(output,'engine-lines-localized-row-de-320.png')});
+    assert.equal(requests,2);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{
+    await localizedLineContext.close();
+    const reset=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,body:{language:'en'}});
+    assert.equal(reset.status,200);
+  }
   // A scoring failure belongs to a specific exploratory move. An error from
   // d4 must never follow the user to an already scored c4 branch when the
   // browser reselects it from cache (no new engine request is sent there).

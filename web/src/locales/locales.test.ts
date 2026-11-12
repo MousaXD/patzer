@@ -118,6 +118,15 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
       }
     });
+    it('localizes Engine Lines recovery and safe move-action names', () => {
+      for (const key of ['linesBusy', 'linesUnavailable', 'linesRetry', 'linesFollowMove', 'linesTryMove'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        expect(placeholders(locale.review[key]), `${lang}: ${key}`).toEqual(placeholders(en.review[key]));
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+      expect(placeholders(locale.review.linesFollowMove), lang).toEqual(['{{san}}']);
+      expect(placeholders(locale.review.linesTryMove), lang).toEqual(['{{san}}']);
+    });
   },
 );
 

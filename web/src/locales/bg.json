@@ -329,6 +329,11 @@
     "linesFetching": "зарежда…",
     "linesRefreshing": "обновява…",
     "linesPlayed": "изигран",
+    "linesBusy": "Stockfish обработва друга заявка.",
+    "linesUnavailable": "Линиите на двигателя не са достъпни.",
+    "linesRetry": "Опитай отново",
+    "linesFollowMove": "Продължи с изиграния ход {{san}}",
+    "linesTryMove": "Изпробвай хода на двигателя {{san}}",
     "importLichess": "Внеси от Lichess",
     "importError": {
       "player_not_found": "Не е намерен играч с това потребителско име.",

@@ -117,3 +117,24 @@
 ### Next issue
 
 - Audit the Engine Lines interactive rows at 320/390px: labels remain English in translated review, and the live-line row has a small hit target. Reproduce in localized actual Chromium before deciding the smallest coherent fix. Other agents own the global design system.
+
+## 2026-11-12: localized, touch-friendly Engine Lines actions
+
+### Reproduced and fixed
+
+- Continued from `7cf39b3` (clean). Audited a previously unlocalized part of the Game Review Engine Lines panel: loading and heading were translated, but engine-outage/busy/Retry messages and the interactive engine-move `aria-label`s remained hardcoded English. Interactive engine-line rows also lacked a 44px touch target.
+- Added a disposable authenticated dark 390px German Chromium fixture with an intercepted 503 followed by a valid source-attested engine line. **Baseline intentionally failed** waiting for German recovery text. The fix translates `linesBusy`, `linesUnavailable`, `linesRetry`, `linesFollowMove`, and `linesTryMove` for English, German, Spanish, Russian and Bulgarian. SAN placeholders stay structurally consistent across all languages.
+- Engine-line buttons now have a minimum 44px height and a visible keyboard focus outline, preserving their saved-move/try-alternative behavior and source/FEN safeguards. This change is local to Game Review; no global design or server changes.
+- Expanded locale parity tests, including SAN interpolation checks. Browser asserts translated failure/retry and action names, 44px hitboxes and no horizontal overflow at both 390 and 320px. It checks the original saved PGN is unchanged.
+
+### Verification and evidence
+
+- `npx vitest run web/src/locales/locales.test.ts web/src/components/review/reviewPosition.test.ts --testTimeout=20000`: **53/53 passed**.
+- `npm run typecheck`: PASS. `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **970 passed / 12 skipped** (107 passing test files).
+- Full disposable Chromium harness: **PASS (exit 0)** with existing source-integrity, stale variation, retry-focus, locale and PGN checks. Inspected the new real German dark captures `qa-artifacts/agent-a/engine-line-localization-after-20261112/engine-lines-localized-{error-de-390,row-de-390,row-de-320}.png` (translated error/Retry, legible move labels, no overflow).
+- Intercepted HTTP scores and errors are UI test fixtures, not real Stockfish certifications.
+
+### Next candidate
+
+- Verify that activating Engine Lines Retry with Enter preserves keyboard focus when the Retry button unmounts after a success or a pending request; the already-fixed variation scorer had a similar keyboard trap. Reproduce first in the isolated browser fixture, then fix only if confirmed.
