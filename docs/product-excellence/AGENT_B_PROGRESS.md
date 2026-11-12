@@ -337,3 +337,32 @@
 ### Next high-impact shared-shell audit
 
 - Investigate global keyboard focus and page-navigation resilience when returning from emergency errors or first-run setup; verify actual problems before implementing any further shared changes. Continue to leave Games Library, Game Review, Imports, Play and Insights internals to their dedicated agents.
+
+## 2026-11-12: Route focus handoff and first-run step announcements
+
+### Recovered state and reproduced defects
+
+- Resumed the clean, pushed `5d8c709` state and the specific unfinished keyboard/navigation audit; kept all prior validated batches intact.
+- In real Chromium, selecting Review from the 320px mobile navigation drawer changed the route but returned keyboard focus to **Open menu**, not the destination. Keyboard navigation from the desktop rail also left focus on the old navigation link.
+- The first-run Setup wizard did not move focus to the newly mounted Ollama step heading, so moving forward/back could leave focus on a removed control. An additional back-navigation conflict arose because the username field always used `autoFocus`.
+
+### Implementation
+
+1. On real pathname changes, the shared `Layout` now focuses the newly named main landmark **after** the mobile drawer closes. It resets scroll on fresh push/replace navigation, preserves browser-history scroll on POP and avoids interrupting same-path query-only state changes in chess activities.
+2. Kept keyboard behavior consistent across desktop rail, mobile drawer, and the global command palette; these changes do not reach into feature-level pages.
+3. On wizard step transitions, `Setup` announces the new heading through a ref callback that waits for `AnimatePresence` to mount the step. Initial username autofocus remains on first launch but no longer steals focus on return to the account step.
+4. Added unit assertions for initial/follow-up step focus, desktop/mobile route focus and same-path query-only focus preservation. Extended actual Chromium fixtures to assert route handoff, scroll reset, command-palette navigation focus and both Setup transitions.
+
+### Verification
+
+- `npm run build -w web`: **passed**, TypeScript + Vite production build.
+- `npx vitest run web/src --maxWorkers=2`: **400/400 passed across 68 files**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including real 320px mobile drawer and desktop keyboard route transitions. Inspected desktop navigation screenshot.
+- `node web/src/components/navigation/capture-setup.mjs`: **passed**, full theme/viewport/locale setup checks plus step focus handoff.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including command-palette destination focus.
+- `git diff --check`: **passed**.
+- All browser calls used local mocked APIs; no production service or game data was touched. Other agents' feature files/worktrees remain untouched.
+
+### Next shared-shell audit
+
+- Look for remaining focus and scroll inconsistencies around browser Back/Forward, skip-link activation and the transition from temporary loading to a settled workspace. Preserve feature-level focus and internal move-list navigation; only change shared shell behavior with browser evidence.

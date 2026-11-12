@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES, normalizeLanguage, type Language } from '../lib/languages';
 import { useNavigate } from 'react-router-dom';
@@ -27,6 +27,23 @@ export default function Setup() {
   const [testHint, setTestHint] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // AnimatePresence waits for the previous step to leave before mounting the
+  // next one. Focusing the heading from a normal effect would be too early.
+  // A ref callback announces the new step as soon as it enters the DOM, but
+  // preserves the username autofocus when the wizard first opens.
+  const focusNextStep = useRef(false);
+  const hasChangedStep = useRef(false);
+  const announceStep = useCallback((heading: HTMLHeadingElement | null) => {
+    if (heading && focusNextStep.current) {
+      focusNextStep.current = false;
+      heading.focus({ preventScroll: true });
+    }
+  }, []);
+  const goToStep = (next: 1 | 2) => {
+    focusNextStep.current = true;
+    hasChangedStep.current = true;
+    setStep(next);
+  };
 
   async function testOllama() {
     setTestStatus('testing'); setTestError(''); setTestHint(undefined); setModels([]);
@@ -98,7 +115,7 @@ export default function Setup() {
           <AnimatePresence mode="wait" initial={false}>
             {step === 1 && (
               <motion.div key="s1" initial={reduceMotion ? false : { opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={reduceMotion ? undefined : { opacity: 0, x: 8 }} className="space-y-4">
-                <h2 className="text-lg font-semibold">{t('setup.step1')}</h2>
+                <h2 ref={announceStep} tabIndex={-1} className="text-lg font-semibold outline-none">{t('setup.step1')}</h2>
                 <div>
                   <p className="label mb-1">{t('common.language')}</p>
                   <div role="group" aria-label={t('common.language')} data-setup-languages
@@ -111,7 +128,7 @@ export default function Setup() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="label mb-1 block" htmlFor="setup-username">{t('common.username')}</label>
-                    <input id="setup-username" className="input" autoComplete="username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+                    <input id="setup-username" className="input" autoComplete="username" autoFocus={!hasChangedStep.current} value={username} onChange={(e) => setUsername(e.target.value)} />
                   </div>
                   <div>
                     <label className="label mb-1 block" htmlFor="setup-display-name">{t('common.displayName')}</label>
@@ -123,7 +140,7 @@ export default function Setup() {
                   <input id="setup-password" className="input" type="password" autoComplete="new-password" aria-describedby="setup-password-hint" value={password} onChange={(e) => setPassword(e.target.value)} />
                   <p id="setup-password-hint" className="mt-1 text-xs text-ui-mutedText">{t('setup.passwordHint')}</p>
                 </div>
-                <button type="button" onClick={() => setStep(2)} disabled={!username.trim() || password.length < 10} className="btn-primary min-h-11 w-full">
+                <button type="button" onClick={() => goToStep(2)} disabled={!username.trim() || password.length < 10} className="btn-primary min-h-11 w-full">
                   {t('setup.next')} <ChevronRight className="h-4 w-4" />
                 </button>
               </motion.div>
@@ -131,7 +148,7 @@ export default function Setup() {
 
             {step === 2 && (
               <motion.div key="s2" initial={reduceMotion ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={reduceMotion ? undefined : { opacity: 0, x: -8 }} className="space-y-4">
-                <h2 className="text-lg font-semibold">{t('setup.step2')}</h2>
+                <h2 ref={announceStep} tabIndex={-1} className="text-lg font-semibold outline-none">{t('setup.step2')}</h2>
                 <p className="text-sm text-ui-mutedText">{t('setup.ollamaSkip')}</p>
                 <div>
                   <label className="label mb-1 block" htmlFor="setup-ollama-url">{t('setup.ollamaUrl')}</label>
@@ -166,7 +183,7 @@ export default function Setup() {
                 )}
                 {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
                 <div className="flex min-w-0 flex-wrap gap-2">
-                  <button type="button" onClick={() => setStep(1)} className="btn-ghost min-h-11 flex-1"><ChevronLeft className="h-4 w-4" /> {t('common.back')}</button>
+                  <button type="button" onClick={() => goToStep(1)} className="btn-ghost min-h-11 flex-1"><ChevronLeft className="h-4 w-4" /> {t('common.back')}</button>
                   <button type="button" onClick={submit} disabled={busy} className="btn-primary min-h-11 flex-[2]">
                     <Sparkles className="h-4 w-4" />
                     {busy ? t('setup.creating') : t('setup.finish')}

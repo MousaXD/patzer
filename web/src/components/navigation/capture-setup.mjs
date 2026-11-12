@@ -72,7 +72,11 @@ try {
       await page.getByRole('textbox', { name: 'Display name' }).fill('Example Admin');
       await page.getByLabel('Password').fill('fixture-password-123');
       await page.getByRole('button', { name: 'Next' }).click();
-      await page.getByRole('heading', { name: /Connect Ollama/ }).waitFor();
+      const modelStepHeading = page.getByRole('heading', { name: /Connect Ollama/ });
+      await modelStepHeading.waitFor();
+      if (!(await modelStepHeading.evaluate((element) => document.activeElement === element))) {
+        throw new Error('Next step was not announced by moving keyboard focus to its heading');
+      }
       await page.getByRole('textbox', { name: 'Ollama URL' }).waitFor();
       await page.screenshot({ path: resolve(output, `setup-step2-${color}-${viewport.width}.png`), fullPage: true });
       await page.getByRole('button', { name: 'Test connection' }).click();
@@ -80,6 +84,10 @@ try {
       await checkViewport(page, `setup step2 ${color} ${viewport.width}`, false);
       await page.getByRole('button', { name: 'Back' }).click();
       await page.getByRole('textbox', { name: 'Username' }).waitFor();
+      const accountStepHeading = page.getByRole('heading', { name: /Create your admin account/ });
+      if (!(await accountStepHeading.evaluate((element) => document.activeElement === element))) {
+        throw new Error('Back navigation did not return focus to account step heading');
+      }
       if ((await page.getByRole('textbox', { name: 'Username' }).inputValue()) !== 'admin-example') {
         throw new Error('Setup wizard lost account details when returning from step 2');
       }

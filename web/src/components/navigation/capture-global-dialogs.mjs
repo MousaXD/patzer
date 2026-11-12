@@ -143,6 +143,7 @@ try {
       await page.keyboard.press('Enter');
       await page.waitForURL((url) => url.pathname === '/train');
       await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
+      await page.waitForFunction(() => document.activeElement?.id === 'patzer-main');
     }
   }
 

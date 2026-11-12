@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 const harness = vi.hoisted(() => ({
   role: 'user' as 'user' | 'admin',
@@ -206,6 +206,44 @@ describe('Patzer navigation rail', () => {
     fireEvent.click(within(drawer).getByRole('link', { name: 'Play' }));
     expect(screen.getByTestId('route-content').textContent).toBe('/play');
     expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
+  });
+
+  it('focuses the named workspace after a route change without stealing initial-page focus', async () => {
+    mount();
+    const initialMain = screen.getByRole('main', { name: 'Home' });
+    expect(document.activeElement).not.toBe(initialMain);
+    const rail = screen.getByRole('navigation', { name: 'Primary navigation' });
+    fireEvent.click(within(rail).getByRole('link', { name: 'Review' }));
+    const reviewMain = screen.getByRole('main', { name: 'Review' });
+    await waitFor(() => expect(document.activeElement).toBe(reviewMain));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Mobile navigation' }))
+      .getByRole('link', { name: 'Training' }));
+    const trainingMain = screen.getByRole('main', { name: 'Training' });
+    await waitFor(() => expect(document.activeElement).toBe(trainingMain));
+    expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
+  });
+
+  it('does not steal focus from a feature control when only URL search parameters change', async () => {
+    function QueryChange() {
+      const nav = useNavigate();
+      return <button type="button" onClick={() => nav('/play?game=fixture')}>Change active game</button>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/play']}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/play" element={<QueryChange />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const action = screen.getByRole('button', { name: 'Change active game' });
+    action.focus();
+    fireEvent.click(action);
+    await waitFor(() => expect(document.activeElement).toBe(action));
+    expect(document.activeElement).not.toBe(screen.getByRole('main', { name: 'Play' }));
   });
 
   it('preserves both global controls, language switching, profile, logout and changelog', async () => {

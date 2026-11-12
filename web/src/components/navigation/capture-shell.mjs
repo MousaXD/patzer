@@ -248,6 +248,43 @@ try {
     await page.waitForURL((url) => url.pathname === nested.parent);
   }
   profile.language = 'en';
+
+  // A route selected from the mobile drawer must announce the new workspace
+  // to a keyboard user, rather than leaving focus on the menu toggle. The
+  // page should also start at the top instead of inheriting the old scroll.
+  await openWithFixture(page, { width: 320, height: 700 });
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.waitForTimeout(100);
+  const previousScroll = await page.evaluate(() => window.scrollY);
+  if (previousScroll < 100) throw new Error('Home fixture not tall enough for route scroll test');
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  const transitionDrawer = page.getByRole('dialog', { name: 'Mobile navigation' });
+  await transitionDrawer.locator('a[href="/review"]').click();
+  await page.waitForURL((url) => url.pathname === '/review');
+  await transitionDrawer.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.id === 'patzer-main');
+  const mobileTransition = await page.evaluate(() => ({
+    focus: document.activeElement?.getAttribute('id') || document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName,
+    scroll: window.scrollY,
+  }));
+  if (mobileTransition.focus !== 'patzer-main' || mobileTransition.scroll > 2) {
+    throw new Error('Mobile navigation did not focus and reset new workspace: ' + JSON.stringify(mobileTransition));
+  }
+
+  // With a keyboard-driven rail link, the destination (not the old link)
+  // must become the primary focus context without a full browser refresh.
+  await openWithFixture(page, { width: 1440, height: 900 });
+  const reviewRailLink = page.getByRole('navigation', { name: 'Primary navigation' })
+    .locator('a[href="/review"]');
+  await reviewRailLink.focus();
+  await page.keyboard.press('Enter');
+  await page.waitForURL((url) => url.pathname === '/review');
+  await page.waitForFunction(() => document.activeElement?.id === 'patzer-main');
+  const desktopFocus = await page.evaluate(() => document.activeElement?.getAttribute('id'));
+  if (desktopFocus !== 'patzer-main') {
+    throw new Error('Desktop navigation left keyboard focus on stale link: ' + desktopFocus);
+  }
+  await page.screenshot({ path: resolve(output, 'desktop-navigation-focus.png') });
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {
   await browser?.close();

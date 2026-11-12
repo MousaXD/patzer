@@ -43,17 +43,20 @@ describe('first-use setup accessibility', () => {
     const fetchMock = vi.fn().mockResolvedValue({ json: async () => ({ ok: false, error: 'unreachable' }) });
     vi.stubGlobal('fetch', fetchMock);
     mount();
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Username' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Username' }), { target: { value: 'testadmin' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Test Admin' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'fixture-password-123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByRole('textbox', { name: 'Ollama URL' })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: /Connect Ollama/ }));
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect((screen.getByRole('textbox', { name: 'Username' }) as HTMLInputElement).value).toBe('testadmin');
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Create your admin account' }));
   });
 
   it('announces the selected language when the administrator switches locale', async () => {

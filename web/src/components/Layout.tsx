@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft, BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
@@ -127,11 +127,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const [version, setVersion] = useState('');
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const lastFocusedPathRef = useRef(location.pathname);
 
   const primaryLabel = t('navigation.primary', { defaultValue: 'Primary navigation' });
   const mobileLabel = t('navigation.mobile', { defaultValue: 'Mobile navigation' });
@@ -162,6 +165,22 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
 
   // Navigation never leaves a stale drawer over the newly selected route.
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+
+  // In an SPA the old navigation link remains focused after a pathname
+  // change. From the mobile drawer its focus trap even restores focus to
+  // "Open menu". Move focus to the new named main landmark *after* the drawer
+  // is dismissed, so keyboard and screen-reader users know where they landed.
+  // Preserve query-only state changes within Play/Review and browser back
+  // scroll positions; only fresh navigations start at the top.
+  useEffect(() => {
+    if (lastFocusedPathRef.current === location.pathname || drawerOpen) return;
+    lastFocusedPathRef.current = location.pathname;
+    const frame = window.requestAnimationFrame(() => {
+      if (navigationType !== 'POP') window.scrollTo(0, 0);
+      mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, drawerOpen, navigationType]);
 
   // A drawer opened on mobile must release focus when the viewport becomes
   // desktop-sized. Otherwise a CSS-hidden dialog could keep trapping Tab.
@@ -357,7 +376,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
 
         {/* No global max-width on the analysis route. This is Agent 03's
             predictable full-width, min-w-0 flex workspace contract. */}
-        <main id="patzer-main" tabIndex={-1} className="flex min-h-0 min-w-0 w-full flex-1 flex-col" data-shell-main>
+        <main ref={mainRef} id="patzer-main" tabIndex={-1} aria-label={nestedTitle ?? pageTitle}
+          className="flex min-h-0 min-w-0 w-full flex-1 flex-col" data-shell-main>
           <div className={cn(
             'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',
