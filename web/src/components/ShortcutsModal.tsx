@@ -20,13 +20,23 @@ export default function ShortcutsModal({ open, onClose }: Props) {
       rows: [
         ['⌘ K · Ctrl K', t('shortcuts.openPalette', { defaultValue: 'Command palette' })],
         ['?', t('shortcuts.openShortcuts', { defaultValue: 'Show this dialog' })],
+        ['Esc', t('shortcuts.closeDialog', { defaultValue: 'Close any dialog' })],
+      ],
+    },
+    {
+      title: t('shortcuts.navigation', { defaultValue: 'Navigation' }),
+      rows: [
         ['G H', t('shortcuts.goHome', { defaultValue: 'Go to Home' })],
         ['G P', t('shortcuts.goPlay', { defaultValue: 'Go to Play' })],
         ['G R', t('shortcuts.goReview', { defaultValue: 'Go to Review' })],
         ['G I', t('shortcuts.goInsights', { defaultValue: 'Go to Insights' })],
         ['G T', t('shortcuts.goTrain', { defaultValue: 'Go to Tactic Trainer' })],
-        ['G E', t('shortcuts.goLearn')],
-        ['Esc', t('shortcuts.closeDialog', { defaultValue: 'Close any dialog' })],
+        ['G E', t('shortcuts.goLearn', { defaultValue: 'Go to Learn' })],
+        ['G S', t('shortcuts.goSettings', { defaultValue: 'Go to Settings' })],
+        ['G O', t('shortcuts.goOpenings', { defaultValue: 'Go to Openings' })],
+        ['G N', t('shortcuts.goPlan', { defaultValue: 'Go to Improvement Plan' })],
+        ['G L', t('shortcuts.goLab', { defaultValue: 'Go to Lab' })],
+        ['G U', t('shortcuts.goPlayers', { defaultValue: 'Go to Players' })],
       ],
     },
     {
@@ -56,7 +66,7 @@ export default function ShortcutsModal({ open, onClose }: Props) {
         <div className="max-h-[70vh] overflow-y-auto p-4 space-y-5">
           {groups.map((g) => (
             <section key={g.title}>
-              <div className="mb-2 text-[11px] uppercase tracking-wider text-ui-mutedText">{g.title}</div>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ui-mutedText">{g.title}</h3>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {g.rows.map(([k, v]) => (
                   <div key={k} className="flex items-center justify-between gap-3 rounded-md bg-ui-muted px-3 py-1.5 text-xs">

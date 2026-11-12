@@ -234,6 +234,17 @@ try {
   await shortcutsOpener.click();
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await shortcuts.waitFor();
+  const documentedKeys = (await shortcuts.locator('kbd').allTextContents()).map((key) => key.trim());
+  for (const key of ['G S', 'G O', 'G N', 'G L', 'G U']) {
+    if (!documentedKeys.includes(key)) {
+      throw new Error(`Working global navigation shortcut ${key} is missing from keyboard help`);
+    }
+  }
+  for (const title of ['Global', 'Navigation', 'Game Review']) {
+    if (!(await shortcuts.getByRole('heading', { name: title }).count())) {
+      throw new Error(`Keyboard help has no accessible ${title} section heading`);
+    }
+  }
   await assertInside(page, shortcuts, 'initial shortcuts focus');
   await assertContrast(page, shortcuts, 'shortcuts dialog');
   await assertNoOverflow(page, 'shortcuts dialog');
@@ -402,6 +413,11 @@ try {
         throw new Error(`Landscape shortcuts clip outside viewport ${color} ${size.width}x${size.height}: ${JSON.stringify(shortcutRect)}`);
       }
       await page.screenshot({ path: resolve(output, `shortcuts-landscape-${color}-${size.width}.png`) });
+      await shortcuts.getByText('Go to Players').scrollIntoViewIfNeeded();
+      const lastShortcut = await shortcuts.getByText('Go to Players').boundingBox();
+      if (!lastShortcut || lastShortcut.y < -1 || lastShortcut.y + lastShortcut.height > size.height + 1) {
+        throw new Error(`Landscape keyboard help cannot reveal its final navigation shortcut at ${size.width}x${size.height}`);
+      }
       await shortcuts.getByRole('button', { name: 'Close' }).click();
       await shortcuts.waitFor({ state: 'detached' });
     }

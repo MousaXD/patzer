@@ -719,3 +719,31 @@
 ### Next audit
 
 - Inspect global shortcut help for parity with actual supported route combinations. The App router recognizes `G+S/O/N/L/U` in addition to the visible help rows, which may obscure discoverability. Confirm the help dialog and route map in-browser before altering the shared help content.
+
+## 2026-11-12: Complete, navigable keyboard-shortcut help
+
+### Reproduction
+
+- Resumed clean pushed Agent B `34eb69b` and compared the global keyboard router's `G+letter` mapping to the live help dialog.
+- Real Chromium negative control verified a genuine discoverability gap: the app supported `G S`, `G O`, `G N`, `G L` and `G U`, but **none were listed** in the keyboard help. The first missing key (`G S`) failed the browser assertion before implementation.
+
+### Implementation
+
+1. Added all five previously undocumented destinations (Settings, Openings, Improvement Plan, Lab and Players) to the shared shortcuts overlay. Existing documented routes, modal keys and Game Review help remain intact.
+2. Grouped the overlay into **Global**, **Navigation** and **Game Review** sections to make eleven global navigation commands easier to scan. Section labels are real accessible headings, not decorative divs.
+3. Added relevant translation keys in all five supported languages; also filled the existing missing Spanish/Bulgarian `Go to Learn` label rather than showing an untranslated key.
+4. Extended local Chromium certification: all five missing shortcuts must appear with keyboard labels, all three section headings must be accessible, and the last newly added navigation command must be scrollable into view in **844x390** and **568x320** landscape.
+5. Added `ShortcutsModal.routes.test.tsx` with full coverage for all eleven mapped global navigation sequences and closed-dialog behavior.
+6. Inspected the 320px mobile, 568px landscape, and 1440px desktop screenshots; the new sections remain legible and longer lists scroll inside the dialog without horizontal overflow.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **418/418 passed across 71 test files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the previously failing help-parity checks, keyboard focus and all previous responsive scenarios.
+- `git diff --check`: **passed**.
+- Scope restricted to Agent B's shared help modal, five locales, browser/unit regression tests and progress report. No other agents' pages, production systems, merges or deployment.
+
+### Next audit
+
+- Check touch-target sizing of shared shell controls in **640–1024px tablet layouts**. Some header actions adopt compact 36px controls from the `sm` breakpoint even when a tablet is touch-operated. Measure actual browser rectangles and available header width before changing component sizing.
