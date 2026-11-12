@@ -998,6 +998,8 @@
   },
   "insights": {
     "title": "Statistiken",
+    "explorePositions": "Eigene Stellungen erkunden",
+    "tryTactics": "Taktikaufgaben üben",
     "subv2": "Muster aus deinen letzten {{n}} analysierten Partien.",
     "empty": "Noch keine Statistiken",
     "emptyDesc": "Analysiere ein paar Partien, dann erscheinen hier deine Schwachstellen.",

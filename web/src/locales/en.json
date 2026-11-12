@@ -998,6 +998,8 @@
   },
   "insights": {
     "title": "Insights",
+    "explorePositions": "Explore my positions",
+    "tryTactics": "Try tactical puzzles",
     "subv2": "Patterns across your last {{n}} analyzed games.",
     "empty": "No insights yet",
     "emptyDesc": "Analyze a few games and your weak spots will show up here.",

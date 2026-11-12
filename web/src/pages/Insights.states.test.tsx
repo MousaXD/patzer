@@ -34,6 +34,43 @@ function mount() {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Insights data states', () => {
+  it('opens general tactics rather than promising personal puzzles when analyzed games have no playable mistakes', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 2, games_analyzed: 2, personal_puzzle_positions: false,
+        activity_heatmap: [], rating_trajectory: {}, time_class_stats: {},
+        opening_repertoire: [], accuracy_trend: [],
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        mistake_taxonomy: {
+          hung_pieces: 1, one_move_blunders: 0, back_rank: 0, missed_mate: 0,
+          opening_pitfalls: 0, endgame_drift: 0, promising_to_losing: 0,
+        },
+      });
+    });
+    mount();
+    expect(await screen.findByText('Your next chess step')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Practice my positions' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Try tactical puzzles' }).getAttribute('href')).toBe('/train?tab=puzzles');
+  });
+
+  it('offers personal training only when a current analyzed position has a playable solution', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 1, games_analyzed: 1, personal_puzzle_positions: true,
+        activity_heatmap: [], rating_trajectory: {}, time_class_stats: {},
+        opening_repertoire: [], accuracy_trend: [],
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        mistake_taxonomy: {},
+      });
+    });
+    mount();
+    expect(await screen.findByText('Your next chess step')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Explore my positions' }).getAttribute('href')).toBe('/train');
+    expect(screen.queryByRole('link', { name: 'Try tactical puzzles' })).toBeNull();
+  });
+
   it('labels opening-phase mistakes without inventing a move-15 cutoff or a specific trap', async () => {
     mocks.get.mockImplementation((url: string) => {
       if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
@@ -122,7 +159,7 @@ describe('Insights data states', () => {
     mocks.get.mockImplementation((url: string) => {
       if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
       return Promise.resolve({
-        games_total: 8, games_analyzed: 3, activity_heatmap: [], rating_trajectory: {},
+        games_total: 8, games_analyzed: 3, personal_puzzle_positions: true, activity_heatmap: [], rating_trajectory: {},
         time_class_stats: {}, opening_repertoire: [], accuracy_trend: [],
         phase_accuracy: { opening: 72.4, middlegame: 0, endgame: 80.2 },
         phase_samples: { opening: 3, middlegame: 0, endgame: 1 },
@@ -139,7 +176,7 @@ describe('Insights data states', () => {
     expect(screen.getByText(/tagged moves across your analyzed games/)).toBeTruthy();
     expect(screen.getByText('Not measured')).toBeTruthy();
     expect(screen.queryByText('0.0%')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Practice my positions' }).getAttribute('href')).toBe('/train');
+    expect(screen.getByRole('link', { name: 'Explore my positions' }).getAttribute('href')).toBe('/train');
   });
 
   it('explains historical rating changes and does not invent a trend from one point', async () => {

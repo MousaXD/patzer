@@ -19,6 +19,7 @@ import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { readAnalysisMoves, readPhaseSplit } from './analysisData.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
+import { isPuzzleMove, puzzleLine } from '../chess/gamePuzzles.js';
 import type { Classification, GamePhase, Color } from '../types.js';
 import { phaseFor, hasBackRankSignature } from '../chess/phases.js';
 
@@ -141,6 +142,10 @@ router.get('/', (c) => {
     ORDER BY g.end_time DESC, g.id DESC
   `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
   let analyzedCount = 0;
+  // An analyzed game does not imply a playable *personal* puzzle. A next-step
+  // link to personal practice needs an attributable mistake with an actual
+  // legal first solution, not merely a nonzero count of engine reports.
+  let personalPuzzlePositions = false;
 
   // Taxonomy buckets — every bucket counts user-side moves only.
   const tax = {
@@ -221,6 +226,15 @@ router.get('/', (c) => {
     for (const m of moves) {
       const side: Color = m.ply % 2 === 1 ? 'white' : 'black';
       if (side !== userColor) continue;
+      if (!personalPuzzlePositions && isPuzzleMove(m, userColor) && typeof m.fen_before === 'string') {
+        try {
+          // Validate only until one position is playable. Chess.js may throw
+          // for an old corrupt FEN; that must never break the Insights page.
+          personalPuzzlePositions = puzzleLine(
+            m.fen_before, m.best_move_uci!, Array.isArray(m.best_pv) ? m.best_pv : [],
+          ).uci.length > 0;
+        } catch { /* malformed legacy position is not a playable puzzle */ }
+      }
       if (m.classification in quality) quality[m.classification]++;
       if (m.classification === 'brilliant' && brilliant.length < BRILLIANT_LIST) {
         brilliant.push({ game_id: r.game_id, ply: m.ply, san: m.san, end_time: r.end_time, opponent: userColor === 'white' ? r.black : r.white });
@@ -272,6 +286,7 @@ router.get('/', (c) => {
     games_total: gamesTotal.total,
     games_eligible: gamesTotal.eligible,
     games_analyzed: analyzedCount,
+    personal_puzzle_positions: personalPuzzlePositions,
     activity_heatmap: heatmap,
     rating_trajectory: trajectory,
     time_class_stats,

@@ -32,6 +32,7 @@ interface OpeningRow { eco: string; name: string; color: Color; played: number; 
 interface InsightsV2 {
   games_total: number;
   games_analyzed: number;
+  personal_puzzle_positions?: boolean;
   activity_heatmap: { day: string; games: number; wins: number }[];
   rating_trajectory: Record<string, { t: string; r: number }[]>;
   time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; analyzed_games?: number; accuracy_games?: number; avg_accuracy: number | null }>;
@@ -209,7 +210,9 @@ function NextStepCard({ data }: { data: InsightsV2 }) {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:max-w-[14rem] sm:justify-end">
-          {data.games_analyzed > 0 && <Link to="/train" className="btn-primary text-sm">{t('insights.practicePositions', { defaultValue: 'Practice my positions' })}</Link>}
+          {data.games_analyzed > 0 && (data.personal_puzzle_positions
+            ? <Link to="/train" className="btn-primary text-sm">{t('insights.explorePositions', { defaultValue: 'Explore my positions' })}</Link>
+            : <Link to="/train?tab=puzzles" className="btn-primary text-sm">{t('insights.tryTactics', { defaultValue: 'Try tactical puzzles' })}</Link>)}
           <Link to="/review" className={data.games_analyzed > 0 ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>{t('review.title', { defaultValue: 'Review games' })}</Link>
           <Link to="/learn" className="btn-ghost text-sm">{t('learn.title', { defaultValue: 'Explore lessons' })} <ChevronRight className="h-4 w-4" aria-hidden="true" /></Link>
         </div>
