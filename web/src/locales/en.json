@@ -1040,8 +1040,8 @@
       "learning": "Learning"
     },
     "tax": {
-      "hung": "Hung pieces",
-      "hungDesc": "≥2 pawns of material lost",
+      "hung": "High-cost mistakes",
+      "hungDesc": "Moves losing ≥2 pawns of engine evaluation, not necessarily material.",
       "oneMove": "One-move blunders",
       "oneMoveDesc": "Sudden cliff edges",
       "backRank": "Back-rank weakness",

@@ -227,6 +227,9 @@ router.get('/', (c) => {
       }
       const phase = phaseFor(m.ply, split);
       if (m.classification === 'blunder' || m.classification === 'mistake') {
+        // Legacy response key `hung_pieces` is a >=200cp engine-evaluation
+        // loss, NOT a verified hanging piece or loss of physical material.
+        // Keep the API key stable; the UI labels the measured event precisely.
         if (m.centipawn_loss >= 200) tax.hung_pieces++;
         if (m.classification === 'blunder' && hasBackRankSignature(m.fen_after, userColor)) tax.back_rank++;
         if (phase === 'opening') tax.opening_pitfalls++;

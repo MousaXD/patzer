@@ -1040,8 +1040,8 @@
       "learning": "Lernen"
     },
     "tax": {
-      "hung": "Hängende Figuren",
-      "hungDesc": "Material im Wert von ≥ 2 Bauern verloren",
+      "hung": "Schwere Fehler",
+      "hungDesc": "Mindestens 2 Bauern Bewertungsverlust, nicht unbedingt Materialverlust.",
       "oneMove": "Einzüger-Patzer",
       "oneMoveDesc": "Plötzlicher Absturz",
       "backRank": "Grundreihenschwäche",

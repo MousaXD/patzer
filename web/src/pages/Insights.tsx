@@ -160,7 +160,7 @@ export default function Insights() {
 function NextStepCard({ data }: { data: InsightsV2 }) {
   const { t } = useTranslation();
   const patterns: { key: keyof InsightsV2['mistake_taxonomy']; label: string }[] = [
-    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'Hung pieces' }) },
+    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'High-cost mistakes' }) },
     { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }) },
     { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }) },
     { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }) },
@@ -701,7 +701,7 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
 function MistakeTaxonomyCard({ data }: { data: InsightsV2['mistake_taxonomy'] }) {
   const { t } = useTranslation();
   const buckets: { key: keyof InsightsV2['mistake_taxonomy']; label: string; desc: string }[] = [
-    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'Hung pieces' }), desc: t('insights.tax.hungDesc', { defaultValue: '≥2 pawns of material lost' }) },
+    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'High-cost mistakes' }), desc: t('insights.tax.hungDesc', { defaultValue: 'Moves losing ≥2 pawns of engine evaluation, not necessarily material.' }) },
     { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }), desc: t('insights.tax.oneMoveDesc', { defaultValue: 'Sudden cliff edges' }) },
     { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }), desc: t('insights.tax.backRankDesc', { defaultValue: 'King exposed on home rank' }) },
     { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }), desc: t('insights.tax.missedMateDesc', { defaultValue: 'You had it — and walked away' }) },
@@ -733,7 +733,7 @@ function MistakeTaxonomyCard({ data }: { data: InsightsV2['mistake_taxonomy'] })
                 <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
                   <div className="h-full bg-mistake/70" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="mt-0.5 truncate text-[11px] text-chesscom-400">{b.desc}</div>
+                <div className="mt-0.5 break-words text-[11px] leading-relaxed text-chesscom-600 dark:text-chesscom-300">{b.desc}</div>
               </div>
             </div>
           );
