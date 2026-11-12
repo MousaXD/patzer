@@ -61,3 +61,26 @@ Recovered the clean `38cacd6` Agent C tip. The first round of work was already f
 ### Scope boundaries
 
 All implementation stays in Game Library, provider imports and dedicated tests. Review analysis internals, global shell, other agents' branches and live service remain untouched. No merge, deployment or production DB activity.
+
+## 2026-11-12 — Follow-up: ownership boundary, atomic batches, and error recovery
+
+- Recovered clean `a4cfe22`, then investigated the next risk identified above.
+- **Route-level ownership boundary:** manual Chess.com and Lichess imports now require the requested username to match the linked profile username (case-insensitive), rejecting cross-account overrides with HTTP 403 before any provider request. No arbitrary public account's games can be attributed through this manual route.
+- **Mid-flight safety:** a profile may change while a download is pending. Both providers recheck the currently linked account **inside** the SQLite transaction before inserting, reject changed links with HTTP 409, and avoid storing stale source data. Chess.com auto-import uses the same guard, so its scheduled imports do not race past a profile change.
+- **Atomic batches:** both 200-game manual import paths now commit as a single transaction; a failed insert rolls the entire batch back. Import validation and PGN parsing occur **before** taking the writer lock to keep transaction duration bounded.
+- **User recovery:** linked-account errors now show a specific, accessible alert in the Games Library rather than a generic failure message. The browser fixture covers this case with a mocked HTTP 409.
+- **Hono/SQLite negative controls:** tests simulate cross-account requests, mid-request username changes, and a failing database trigger after an earlier valid game. Verify that zero games remain after aborted transactions, as well as successful duplicate accounting.
+
+### Verification
+
+- Targeted `server/test/platform-backend.test.ts`, `server/test/lichess.test.ts`, `web/src/pages/Review.library.test.tsx`: **55/55 passed**.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: **passed**.
+- `web/tests/library.browser.mjs`: **passed** across six viewport/theme combinations and interactive scenarios, including the linked-account error alert. Uses mocked data and an isolated preview; it does not import real accounts.
+- Full suite with three workers (`npm test -- --maxWorkers=3`): **106 files passed, 2 skipped; 977 tests passed, 12 skipped**. No failures. Skipped tests remain outside this change; do not count them as passing.
+
+### Next problems to investigate
+
+1. Current one-time full-history Chess.com CLI is safe but not discoverable from the in-app Games Library. Any new UI endpoint needs durable per-archive checkpoints, explicit confirmation, cancellation, throttling and verified backups. Do not claim full-history functionality from the 200-game recent import.
+2. Inspect large-library opening/opponent discovery flows for more useful navigation without adding speculative data.
+3. Review Chess.com provider error classification: the initial `getPlayer()` lookup currently maps network/rate failures to `player_not_found`; users may be told their existing profile is missing when the provider is unavailable.
+4. Maintain independent release certification; do not merge or deploy without integrator review.

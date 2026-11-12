@@ -14,21 +14,33 @@ export async function importChessComGames(userId: number, username: string, limi
     VALUES (?, 'chesscom', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
-
-  let imported = 0;
-  let skipped = 0;
-  let duplicates = 0;
+  // Validate PGNs before taking SQLite's writer lock. Only the short insert
+  // phase belongs inside the all-or-nothing transaction.
+  const rows: ImportRow[] = [];
   for (const game of games) {
     const row = validImportRow(game, username);
-    // One malformed upstream game must never block the rest of this import,
-    // invent a loss, or contaminate this user's game library.
-    if (!row) { skipped++; continue; }
-    const r = stmt.run(userId, row.url, row.pgn, row.white, row.black, row.result,
-      row.timeControl, row.timeClass, row.endTime, row.userColor);
-    if (r.changes > 0) imported++;
-    else duplicates++;
+    if (row) rows.push(row);
   }
-  return { imported, total: games.length, skipped, duplicates };
+  const skipped = games.length - rows.length;
+
+  // A linked account can be edited while an upstream archive is downloading.
+  // Check again *inside* the write transaction, so stale in-flight results
+  // cannot be attributed to the newly linked username. A failed insert rolls
+  // back the whole manual/auto-sync batch instead of leaving partial claims.
+  return db.transaction(() => {
+    const linked = db.prepare('SELECT chesscom_username AS username FROM profiles WHERE user_id = ?')
+      .get(userId) as { username: string | null } | undefined;
+    if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
+    let imported = 0;
+    let duplicates = 0;
+    for (const row of rows) {
+      const r = stmt.run(userId, row.url, row.pgn, row.white, row.black, row.result,
+        row.timeControl, row.timeClass, row.endTime, row.userColor);
+      if (r.changes > 0) imported++;
+      else duplicates++;
+    }
+    return { imported, total: games.length, skipped, duplicates };
+  })();
 }
 
 

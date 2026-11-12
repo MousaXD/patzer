@@ -225,8 +225,10 @@ router.post('/import/chesscom', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = importSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
-  const username = parsed.data.username ?? user.profile.chesscom_username;
-  if (!username) return c.json({ error: 'no_chesscom_username' }, 400);
+  const linkedUsername = user.profile.chesscom_username?.trim();
+  if (!linkedUsername) return c.json({ error: 'no_chesscom_username' }, 400);
+  const username = parsed.data.username ?? linkedUsername;
+  if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
 
   if (chesscomImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
   chesscomImportsRunning.add(user.id);
@@ -234,6 +236,9 @@ router.post('/import/chesscom', async (c) => {
     const player = await getPlayer(username);
     if (!player) return c.json({ error: 'player_not_found' }, 404);
     return c.json(await importChessComGames(user.id, username, parsed.data.limit));
+  } catch (error) {
+    if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    throw error;
   } finally {
     chesscomImportsRunning.delete(user.id);
   }
@@ -256,8 +261,10 @@ router.post('/import/lichess', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = lichessImportSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
-  const username = parsed.data.username ?? user.profile.lichess_username;
-  if (!username) return c.json({ error: 'no_lichess_username' }, 400);
+  const linkedUsername = user.profile.lichess_username?.trim();
+  if (!linkedUsername) return c.json({ error: 'no_lichess_username' }, 400);
+  const username = parsed.data.username ?? linkedUsername;
+  if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
   if (lichessImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
 
   let games;
@@ -281,19 +288,32 @@ router.post('/import/lichess', async (c) => {
     VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
-  let imported = 0;
-  let skipped = 0;
-  let duplicates = 0;
+  const rows: NonNullable<ReturnType<typeof toImportRow>>[] = [];
   for (const g of games) {
     const row = toImportRow(g, username);
-    if (!row) { skipped++; continue; }
-    const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
-      row.time_control, row.time_class, row.end_time, row.user_color);
-    if (r.changes > 0) imported++;
-    else duplicates++;
+    if (row) rows.push(row);
   }
-
-  return c.json({ imported, total: games.length, skipped, duplicates });
+  const skipped = games.length - rows.length;
+  try {
+    const result = db.transaction(() => {
+      const linked = db.prepare('SELECT lichess_username AS username FROM profiles WHERE user_id = ?')
+        .get(user.id) as { username: string | null } | undefined;
+      if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
+      let imported = 0;
+      let duplicates = 0;
+      for (const row of rows) {
+        const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
+          row.time_control, row.time_class, row.end_time, row.user_color);
+        if (r.changes > 0) imported++;
+        else duplicates++;
+      }
+      return { imported, total: games.length, skipped, duplicates };
+    })();
+    return c.json(result);
+  } catch (error) {
+    if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    throw error;
+  }
 });
 
 export default router;

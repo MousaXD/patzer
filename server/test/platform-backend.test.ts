@@ -30,7 +30,7 @@ beforeAll(async () => {
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (3,'Empty')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (4,'Calendar')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (5,'Unknown side')").run();
-  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (6,'Importer')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name,chesscom_username,lichess_username) VALUES (6,'Importer','importer','importer')").run();
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
 
   const game = db.prepare(`INSERT INTO games (
@@ -264,11 +264,11 @@ describe('manual Chess.com import resilience', () => {
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }));
   }
-  async function postImport() {
+  async function postImport(username = 'importer') {
     const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
     return gamesRoute.request('/import/chesscom', {
       method: 'POST', headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'importer', limit: 20 }),
+      body: JSON.stringify({ username, limit: 20 }),
     });
   }
 
@@ -312,6 +312,53 @@ describe('manual Chess.com import resilience', () => {
       expect((await postImport()).status).toBe(200);
     } finally { release(); vi.unstubAllGlobals(); }
   });
+
+  it('refuses cross-account overrides without calling external providers', async () => {
+    const fetchSpy = vi.fn(async () => { throw new Error('must-not-fetch'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const mismatch = await postImport('somebody_else');
+      expect(mismatch.status).toBe(403);
+      expect(await mismatch.json()).toEqual({ error: 'linked_account_mismatch' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('aborts stale in-flight downloads after the account link changes', async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    mockFetch([sample(99898)], async () => { started(); await held; });
+    try {
+      const pending = postImport();
+      await entered;
+      db.prepare("UPDATE profiles SET chesscom_username = 'different_account' WHERE user_id = 6").run();
+      release();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'linked_account_changed' });
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?')
+        .get(sample(99898).url)).toEqual({ n: 0 });
+    } finally {
+      release(); vi.unstubAllGlobals();
+      db.prepare("UPDATE profiles SET chesscom_username = 'importer' WHERE user_id = 6").run();
+    }
+  });
+
+  it('rolls back the whole Chess.com batch on a database insertion failure', async () => {
+    const badId = 99897;
+    mockFetch([sample(99896), sample(badId)]);
+    db.exec(`CREATE TRIGGER agentc_chesscom_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${sample(badId).url}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(500);
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id IN (?, ?)')
+        .get(sample(99896).url, sample(badId).url)).toEqual({ n: 0 });
+    } finally { db.exec('DROP TRIGGER agentc_chesscom_failure'); vi.unstubAllGlobals(); }
+  });
 });
 
 describe('manual Lichess import integrity', () => {
@@ -327,12 +374,12 @@ describe('manual Lichess import integrity', () => {
     pgn: '[Event "Lichess game"]\n[White "importer"]\n[Black "opponent"]\n\n1. e4 e5 1-0',
     ...overrides,
   });
-  async function importLichess() {
+  async function importLichess(username = 'importer') {
     const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
     return gamesRoute.request('/import/lichess', {
       method: 'POST',
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'importer', limit: 20 }),
+      body: JSON.stringify({ username, limit: 20 }),
     });
   }
   it('only inserts valid owned games and counts repeated imports as duplicates', async () => {
@@ -361,6 +408,53 @@ describe('manual Lichess import integrity', () => {
       expect(await response.json()).toEqual({ error: 'lichess_unavailable' });
       expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
     } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('refuses cross-account overrides and does not call Lichess', async () => {
+    const fetchSpy = vi.fn(async () => { throw new Error('must-not-fetch'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const response = await importLichess('foreign');
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'linked_account_mismatch' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('aborts an in-flight Lichess download when the linked account changes', async () => {
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => { started(); await held;
+      return new Response(JSON.stringify(lichessGame('account_switched_123')), { status: 200 });
+    }));
+    try {
+      const pending = importLichess();
+      await entered;
+      db.prepare("UPDATE profiles SET lichess_username = 'new_lichess' WHERE user_id = 6").run();
+      release();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'linked_account_changed' });
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally {
+      release(); vi.unstubAllGlobals();
+      db.prepare("UPDATE profiles SET lichess_username = 'importer' WHERE user_id = 6").run();
+    }
+  });
+
+  it('rolls back all new Lichess games when an insertion fails', async () => {
+    const rows = [lichessGame('agentc_good_123'), lichessGame('agentc_bad_123')];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rows.map(row => JSON.stringify(row)).join('\n'), { status: 200 })));
+    db.exec(`CREATE TRIGGER agentc_lichess_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = 'agentc_bad_123'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    try {
+      const response = await importLichess();
+      expect(response.status).toBe(500);
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally { db.exec('DROP TRIGGER agentc_lichess_failure'); vi.unstubAllGlobals(); }
   });
 });
 

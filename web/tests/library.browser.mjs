@@ -87,7 +87,8 @@ async function newPage(theme, width, height) {
       json = list(parsed.searchParams);
     } else if (/^\/api\/games\/import\/(?:chesscom|lichess)$/.test(path)) {
       const body = request.postDataJSON();
-      json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0};
+      if (body.limit === 100) { status = 409; json = {error: 'linked_account_changed'}; }
+      else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0};
     } else if (path === '/api/games/live') json = {bot: null, pvp: []};
     else { status = 404; json = {error: 'test_fixture_not_implemented'}; }
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
@@ -187,6 +188,9 @@ try {
     await page.getByRole('combobox',{name:'Recent games to fetch'}).selectOption('20');
     await page.getByRole('button',{name:/@fixtureuser/}).first().click();
     await page.getByText(/10 new games saved from 20 retrieved/).waitFor();
+    await page.getByRole('combobox',{name:'Recent games to fetch'}).selectOption('100');
+    await page.getByRole('button',{name:/@fixtureuser/}).first().click();
+    await page.getByRole('alert').getByText(/Your linked account changed during import/).waitFor();
     // No-match recovery should stay within library.
     await page.getByRole('searchbox').fill('no-such-player-84841');
     await page.getByText('No games match your search').waitFor();

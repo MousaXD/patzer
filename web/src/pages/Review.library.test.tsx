@@ -194,6 +194,17 @@ describe('Review library with large histories', () => {
     expect(screen.getByText(/not your entire history/)).toBeTruthy();
   });
 
+  it('explains a changed linked account and announces failed imports accessibly', async () => {
+    mocks.user.profile.lichess_username = 'tester';
+    mocks.post.mockRejectedValue(new Error('linked_account_changed'));
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    fireEvent.click(screen.getByRole('button', { name: /review\.importLichess \(@tester\)/ }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Your linked account changed during import/);
+    expect(alert.textContent).toMatch(/Check Settings and retry/);
+  });
+
   it('bounds URL deep links and text entry to the API maximum search length', async () => {
     mount(`/review?q=${'x'.repeat(180)}`);
     await screen.findByText(/40 of 1,000 games/);

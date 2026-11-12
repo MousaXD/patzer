@@ -178,7 +178,10 @@ export default function Review() {
     onError: (e, { accountId }) => {
       if (accountIdRef.current !== accountId) return;
       const code = (e as Error).message;
-      showImportResult({ text: t(`review.importError.${code}`, { defaultValue: t('review.importError.generic') }), error: true }, 6000);
+      const guidance = code === 'linked_account_changed' || code === 'linked_account_mismatch'
+        ? t('review.importError.linked_account_changed', { defaultValue: 'Your linked account changed during import. Check Settings and retry.' })
+        : t(`review.importError.${code}`, { defaultValue: t('review.importError.generic') });
+      showImportResult({ text: guidance, error: true }, 6000);
     },
   });
   const sources: { source: ImportSource; username: string | null | undefined; label: string }[] = [
@@ -239,7 +242,7 @@ export default function Review() {
       )}
 
       {importMsg && (
-        <div className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
+        <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
           ? 'border-bad/30 bg-bad/10 text-bad'
           : 'border-board-dark/30 bg-board-dark/10 text-board-dark dark:text-chesscom-100')}>
           {importMsg.text}
