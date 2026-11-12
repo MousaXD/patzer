@@ -17,7 +17,7 @@ import { rmSync } from 'node:fs';
 import { chromium, type Page, type BrowserContext } from 'playwright';
 import { Chess } from 'chess.js';
 
-const PORT = 8895;
+const PORT = Number(process.env.PATZER_RESUME_UI_PORT ?? 8895);
 const BASE = `http://127.0.0.1:${PORT}`;
 process.env.PORT = String(PORT); process.env.HOST = '127.0.0.1';
 const dbPath = join(tmpdir(), `patzer-resumeui-${process.pid}.db`);
@@ -100,7 +100,11 @@ console.log('scratch server up on', BASE);
 const admin = await api('/api/setup/init', { username: 'alice', password: 'alice-password-1', display_name: 'Alice', language: 'en' });
 ok(admin.status === 200, 'scratch instance initialised');
 
-const browser = await chromium.launch();
+// CI supplies Playwright's Chromium; an installed local Chrome can be used
+// when reproducing the exact same browser flow without downloading binaries.
+const browser = await chromium.launch(process.env.PATZER_CHROME_EXECUTABLE
+  ? { executablePath: process.env.PATZER_CHROME_EXECUTABLE }
+  : {});
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 // Playwright's offline mode doesn't tear down an already-open WebSocket, so
 // keep a handle on every socket the page opens and close one on demand. From
@@ -193,9 +197,15 @@ console.log('\nscenario 4: discard');
 await page.goto(`${BASE}/play`);
 await page.waitForTimeout(1500);
 await page.getByRole('button', { name: /discard/i }).first().click();
-await page.waitForTimeout(1200);
+const discardDialog = page.getByRole('alertdialog', { name: /discard saved game/i });
+ok(await discardDialog.isVisible(), 'discard requires an explicit confirmation');
+ok(await page.getByText(/continue where you left off/i).first().isVisible(),
+  'opening discard confirmation preserves the unfinished game');
+await discardDialog.getByRole('button', { name: /discard saved game/i }).click();
+await discardDialog.waitFor({ state: 'hidden', timeout: 10000 });
 const stillThere = await page.getByText(/continue where you left off/i).first().isVisible().catch(() => false);
-ok(!stillThere, 'discarding removes the offer');
+ok(!stillThere, 'confirming discard removes the offer');
+if (stillThere) throw new Error('Confirmed bot-game discard did not clear the resume card');
 
 // --- 5. a finished game is saved and reachable ---------------------------
 // Regression: the page closed the bot socket the moment `game_over` set a
@@ -213,6 +223,9 @@ for (let i = 0; i < ROUNDS; i++) {
   await move(page, 'e2', 'e4', 'white');
   await page.waitForTimeout(1500);
   await page.getByRole('button', { name: /^resign$/i }).first().click();
+  const resignDialog = page.getByRole('alertdialog', { name: /resign this game/i });
+  await resignDialog.waitFor({ state: 'visible', timeout: 5000 });
+  await resignDialog.getByRole('button', { name: /confirm resignation/i }).click();
   const review = page.getByRole('button', { name: /review this game/i }).first();
   const shown = await review.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
   const spinning = await page.getByText(/saving game/i).first().isVisible().catch(() => false);
