@@ -2000,7 +2000,9 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
                     <div className="text-sm font-medium">{u.display_name}</div>
                     <div className="text-xs opacity-70">@{u.username}</div>
                   </div>
-                  <span className={`h-2.5 w-2.5 rounded-full ${u.online ? 'bg-green-500' : 'bg-chesscom-400/60'}`} title={u.online ? 'online' : 'offline'} />
+                  <span role="img" className={`h-2.5 w-2.5 rounded-full ${lobby.presenceReady && lobby.online.has(u.id) ? 'bg-green-500' : 'bg-chesscom-400/60'}`}
+                    aria-label={lobby.presenceReady ? (lobby.online.has(u.id) ? 'online' : 'offline') : t('challenge.presenceUnavailable', { defaultValue: 'Live status unavailable' })}
+                    title={lobby.presenceReady ? (lobby.online.has(u.id) ? 'online' : 'offline') : t('challenge.presenceUnavailable', { defaultValue: 'Live status unavailable' })} />
                 </button>
               ))}
             </div>

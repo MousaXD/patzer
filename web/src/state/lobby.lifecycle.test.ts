@@ -41,6 +41,42 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('marks online presence unknown immediately when its WebSocket drops, until a fresh presence snapshot arrives', () => {
+    useLobby.getState().connect(1);
+    const old = FakeSocket.opened[0]!;
+    old.emit({ type: 'presence_update', online: [2] });
+    expect(useLobby.getState().presenceReady).toBe(true);
+    expect(useLobby.getState().online.has(2)).toBe(true);
+
+    old.drop();
+    expect(useLobby.getState().presenceReady).toBe(false);
+    expect(useLobby.getState().online.size).toBe(0);
+    old.emit({ type: 'presence_update', online: [2] }); // old socket may still deliver messages
+    expect(useLobby.getState().presenceReady).toBe(false);
+
+    vi.advanceTimersByTime(3000);
+    const fresh = FakeSocket.opened[1]!;
+    fresh.emit({ type: 'presence_update', online: [2] });
+    expect(useLobby.getState().presenceReady).toBe(true);
+    useLobby.getState().disconnect();
+    expect(useLobby.getState().presenceReady).toBe(false);
+  });
+
+  it('keeps a new socket presence snapshot authoritative over a slower HTTP player-list response', async () => {
+    let finish!: (response: { users: { id: number; username: string; display_name: string; avatar_emoji: string; online: boolean }[] }) => void;
+    mocks.get.mockImplementation((url: string) => url === '/api/lobby/users'
+      ? new Promise((resolve) => { finish = resolve; })
+      : Promise.resolve({ challenges: [] }));
+    useLobby.getState().connect(1);
+    const fetchPlayers = useLobby.getState().refreshUsers();
+    FakeSocket.opened[0]!.emit({ type: 'presence_update', online: [2] });
+    expect(useLobby.getState().presenceReady).toBe(true);
+    finish({ users: [{ id: 2, username: 'other', display_name: 'Opponent', avatar_emoji: '♟', online: false }] });
+    await fetchPlayers;
+    expect(useLobby.getState().online.has(2)).toBe(true);
+    expect(useLobby.getState().users[0]?.online).toBe(true);
+  });
+
   it('retains the last good incoming list if a refreshed HTTP snapshot has a malformed invitation', async () => {
     let badIncoming = false;
     mocks.get.mockImplementation((url: string) => {

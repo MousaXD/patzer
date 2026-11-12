@@ -444,6 +444,7 @@
     "playersDesc": "Elige a alguien, selecciona las piezas y el tiempo, y envíale un reto.",
     "noPlayers": "Aún no hay otros jugadores. Pide a un administrador que cree más cuentas.",
     "loadingPlayers": "Cargando jugadores…",
+    "presenceUnavailable": "Estado en línea no disponible",
     "playersError": "No se pudieron cargar los jugadores. Se muestra la última lista cargada.",
     "playersErrorEmpty": "No se pudieron cargar los jugadores. Comprueba la conexión e inténtalo de nuevo.",
     "retryPlayers": "Volver a cargar jugadores",

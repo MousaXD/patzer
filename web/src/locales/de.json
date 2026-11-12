@@ -496,6 +496,7 @@
     "playersDesc": "Wähle jemanden aus, dazu deine Farbe und die Bedenkzeit, und schick eine Herausforderung.",
     "noPlayers": "Es gibt noch keine anderen Spieler. Bitte einen Admin, ein weiteres Konto anzulegen.",
     "loadingPlayers": "Spieler werden geladen…",
+    "presenceUnavailable": "Live-Status nicht verfügbar",
     "playersError": "Spieler konnten nicht geladen werden. Die zuletzt geladene Liste bleibt sichtbar.",
     "playersErrorEmpty": "Spieler konnten nicht geladen werden. Prüfe die Verbindung und versuche es erneut.",
     "retryPlayers": "Spieler erneut laden",

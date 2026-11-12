@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   forgetChallenge: vi.fn(), recordSentChallenge: vi.fn(),
   lobby: {
     online: new Set<number>([2]),
+    presenceReady: true,
     usersStatus: 'ready' as 'ready' | 'loading' | 'error',
     challengesStatus: 'ready' as 'ready' | 'loading' | 'error',
     users: [
@@ -31,7 +32,9 @@ import { FriendTab } from './Play';
 
 beforeEach(() => {
   mocks.account = 1;
+  mocks.lobby.online = new Set([2]);
   mocks.lobby.usersStatus = 'ready';
+  mocks.lobby.presenceReady = true;
   mocks.lobby.challengesStatus = 'ready';
   mocks.lobby.users = [{ id: 2, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: true }];
   mocks.post.mockReset();
@@ -51,6 +54,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Play friend challenges request recovery', () => {
+  it('does not claim a cached opponent is still online when live presence is unavailable', () => {
+    mocks.lobby.presenceReady = false;
+    const page = render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.queryByTitle('online')).toBeNull();
+    expect(screen.getByTitle('Live status unavailable')).toBeTruthy();
+    mocks.lobby.presenceReady = true;
+    page.rerender(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.getByTitle('online')).toBeTruthy();
+  });
+
+  it('uses the latest live presence instead of a stale cached player-list online flag', () => {
+    mocks.lobby.presenceReady = true;
+    mocks.lobby.online = new Set([2]);
+    mocks.lobby.users = [{ id: 2, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: false }];
+    const page = render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.getByTitle('online')).toBeTruthy();
+    mocks.lobby.online = new Set();
+    page.rerender(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.queryByTitle('online')).toBeNull();
+    expect(screen.getByTitle('offline')).toBeTruthy();
+  });
+
   it('removes confirmed declined and cancelled invitations even when the list refresh is offline', async () => {
     mocks.lobby.incoming = [{
       id: 10, color: 'white', time_control: 'rapid',

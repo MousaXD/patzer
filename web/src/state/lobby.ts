@@ -60,6 +60,8 @@ function isPendingChallengeList(value: unknown): value is { challenges: Challeng
 interface LobbyState {
   ws: WebSocket | null;
   online: Set<number>;
+  /** True only after a current-socket presence snapshot has arrived. */
+  presenceReady: boolean;
   users: LobbyUser[];
   usersStatus: ListStatus;
   incoming: Challenge[];
@@ -93,6 +95,7 @@ export const useLobby = create<LobbyState>((set, get) => {
   return {
   ws: null,
   online: new Set(),
+  presenceReady: false,
   users: [],
   usersStatus: 'loading',
   incoming: [],
@@ -140,8 +143,9 @@ export const useLobby = create<LobbyState>((set, get) => {
       if (epoch !== generation || get().ws !== ws) return;
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === 'presence_update' && Array.isArray(msg.online)) {
-        set({ online: new Set(msg.online as number[]) });
+      if (msg.type === 'presence_update' && Array.isArray(msg.online)
+        && msg.online.every((id) => Number.isSafeInteger(id) && id > 0)) {
+        set({ online: new Set(msg.online as number[]), presenceReady: true });
         // Update users list with new online flags
         set((s) => ({ users: s.users.map((u) => ({ ...u, online: (msg.online as number[]).includes(u.id) })) }));
       } else if (msg.type === 'challenge_received') {
@@ -185,7 +189,10 @@ export const useLobby = create<LobbyState>((set, get) => {
       if (epoch !== generation || get().ws !== ws) return;
       if (challengeRefreshTimer !== null) clearInterval(challengeRefreshTimer);
       challengeRefreshTimer = null;
-      set({ ws: null, online: new Set() });
+      // A dropped socket is not evidence that previously online opponents
+      // went offline. Their cached HTTP data may be useful, but their live
+      // presence is now unverified until the next socket snapshot arrives.
+      set({ ws: null, online: new Set(), presenceReady: false });
       // Only an unexpectedly dropped *current* session may reconnect. An
       // explicit logout and a switch to another player invalidate this epoch.
       reconnectTimer = setTimeout(() => {
@@ -207,7 +214,8 @@ export const useLobby = create<LobbyState>((set, get) => {
     challengeRefreshTimer = null;
     const ws = get().ws;
     set({
-      ws: null, online: new Set(), users: [], incoming: [], outgoing: [],
+      ws: null, online: new Set(), presenceReady: false,
+      users: [], incoming: [], outgoing: [],
       usersStatus: 'loading', challengesStatus: 'loading', pendingAcceptedNav: null,
       queuedAcceptedNavs: [],
       activePlaySession: false,
@@ -225,7 +233,15 @@ export const useLobby = create<LobbyState>((set, get) => {
     try {
       const r = await api.get<{ users: LobbyUser[] }>('/api/lobby/users');
       if (!r || !Array.isArray(r.users)) throw new Error('invalid player list');
-      if (current()) set({ users: r.users, usersStatus: 'ready' });
+      if (current()) set((s) => ({
+        // An HTTP list started before a live presence event can complete
+        // afterward. Never let its older online flags override the current
+        // socket's authoritative snapshot.
+        users: s.presenceReady
+          ? r.users.map((u) => ({ ...u, online: s.online.has(u.id) }))
+          : r.users,
+        usersStatus: 'ready',
+      }));
     } catch {
       // A network failure is not evidence that nobody can be challenged.
       // Retain the last successful list and expose a retryable error.
