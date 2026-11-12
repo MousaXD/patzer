@@ -25,6 +25,7 @@ import { playSound, soundForMove } from '../../lib/sounds';
 import { speak, cancel as cancelSpeech } from '../../lib/tts';
 import { cn } from '../../lib/utils';
 import type { LessonRef } from '../../learn/content';
+import { LessonProgressQueue, type ProgressSaveStatus } from '../../learn/progressQueue';
 import {
   isRightMove, judgeOwnMove, judgeReply, legalDests, lessonStars, levelOf, levelPiece, moveStepDone,
   moveStepStart, parseUci, play, shortestStars, sideToMove, starsDests, starsMove, starsStart, wrongReason,
@@ -258,6 +259,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   // With the best result and the star total from before this run: saving
   // updates both props, and the end screen shows what this run changed.
   const [finished, setFinished] = useState<null | { stars: 1 | 2 | 3; bestBefore: number; totalBefore: number }>(null);
+  const [saveStatus, setSaveStatus] = useState<ProgressSaveStatus>('idle');
   const [run, setRun] = useState(0);
   // The last explanation before a task, to look up again while solving it.
   const [recall, setRecall] = useState(false);
@@ -272,15 +274,31 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   useEffect(() => { window.scrollTo({ top: 0 }); }, [index, finished]);
   useEffect(() => () => cancelSpeech(), []);
 
-  const save = useCallback((body: object) => {
-    api.post(`/api/learn/${lesson.id}`, body)
-      .then(() => {
+  // A learner can complete steps faster than requests return. Run saves in
+  // order so an older response can never overwrite the next step or final
+  // stars. Keep a failed write queued for explicit retry instead of silently
+  // treating an unsaved run as persisted.
+  const savesRef = useRef<LessonProgressQueue<object> | null>(null);
+  useEffect(() => {
+    // Construct inside the effect: React Strict Mode invokes a development
+    // cleanup/setup cycle at mount. Constructing in useMemo and disposing in
+    // cleanup permanently disabled the queue before the first real click.
+    const saves = new LessonProgressQueue<object>(
+      (body) => api.post(`/api/learn/${lesson.id}`, body),
+      setSaveStatus,
+      () => {
         void qc.invalidateQueries({ queryKey: LEARN_QUERY_KEY });
         void qc.invalidateQueries({ queryKey: ['achievements-home'] });
         void qc.invalidateQueries({ queryKey: ['achievements'] });
-      })
-      .catch(() => { /* progress is a nicety; never interrupt a lesson for it */ });
+      },
+    );
+    savesRef.current = saves;
+    return () => {
+      saves.dispose();
+      if (savesRef.current === saves) savesRef.current = null;
+    };
   }, [lesson.id, qc]);
+  const save = useCallback((body: object) => savesRef.current?.enqueue(body), []);
 
   const speakText = useCallback((s: string) => {
     const ui = normalizeLanguage(i18n.language);
@@ -343,8 +361,25 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, run, finished]);
 
+  const saveNotice = saveStatus === 'error' ? (
+    <div role="alert" className="card mx-auto mb-3 flex w-full max-w-[980px] flex-wrap items-center justify-between gap-3 border border-amber-500/40 p-3 text-sm">
+      <p className="min-w-0 flex-1 text-chesscom-700 dark:text-chesscom-200">
+        {t('learn.saveFailed', { defaultValue: "Your latest lesson progress couldn't be saved. Retry before leaving, or recent work may be lost." })}
+      </p>
+      <button type="button" onClick={() => savesRef.current?.retry()} className="btn-primary min-h-11 text-sm">
+        {t('learn.retrySave', { defaultValue: 'Retry saving' })}
+      </button>
+    </div>
+  ) : finished && saveStatus === 'saving' ? (
+    <div role="status" className="mx-auto mb-3 w-full max-w-[980px] text-center text-xs text-chesscom-500">
+      {t('learn.savingResult', { defaultValue: 'Saving your lesson result…' })}
+    </div>
+  ) : null;
+
   if (finished) {
     return (
+      <>
+      {saveNotice}
       <LessonDone
         refInfo={refInfo}
         stars={finished.stars}
@@ -355,6 +390,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         onAgain={restart}
         onExit={onExit}
       />
+      </>
     );
   }
 
@@ -420,6 +456,8 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   const common = { lessonId: lesson.id, onSolved, onReopen };
 
   return (
+    <>
+    {saveNotice}
     <FrameContext.Provider value={{ header, next: nextButton || null, speakText }}>
       <div key={`${run}-${index}`}>
         {step.type === 'info' && <InfoView step={step} {...common} />}
@@ -430,6 +468,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         {step.type === 'quiz' && <QuizView step={step} {...common} />}
       </div>
     </FrameContext.Provider>
+    </>
   );
 }
 
