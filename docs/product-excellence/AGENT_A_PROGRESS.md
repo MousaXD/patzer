@@ -1595,3 +1595,22 @@
 ### Next independent Game Review usability audit
 
 - **Export PGN/FEN** is still placed inside `analysis && (...)` while the preserved Notes toolbar and unscored move replay remain available. A valid saved game should be exportable even if Stockfish is unavailable or its source analysis has become stale. Verify the missing export in Chromium, then move source-safe export controls outside analysis only if it is a genuine UX gap. Check downloaded PGN remains byte-for-byte original and FEN follows the currently selected saved position.
+
+## 2026-11-13: enable source-safe PGN/FEN export without engine analysis
+
+### Browser reproduction and minimal usability correction
+
+- Continued from clean pushed `442d32a` and used its separate source-revision fixture rather than restarting any source or Notes investigation. With source metadata changed and stale engine analysis correctly discarded, Chromium **failed before product changes** waiting for `[data-review-export-row]` even though the original legal PGN, selected board position, and Notes were all available. The existing export row was unnecessarily inside `analysis && (...)`.
+- Moved only `<ExportRow>` outside the optional scored-analysis branch, immediately after the already persistent game toolbar. The exported PGN still comes directly from `data.game.pgn` and the copied FEN from `currentFen`; neither depends on Stockfish, analysis classifications, report prose, server modification or an engine worker. Existing scored-layout order, button labels, touch targets, clipboard fallback and original download naming are unchanged.
+- Expanded the authenticated disposable 390px browser case after the source-change Notes recovery: with `analysis_stale=true`, Copy FEN is verified against the saved position's exact `fen_after` at ply 17; Copy PGN is verified against the full original PGN; Download emits a `.pgn` whose actual bytes match the saved source. This captures the clipboard text through a browser-local test seam, not the user's clipboard. Existing 320/390 scored export hitbox, screenshot and denied-clipboard fallback tests also passed. No saved move or PGN was mutated.
+
+### Verification and isolation
+
+- Before-change Chromium baseline **failed as expected** on missing unscored Export controls. Corrected full authenticated disposable Chromium responsive, theme/locale, engine/source, Notes, keyboard, variation, bookmark, practice and PGN matrix: **PASS (exit 0)** on isolated port 9009.
+- `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- No main merge, production deployment, live account/data, or changes to any of the other three agents' worktrees.
+
+### Next independent Game Review audit
+
+- Verify **source-safe file export while an exploratory variation is selected**. Copy FEN should reflect the currently visible variation board, while Copy/Download PGN must remain the unchanged original saved game (not a silently fabricated PGN including hypothetical moves). Audit the three actions at a nonzero variation cursor in real Chromium and check that returning to the original game restores the selected saved FEN. Correct only a demonstrated mismatch or unclear affordance.

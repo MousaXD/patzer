@@ -836,7 +836,7 @@ try {
     VALUES (?,12,?,81.3,76.8,?,?,?,1)`)
     .run(sourceNotesId,db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json,
       SCORING_VERSION,analysisSourceHash(sourceNotesSource),sourceNotesSource.source_revision);
-  const sourceNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  const sourceNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce',acceptDownloads:true});
   let releaseSourceNotesGet=()=>{};
   try{
     await sourceNotesContext.addCookies([{name:account.cookie.split('=')[0],
@@ -900,6 +900,27 @@ try {
       'Only the final user-owned draft must be sent to the Notes endpoint');
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(sourceNotesId).notes,localDraft);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(sourceNotesId).pgn,sourceNotesPgn);
+    // Exporting an original saved game needs only its legal PGN and current
+    // board FEN. Source analysis may become stale or Stockfish unavailable;
+    // neither should remove copy/download from the unscored review.
+    const unscoredExport=page.locator('[data-review-export-row]');
+    await unscoredExport.waitFor({state:'visible',timeout:5000});
+    await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+      configurable:true,value:{writeText:async text=>{document.documentElement.dataset.qaCopiedText=text;}},
+    }));
+    await unscoredExport.getByRole('button',{name:'Copy FEN',exact:true}).click();
+    const expectedSavedFen=JSON.parse(db.prepare('SELECT moves_json FROM analyses WHERE game_id=?')
+      .get(sourceNotesId).moves_json)[16].fen_after;
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaCopiedText),expectedSavedFen,
+      'Unscored Copy FEN must use the selected legal board position, not an obsolete engine score');
+    await unscoredExport.getByRole('button',{name:'Copy PGN',exact:true}).click();
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaCopiedText),sourceNotesPgn,
+      'Unscored Copy PGN must keep the original authoritative saved game');
+    const downloadEvent=page.waitForEvent('download');
+    await unscoredExport.getByRole('button',{name:'Download',exact:true}).click();
+    const download=await downloadEvent;
+    assert.equal(readFileSync(await download.path(),'utf8'),sourceNotesPgn,
+      'Unscored PGN download must be byte-for-byte identical to the saved source');
   }finally{releaseSourceNotesGet();await sourceNotesContext.close();}
   // Closing Notes blurs its editor and starts an asynchronous autosave. If
   // that PATCH fails *after* the editor collapses, the error cannot be left

@@ -1399,13 +1399,14 @@ function GameAnalyzerView() {
             shareUrl={shareCurrentPosition()}
             onShare={copySharePosition}
           />
-          {analysis && (
-            <ExportRow
-              pgn={data.game.pgn}
-              fen={currentFen}
-              fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
-            />
-          )}
+          {/* Export is derived from the legal saved PGN/current FEN, never
+              from Stockfish. Keep it available if analysis is stale, missing
+              or offline so users can still take their own game elsewhere. */}
+          <ExportRow
+            pgn={data.game.pgn}
+            fen={currentFen}
+            fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
+          />
         </div>
       </div>
     </div>
