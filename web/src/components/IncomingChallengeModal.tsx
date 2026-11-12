@@ -42,13 +42,14 @@ export default function IncomingChallengeModal() {
 
   // Show only the most-recent
   const c: Challenge | undefined = incoming[0];
+  const dialogVisible = !!c && !activePlaySession && snoozedChallengeId !== c.id;
   useEffect(() => {
     setError(null);
-    if (c?.id === undefined || activePlaySession) return;
+    if (!dialogVisible) return;
     const priorFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogRef.current?.focus();
     return () => { if (priorFocus?.isConnected) priorFocus.focus(); };
-  }, [c?.id, activePlaySession]);
+  }, [c?.id, dialogVisible]);
 
   // The invitation lives in the global lobby store. Only remove it after the
   // server accepts a mutation; otherwise a failed request must remain visible
@@ -122,11 +123,19 @@ export default function IncomingChallengeModal() {
         </div>
       )}
       <AnimatePresence>
-      {c && !activePlaySession && snoozedChallengeId !== c.id && (
+      {dialogVisible && c && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           role="dialog" aria-modal="true" aria-labelledby="challenge-dialog-title"
           onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              if (busy === null) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSnoozedChallengeId(c.id);
+              }
+              return;
+            }
             if (event.key !== 'Tab') return;
             const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
             const first = buttons[0], last = buttons[buttons.length - 1];

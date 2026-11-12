@@ -40,6 +40,7 @@ function LocationProbe() {
 }
 function view() {
   return <MemoryRouter initialEntries={['/play']}>
+    <button type="button">Focus origin</button>
     <IncomingChallengeModal />
     <LocationProbe />
     <Routes><Route path="/play" element={<span>Play page</span>} /></Routes>
@@ -65,6 +66,39 @@ afterEach(() => {
 });
 
 describe('incoming challenge modal failure recovery', () => {
+  it.each(['Escape', 'Not now', 'Close'] as const)(
+    'defers an invitation with %s and restores keyboard focus to the previous control', async (method) => {
+      useLobby.setState({ incoming: [] } as never);
+      mount();
+      const origin = screen.getByRole('button', { name: 'Focus origin' });
+      origin.focus();
+      act(() => useLobby.setState({ incoming: [{ ...incoming }] }));
+      const dialog = screen.getByRole('dialog', { name: 'challenge.incoming' });
+      expect(document.activeElement).toBe(dialog.querySelector('[tabindex="-1"]'));
+      if (method === 'Escape') fireEvent.keyDown(dialog, { key: 'Escape' });
+      else fireEvent.click(screen.getByRole('button', { name: method === 'Close' ? 'common.close' : 'Not now' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'challenge.incoming' })).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(origin));
+      expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+      expect(mocks.post).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not hide an invitation with Escape while its acceptance is still pending', async () => {
+    let acknowledge!: (value: { game_id: number }) => void;
+    mocks.post.mockImplementation(() => new Promise((resolve) => { acknowledge = resolve; }));
+    mount();
+    const dialog = screen.getByRole('dialog', { name: 'challenge.incoming' });
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    expect((screen.getByRole('button', { name: 'challenge.accept' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'challenge.incoming' })).toBeTruthy();
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+    await act(async () => { acknowledge({ game_id: 345 }); await Promise.resolve(); });
+    expect(screen.getByTestId('route').textContent).toBe('/play?game=345');
+    expect(useLobby.getState().incoming).toHaveLength(0);
+  });
+
   it('lets a player close the unsolicited popup without silently declining the invitation', () => {
     mount();
     const dialog = screen.getByRole('dialog', { name: 'challenge.incoming' });
