@@ -1072,3 +1072,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **large-result Library count/selection coherence when a bookmark response arrives during a rapid search or sort change**. Use a delayed server response and a distinct filtered query to ensure old optimistic writes do not alter the new query's visible rows or count; avoid broad cache invalidation if the existing React Query scoping already covers it. Keep any fix within the Library branch.
+
+## 2026-11-13 — Guard result identity when bookmark saves finish after a search change
+
+- Recovered clean pushed `a9c5e47` and extended the existing synthetic delayed bookmark fixtures to cover search changes while a bookmark PATCH for game 1 remains in flight. Each real Chromium journey starts a save, searches for a different unique opponent (`Opponent 502`), then resolves the older PATCH as either success or HTTP 503.
+- Both paths passed: the visible list remains exactly **1 of 1 games** and contains only game 502, its bookmark control stays unstarred, and the shareable `q=Opponent 502` URL is preserved. A failed old save exposes one recovery link to **game 1**, never a misleading warning on game 502; a successful old save creates no error. No runtime race was reproduced, so kept only the browser regression.
+
+### Verification
+
+- Full repository suite: **109 passed files, 2 skipped; 1,137 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Complete isolated Chromium 1440px desktop and 390/320px light/dark, both bookmark/search races, concurrent failures, German import/PGN, date deep links and cursor pagination: passed, zero browser JS exceptions and no horizontal overflow.
+- No production runtime, provider calls, account data, other-agent code, merge or deployment changed.
+
+### Next independent audit
+
+- Audit **empty search-result recovery and keyboard focus**. When a player types a search that yields zero games, verify the clear-search control and existing recovery button are reachable with keyboard only, have descriptive accessible labels, and restore the prior game count without losing unrelated source/date filters. Check both 320px mobile and desktop browser paths before changing any UI.

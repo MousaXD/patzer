@@ -1348,6 +1348,42 @@ try {
     console.log('PASS hidden failed bookmark offers direct recovery even after server result reordering');
   } finally {disappeared.releaseStarSave();await disappeared.context.close();}
 
+  for (const pendingStarResult of ['success','failure']) {
+    const searchTransition=await newPage('light',390,844,{pendingStarResult});
+    try {
+      const {page,pageErrors,releaseStarSave}=searchTransition;
+      const pending=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/games/1/bookmark' &&
+        req.method()==='PATCH');
+      await page.locator('.card-hover > a[href="/review/1"]').locator('..')
+        .getByRole('button',{name:'Bookmark game'}).click();
+      await pending;
+      await page.getByRole('searchbox').fill('Opponent 502');
+      await page.waitForURL(href=>new URL(href).searchParams.get('q')==='Opponent 502');
+      await page.getByText('1 of 1 games').waitFor();
+      assert.equal(await page.locator('.card-hover > a[href="/review/1"]').count(),0);
+      const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/games/1/bookmark');
+      releaseStarSave();
+      await response;
+      await sleep(350);
+      await page.getByText('1 of 1 games').waitFor();
+      assert.equal(new URL(page.url()).searchParams.get('q'),'Opponent 502',
+        'An older bookmark response replaced the newly selected search query');
+      const visible=page.locator('.card-hover > a[href="/review/502"]');
+      assert.equal(await visible.count(),1,
+        'A late save response replaced the new search result');
+      assert.equal(await visible.locator('..').getByRole('button',{name:'Bookmark game'}).getAttribute('aria-pressed'),'false',
+        'An unrelated game inherited a previous bookmark change');
+      if (pendingStarResult === 'failure') {
+        await page.getByRole('alert').getByText('Bookmark could not be saved. Try again.').waitFor();
+        assert.equal(await page.getByRole('alert').getByRole('link',{name:'Open game to retry'}).getAttribute('href'),'/review/1');
+      } else {
+        assert.equal(await page.getByRole('alert').count(),0);
+      }
+      assert.deepEqual(pageErrors,[],'Late bookmark save across search change caused a browser error');
+      console.log(`PASS bookmark ${pendingStarResult} across a new search keeps result identity and count`);
+    } finally {searchTransition.releaseStarSave();await searchTransition.context.close();}
+  }
+
   const simultaneous=await newPage('dark',390,844,{concurrentBookmarkFailures:true});
   try {
     const {page,pageErrors,releaseFirstBookmark,releaseSecondBookmark}=simultaneous;
