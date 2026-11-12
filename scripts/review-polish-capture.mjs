@@ -880,6 +880,63 @@ try {
     await page.screenshot({path:join(output,'coach-request-unsupported-best-filtered-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await coachFactsContext.close();}
+  // Source generation is part of the truth of an AI explanation. On a
+  // harmless bookmark change the coach should not be regenerated; on a real
+  // reanalysis of the same PGN/ply, old narration must be cleared and its
+  // request replaced even though the selected move number is unchanged.
+  const coachGenerationContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await coachGenerationContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await coachGenerationContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let generation=1;
+    let fetched=0;
+    let coachCalls=0;
+    await page.route('**/api/coach/status',async route=>
+      route.fulfill({status:200,contentType:'application/json',body:'{"configured":true}'}));
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      assert.ok(details.analysis?.source_hash && details.analysis?.source_revision === details.game.source_revision);
+      details.analysis.analysis_generation=generation;
+      fetched++;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    await page.route('**/api/coach/explain',async route=>{
+      coachCalls++;
+      await route.fulfill({status:200,contentType:'text/event-stream',
+        body:`data: Isolated coaching for source generation ${generation}\n\n`});
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.locator('[data-review-jump-to-details]').click();
+    await page.getByText('Isolated coaching for source generation 1',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(coachCalls,1);
+    // The fetch count is watched through the page-route hook; bookmarking is
+    // a real disposable DB mutation, not a synthetic React state injection.
+    const firstCount=fetched;
+    const sameGenerationResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}`)
+      && response.request().method()==='GET' && response.status()===200);
+    await page.getByRole('button',{name:'Star',exact:true}).click();
+    await sameGenerationResponse;
+    assert.ok(fetched>firstCount,'Bookmark edit must refetch the current game in the disposable browser');
+    await page.waitForTimeout(850);
+    assert.equal(coachCalls,1,'A harmless bookmark change must not restart AI coaching');
+    generation=2;
+    const secondCount=fetched;
+    const nextGenerationResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}`)
+      && response.request().method()==='GET' && response.status()===200);
+    await page.getByRole('button',{name:'Starred',exact:true}).click();
+    await nextGenerationResponse;
+    assert.ok(fetched>secondCount,'A second bookmark edit must refetch the new source generation');
+    await page.getByText('Isolated coaching for source generation 2',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.ok(coachCalls>=2,'A changed authoritative generation requires new coaching evidence');
+    assert.equal(await page.getByText('Isolated coaching for source generation 1',{exact:true}).count(),0,
+      'Obsolete narration must not remain mounted after the source generation changes');
+    await page.getByText('Isolated coaching for source generation 2',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'coach-new-generation-replaces-stale-prose-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await coachGenerationContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.

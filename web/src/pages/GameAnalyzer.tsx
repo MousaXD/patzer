@@ -1064,6 +1064,15 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'moves' && move && (
                     <MoveExplanation
+                      // A different authoritative engine generation can
+                      // change the meaning of the *same* ply. Remount the
+                      // coach to cancel its old request, clear old narration
+                      // and fetch fresh source-bound facts. Notes/bookmarks
+                      // leave reviewSourceKey stable and do not retrigger it.
+                      key={JSON.stringify([sourceKey ?? [gameId, data.game.source_revision,
+                        data.analysis?.analysis_generation, move.fen_before, move.fen_after,
+                        move.classification, move.eval_before_cp, move.eval_after_cp,
+                        move.best_move_uci, move.best_move_san, move.best_pv], move.ply])}
                       move={move}
                       startFen={startFen}
                       userColor={data.game.user_color}

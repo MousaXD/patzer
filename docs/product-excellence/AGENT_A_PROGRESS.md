@@ -301,3 +301,26 @@
 ### Next candidate
 
 - Audit coach explanation lifecycle on a source-identical PGN **reanalyzed into a new authoritative analysis generation** while the selected ply remains the same. The `CoachPanel` currently auto-fetches by `triggerKey={move.ply}` and may retain older narration when `sourceKey` changes but ply does not. Reproduce with intercepted game-detail generations and a controlled SSE reply; fix only the Game Review source-specific lifecycle if verified.
+
+## 2026-11-12: replace stale AI coaching when analysis generation changes
+
+### Reproduction and scope
+
+- Continued from clean Agent A commit `86b05f1`, auditing the mounted `MoveExplanation`/`CoachPanel` lifecycle rather than repeating earlier stale cached-prose investigations. CoachPanel auto-play used `triggerKey={move.ply}`; reanalysis can change engine scores and authoritative `analysis_generation` while the selected ply stays unchanged. Existing narration then remains visible and no new coached facts are requested.
+- Added disposable authenticated Chromium scenario: intercept `/api/games/:id` with complete PGN/analysis evidence, first `analysis_generation=1`, then a bookmark-only refetch with generation 1, then an otherwise byte-identical source generation 2. Stub `/api/coach/status` and SSE outputs to label the source generation. **Before fix the browser failed** waiting for generation-2 narration while generation-1 text remained.
+
+### Source-bound fix
+
+- Key only the Game Review `MoveExplanation` presentation by the selected ply and the existing authoritative `reviewSourceKey` (game ID, source revision/hash, analysis generation, scoring version and engine evidence). For unverified/partial analyses, key by the available source, position and scored move facts. A new generation remounts CoachPanel, cancels its prior request and clears stale narration before fetching a new explanation; notes/bookmarks leave identity stable and avoid redundant requests. No global/shared CoachPanel or backend change.
+
+### Independent verification
+
+- Chromium regression: initial source-1 explanation arrived once; bookmark-only refetch kept one coach request; changed authoritative source generation triggered a new request and replaced the visible text with source-2 prose. Original generation-1 text absent. Actual 390px dark screenshot opened/inspected: `qa-artifacts/agent-a/coach-generation-verified-20261112/coach-new-generation-replaces-stale-prose-390.png`, where the source-2 explanation is visible alongside unchanged move and evaluation.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **979 passed / 12 skipped** (107 passing files).
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)**, including source/language/variation/keyboard/PGN integrity and the new lifecycle regression. No external model or live engine accuracy was evaluated; the SSE text and analysis-generation switch were isolated test fixtures.
+- No merge, deployment, production SQLite or changes to other agents' worktrees.
+
+### Next highest-impact candidate
+
+- Independently audit Game Review's asynchronous move-entry/variation loading and recovery when a user switches branches or returns to the saved game during a pending engine score. Some cancellation cases are already covered; focus on user-visible stale/loading indicators and keyboard focus without duplicating completed source checks. Document cross-agent dependencies rather than editing global shell or library/import surfaces.
