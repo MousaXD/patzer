@@ -435,6 +435,7 @@
     "acceptedWhilePlaying": "Han aceptado tu reto. Tu nueva partida está lista cuando tú lo estés.",
     "joinLater": "Ahora no",
     "joinAccepted": "Unirse a la partida",
+    "moreAccepted": "{{count}} retos aceptados más",
     "whilePlaying": "Nuevo reto de {{name}}. Comprueba si sigue disponible después de tu partida.",
     "noLongerAvailable": "Esta invitación ha caducado o ya no está disponible.",
     "incomingList": "Retos recibidos",

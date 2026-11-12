@@ -41,6 +41,28 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('keeps two accepted games available when separate outgoing challenges are accepted together', () => {
+    useLobby.getState().connect(1);
+    useLobby.getState().setActivePlaySession(true);
+    const socket = FakeSocket.opened[0]!;
+    socket.emit({ type: 'challenge_accepted', challenge_id: 81, game_id: 901, your_color: 'white', time_control: 'rapid' });
+    socket.emit({ type: 'challenge_accepted', challenge_id: 82, game_id: 902, your_color: 'black', time_control: 'blitz' });
+
+    expect(useLobby.getState().consumeAcceptedNav()?.game_id).toBe(901);
+    expect(useLobby.getState().consumeAcceptedNav()?.game_id).toBe(902);
+    expect(useLobby.getState().consumeAcceptedNav()).toBeNull();
+    socket.emit({ type: 'challenge_accepted', challenge_id: 83, game_id: 903, your_color: 'white', time_control: 'rapid' });
+    socket.emit({ type: 'challenge_accepted', challenge_id: 83, game_id: 903, your_color: 'white', time_control: 'rapid' });
+    expect(useLobby.getState().consumeAcceptedNav()?.game_id).toBe(903);
+    expect(useLobby.getState().consumeAcceptedNav()).toBeNull();
+
+    socket.emit({ type: 'challenge_accepted', challenge_id: 84, game_id: 904, your_color: 'white', time_control: 'rapid' });
+    socket.emit({ type: 'challenge_accepted', challenge_id: 85, game_id: 905, your_color: 'white', time_control: 'rapid' });
+    useLobby.getState().disconnect();
+    expect(useLobby.getState().queuedAcceptedNavs).toEqual([]);
+    expect(useLobby.getState().pendingAcceptedNav).toBeNull();
+  });
+
   it('defers accepted challenge navigation when the user is playing an active game', () => {
     useLobby.getState().connect(1);
     const socket = FakeSocket.opened[0]!;

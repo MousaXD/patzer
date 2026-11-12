@@ -36,6 +36,25 @@ afterEach(() => {
 });
 
 describe('accepted friend challenge navigation during other games', () => {
+  it('lets a player handle multiple accepted games in order without losing the second one', async () => {
+    useLobby.setState({
+      activePlaySession: true,
+      pendingAcceptedNav: ready(501, true),
+      queuedAcceptedNavs: [ready(502, true)],
+    });
+    mount();
+    expect(screen.getByText('1 more accepted')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.getByTestId('route').textContent).toBe('/play');
+    expect(useLobby.getState().pendingAcceptedNav?.game_id).toBe(502);
+    expect(screen.queryByText('1 more accepted')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Join game' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Join game' }));
+    await waitFor(() => expect(screen.getByTestId('route').textContent).toBe('/play?game=502'));
+    expect(useLobby.getState().pendingAcceptedNav).toBeNull();
+    expect(useLobby.getState().queuedAcceptedNavs).toEqual([]);
+  });
+
   it('never interrupts a running game, including when the active game finishes, until Join is chosen', async () => {
     useLobby.setState({ activePlaySession: true, pendingAcceptedNav: ready(121, true) });
     mount();

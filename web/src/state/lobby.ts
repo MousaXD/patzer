@@ -41,6 +41,7 @@ interface LobbyState {
   setActivePlaySession: (active: boolean) => void;
   challengesStatus: ListStatus;
   pendingAcceptedNav: AcceptedNav | null;
+  queuedAcceptedNavs: AcceptedNav[];
   consumeAcceptedNav: () => AcceptedNav | null;
 
   connect: (userId: number) => void;
@@ -73,9 +74,13 @@ export const useLobby = create<LobbyState>((set, get) => {
   setActivePlaySession: (active) => set({ activePlaySession: active }),
   challengesStatus: 'loading',
   pendingAcceptedNav: null,
+  queuedAcceptedNavs: [],
   consumeAcceptedNav: () => {
     const v = get().pendingAcceptedNav;
-    if (v) set({ pendingAcceptedNav: null });
+    if (v) set((s) => ({
+      pendingAcceptedNav: s.queuedAcceptedNavs[0] ?? null,
+      queuedAcceptedNavs: s.queuedAcceptedNavs.slice(1),
+    }));
     return v;
   },
 
@@ -118,11 +123,24 @@ export const useLobby = create<LobbyState>((set, get) => {
         void get().refreshChallenges();
       } else if (msg.type === 'challenge_accepted') {
         if (!Number.isSafeInteger(msg.game_id) || Number(msg.game_id) <= 0) return;
-        set({ pendingAcceptedNav: {
-          ...(msg as unknown as Omit<AcceptedNav, 'deferred'>),
-          deferred: get().activePlaySession,
-        } });
-        set((s) => ({ outgoing: s.outgoing.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
+        const acceptedId = msg.challenge_id as number;
+        if (!Number.isSafeInteger(acceptedId) || acceptedId <= 0) return;
+        set((s) => {
+          const outgoing = s.outgoing.filter((c) => c.id !== acceptedId);
+          // Repeated WS delivery must not queue the same still-pending game
+          // twice. Different accepted games are handled in arrival order.
+          if (s.pendingAcceptedNav?.challenge_id === acceptedId
+            || s.queuedAcceptedNavs.some((c) => c.challenge_id === acceptedId)) return { outgoing };
+          const accepted: AcceptedNav = {
+            ...(msg as unknown as Omit<AcceptedNav, 'deferred'>),
+            deferred: s.activePlaySession || s.pendingAcceptedNav !== null,
+          };
+          if (!s.pendingAcceptedNav) return { outgoing, pendingAcceptedNav: accepted };
+          // Keep the notification queue bounded; every extra accepted game is
+          // still persisted in /api/games/live for eventual discovery.
+          if (s.queuedAcceptedNavs.length >= 19) return { outgoing };
+          return { outgoing, queuedAcceptedNavs: [...s.queuedAcceptedNavs, accepted] };
+        });
         void get().refreshChallenges();
       } else if (msg.type === 'challenge_declined') {
         set((s) => ({ outgoing: s.outgoing.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
@@ -160,6 +178,7 @@ export const useLobby = create<LobbyState>((set, get) => {
     set({
       ws: null, online: new Set(), users: [], incoming: [], outgoing: [],
       usersStatus: 'loading', challengesStatus: 'loading', pendingAcceptedNav: null,
+      queuedAcceptedNavs: [],
       activePlaySession: false,
     });
     if (ws) try { ws.close(); } catch { /* ignore */ }

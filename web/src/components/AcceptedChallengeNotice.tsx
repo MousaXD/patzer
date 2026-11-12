@@ -10,6 +10,7 @@ export default function AcceptedChallengeNotice() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const accepted = useLobby((s) => s.pendingAcceptedNav);
+  const queuedCount = useLobby((s) => s.queuedAcceptedNavs.length);
   const activePlaySession = useLobby((s) => s.activePlaySession);
   const consume = useLobby((s) => s.consumeAcceptedNav);
 
@@ -38,13 +39,21 @@ export default function AcceptedChallengeNotice() {
           <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
-      <div className="mt-2 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={() => consume()} className="btn-secondary pointer-events-auto min-h-11 text-xs">
-          {t('challenge.joinLater', { defaultValue: 'Not now' })}
-        </button>
-        <button type="button" onClick={join} className="btn-primary pointer-events-auto min-h-11 text-xs">
-          {t('challenge.joinAccepted', { defaultValue: 'Join game' })}
-        </button>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs text-chesscom-600 dark:text-chesscom-200" aria-live="polite">
+          {queuedCount > 0 ? t('challenge.moreAccepted', {
+            count: queuedCount,
+            defaultValue: `${queuedCount} more accepted`,
+          }) : null}
+        </span>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => consume()} className="btn-secondary pointer-events-auto min-h-11 text-xs">
+            {t('challenge.joinLater', { defaultValue: 'Not now' })}
+          </button>
+          <button type="button" onClick={join} className="btn-primary pointer-events-auto min-h-11 text-xs">
+            {t('challenge.joinAccepted', { defaultValue: 'Join game' })}
+          </button>
+        </div>
       </div>
     </div>
   );
