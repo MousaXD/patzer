@@ -1224,3 +1224,33 @@
 ### Next audit
 
 - Investigate **first-use onboarding links and their focus treatment** at 320px, especially at enlarged font sizes: the four learning/activity tiles may contain clipped focus rings or unreadable shortcut labels. Reproduce the actual problem using keyboard + Chromium before editing. Do not repeat completed hero or recent-game audits.
+
+## 2026-11-12: Honor the selected language for Home recent-game dates
+
+### Independent audit
+
+- Resumed from clean pushed `2b99ed0`; verified first-use keyboard focus with actual Tab navigation in Chromium at **320, 390 and 1440px**, normal and enlarged text, both themes. Hero, onboarding and activity links all retained visible focus and no horizontal overflow, so no focus-style change was needed.
+- Investigated the apparent first-use "all puzzles completed" copy. The local fixture returned a null puzzle, but the actual server's `dailyPuzzle()` contract returns null only after the user has exhausted the available pool. The production message is consistent with the contract; **no gratuitous copy change**.
+- The next real issue was in Home Recent Games localization. With the user profile in **German**, the heading correctly read "Letzte Partien" but the date still read **11/12/2026**, matching Chromium's English browser locale. German users expect **12.11.2026**. Root cause: `toLocaleDateString()` omitted the selected `i18n.language` argument, unlike existing account-aware date display elsewhere in Patzer.
+
+### Fix
+
+1. Explicitly format Home's game date using `i18n.language` provided by `useTranslation()`, rather than relying on the browser's default locale. Retain the original timestamp, existing in-progress fallback and game navigation.
+2. Add a stable `data-home-recent-date` marker to unambiguously identify the date, separate from nested metadata/accuracy labels. The first new Chromium assertion caught a selector ambiguity between metadata and mobile accuracy, which the dedicated marker resolves.
+3. Extend Home component tests to assert the actual localized date value across **English, German, Spanish, Russian and Bulgarian**.
+4. Extend the full real-Chromium shell fixture across all **five languages at 320px** and German at **1440px**, checking the selected interface language's date rather than the browser default, no overflow and captured screenshot evidence.
+
+### Verification
+
+- Negative control: Chromium browser locale `en-US`; German selected, yet Home originally showed **11/12/2026**.
+- Final Chromium: English **11/12/2026**, German **12.11.2026**, Spanish **12/11/2026**, Russian **12.11.2026**, Bulgarian **12.11.2026 г.**. The 320px/desktop German screenshots show the correct date without layout changes: `artifacts/agent-02/home-recent-date-en-320.png`, `home-recent-date-de-320.png`, `home-recent-date-de-1440.png`.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** including full prior responsive/keyboard/localization/error-recovery coverage and the new date matrix.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **20/20 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **447/447 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Scope limited to Home and its local/browser regression tests, plus this progress entry; no other agents' feature pages, worktrees, main, deployment or production data changed.
+
+### Next audit
+
+- Verify the **HTML document language** when the user selects a language other than English. Chromium currently reports `document.documentElement.lang === 'en'` while rendering German UI text; if confirmed, screen readers may pronounce the interface using the wrong language. Fix the global language synchronization once, for all authenticated and unauthenticated screens, with targeted DOM/Chromium evidence.

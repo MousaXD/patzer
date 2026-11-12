@@ -517,7 +517,7 @@ function AchievementsTile({ achievements, loading, error, retry }: {
 /* ─────────────────────────────  RECENT GAMES  ──────────────────────────── */
 
 function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loading: boolean; error: boolean; retry: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const reduceMotion = useReducedMotion();
   if (loading) return (
     <section className="card p-5" role="status" aria-live="polite">
@@ -636,7 +636,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                   </div>
                 </div>
                 <div className="text-xs text-ui-mutedText">
-                  <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
+                  <span data-home-recent-date>{g.end_time ? new Date(g.end_time).toLocaleDateString(i18n.language) : t('review.inProgress', { defaultValue: 'In progress' })}</span>
                   <span className="mx-1.5 text-chesscom-400">·</span>
                   <span>{fmtTimeControl(g.time_control, t)}</span>
                   {!g.analyzed && (

@@ -637,6 +637,35 @@ try {
     throw new Error('German analyzed-game mobile accuracy labels fell back to English: ' + germanLabels);
   }
   await checkNoHorizontalOverflow(page, 'German analyzed game 320px');
+
+  // The account's selected language, not the browser's English locale, must
+  // determine the recent-game date order and punctuation. Previously every
+  // locale displayed 11/12/2026 even after Home itself was translated.
+  for (const { language, expected, width } of [
+    { language: 'en', expected: '11/12/2026', width: 320 },
+    { language: 'de', expected: '12.11.2026', width: 320 },
+    { language: 'es', expected: '12/11/2026', width: 320 },
+    { language: 'ru', expected: '12.11.2026', width: 320 },
+    { language: 'bg', expected: '12.11.2026 г.', width: 320 },
+    { language: 'de', expected: '12.11.2026', width: 1440 },
+  ]) {
+    profile.language = language;
+    await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    const row = page.locator('main a[href="/review/103"]');
+    await row.waitFor();
+    await page.waitForFunction(
+      (code) => localStorage.getItem('lang') === code, language, { timeout: 6000 },
+    );
+    const actual = await row.locator('[data-home-recent-date]').innerText();
+    if (actual.trim() !== expected) {
+      throw new Error(`Recent games ${language}/${width}px: wrong localized date ${JSON.stringify({ actual, expected })}`);
+    }
+    await checkNoHorizontalOverflow(page, `recent game date ${language}/${width}px`);
+    if (language === 'de' || language === 'en') {
+      await page.screenshot({ path: resolve(output, `home-recent-date-${language}-${width}.png`) });
+    }
+  }
   profile.language = 'en';
   fixtureUsername = 'sample-player';
   fixtureUserColor = 'white';
