@@ -13,6 +13,7 @@ import { useAuth } from '../state/auth';
 import type { Classification } from '../types';
 import ClassificationIcon from '../components/ClassificationIcon';
 import { buildActivityGrid } from '../lib/insightsActivity';
+import { ratingHistorySeries } from '../lib/ratingHistory';
 
 type Achievement = {
   id: string;
@@ -457,10 +458,8 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
 
 /* ───── Rating trajectory ─────────────────────────────────────────────── */
 function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] }) {
-  const { t } = useTranslation();
-  const series = (['rapid', 'blitz', 'bullet', 'daily'] as const)
-    .map((k) => ({ key: k, points: data[k] ?? [] }))
-    .filter((s) => s.points.length > 0);
+  const { t, i18n } = useTranslation();
+  const series = ratingHistorySeries(data);
 
   if (series.length === 0) {
     return (
@@ -491,23 +490,18 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
   };
   const xs = series.flatMap((s) => s.points.map((p) => new Date(p.t).getTime()));
   const tMin = Math.min(...xs), tMax = Math.max(...xs);
-  const xScale = (t: number) => padX + ((t - tMin) / Math.max(1, tMax - tMin)) * (W - 2 * padX);
+  // One recorded rating is a data point, not a rising/falling trend. Center
+  // it rather than leaving a tiny dot glued to the chart's left edge.
+  const xScale = (t: number) => tMin === tMax ? W / 2 : padX + ((t - tMin) / (tMax - tMin)) * (W - 2 * padX);
   const yScale = (r: number) => H - padY - ((r - min) / (max - min)) * (H - 2 * padY);
+  const date = (t: string | number) => new Date(t).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <section className="card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-board-dark" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}</h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-chesscom-500">
-          {series.map((s) => (
-            <span key={s.key} className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[s.key] }} />
-              <span>{t(`players.tc.${s.key}`)}</span>
-            </span>
-          ))}
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
@@ -525,7 +519,7 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
             <g key={s.key}>
               <path d={path} fill="none" stroke={colors[s.key]} strokeWidth={1.5} />
               {s.points.map((p, i) => (
-                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={1.6} fill={colors[s.key]}>
+                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={s.points.length === 1 ? 3.6 : 2.5} fill={colors[s.key]}>
                   <title>{`${t(`players.tc.${s.key}`)} ${p.r} · ${new Date(p.t).toLocaleDateString()}`}</title>
                 </circle>
               ))}
@@ -533,6 +527,41 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           );
         })}
       </svg>
+      <div className={`mt-1 flex text-[11px] text-chesscom-500 ${tMin === tMax ? 'justify-center' : 'justify-between'}`}>
+        <span>{date(tMin)}</span>
+        {tMin !== tMax && <span>{date(tMax)}</span>}
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-chesscom-500">
+        {t('insights.ratingExplanation', { defaultValue: 'Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.' })}
+      </p>
+      <div role="list" className="mt-3 grid gap-2 sm:grid-cols-2">
+        {series.map((s) => (
+          <div key={s.key} role="listitem" className="min-w-0 rounded-lg bg-chesscom-50/70 p-3 dark:bg-chesscom-900/40">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-chesscom-700 dark:text-chesscom-200">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors[s.key] }} aria-hidden="true" />
+                {t(`players.tc.${s.key}`)}
+              </span>
+              <span className="font-mono text-lg font-semibold tabular-nums text-chesscom-900 dark:text-chesscom-100">{s.last.r}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-chesscom-600 dark:text-chesscom-300">
+              {s.change === null
+                ? t('insights.ratingSingle', { defaultValue: 'One rating recorded — no trend to compare' })
+                : t('insights.ratingChange', {
+                  defaultValue: '{{change}} since first recorded rating',
+                  change: `${s.change > 0 ? '+' : ''}${s.change}`,
+                })}
+            </p>
+            <p className="mt-1 text-[11px] text-chesscom-500">
+              {t('insights.ratingEntries', {
+                defaultValue: s.points.length === 1 ? '{{count}} recorded rating' : '{{count}} recorded ratings',
+                count: s.points.length,
+              })}
+              {s.points.length > 1 && ` · ${date(s.first.t)} – ${date(s.last.t)}`}
+            </p>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

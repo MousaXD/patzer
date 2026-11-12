@@ -12,7 +12,11 @@ vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: 7 } }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
+    t: (key: string, options?: Record<string, string | number>) => {
+      const template = String(options?.defaultValue ?? key);
+      return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(options?.[name] ?? `{{${name}}}`));
+    },
+    i18n: { language: 'en' },
   }),
 }));
 
@@ -91,5 +95,31 @@ describe('Insights data states', () => {
     expect(screen.getByText('Not measured')).toBeTruthy();
     expect(screen.queryByText('0.0%')).toBeNull();
     expect(screen.getByRole('link', { name: 'Practice my positions' }).getAttribute('href')).toBe('/train');
+  });
+
+  it('explains historical rating changes and does not invent a trend from one point', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 6, games_analyzed: 0, activity_heatmap: [], time_class_stats: {},
+        opening_repertoire: [], mistake_taxonomy: {}, accuracy_trend: [],
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        rating_trajectory: {
+          rapid: [
+            { t: '2026-09-01T12:00:00Z', r: 1250 },
+            { t: '2026-10-04T12:00:00Z', r: 1310 },
+            { t: '2026-11-12T12:00:00Z', r: 1298 },
+          ],
+          blitz: [{ t: '2026-11-12T12:00:00Z', r: 1050 }],
+        },
+      });
+    });
+    mount();
+    expect(await screen.findByText('Rating trajectory')).toBeTruthy();
+    expect(screen.getByText('+48 since first recorded rating')).toBeTruthy();
+    expect(screen.getByText('3 recorded ratings', { exact: false })).toBeTruthy();
+    expect(screen.getByText('One rating recorded — no trend to compare')).toBeTruthy();
+    expect(screen.getByText('1 recorded rating')).toBeTruthy();
+    expect(screen.getByText('Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.')).toBeTruthy();
   });
 });
