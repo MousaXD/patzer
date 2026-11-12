@@ -10,6 +10,7 @@
     "open": "Abrir menú",
     "close": "Cerrar menú",
     "language": "Idioma",
+    "languageSaveFailed": "No se pudo guardar el idioma. Comprueba la conexión e inténtalo de nuevo.",
     "skip": "Ir al contenido principal",
     "loading": "Cargando página…",
     "breadcrumb": "Ruta de navegación",

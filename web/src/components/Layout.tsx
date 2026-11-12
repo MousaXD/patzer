@@ -12,8 +12,9 @@ import { useAuth } from '../state/auth';
 import { cn } from '../lib/utils';
 import ChangelogModal from './ChangelogModal';
 import { LogoMark, LogoLockup } from './Logo';
-import { LANGUAGES, normalizeLanguage } from '../lib/languages';
+import { LANGUAGES, isLanguage, normalizeLanguage } from '../lib/languages';
 import { endSession } from '../lib/logout';
+import { saveInterfaceLanguage } from '../lib/saveInterfaceLanguage';
 
 interface LayoutProps {
   onOpenPalette?: () => void;
@@ -95,20 +96,23 @@ function NavigationItem({
   );
 }
 
-function LanguageSelector({ value, label, onChange, mobile = false }: {
+function LanguageSelector({ value, label, onChange, mobile = false, disabled = false }: {
   value: string;
   label: string;
   onChange: (value: string) => void;
   mobile?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <div className={cn('relative min-w-0', mobile ? 'w-full' : 'w-[108px] shrink-0')}>
       <select
         aria-label={label}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         className={cn(
-          'h-9 w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700',
+          'w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700 disabled:cursor-wait disabled:opacity-60',
+          mobile ? 'h-11' : 'h-9',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-100',
         )}
       >
@@ -130,6 +134,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const navigationType = useNavigationType();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState(false);
   const [version, setVersion] = useState('');
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -242,6 +248,19 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
     navigate('/login');
   }
 
+  async function changeLanguage(value: string) {
+    if (languageSaving || !isLanguage(value)) return;
+    setLanguageError(false);
+    setLanguageSaving(true);
+    try {
+      await saveInterfaceLanguage(value);
+    } catch {
+      setLanguageError(true);
+    } finally {
+      setLanguageSaving(false);
+    }
+  }
+
   const searchLabel = t('palette.open', { defaultValue: 'Open command palette' });
   const shortcutsLabel = t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' });
   const profileLabel = t('common.settings', { defaultValue: 'Settings' });
@@ -342,7 +361,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               <Keyboard aria-hidden="true" className="h-[18px] w-[18px]" />
             </button>
           )}
-          <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} /></div>
+          <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} /></div>
           <NavLink
             to="/settings"
             className="hidden h-9 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex"
@@ -373,6 +392,16 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             <Menu aria-hidden="true" className="h-5 w-5" />
           </button>
         </header>
+        {languageError && (
+          <div role="alert" className="fixed right-3 top-[4.25rem] z-[60] flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-language-save-error>
+            <span className="min-w-0 flex-1">{t('navigation.languageSaveFailed', { defaultValue: 'Could not save your language. Check your connection and try again.' })}</span>
+            <button type="button" onClick={() => setLanguageError(false)}
+              aria-label={t('common.close', { defaultValue: 'Close' })}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* No global max-width on the analysis route. This is Agent 03's
             predictable full-width, min-w-0 flex workspace contract. */}
@@ -464,7 +493,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               )}
             </nav>
             <div className="mt-auto space-y-3 border-t border-chesscom-200 pt-4 dark:border-chesscom-700">
-              <LanguageSelector mobile value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} />
+              <LanguageSelector mobile value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} />
               {version && (
                 <button type="button" onClick={() => { setDrawerOpen(false); setShowChangelog(true); }}
                   className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"

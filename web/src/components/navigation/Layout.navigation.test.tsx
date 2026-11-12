@@ -57,6 +57,9 @@ vi.mock('../../api', () => ({
   api: { get: vi.fn(async () => ({ version: '7.19.0' })) },
 }));
 vi.mock('../../lib/logout', () => ({ endSession: harness.endSession }));
+vi.mock('../../lib/saveInterfaceLanguage', () => ({
+  saveInterfaceLanguage: (language: string) => harness.changeLanguage(language),
+}));
 vi.mock('../UpdateNotice', () => ({ default: () => null }));
 vi.mock('../ChangelogModal', () => ({ default: () => null }));
 vi.mock('../GitHubStar', () => ({ default: () => null }));

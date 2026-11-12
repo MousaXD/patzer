@@ -2,10 +2,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { patch, refresh, navigate } = vi.hoisted(() => ({
+const { patch, refresh, navigate, saveLanguage } = vi.hoisted(() => ({
   patch: vi.fn(),
   refresh: vi.fn(),
   navigate: vi.fn(),
+  saveLanguage: vi.fn(),
 }));
 
 vi.mock('../api', () => ({ api: { patch, get: vi.fn() } }));
@@ -18,6 +19,7 @@ vi.mock('../state/auth', () => ({
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: { games: [] } }) }));
 vi.mock('../lib/logout', () => ({ endSession: vi.fn() }));
+vi.mock('../lib/saveInterfaceLanguage', () => ({ saveInterfaceLanguage: saveLanguage }));
 
 import i18n from '../i18n';
 import CommandPalette from './CommandPalette';
@@ -27,6 +29,8 @@ beforeEach(async () => {
   refresh.mockReset();
   refresh.mockResolvedValue(undefined);
   navigate.mockReset();
+  saveLanguage.mockReset();
+  saveLanguage.mockImplementation((language: string) => i18n.changeLanguage(language));
   await i18n.changeLanguage('en');
 });
 afterEach(cleanup);

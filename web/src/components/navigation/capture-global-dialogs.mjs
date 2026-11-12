@@ -99,8 +99,10 @@ try {
       }
       if (profilePatchMode === 'slow') await sleep(600);
       const update = route.request().postDataJSON();
-      theme = update.site_theme;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(update) });
+      if (update.site_theme) theme = update.site_theme;
+      if (update.language) profile.language = update.language;
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ profile: { ...profile, site_theme: theme } }) });
       return;
     }
     const result = path === '/api/setup/status' ? { setup_required: false }
@@ -325,6 +327,39 @@ try {
   await languagePalette.getByRole('option', { name: /Deutsch/ }).click();
   await languagePalette.waitFor({ state: 'detached' });
   await page.getByRole('button', { name: /Befehlspalette/ }).waitFor();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('[data-app-shell]').waitFor();
+  await page.getByRole('button', { name: /Befehlspalette/ }).waitFor();
+  if (profile.language !== 'de') {
+    throw new Error('Global palette changed language only in memory, not the saved profile');
+  }
+  // The mobile drawer shares this setting. A failed save must not switch the
+  // interface and must explain why. Retrying should survive a full reload.
+  await page.getByRole('button', { name: 'Menü öffnen' }).click();
+  const languageDrawer = page.getByRole('dialog', { name: 'Mobile Navigation' });
+  const germanSelect = languageDrawer.getByRole('combobox', { name: 'Sprache' });
+  const saveCountBeforeFailure = patchAttempts;
+  profilePatchMode = 'error';
+  await germanSelect.selectOption('es');
+  await page.locator('[data-language-save-error]').waitFor();
+  if (profile.language !== 'de' || patchAttempts !== saveCountBeforeFailure + 1) {
+    throw new Error('Failed language update incorrectly changed the saved profile');
+  }
+  await assertNoOverflow(page, 'failed language save at 320px');
+  await page.screenshot({ path: resolve(output, 'shell-language-save-error-320.png'), fullPage: true });
+  await page.locator('[data-language-save-error]').getByRole('button', { name: 'Schließen' }).click();
+  profilePatchMode = 'success';
+  await languageDrawer.getByRole('combobox', { name: 'Sprache' }).selectOption('es');
+  await page.getByRole('dialog', { name: 'Navegación móvil' })
+    .getByRole('combobox', { name: 'Idioma' }).waitFor();
+  if (profile.language !== 'es') throw new Error('Mobile language selection was not persisted');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Abrir menú' }).waitFor();
+  await page.getByRole('button', { name: 'Abrir menú' }).click();
+  if (await page.getByRole('dialog', { name: 'Navegación móvil' })
+    .getByRole('combobox', { name: 'Idioma' }).inputValue() !== 'es') {
+    throw new Error('Spanish language was not restored from profile after reload');
+  }
 
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {

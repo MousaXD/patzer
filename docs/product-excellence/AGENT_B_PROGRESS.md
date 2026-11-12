@@ -502,3 +502,33 @@
 ### Next audit
 
 - Continue investigating global keyboard-search navigation and shared loading/empty/error state discoverability on 320px mobile and desktop. Focus on substantive problems verified by Chromium; avoid feature internals or speculative CSS changes.
+
+## 2026-11-12: Persist global language selections across reloads
+
+### Recovery and actual-browser reproduction
+
+- Recovered the **clean, pushed `dd4d239`** Agent B branch and followed the documented global-navigation/localization audit. Did not repeat earlier command-palette searches, design investigations or other agents' work.
+- Real Chromium negative control: selecting **Deutsch** through the command palette immediately translated the shell, but a full reload restored the original profile language. Both the command palette and desktop/mobile header selectors previously called `i18n.changeLanguage()` only, never persisting the user's choice.
+- The existing `PATCH /api/settings/profile` server contract already accepts an optional `language` and returns the saved user profile; no server changes were required.
+
+### Implementation
+
+1. Added a scoped shared `saveInterfaceLanguage` helper used by the global palette and both header language selectors. It PATCHes the chosen language, validates the saved response, updates the existing signed-in user without a whole-app auth refresh, and applies the new locale.
+2. Serializes global language changes so delayed earlier requests cannot overwrite a more recent choice. Guards against account switches and preserves unrelated profile updates made while an operation was in progress.
+3. The desktop/mobile header selectors are disabled while saving; on failure, they retain the previous language and show a dismissible, accessible, localized error instead of silently losing the preference. The mobile selector also meets the 44px touch-target minimum.
+4. The palette reuses the earlier shared busy/error/retry framework for failed language writes. Kept recognizable native-language labels and search aliases unchanged.
+5. Added all five localizations of the header failure text, five focused helper tests for persistence, concurrent settings updates, failure/retry, account isolation and sequential changes. Existing navigation/palette tests now mock only the new preference helper, preserving their separate interaction scope.
+6. Expanded real Chromium's mobile dialog fixture to verify a successful palette German-language switch persists after reload; a 503 from the drawer selector does not change the profile and displays a German alert; a subsequent Spanish retry persists and survives another reload. Inspected the 320px dark-theme failure overlay for readable presentation and overflow.
+
+### Verification
+
+- `npm run build -w web`: **passed** (TypeScript + Vite).
+- `npx vitest run web/src --maxWorkers=2`: **408/408 passed across 70 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including new persist/reload and 503/retry tests plus prior keyboard, modal, contrast and landscape coverage.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, full existing 1920/1440/1024/390/320 responsive shell checks.
+- `git diff --check`: **passed**.
+- The browser used mocked local endpoints only. No production API, game data, other agent branch/worktree, merge or deployment was touched.
+
+### Next audit
+
+- Inspect actual global loading and empty states and command-palette keyboard navigation for a new user. Prioritize robust discoverability and graceful feedback with real Chromium reproduction; leave feature-owned flows to their designated agents.
