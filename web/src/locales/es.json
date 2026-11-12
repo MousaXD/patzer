@@ -391,6 +391,9 @@
     "notAnalyzed": "Aún sin analizar",
     "analysisReady": "Análisis disponible",
     "bookmarkFailed": "No se pudo guardar el marcador. Inténtalo de nuevo.",
+    "libraryRecentImportTitle": "Importar partidas recientes",
+    "libraryRecentImportHelp": "Elige cuántas partidas importar; las ya guardadas no se sobrescriben.",
+    "libraryRecentImportLimit": "Partidas recientes a importar",
     "libraryFilterOptions": {
       "source": {
         "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",

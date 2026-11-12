@@ -396,6 +396,9 @@
     "notAnalyzed": "Партия ещё не разобрана",
     "analysisReady": "Анализ доступен",
     "bookmarkFailed": "Не удалось сохранить закладку. Попробуйте ещё раз.",
+    "libraryRecentImportTitle": "Импорт последних партий",
+    "libraryRecentImportHelp": "Выберите количество партий; уже сохранённые партии не перезаписываются.",
+    "libraryRecentImportLimit": "Количество партий для импорта",
     "libraryFilterOptions": {
       "source": {
         "all": "Все источники", "chesscom": "Chess.com", "lichess": "Lichess",

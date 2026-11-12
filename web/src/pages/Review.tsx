@@ -439,20 +439,28 @@ export default function Review() {
 
       <div id="library-import-controls" hidden={!importControlsVisible} className="space-y-5">
       {linked.length > 0 && (
-        <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Import recent games">
+        <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
+          aria-labelledby="library-recent-import-title" aria-describedby="library-recent-import-help">
           <div className="min-w-0 sm:max-w-48">
-            <p className="text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">Import recent games</p>
-            <p className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">Choose a batch size; existing games are not overwritten.</p>
+            <h2 id="library-recent-import-title" className="text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+              {t('review.libraryRecentImportTitle', {defaultValue:'Import recent games'})}
+            </h2>
+            <p id="library-recent-import-help" className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">
+              {t('review.libraryRecentImportHelp', {defaultValue:'Choose a batch size; existing games are not overwritten.'})}
+            </p>
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <label htmlFor="library-import-limit" className="text-xs text-chesscom-500 dark:text-chesscom-300">Recent games to fetch</label>
-            <select id="library-import-limit" className="input w-auto text-sm" value={importLimit} disabled={importMut.isPending}
+            <label htmlFor="library-import-limit" className="text-xs text-chesscom-500 dark:text-chesscom-300">
+              {t('review.libraryRecentImportLimit', {defaultValue:'Recent games to fetch'})}
+            </label>
+            <select id="library-import-limit" aria-describedby="library-recent-import-help"
+              className="input !min-h-11 w-auto text-sm" value={importLimit} disabled={importMut.isPending}
               onChange={(e) => setImportLimit(Number(e.target.value) as typeof importLimit)}>
               {IMPORT_BATCH_SIZES.map((limit) => <option key={limit} value={limit}>{limit}</option>)}
             </select>
             {linked.map((s) => (
-              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id, limit: importLimit })} disabled={importMut.isPending || !user} className="btn-primary">
-                <Download className="h-4 w-4" />
+              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id, limit: importLimit })} disabled={importMut.isPending || !user} className="btn-primary min-h-11">
+                <Download aria-hidden="true" className="h-4 w-4" />
                 {importMut.isPending && importMut.variables?.source === s.source ? t('review.importing') : `${s.label} (@${s.username})`}
               </button>
             ))}

@@ -396,6 +396,9 @@
     "notAnalyzed": "Noch nicht analysiert",
     "analysisReady": "Analyse verfügbar",
     "bookmarkFailed": "Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.",
+    "libraryRecentImportTitle": "Letzte Partien importieren",
+    "libraryRecentImportHelp": "Wähle die Anzahl der Partien. Bereits gespeicherte Partien werden nicht überschrieben.",
+    "libraryRecentImportLimit": "Anzahl der Partien",
     "libraryFilterOptions": {
       "source": {
         "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",

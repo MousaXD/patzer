@@ -396,6 +396,9 @@
     "notAnalyzed": "Not reviewed yet",
     "analysisReady": "Analysis available",
     "bookmarkFailed": "Bookmark could not be saved. Try again.",
+    "libraryRecentImportTitle": "Import recent games",
+    "libraryRecentImportHelp": "Choose a batch size; existing games are not overwritten.",
+    "libraryRecentImportLimit": "Recent games to fetch",
     "libraryFilterOptions": {
       "source": {
         "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",

@@ -388,6 +388,33 @@ try {
     console.log('PASS German Library filter accessibility labels and URL-backed source selection');
   } finally {await germanFilters.context.close();}
 
+  const germanImport=await newPage('light',390,844,{locale:'de'});
+  try {
+    const {page,pageErrors}=germanImport;
+    const toggle=page.locator('button[aria-controls="library-import-controls"]');
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    assert.match(await toggle.textContent(),/Weitere Partien importieren/);
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+    const section=page.getByRole('region',{name:'Letzte Partien importieren'});
+    await section.waitFor();
+    await section.getByText('Wähle die Anzahl der Partien. Bereits gespeicherte Partien werden nicht überschrieben.').waitFor();
+    const limit=section.getByRole('combobox',{name:'Anzahl der Partien'});
+    const rect=await limit.boundingBox();
+    assert.ok(rect && rect.height>=44 && rect.x>=0 && rect.x+rect.width<=392,
+      `Import-limit control must be mobile touch accessible: ${JSON.stringify(rect)}`);
+    await limit.selectOption('100');
+    assert.equal(await limit.inputValue(),'100');
+    const provider=section.getByRole('button',{name:/Von Chess.com importieren/});
+    const providerRect=await provider.boundingBox();
+    assert.ok(providerRect && providerRect.height>=44 && providerRect.x>=0 && providerRect.x+providerRect.width<=392,
+      `Provider import action must be mobile touch accessible: ${JSON.stringify(providerRect)}`);
+    assert.ok((await metrics(page)).overflow<=2,'Expanded import section overflows German 390px view');
+    await page.screenshot({path:join(output,'library-german-recent-import-light-390.png'),fullPage:true});
+    assert.deepEqual(pageErrors,[],'German recent-import controls produced a JS exception');
+    console.log('PASS German recent-import title, batch explanation, touch targets and bounded selection');
+  } finally {await germanImport.context.close();}
+
   const germanDesktop=await newPage('dark',1440,900,{locale:'de'});
   try {
     const {page,pageErrors}=germanDesktop;

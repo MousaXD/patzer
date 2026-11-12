@@ -772,3 +772,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **Library import-panel accessibility and localized explanations**. The expanded recent-game import section contains English-only labels and help text even in German. Verify the actual account-linked mobile experience, accessible group/limit labels and the distinction between a bounded batch and full history. Fix within the Library lane with translated copy and browser coverage; do not alter import APIs or provider authentication.
+
+## 2026-11-12 — Localize and improve recent-game import-panel accessibility
+
+- Recovered clean pushed `e60918e` and the exact next audit. On a German-linked account, the expanded import panel had English-only heading **Import recent games**, explanatory batch/non-overwrite text, a batch-size label, and an English-only section accessible name. Added failing locale regressions for all five languages before implementation.
+- Added `review.libraryRecentImportTitle`, `review.libraryRecentImportHelp`, and `review.libraryRecentImportLimit` in English, German, Spanish, Russian and Bulgarian, preserving 20/100/200 batch options and all provider API contracts. Replaced plain heading with `<h2>`/`aria-labelledby`, associated the batch select with its visible label and explanatory text via `aria-describedby`, and enforced Library-local 44px touch targets for the select (`!min-h-11` due to base input CSS specificity) and provider import actions (`min-h-11`). Marked decorative import icon `aria-hidden`.
+- Added a real German 390px light-mode Chromium journey: expand the import panel, find its named region and translated non-overwrite guidance, select batch 100, measure the provider action and select (both 44px or taller), confirm no horizontal overflow, and capture `qa-artifacts/agent-c-library/library-german-recent-import-light-390.png` for visual inspection. The first browser attempt used the opening button label to re-find the toggle after it changed to **Hide import options**; corrected the test to use its stable `aria-controls` relationship. The next run confirmed the new scenario but the isolated Vite preview unexpectedly refused connections midway, likely transient infrastructure contention; a complete repeat on a separate loopback port (5397) passed all browser scenarios without changes to runtime logic.
+
+### Verification
+
+- Focused Library+locales: **130/130 passed**. Full repository suite: **109 passed files, 2 skipped; 1,102 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full synthetic Chromium 1440px desktop, 390/320px mobile light/dark, German import panel and other localization, PGN file import, Unicode, bookmarks, search, pagination and error recovery: passed. No JS exceptions or horizontal overflow on the completed run.
+- No server, global styling, production accounts, provider imports, other agents' code, merges or deployments touched.
+
+### Next independent audit
+
+- Examine **linked provider import success feedback after a bounded batch** in non-English UI. The panel guidance is now localized, but the `importMut.onSuccess` summary still concatenates English strings ("new games saved", "retrieved", "already saved", "unsupported or invalid", "not your entire history"). Reproduce the German result for an actual synthetic Chess.com batch import, then localize feedback while preserving numeric precision, duplicate and enrichment reporting, account-change safety, and accessible status semantics.

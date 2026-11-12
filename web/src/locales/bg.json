@@ -387,6 +387,9 @@
     "notAnalyzed": "Все още не е анализирана",
     "analysisReady": "Наличен анализ",
     "bookmarkFailed": "Неуспешно запазване на отметката. Опитайте отново.",
+    "libraryRecentImportTitle": "Импортиране на скорошни партии",
+    "libraryRecentImportHelp": "Избери брой партии; вече запазените партии няма да бъдат презаписани.",
+    "libraryRecentImportLimit": "Брой партии за импортиране",
     "libraryFilterOptions": {
       "source": {
         "all": "Всички източници", "chesscom": "Chess.com", "lichess": "Lichess",
