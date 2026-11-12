@@ -19,6 +19,7 @@ class FakeSocket {
   close() { this.closed = true; this.onclose?.({} as CloseEvent); }
   drop() { this.onclose?.({} as CloseEvent); }
   emit(message: Record<string, unknown>) { this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent); }
+  emitRaw(message: string) { this.onmessage?.({ data: message } as MessageEvent); }
 }
 
 const invitation = (id: number): Challenge => ({
@@ -41,6 +42,37 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('keeps a last good player list when an HTTP refresh contains a malformed row', async () => {
+    let bad = false;
+    const good = { id: 2, username: 'opponent', display_name: 'Opponent', avatar_emoji: '♟', online: false };
+    mocks.get.mockImplementation((url: string) => url === '/api/lobby/users'
+      ? Promise.resolve({ users: bad ? [null, { id: 5, display_name: null }] : [good] })
+      : Promise.resolve({ challenges: [] }));
+    useLobby.getState().connect(1);
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().users.map((u) => u.id)).toEqual([2]);
+    bad = true;
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().users.map((u) => u.id)).toEqual([2]);
+    expect(useLobby.getState().usersStatus).toBe('error');
+    bad = false;
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().users.map((u) => u.id)).toEqual([2]);
+    expect(useLobby.getState().usersStatus).toBe('ready');
+  });
+
+  it('ignores malformed lobby-message envelopes and continues processing a valid next event', () => {
+    useLobby.getState().connect(1);
+    const socket = FakeSocket.opened[0]!;
+    socket.emitRaw('null');
+    socket.emitRaw('[]');
+    socket.emitRaw('false');
+    socket.emitRaw('{malformed');
+    socket.emit({ type: 'presence_update', online: [2] });
+    expect(useLobby.getState().presenceReady).toBe(true);
+    expect(useLobby.getState().online.has(2)).toBe(true);
+  });
+
   it('marks online presence unknown immediately when its WebSocket drops, until a fresh presence snapshot arrives', () => {
     useLobby.getState().connect(1);
     const old = FakeSocket.opened[0]!;

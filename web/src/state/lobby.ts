@@ -9,6 +9,16 @@ export interface LobbyUser {
   online: boolean;
 }
 
+function isLobbyUser(value: unknown): value is LobbyUser {
+  if (!value || typeof value !== 'object') return false;
+  const user = value as Partial<LobbyUser>;
+  return Number.isSafeInteger(user.id) && Number(user.id) > 0
+    && typeof user.username === 'string' && user.username.length > 0
+    && typeof user.display_name === 'string'
+    && typeof user.avatar_emoji === 'string'
+    && typeof user.online === 'boolean';
+}
+
 export interface Challenge {
   id: number;
   color: 'white' | 'black' | 'random';
@@ -142,7 +152,11 @@ export const useLobby = create<LobbyState>((set, get) => {
     ws.onmessage = (ev) => {
       if (epoch !== generation || get().ws !== ws) return;
       let msg: Record<string, unknown>;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      try {
+        const parsed: unknown = JSON.parse(ev.data);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+        msg = parsed as Record<string, unknown>;
+      } catch { return; }
       if (msg.type === 'presence_update' && Array.isArray(msg.online)
         && msg.online.every((id) => Number.isSafeInteger(id) && id > 0)) {
         set({ online: new Set(msg.online as number[]), presenceReady: true });
@@ -232,7 +246,7 @@ export const useLobby = create<LobbyState>((set, get) => {
     const current = () => currentUserId === userId && generation === epoch && usersRequestId === requestId;
     try {
       const r = await api.get<{ users: LobbyUser[] }>('/api/lobby/users');
-      if (!r || !Array.isArray(r.users)) throw new Error('invalid player list');
+      if (!r || !Array.isArray(r.users) || !r.users.every(isLobbyUser)) throw new Error('invalid player list');
       if (current()) set((s) => ({
         // An HTTP list started before a live presence event can complete
         // afterward. Never let its older online flags override the current
