@@ -1100,11 +1100,15 @@ try {
         fen:initialFen,depth:18,lines:requests===1 ? [
           {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:55,mate:null,multipv:1},
           {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:70,mate:null,multipv:1},
-        ] : [
+        ] : requests===2 ? [
           // These are extreme *centipawn* scores without verified mate. Do
           // not fabricate a checkmate marker from the number's magnitude.
           {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:9500,mate:null,multipv:1},
           {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:-9500,mate:null,multipv:2},
+        ] : [
+          // A corrupted response claims White mates in two while its cp
+          // score favors Black. The supported adapters emit one or the other.
+          {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:-200,mate:2,multipv:1},
         ],
       })});
     });
@@ -1131,6 +1135,15 @@ try {
     await firstExtreme.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-line-extreme-cp-no-mate-390.png')});
     assert.equal(requests,2);
+    const disclosure=page.getByRole('button',{name:'Engine lines',exact:true});
+    await disclosure.click();
+    await disclosure.click();
+    await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.getByRole('button',{name:'Follow played move e4'}).count(),0,
+      'A contradictory cp/mate response must not create a false winning move recommendation');
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-line-contradictory-mate-rejected-390.png')});
+    assert.equal(requests,3);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalRankPgn);
   }finally{await duplicateRankContext.close();}
   // Stockfish and the hosted adapter both return live MultiPV scores from

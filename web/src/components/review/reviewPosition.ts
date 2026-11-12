@@ -97,6 +97,11 @@ export function verifiedPositionEngineLines<T>(
       || (record.cp !== null && (typeof record.cp !== 'number' || !Number.isFinite(record.cp)))
       || (record.mate !== null && (typeof record.mate !== 'number' || !Number.isFinite(record.mate)))
       || (record.cp === null && record.mate === null)
+      // Stockfish UCI and the hosted engine return one scored verdict per
+      // line, not a nonzero mate *and* cp. Do not promote contradictory
+      // evidence to a definite mate or a best-move claim. The separate
+      // unsigned mate-zero sentinel remains a neutral/unknown display.
+      || (record.mate !== null && record.mate !== 0 && record.cp !== null)
       || !Number.isSafeInteger(record.multipv) || record.multipv !== index + 1
       || seenFirstMoves.has(first.uci)) return false;
     try {

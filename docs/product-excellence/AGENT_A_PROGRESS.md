@@ -1042,3 +1042,26 @@
 ### Next independent review audit
 
 - The position-line verifier accepts a response where **both** `cp` and nonzero `mate` are supplied on the same candidate, even if their winning-side signs contradict each other. The supported adapters emit a single authoritative score type. Audit whether this can result in a materially false visible mate claim; if reproducible, reject inconsistent score evidence without inventing another best move. Preserve verified legal continuations whenever safe.
+
+## 2026-11-12: reject contradictory raw cp and signed mate evidence
+
+### Source-contract and failing regression
+
+- Continued from clean pushed `c0659c9`. Inspected both live-engine adapters: the Stockfish parser extracts the score for a single UCI line; the hosted adapter explicitly clears centipawns when a valid nonzero mate score exists. Both use one score type at a time for each legal MultiPV candidate.
+- The Game Review verified position-line contract nonetheless accepted `cp:-200,mate:2` (or the opposite signs) with matching FEN and a legally replayable e4/e5 PV. The presenter prioritized the `mate:2`, potentially making a false definite mating claim contradicted by the other score. An adversarial source-verification unit test **failed before the correction**.
+
+### Scoped fail-closed validation
+
+- Reject a live candidate when `mate` is nonzero and `cp` is also present. The existing `mate=0` neutral terminal marker remains supported, as does each properly scored cp-only or mate-only legal PV. No arbitrary replacement best move is invented; the existing localized unavailable/Retry UI is used for a malformed response. Engine adapter behavior, scoring, stored analysis and PGN remain untouched.
+- Extended the authenticated disposable Chromium engine-line scenario: initial duplicate rank rejected, Retry accepts two high-cp numeric lines, subsequent disclosure reopening triggers another on-demand FEN-matched response containing contradictory `cp:-200,mate:2`. Browser asserts no actionable fake best row and a visible Retry state, while source PGN remains unchanged. Inspected `qa-artifacts/agent-a/engine-line-contradiction-20261112/engine-line-contradictory-mate-rejected-390.png`: clear error and 44px Retry in dark 390px display.
+
+### Verification
+
+- `git diff --check`: PASS; **15** focused source/score tests PASS; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1003 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium screen/theme, locale, keyboard, source, variation and PGN matrix: **PASS (exit 0)** on port 8946. Malformed source and checkmate signals are synthetic test responses; this does not benchmark real engine scoring accuracy.
+- No merge, production database, live service, deployment or other agent branch changes.
+
+### Next Game Review audit candidate
+
+- Live `verifiedPositionEngineLines` presently accepts finite **fractional** mating distances (e.g. `mate:1.5,cp:null`), although Stockfish and hosted engines define an integer number of moves to mate. Check if this can misleadingly rank/preview a recommendation without authoritative mate evidence; validate via adversarial tests and preserve the existing neutral rendering until it is proven meaningful.

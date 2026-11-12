@@ -119,4 +119,14 @@ describe('review position-safe suggestions', () => {
       expect(verifiedPositionEngineLines({ fen, lines }, fen), JSON.stringify(lines)).toBeNull();
     }
   });
+
+  it('rejects a fabricated mate claim coexisting with incompatible live centipawn evidence', () => {
+    const fen = new Chess().fen();
+    const legal = { uci: 'e2e4', san: 'e4', pv_san: ['e4','e5'], cp: null, mate: 2, multipv: 1 };
+    expect(verifiedPositionEngineLines({ fen, lines: [legal] }, fen)).toEqual([legal]);
+    // Supported engines emit exactly one score type per analyzed PV. These
+    // values otherwise would claim a definite mate despite incompatible cp.
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...legal, cp: -200 }] }, fen)).toBeNull();
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...legal, mate: -2, cp: 200 }] }, fen)).toBeNull();
+  });
 });
