@@ -1149,3 +1149,17 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Review **keyboard paging failure with an intentional focus change before the response**. The new Retry focus guard should not steal focus from a source/date/search control when the player navigates away while a request is pending. Add a delayed failing continuation in Chromium and verify both focus ownership and retryability; then resume broader Library discovery audits from the existing master plan rather than repeating completed import and localization investigations.
+
+## 2026-11-13 — Verify delayed page errors respect intentional focus changes
+
+- Recovered clean pushed `72af32a` and added an isolated 390px dark Chromium journey using the existing delayed HTTP failure fixture. A keyboard user presses Enter on Load more, moves focus to the Game source selector while the request is in flight, then the server responds HTTP 503. The error/retry state must appear without stealing focus from that selector; the previously loaded 40 games must remain available.
+- Chromium confirmed the source selector remains focused and the Library still displays **40 of 620 games**, with a retryable continuation and no JavaScript exceptions. This extends the prior success/retry focus checks to the explicit user-focus-change case. **No runtime defect reproduced**, so retained only the browser regression; did not rework the verified pagination focus or query-cache logic.
+
+### Verification
+
+- Full isolated Chromium desktop/mobile light/dark matrix, delayed keyboard pagination failure and preserved focus, filter transitions, imports, search, bookmarks and cursor recovery: passed. Full repository suite: **109 passed files, 2 skipped; 1,137 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Only Agent C's synthetic browser fixture and durable report changed. No provider, production data, API, other-agent worktree, merge or deploy.
+
+### Next independent audit
+
+- Revisit **Library exploration discoverability** with fresh desktop and 390px screenshots: prioritize a genuine, visible improvement to opening/opponent discovery and meaningful navigation over more low-impact regression-only work. Use the already-tested opening/opponent summaries and URL handoffs; avoid inventing chess insights, adding global navigation, or editing the other agents' Game Review code.

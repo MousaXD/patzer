@@ -1360,6 +1360,32 @@ try {
     console.log('PASS failed keyboard pagination focuses Retry, then returns focus to Load more after recovery');
   } finally {await keyboardFailedPage.context.close();}
 
+  const movedDuringError=await newPage('dark',390,844,{delayedContinuation:'failure'});
+  try {
+    const {page,pageErrors,releaseContinuation}=movedDuringError;
+    const pending=page.waitForRequest(req=>{
+      const parsed=new URL(req.url());
+      return parsed.pathname==='/api/games' && parsed.searchParams.get('offset')==='40' &&
+        !parsed.searchParams.has('source');
+    });
+    await page.getByRole('button',{name:'Load more games'}).focus();
+    await page.keyboard.press('Enter');
+    await pending;
+    const source=page.getByRole('combobox',{name:'Game source'});
+    await source.focus();
+    const failed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/games' &&
+      new URL(r.url()).searchParams.get('offset')==='40');
+    releaseContinuation();
+    await failed;
+    await page.getByRole('button',{name:'Retry'}).waitFor();
+    assert.ok(await source.evaluate(node=>document.activeElement===node),
+      'An older pagination error must not steal focus from a source control the player selected');
+    assert.equal(await page.getByText('40 of 620 games').count(),1,
+      'A failed continuation must retain the existing game count');
+    assert.deepEqual(pageErrors,[],'Changing focus before a failed page response caused browser errors');
+    console.log('PASS late keyboard pagination failure preserves deliberately moved focus');
+  } finally {movedDuringError.releaseContinuation();await movedDuringError.context.close();}
+
   const finalPage=await newPage('dark',320,700,{lastPageScenario:true});
   try {
     const {page,pageErrors}=finalPage;
