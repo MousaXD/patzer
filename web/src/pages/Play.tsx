@@ -150,7 +150,9 @@ function isUsableGameSnapshot(msg: ServerMsg): boolean {
     new Chess(msg.fen);
     const replay = new Chess(msg.start_fen ?? undefined);
     for (const san of msg.history) replay.move(san, { strict: false });
-    return true;
+    // A legal history paired with a different FEN is still not an
+    // authoritative snapshot: the move list and board would disagree.
+    return replay.fen() === msg.fen;
   } catch { return false; }
 }
 

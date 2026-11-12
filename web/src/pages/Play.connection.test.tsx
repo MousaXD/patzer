@@ -192,6 +192,8 @@ describe('Play authoritative game readiness', () => {
       { ...snapshot, start_fen: 'not-a-fen', history: ['e4'] },
       { ...snapshot, history: 'e4' },
       { ...snapshot, history: ['not-a-legal-move'] },
+      { ...snapshot, fen: new Chess().move('e4').after, history: [] },
+      { ...snapshot, history: ['e4'] },
     ]) {
       expect(() => act(() => ws.receive(bad))).not.toThrow();
       expect(board.disabled).toBe(true);
@@ -200,6 +202,17 @@ describe('Play authoritative game readiness', () => {
     act(() => ws.receive(snapshot));
     expect(board.disabled).toBe(false);
     expect(board.dataset.fen).toBe(START);
+  });
+
+  it('resumes a genuinely consistent mid-game snapshot with the matching SAN history', async () => {
+    render(<MemoryRouter initialEntries={['/play?game=746']}><Play /></MemoryRouter>);
+    const ws = socketHarness.current!;
+    const chess = new Chess(START);
+    chess.move('e4');
+    act(() => { ws.accept(); ws.receive({ type: 'pvp_hello', fen: chess.fen(), history: ['e4'], your_color: 'black', time_control: 'rapid' }); });
+    expect(screen.getByTestId('chess-board').getAttribute('data-fen')?.split(' ')[0]).toBe(chess.fen().split(' ')[0]);
+    expect(screen.getByText('e4')).toBeTruthy();
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it.each(['Infinity', 'abc', '-1', '1.5', '0', '9999999999999999999999'])(
