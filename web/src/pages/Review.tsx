@@ -823,6 +823,12 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
             {!!g.from_position && <span className="rounded-full bg-chesscom-100 px-2 py-0.5 text-[11px] dark:bg-chesscom-800">{t('review.fromPosition')}</span>}
             {g.notes && <span className="ml-1 italic text-chesscom-400">· {t('review.hasNote')}</span>}
           </div>
+          {g.opening_name && (
+            <div className="mt-1 max-w-full truncate text-xs text-chesscom-500 dark:text-chesscom-300 sm:hidden"
+              title={g.opening_name}>
+              {g.opening_name}
+            </div>
+          )}
         </div>
         {g.analyzed ? (
           <div className="hidden shrink-0 text-right text-xs sm:block">

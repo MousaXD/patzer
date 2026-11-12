@@ -210,6 +210,14 @@ async function verifyViewport(theme, width, height) {
     const fileControl = await page.getByLabel('Choose a PGN file').boundingBox();
     assert.ok(fileControl && fileControl.x >= -2 && fileControl.x + fileControl.width <= width + 2,
       `PGN file picker clipped at ${width}px ${theme}: ${JSON.stringify(fileControl)}`);
+    if (width <= 390) {
+      const opening = page.locator('a[href="/review/1"] [title="Italian Game"]');
+      assert.ok(await opening.isVisible(),
+        `Opening name is missing from the saved-game card at ${width}px ${theme}`);
+      const openingRect=await opening.boundingBox();
+      assert.ok(openingRect && openingRect.x >= 0 && openingRect.x + openingRect.width <= width + 2,
+        `Opening label overflows the mobile card: ${JSON.stringify(openingRect)}`);
+    }
     await page.screenshot({path:join(output,`library-${theme}-${width}.png`),fullPage: width <= 390});
     await page.getByRole('button', {name:'Opponents'}).click();
     await page.getByRole('button', {name:'Show 31 Lichess games against Nepo'}).waitFor();

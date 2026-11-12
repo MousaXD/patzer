@@ -341,3 +341,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 - The high-water-ID cursor protects against later **inserts and deletions**. A concurrent modification of an *existing* game's `end_time` or membership in a filtered collection can still reorder that existing game; this is not an immutable SQLite transaction snapshot. Avoid claiming one without a real snapshot mechanism.
 - Independently audit filter resets and reopening a saved game while browsing a cursor-paginated history. Verify filters, bookmarks and navigation do not leave stale cursors or incorrectly reset to the beginning; prioritize reproducible UX failures only.
 - The full historical Chess.com in-app sync job remains intentionally unimplemented pending durable checkpoints, opt-in consent, throttling, cancellation and recovery design.
+
+## 2026-11-12 — Make recognized openings visible on mobile game cards
+
+- Recovered clean pushed `6310606`; audited the next Library exploration workflow after stable pagination. The GameCard displayed `opening_name` only in a `sm:inline` header span, hiding one of the most useful discovery cues at phone widths. A new Chromium assertion reproduced the missing label at **390px light mode** before the fix.
+- Kept the desktop heading unchanged and added a separate `sm:hidden` opening label inside the existing game-card review link. The label is one line, truncated to the card's available width, with the complete official saved opening available through the HTML title. No opening classification is invented or changed.
+- Added a component regression using a realistically long opening name. Adjusted its selector to scope the label to the actual card (the same opening name can also appear in the Explore Openings summary).
+- Chromium verified opening names are visible and within viewport bounds at 390px/320px in light and dark modes, and checked no horizontal overflow. Visually inspected full-page 320px light and 390px dark screenshots. Existing game review/practice navigation, import, error recovery, and cursor-pagination browser journeys still passed.
+
+### Verification
+
+- Targeted Library component suite: **37 passed**. Full repository suite: **109 files passed, 2 skipped; 1,042 tests passed, 12 skipped**, no failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: **passed**. No production environment, other agent branch, or database touched.
+
+### Next investigation
+
+- Audit bookmark interactions in the **Starred only** filtered history, especially when a game is unstarred while later cursor pages are already loaded. Confirm the UI does not temporarily show an item that violates the active filter or lose previously loaded cards on an avoidable refetch. Fix only a reproduced usability/reliability defect.

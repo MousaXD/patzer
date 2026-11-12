@@ -84,6 +84,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('shows the known opening in mobile card metadata without removing its review link', async () => {
+    const opening='King’s Indian Defense: Fianchetto Variation, Panno Variation';
+    mocks.get.mockImplementation(async (url:string)=>url==='/api/games/openings'
+      ? {total:1,classified:1,unclassified:0,openings:[{name:opening,games:1}]}
+      : {games:[{...makeGame(1),opening_name:opening}],total:1,offset:0,has_more:false});
+    mount();
+    const preview=(await screen.findAllByTitle(opening))
+      .find(element=>element.closest('a')?.getAttribute('href')==='/review/1');
+    expect(preview).toBeDefined();
+    expect(preview?.className).toContain('truncate');
+    expect(preview?.className).toContain('sm:hidden');
+  });
   it('offers one clear first-use choice to upload PGN or connect a chess provider when no games exist', async () => {
     mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
       ? {total:0,classified:0,unclassified:0,openings:[]}
