@@ -154,6 +154,12 @@ function isUsableGameSnapshot(msg: ServerMsg): boolean {
   } catch { return false; }
 }
 
+function isUsableMoveUpdate(msg: ServerMsg): boolean {
+  if (typeof msg.fen !== 'string' || typeof msg.san !== 'string' || msg.san.length === 0
+    || typeof msg.uci !== 'string' || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(msg.uci)) return false;
+  try { new Chess(msg.fen); return true; } catch { return false; }
+}
+
 interface ResumableBot {
   difficulty: Difficulty;
   user_color: 'white' | 'black';
@@ -712,6 +718,7 @@ export default function Play() {
         setTakeback(null);
         break;
       case 'takeback_applied': {
+        if (!isUsableGameSnapshot(msg)) return;
         setTakeback(null); setDrawOffer(null); clearPremoves(); setPending(null);
         if (msg.fen) setFen(msg.fen);
         loadHistory(msg.history, msg.fen ?? START_FEN);
@@ -742,6 +749,7 @@ export default function Play() {
         setOpponent((o) => o ? { ...o, online: !!msg.online } : o);
         break;
       case 'move_made': {
+        if (!isUsableMoveUpdate(msg)) return;
         setPending(null);
         if (msg.fen) setFen(msg.fen);
         if (msg.san && msg.uci) {

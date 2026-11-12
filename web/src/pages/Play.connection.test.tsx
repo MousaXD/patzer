@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { StrictMode } from 'react';
+import { Chess } from 'chess.js';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
@@ -131,6 +132,34 @@ beforeEach(() => {
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('ignores malformed live move and takeback updates without corrupting a synced game', async () => {
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive(snapshot); });
+    const board = screen.getByTestId('chess-board') as HTMLButtonElement;
+    for (const bad of [
+      { type: 'move_made', fen: 'not-a-fen', san: 'e4', uci: 'e2e4' },
+      { type: 'move_made', fen: START, san: 'e4', uci: 'not-uci' },
+      { type: 'move_made', fen: START, san: null, uci: 'e2e4' },
+      { type: 'takeback_applied', fen: 'not-a-fen', history: [] },
+      { type: 'takeback_applied', fen: START, history: [null] },
+    ]) {
+      expect(() => act(() => ws.receive(bad))).not.toThrow();
+      expect(board.dataset.fen).toBe(START);
+      expect(board.disabled).toBe(false);
+    }
+    const chess = new Chess(START);
+    chess.move('e4');
+    act(() => ws.receive({ type: 'move_made', fen: chess.fen(), san: 'e4', uci: 'e2e4' }));
+    // On the opponent's turn the displayed premove shadow deliberately sets
+    // our side to move, even though the authoritative FEN's turn is black.
+    expect(screen.getByTestId('chess-board').getAttribute('data-fen')?.split(' ')[0]).toBe(chess.fen().split(' ')[0]);
+    expect(() => act(() => ws.receive({ type: 'takeback_applied', fen: START, history: [] }))).not.toThrow();
+    expect(screen.getByTestId('chess-board').getAttribute('data-fen')).toBe(START);
+  });
+
   it('ignores malformed game-socket envelopes without breaking the next authoritative board snapshot', async () => {
     render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
     await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
