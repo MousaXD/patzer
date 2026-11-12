@@ -304,7 +304,7 @@ try {
   // Review utilities must remain comfortably actionable on narrow phones.
   // These are real control hitboxes rather than just icon dimensions.
   for(const width of [320,390]){
-    const context=await browser.newContext({viewport:{width,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+    const context=await browser.newContext({viewport:{width,height:844},colorScheme:'dark',reducedMotion:'reduce',acceptDownloads:true});
     try{
       await context.addCookies([{name:account.cookie.split('=')[0],
         value:account.cookie.split('=').slice(1).join('='),url:base}]);
@@ -332,6 +332,15 @@ try {
         `Copy and download must fit in one labeled, non-overlapping row: ${width}px ${JSON.stringify(exportLayout)}`);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)<=2,
         `Review utility layout overflows at ${width}px`);
+      if(width===320){
+        const downloadEvent=page.waitForEvent('download');
+        await page.getByRole('button',{name:'Download',exact:true}).click();
+        const downloaded=await downloadEvent;
+        assert.equal(downloaded.suggestedFilename(),'Sample_White_vs_Sample_Black.pgn');
+        const downloadedPath=await downloaded.path();
+        assert.equal(readFileSync(downloadedPath,'utf8'),db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
+          'Export PGN must download the untouched saved game source, byte for byte');
+      }
       await page.getByRole('button',{name:'Star',exact:true}).scrollIntoViewIfNeeded();
       await page.screenshot({path:join(output,`review-utilities-${width}.png`)});
       const bookmark=page.getByRole('button',{name:'Star',exact:true});
@@ -513,6 +522,136 @@ try {
     await bookmarkContext.close();
     db.prepare('UPDATE games SET bookmarked=0 WHERE id=?').run(id);
   }
+  // An abandoned temporary branch must not accept an obsolete Stockfish
+  // response after the user returns to the saved mainline. Give the first
+  // request a deliberately late, synthetic scored result, then verify that
+  // reopening the branch requires a fresh request instead of stale prose.
+  const staleContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseObsolete=()=>{};
+  const obsoleteGate=new Promise(resolve=>{releaseObsolete=resolve;});
+  try{
+    await staleContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await staleContext.newPage();
+    const storedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const initialChess=new Chess();
+    const beforeFen=initialChess.fen();
+    const d4=initialChess.move('d4');
+    assert.ok(d4);
+    const syntheticOldQuality={source:'variation',scoring_version:1,fen_before:beforeFen,
+      fen_after:initialChess.fen(),ply:1,san:'d4',uci:'d2d4',from:'d2',to:'d4',
+      classification:'brilliant',centipawn_loss:0,win_pct_drop:0,eval_before_cp:0,
+      eval_after_cp:200,mate_before:null,mate_after:null,best_move_uci:'d2d4',
+      best_move_san:'d4',best_pv:[],is_best:true,legal_move_count:20,
+      depth_before:12,depth_after:12,candidate_count:20,terminal:null};
+    let scoringRequests=0;
+    await page.route('**/api/analyze/variation-move',async route=>{
+      scoringRequests++;
+      if(scoringRequests===1){
+        await obsoleteGate;
+        // The browser may have aborted the fetch; fulfilling a cancelled
+        // intercepted request is expected to fail without impacting the app.
+        await route.fulfill({status:200,contentType:'application/json',
+          body:JSON.stringify({quality:syntheticOldQuality})}).catch(()=>{});
+      }else{
+        await route.fulfill({status:503,contentType:'application/json',body:'{"error":"engine_unavailable"}'});
+      }
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.locator('cg-board').waitFor({state:'visible'});
+    const board=await page.locator('cg-board').boundingBox();
+    assert.ok(board);
+    const requestStarted=page.waitForRequest(request=>request.url().endsWith('/api/analyze/variation-move'));
+    await page.mouse.move(board.x+board.width*3.5/8,board.y+board.height*6.5/8);
+    await page.mouse.down();
+    await page.mouse.move(board.x+board.width*3.5/8,board.y+board.height*4.5/8,{steps:12});
+    await page.mouse.up();
+    await requestStarted;
+    const english=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByRole('button',{name:english.review.variationReturn}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('0 /'));
+    releaseObsolete();
+    await page.waitForTimeout(200);
+    const freshRequest=page.waitForRequest(request=>request.url().endsWith('/api/analyze/variation-move'));
+    await page.getByRole('button',{name:english.review.variationOption
+      .replace('{{number}}','1').replace('{{moves}}','1')}).click();
+    await freshRequest;
+    await page.getByText(english.review.variationEngineUnavailable,{exact:true}).waitFor({state:'visible'});
+    assert.equal(scoringRequests,2,
+      'Reopening a branch must not replay obsolete engine scores from a cancelled request');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,storedPgn);
+    await page.screenshot({path:join(output,'abandoned-variation-scoring-390.png')});
+  }finally{
+    releaseObsolete();
+    await staleContext.close();
+  }
+  // A response that claims the correct final FEN but identifies a different
+  // preceding move must not be presented as a Brilliant (or any) score.
+  // Source identity is stronger than matching the resulting board alone.
+  const mismatchedContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await mismatchedContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await mismatchedContext.newPage();
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const chess=new Chess();
+    const sourceFen=chess.fen();
+    assert.ok(chess.move('d4'));
+    const resultFen=chess.fen();
+    let interceptedRequest=false;
+    const receivedScoringRequests=[];
+    const mismatchedQuality={
+      source:'variation',scoring_version:1,fen_before:'different-source-fen',
+      fen_after:resultFen,ply:1,san:'e4',uci:'e2e4',from:'e2',to:'e4',
+      classification:'brilliant',centipawn_loss:0,win_pct_drop:0,
+      eval_before_cp:0,eval_after_cp:200,mate_before:null,mate_after:null,
+      best_move_uci:'e2e4',best_move_san:'e4',best_pv:[],is_best:true,
+      legal_move_count:20,depth_before:12,depth_after:12,candidate_count:20,terminal:null,
+    };
+    await page.route('**/api/analyze/variation-move',async route=>{
+      const request=route.request().postDataJSON();
+      interceptedRequest=true;
+      receivedScoringRequests.push(request);
+      const quality=receivedScoringRequests.length===1 ? mismatchedQuality : {
+        ...mismatchedQuality,fen_before:sourceFen,uci:'d2d4',san:'d4',
+        from:'d2',to:'d4',classification:'best',best_move_uci:'d2d4',best_move_san:'d4',
+      };
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({quality})});
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    const board=await page.locator('cg-board').boundingBox();
+    assert.ok(board);
+    const from={x:board.x+board.width*3.5/8,y:board.y+board.height*6.5/8};
+    const to={x:board.x+board.width*3.5/8,y:board.y+board.height*4.5/8};
+    const scoringCompleted=page.waitForResponse(response=>response.url().endsWith('/api/analyze/variation-move') && response.status()===200,{timeout:6000});
+    await page.mouse.move(from.x,from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x,to.y,{steps:12});
+    await page.mouse.up();
+    await scoringCompleted;
+    assert.ok(interceptedRequest,'Injected mismatched engine response must reach the browser');
+    assert.equal(receivedScoringRequests[0]?.fen_before,sourceFen);
+    assert.equal(receivedScoringRequests[0]?.move_uci,'d2d4');
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByText(locale.review.variationMove.replace('{{san}}','d4'),{exact:true}).waitFor({state:'visible'});
+    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.includes('var'));
+    const mismatchNotice=page.getByText(locale.review.variationSourceMismatch,{exact:true});
+    await mismatchNotice.waitFor({state:'visible',timeout:3000});
+    await mismatchNotice.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'mismatched-variation-score-rejected-390.png')});
+    assert.equal(await page.locator('[data-review-variation-quality]').count(),0,
+      'A score for a different move must never classify the active variation');
+    assert.ok(await page.getByLabel(locale.review.variationEvalUnavailable).count()>0,
+      'Rejected engine data must not display a fabricated active variation evaluation');
+    const matchedAgain=page.waitForResponse(response=>response.url().endsWith('/api/analyze/variation-move') && response.status()===200);
+    await page.getByRole('button',{name:locale.review.variationRetryScoring}).click();
+    await matchedAgain;
+    await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true}).waitFor({state:'visible',timeout:3000});
+    await page.getByText(locale.review.variationSourceMismatch,{exact:true}).waitFor({state:'hidden'});
+    assert.equal(receivedScoringRequests.length,2,'Retry should fetch a fresh response for the same authoritative move');
+    await page.screenshot({path:join(output,'matched-variation-score-after-retry-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await mismatchedContext.close();}
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
   for(const [width,height] of [[320,760],[390,844],[1024,768]]){

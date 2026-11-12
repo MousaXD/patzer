@@ -34,7 +34,7 @@ import ExplorerPanel from '../components/ExplorerPanel';
 import { soundForMove, inferMoveFlagsFromSan } from '../lib/sounds';
 import { useAnalysisVariations } from '../lib/useAnalysisVariations';
 import { legalAnalysisMove } from '../lib/analysisVariations';
-import { qualityMatchesPosition, type VariationMoveQuality } from '../lib/classification';
+import { qualityMatchesVariationMove, type VariationMoveQuality } from '../lib/classification';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { parseFromPosition, playFromPosition, playFromUrl } from '../lib/fromPosition';
@@ -378,7 +378,7 @@ function GameAnalyzerView() {
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
   const [qualityError, setQualityError] = useState('');
   const [qualityRetry, setQualityRetry] = useState(0);
-  const variationQuality = qualityKey && qualityMatchesPosition(qualityCache[qualityKey], variations.currentFen)
+  const variationQuality = qualityKey && qualityMatchesVariationMove(qualityCache[qualityKey], branchMove)
     ? qualityCache[qualityKey] : null;
   const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
   // A branch is an ephemeral sequence, not part of the saved game's PGN.
@@ -417,7 +417,7 @@ function GameAnalyzerView() {
           '/api/analyze/variation-move', reviewVariationScoringRequest(branchMove), controller.signal,
         );
         if (!cancelled) {
-          if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
+          if (qualityMatchesVariationMove(result.quality, branchMove)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
           } else {
             setQualityError('source_mismatch');
@@ -860,7 +860,7 @@ function GameAnalyzerView() {
             <div className="min-w-0 truncate text-chesscom-500">
               {isVariation ? (
                 <><span className="font-medium text-amber-600">{t('review.variationMove', { san: branchMove?.san ?? t('review.startingPosition') })}</span>
-                  {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
+                  {variationQuality && <span data-review-variation-quality className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
                 </>
               ) : ply > 0 && pos?.san ? (
                 <>

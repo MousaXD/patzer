@@ -83,7 +83,31 @@ export interface VariationMoveQuality {
   terminal: 'checkmate' | 'draw' | null;
 }
 
-/** Guard against applying a slow engine response to another board position. */
+/** Position-only check for decorative board markers. A move score also needs
+ * the exact source move identity; use qualityMatchesVariationMove for that. */
 export function qualityMatchesPosition(quality: VariationMoveQuality | null | undefined, fen: string): boolean {
   return !!quality && quality.fen_after === fen;
+}
+
+/** A final FEN alone cannot authenticate a move classification. Reject a
+ * response for another preceding position/move even if it claims the same
+ * resulting board; otherwise a stale Brilliant or evaluation could be shown
+ * for the user's unrelated variation. Never infer or manufacture scores. */
+export function qualityMatchesVariationMove(
+  quality: VariationMoveQuality | null | undefined,
+  move: { fenBefore: string; fenAfter: string; uci: string; san: string; from: string; to: string } | null | undefined,
+): quality is VariationMoveQuality {
+  return !!quality && !!move
+    && quality.source === 'variation'
+    && quality.fen_before === move.fenBefore
+    && qualityMatchesPosition(quality, move.fenAfter)
+    && quality.uci === move.uci
+    && quality.san === move.san
+    && quality.from === move.from
+    && quality.to === move.to
+    && styleFor(quality.classification) !== null
+    && Number.isFinite(quality.eval_before_cp)
+    && Number.isFinite(quality.eval_after_cp)
+    && Number.isFinite(quality.centipawn_loss)
+    && Number.isFinite(quality.win_pct_drop);
 }
