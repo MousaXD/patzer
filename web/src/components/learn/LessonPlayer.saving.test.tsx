@@ -82,6 +82,46 @@ function mount(next: LessonRef | null = null, onExit = vi.fn(), onOpenLesson = v
 afterEach(() => { cleanup(); mocks.post.mockReset(); });
 
 describe('LessonPlayer saved progress', () => {
+  it('does not treat Right Arrow inside another dialog or editable field as a lesson-finish command', async () => {
+    mocks.post.mockResolvedValue({ stars: 3 });
+    mount();
+    await screen.findByRole('button', { name: 'learn.finish' });
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.tabIndex = 0;
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    dialog.appendChild(editor);
+    document.body.appendChild(dialog);
+    try {
+      fireEvent.keyDown(dialog, { key: 'ArrowRight' });
+      fireEvent.keyDown(editor, { key: 'Enter' });
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' }); // dialog still open, focus can be stale
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'learn.finish' })).toBeTruthy();
+
+      dialog.remove();
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+      await waitFor(() => expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/learn/board', { stars: 3 }));
+    } finally {
+      dialog.remove();
+    }
+  });
+
+  it('respects a consumed keyboard event and modifier shortcuts instead of finishing the lesson', async () => {
+    mocks.post.mockResolvedValue({ stars: 3 });
+    mount();
+    await screen.findByRole('button', { name: 'learn.finish' });
+    const consumed = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    consumed.preventDefault();
+    window.dispatchEvent(consumed);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'Enter', metaKey: true });
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'learn.finish' })).toBeTruthy();
+  });
+
   it('shows a provisional score while saving or offline, and celebrates earned stars only after acknowledgment', async () => {
     let confirm!: () => void;
     mocks.post.mockImplementationOnce(() => new Promise<void>((resolve) => { confirm = resolve; }));

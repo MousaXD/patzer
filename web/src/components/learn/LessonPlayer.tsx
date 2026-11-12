@@ -356,8 +356,16 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   advanceRef.current = advance;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && ['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(el.tagName)) return;
+      // Lesson shortcuts never override a focused dialog, an editable region,
+      // another feature's handled key, or OS/browser modifier shortcuts.
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+      // A dialog may not have moved focus yet (or may be animating open).
+      // Even a body-targeted key must not complete a lesson behind it.
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const el = e.target instanceof Element ? e.target as HTMLElement : null;
+      if (el && (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(el.tagName)
+        || el.isContentEditable
+        || el.closest('[contenteditable="true"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'))) return;
       if (e.key === 'Enter' || e.key === 'ArrowRight') advanceRef.current();
     };
     window.addEventListener('keydown', onKey);
