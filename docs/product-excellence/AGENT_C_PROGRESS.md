@@ -1087,3 +1087,17 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **empty search-result recovery and keyboard focus**. When a player types a search that yields zero games, verify the clear-search control and existing recovery button are reachable with keyboard only, have descriptive accessible labels, and restore the prior game count without losing unrelated source/date filters. Check both 320px mobile and desktop browser paths before changing any UI.
+
+## 2026-11-13 — Verify keyboard-first empty-search recovery preserves scoped filters
+
+- Recovered clean pushed `06f8a69` and audited two distinct recovery actions in the Library's empty search state: the 44px **Clear search** X inside the input and the separate **Clear filters** button on the empty-result card. Added a real Chromium keyboard-only journey at **320px dark** and **1440px light**: select Lichess and a From date, type a nonmatching opponent, press Tab from the focused search input, confirm focus lands on the clearly labeled search X, and press Enter to clear only `q`. Verified focus returns to the search field, count recovers to **40 of 310**, and `source=lichess` plus `from_date=2025-01-01` remain in the URL. Then repeated the no-match query, focused the broader **Clear filters** recovery button, activated it by Enter, and verified **40 of 620** with all search/source/date restrictions cleared.
+- Both browser paths passed without keyboard traps, inaccessible control names, unexpected URL changes, JS errors or horizontal overflow. **No product defect reproduced**, so the existing input controls, focus handling and filtering code were left unchanged; retained the real-browser regression.
+
+### Verification
+
+- Complete synthetic Chromium desktop/mobile light/dark, German layouts, keyboard empty recovery, date and search history, pending bookmarks, provider/PGN imports and cursor pagination: passed. Full repository suite: **109 passed files, 2 skipped; 1,137 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Test-and-report-only update; no production data, server changes, other-agent files, merge or deployment.
+
+### Next independent audit
+
+- Audit **keyboard focus after removing a bookmark from Starred-only**. The Library deliberately keeps a starred card during a pending unbookmark request, but then removes it after success. If keyboard focus was on the removed star control, it may fall to the document body with no meaningful target, making consecutive starred-game cleanup frustrating. Reproduce on a 390px real Chromium page with keyboard activation and completed server mutation; if focus is lost, restore it to the Starred-only toggle or a nearby surviving game control without disturbing mouse interactions or the existing failure retry path.

@@ -808,6 +808,45 @@ try {
     console.log('PASS search draft and URL remain aligned after Back/Forward during unfinished typing');
   } finally {await searchHistory.context.close();}
 
+  for (const width of [320,1440]) {
+    const emptyRecovery=await newPage(width===320?'dark':'light',width,700);
+    try {
+      const {page,pageErrors}=emptyRecovery;
+      await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+      await page.getByLabel('Games from date').fill('2025-01-01');
+      const search=page.getByRole('searchbox');
+      await search.fill('no-such-player-84841');
+      await page.getByText('No games match your search').waitFor();
+      await search.focus();
+      await page.keyboard.press('Tab');
+      const clear=page.getByRole('button',{name:'Clear search'});
+      assert.equal(await clear.evaluate(node=>document.activeElement===node),true,
+        `The clear-search X must be keyboard reachable after the search field at ${width}px`);
+      await page.keyboard.press('Enter');
+      await page.waitForURL(href=>!new URL(href).searchParams.has('q'));
+      await page.getByText('40 of 310 games').waitFor();
+      const params=new URL(page.url()).searchParams;
+      assert.equal(params.get('source'),'lichess',
+        'Keyboard clearing a failed search unexpectedly removed the source filter');
+      assert.equal(params.get('from_date'),'2025-01-01',
+        'Keyboard clearing a failed search unexpectedly removed the date filter');
+      assert.equal(await search.evaluate(node=>document.activeElement===node),true,
+        'Keyboard clear should restore focus to the search input');
+      await search.fill('no-such-player-84841');
+      await page.getByText('No games match your search').waitFor();
+      const reset=page.getByRole('button',{name:'Clear filters'});
+      await reset.focus();
+      await page.keyboard.press('Enter');
+      await page.getByText('40 of 620 games').waitFor();
+      const cleared=new URL(page.url()).searchParams;
+      assert.ok(!cleared.has('q') && !cleared.has('source') && !cleared.has('from_date'),
+        'Explicit filter reset failed to restore the complete saved Library');
+      assert.ok((await metrics(page)).overflow<=2,`Empty recovery caused overflow at ${width}px`);
+      assert.deepEqual(pageErrors,[],`Keyboard empty-results recovery caused a browser exception at ${width}px`);
+      console.log(`PASS keyboard empty-search recovery at ${width}px preserves filters until explicit reset`);
+    } finally {await emptyRecovery.context.close();}
+  }
+
   const germanDateNotice=await newPage('dark',320,700,{locale:'de'});
   try {
     const {page,pageErrors}=germanDateNotice;
