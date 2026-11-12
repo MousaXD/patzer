@@ -453,6 +453,13 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
    outranks ordinary utility classes. Keep the exception scoped to auth. */
 .auth-shell .input { min-height:2.75rem!important; }
 .setup-shell .input { min-height:2.75rem!important; } /* Owner wizard only; other workspace forms unchanged. */
+/* Shell selects already supply a dedicated ChevronDown. The generic high-
+   specificity form rule adds a second arrow and font-scaled side padding,
+   concealing the language name on 200%-text tablets. */
+select[data-shell-language] { background-image:none; }
+@media (min-width:768px) {
+ select[data-shell-language] { padding:2px 28px 2px 12px!important; }
+}
 .auth-shell .text-ink-400 { color:var(--ui-foreground-subtle); }
 .auth-shell .text-ink-500,.auth-shell .text-ink-600 { color:var(--ui-foreground-muted); }
 .auth-shell .text-accent-600 { color:var(--ui-primary); }

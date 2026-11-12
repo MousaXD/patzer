@@ -1588,3 +1588,35 @@
 ### Next audit
 
 - Audit the **tablet and compact-desktop navigation shell** (768/1024px) at enlarged 150%–200% root text across languages and themes. The desktop rail and header use font-relative widths for some controls; check actual available workspace width, inner horizontal overflow, focus visibility and control hit sizes before editing.
+
+## 2026-11-13: Restore tablet wayfinding and readable language selection at 200% text
+
+### Browser evidence and root causes
+
+- Continued from clean pushed `462b038` without restarting completed mobile or breadcrumb work. Local Chromium negative control measured **60 cases**: 768/1024px, root font 16/24/32px, five languages and light/dark themes.
+- At **768px / 200% text scaling**, the authenticated page title had **0px visible width in all ten language/theme combinations**. The desktop navigation rail expanded from 80px to 160px, and the shortcut/account controls expanded from 44px to 88px because their geometry was expressed in root-relative Tailwind units. The rail had **5px internal overflow in 20 cases**. No document horizontal overflow was detected, so ordinary overflow-only smoke checks missed this issue.
+- After restoring space, the same Chromium screenshots exposed an additional user-visible defect: the desktop language selector showed only tiny remnants of its selected text at 200%. Computed styles revealed a global high-specificity form rule adding 16px top/bottom padding and ~77px right padding to a 44px-tall selector, along with a **second SVG dropdown arrow**. The selected label was clipped both vertically and horizontally.
+
+### Implementation
+
+1. Keep the desktop rail **80px wide** and its inner horizontal padding physically bounded at 2px, preserving all original navigation links, labels, active states and accessible names.
+2. Use **56px header height**, physical 20px header padding and 8px gaps at the `md` breakpoint; keep utility controls at physical 44px minimum touch targets so they cannot push the current page title to zero width when text enlarges. Desktop `xl` presentation retains its existing intended sizing.
+3. Allow the language selector width to grow from its 108px baseline up to **180px** as font size increases, without taking more than needed. Mark the shared shell select with `data-shell-language`, then narrowly override the legacy form padding/duplicated background arrow in `index.css` (desktop padding `2px 28px 2px 12px`). Do not affect other form fields or the selected language/locale persistence behavior.
+4. Extend `Layout.navigation.test.tsx` with explicit compact-tablet geometry and language semantics while updating earlier rail-width expectations.
+5. Add reusable `web/src/components/navigation/capture-scaled-tablet-shell.mjs` for **60 actual Chromium configurations**. It checks 80px rail width, rail/document/header overflow, visible unclipped page title, 44px utility hit areas, selected native-language label fitting its computed available text box, sufficient vertical line height, no duplicate arrow, language synchronization and visible keyboard focus.
+
+### Verified outcome
+
+- Post-fix tablet browser matrix: **60/60 passed** with zero header/sidebar overflow, zero clipped title, no undersized controls, and native-language dropdown labels fitting at up to 200% text scaling.
+- Inspected `artifacts/agent-02/tablet-shell-verified-light-768-font32.png` and `tablet-shell-verified-dark-1024-font32.png`. The Home title and **Deutsch** dropdown are fully readable with a single dropdown arrow, and focused state remains prominent in both themes.
+- Focused navigation tests: **22/22 passed**.
+- `node web/src/components/navigation/capture-scaled-drawer.mjs`: **60/60 passed**, showing no regression to the established mobile drawer.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** (global responsive, keyboard, error, sign-out and localization smoke).
+- `npx vitest run web/src --maxWorkers=2`: **473/473 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No changes to feature-owned pages, other agents' worktrees, backend data, deployment or main.
+
+### Next audit
+
+- The 768px/200%-text Home screenshot revealed **poor first-use hero name readability** after the navigation recovered its space. Reproduce the actual heading and action geometry in light/dark and multiple languages at 768/1024px with large text; investigate whether the two-column hero squeezes the user name into only a few visible glyphs. Only change the homepage-owned layout if the defect is supported by measured browser evidence.

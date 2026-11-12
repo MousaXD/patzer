@@ -172,12 +172,35 @@ describe('Patzer navigation rail', () => {
 
   it('is stable-width and exposes distinct desktop/mobile navigation semantics', () => {
     mount();
-    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
+    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-[80px]');
     expect(document.querySelector('[data-navigation-rail]')?.className).toContain('md:flex');
     expect(document.querySelector('[data-app-shell]')?.className).toContain('min-w-0');
     expect(document.querySelector('[data-workspace-content]')?.className).toContain('max-w-[1440px]');
     expect(screen.getByRole('button', { name: 'Open menu' }).className).toContain('md:hidden');
     expect(screen.queryByText('old-avatar-value')).toBeNull();
+  });
+
+  it('keeps tablet utility controls compact and the selected language discoverable', () => {
+    mount();
+    const rail = document.querySelector('[data-navigation-rail]');
+    const nav = document.querySelector('[data-primary-navigation]');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(rail?.className).toContain('w-[80px]');
+    expect(nav?.className).toContain('px-[2px]');
+    expect(header?.className).toContain('md:h-[56px]');
+    expect(header?.className).toContain('md:gap-[8px]');
+    const select = within(header as HTMLElement).getByRole('combobox', { name: 'Language' });
+    expect(select.hasAttribute('data-shell-language')).toBe(true);
+    expect(select.getAttribute('value')).toBeNull();
+    expect((select as HTMLSelectElement).selectedOptions[0].text).toBe('English');
+    expect(select.className).toContain('md:h-[44px]');
+    for (const name of ['Open command palette', 'Keyboard shortcuts', 'Log out']) {
+      const control = within(header as HTMLElement).getByRole('button', { name });
+      expect(control.className).toContain('md:h-[44px]');
+    }
+    expect(within(header as HTMLElement).getByRole('link', { name: 'Settings' }).className)
+      .toContain('md:h-[44px]');
+    expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
   });
 
   it('retains room for the current page at 200% text scaling on narrow phones', () => {
@@ -365,7 +388,7 @@ describe('Patzer navigation rail', () => {
     const link = screen.getByRole('link', { name: translated });
     expect(link.getAttribute('title')).toBe(translated);
     expect(link.querySelector('span:last-child')?.className).toContain('line-clamp-2');
-    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
+    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-[80px]');
   });
 
   it('allows long mobile navigation and changelog labels to wrap at enlarged text sizes', async () => {
