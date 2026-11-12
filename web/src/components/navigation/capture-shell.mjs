@@ -657,6 +657,10 @@ try {
     await page.waitForFunction(
       (code) => localStorage.getItem('lang') === code, language, { timeout: 6000 },
     );
+    const pageLang = await page.evaluate(() => document.documentElement.lang);
+    if (pageLang !== language) {
+      throw new Error(`Recent games ${language}/${width}px: HTML language ${pageLang} disagrees with selected interface language`);
+    }
     const actual = await row.locator('[data-home-recent-date]').innerText();
     if (actual.trim() !== expected) {
       throw new Error(`Recent games ${language}/${width}px: wrong localized date ${JSON.stringify({ actual, expected })}`);
@@ -719,6 +723,9 @@ try {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.goto(origin, { waitUntil: 'domcontentloaded' });
     await page.getByRole('heading', { name: locale.firstGame }).waitFor();
+    if (await page.evaluate(() => document.documentElement.lang) !== locale.code) {
+      throw new Error(locale.code + ' translated first-use Home without updating its HTML language');
+    }
     const hero = page.locator('main section').first();
     const text = await hero.innerText();
     if (!locale.greeting.some((greeting) =>
@@ -854,6 +861,10 @@ try {
       await page.getByRole('navigation', { name: locale.primary }).waitFor({ timeout: 8000 });
     } else {
       await page.getByRole('button', { name: locale.menu }).waitFor({ timeout: 8000 });
+    }
+    const htmlLanguage = await page.evaluate(() => document.documentElement.lang);
+    if (htmlLanguage !== locale.code) {
+      throw new Error(`Localized navigation ${locale.code}/${locale.width}px has incorrect document language ${htmlLanguage}`);
     }
     const sectionHeading = page.locator('[data-workspace-header] [data-current-section]');
     await sectionHeading.getByText(locale.review).waitFor({ timeout: 8000 });

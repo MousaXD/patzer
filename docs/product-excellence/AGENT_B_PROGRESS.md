@@ -1254,3 +1254,32 @@
 ### Next audit
 
 - Verify the **HTML document language** when the user selects a language other than English. Chromium currently reports `document.documentElement.lang === 'en'` while rendering German UI text; if confirmed, screen readers may pronounce the interface using the wrong language. Fix the global language synchronization once, for all authenticated and unauthenticated screens, with targeted DOM/Chromium evidence.
+
+## 2026-11-12: Synchronize HTML language with Patzer's five interface languages
+
+### Reproduction and root cause
+
+- Continued from clean pushed `d7e9365` without re-running completed date investigations.
+- Chromium had shown a German-language Home heading (`Letzte Partien`) with `document.documentElement.lang === 'en'` and browser locale `en-US`. This signals English speech rules to screen readers even though navigation and page content are German.
+- `web/index.html` intentionally starts with `lang="en"`, but the shared `web/src/i18n.ts` initialization did not update the document language after detecting a stored setting or processing a profile/settings language change. There was no existing `document.documentElement.lang` sync in the app.
+
+### Scoped implementation
+
+1. Register a **single global i18next `languageChanged` handler before initialization** in `web/src/i18n.ts`. Set `document.documentElement.lang` to the supported, normalized language code, with a document-presence guard for test/server environments.
+2. No route-specific language handling, translation text, visual styles or feature-agent pages changed. The listener covers **initial detection from localStorage and runtime changes**, including public login/setup and signed-in profile language updates.
+3. Add `web/src/i18n.documentLanguage.test.ts` with five supported language cases and a switch-back-to-English regression.
+4. Strengthen the existing Chromium shell fixture's multi-language Home, date and navigation checks to fail when visible language disagrees with the actual document `lang` attribute.
+
+### Verification
+
+- Focused `npx vitest run web/src/i18n.documentLanguage.test.ts --maxWorkers=2`: **6/6 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including responsive, focus, Home date and translated navigation regressions and the new HTML-language assertions.
+- Independent Chromium **unauthenticated** `/login` probe with browser locale `en-US` and stored language preferences `en/de/es/ru/bg`: for every preference, document `lang` matched the selected language; observed German sign-in content in `artifacts/agent-02/guest-login-language-de.png`.
+- `npx vitest run web/src --maxWorkers=2`: **453/453 passed across 75 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No changes to main, production data, deployment or other agents' worktrees.
+
+### Next audit
+
+- Audit the **public sign-in / setup language selector** at 320px and enlarged text for touch accessibility. The selector appears as five compact two-letter controls, and actual hit rectangles may fall short of the 44px target; measure in Chromium and fix within the global authentication shell only if confirmed. Include keyboard selection and all themes.
