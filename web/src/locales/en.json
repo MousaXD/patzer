@@ -965,6 +965,7 @@
     "more": "More",
     "ratingTrend": "Rating trajectory",
     "ratingExplanation": "Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.",
+    "ratingCondensed": "Long histories are condensed on the chart, keeping recorded endpoints and high/low values. The summaries use every rating entry.",
     "ratingSingle": "One rating recorded — no trend to compare",
     "ratingChange": "{{change}} since first recorded rating",
     "ratingEntries_one": "{{count}} recorded rating",

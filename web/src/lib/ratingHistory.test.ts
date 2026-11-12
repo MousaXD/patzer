@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ratingHistorySeries } from './ratingHistory';
+import { condenseRatingHistory, ratingHistorySeries } from './ratingHistory';
 
 describe('recorded rating history', () => {
   it('sorts actual recorded entries and computes change only from first to last', () => {
@@ -29,5 +29,27 @@ describe('recorded rating history', () => {
     });
     expect(series.map((r) => r.key)).toEqual(['daily']);
     expect(series[0]?.change).toBeNull();
+  });
+
+  it('bounds large charts while preserving recorded endpoints, extremes and ordering', () => {
+    const points = Array.from({ length: 6000 }, (_, i) => ({ t: new Date(Date.UTC(2010, 0, 1 + i)).toISOString(), r: 1200 + (i % 120) }));
+    points[1321]!.r = 500;
+    points[4499]!.r = 1900;
+    const condensed = condenseRatingHistory(points);
+    expect(condensed.length).toBeLessThanOrEqual(320);
+    expect(condensed.length).toBeGreaterThan(30);
+    expect(condensed[0]).toEqual(points[0]);
+    expect(condensed.at(-1)).toEqual(points.at(-1));
+    expect(condensed).toContainEqual(points[1321]);
+    expect(condensed).toContainEqual(points[4499]);
+    for (let i = 1; i < condensed.length; i++) {
+      expect(Date.parse(condensed[i]!.t)).toBeGreaterThan(Date.parse(condensed[i - 1]!.t));
+    }
+    expect(points).toHaveLength(6000); // the source data was never modified
+  });
+
+  it('keeps small series intact without inserting artificial intermediate values', () => {
+    const points = [{ t: '2026-01-01', r: 1000 }, { t: '2026-02-01', r: 1040 }];
+    expect(condenseRatingHistory(points)).toBe(points);
   });
 });

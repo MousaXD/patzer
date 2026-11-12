@@ -965,6 +965,7 @@
     "more": "Mehr",
     "ratingTrend": "Wertungsverlauf",
     "ratingExplanation": "Hier erscheinen nur aufgezeichnete Wertungsänderungen. Die Differenz vergleicht den ersten und den letzten erfassten Wert je Bedenkzeit.",
+    "ratingCondensed": "Lange Verläufe werden im Diagramm verdichtet; Anfang, Ende sowie Höchst- und Tiefstwerte bleiben erhalten. Die Zusammenfassung berücksichtigt alle Einträge.",
     "ratingSingle": "Nur ein Wertungseintrag – noch kein Vergleich möglich",
     "ratingChange": "{{change}} seit dem ersten aufgezeichneten Wert",
     "ratingEntries_one": "{{count}} aufgezeichneter Wert",

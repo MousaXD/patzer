@@ -13,7 +13,7 @@ import { useAuth } from '../state/auth';
 import type { Classification } from '../types';
 import ClassificationIcon from '../components/ClassificationIcon';
 import { buildActivityGrid } from '../lib/insightsActivity';
-import { ratingHistorySeries } from '../lib/ratingHistory';
+import { condenseRatingHistory, ratingHistorySeries } from '../lib/ratingHistory';
 
 type Achievement = {
   id: string;
@@ -473,13 +473,27 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
     );
   }
 
-  // Combined Y axis across all series
-  const all = series.flatMap((s) => s.points.map((p) => p.r));
-  let min = Math.min(...all);
-  let max = Math.max(...all);
+  // Use all authoritative records for the axes and summaries. Avoid spreading
+  // a very long history into Math.min/Math.max (which can exceed JS argument
+  // limits) and bound only the plotted SVG nodes below.
+  let min = Infinity;
+  let max = -Infinity;
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  for (const s of series) {
+    for (const point of s.points) {
+      min = Math.min(min, point.r);
+      max = Math.max(max, point.r);
+      const when = Date.parse(point.t);
+      tMin = Math.min(tMin, when);
+      tMax = Math.max(tMax, when);
+    }
+  }
   if (min === max) { min -= 50; max += 50; }
   const pad = Math.max(20, Math.round((max - min) * 0.08));
   min -= pad; max += pad;
+  const plotted = series.map((s) => ({ ...s, plotPoints: condenseRatingHistory(s.points) }));
+  const condensed = plotted.some((s) => s.plotPoints.length < s.points.length);
 
   const W = 480, H = 140, padX = 28, padY = 14;
   const colors: Record<string, string> = {
@@ -488,8 +502,6 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
     bullet: '#c63b3a',
     daily: '#6c7a89',
   };
-  const xs = series.flatMap((s) => s.points.map((p) => new Date(p.t).getTime()));
-  const tMin = Math.min(...xs), tMax = Math.max(...xs);
   // One recorded rating is a data point, not a rising/falling trend. Center
   // it rather than leaving a tiny dot glued to the chart's left edge.
   const xScale = (t: number) => tMin === tMax ? W / 2 : padX + ((t - tMin) / (tMax - tMin)) * (W - 2 * padX);
@@ -513,13 +525,13 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
             <text x={padX - 4} y={yScale(v) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">{Math.round(v)}</text>
           </g>
         ))}
-        {series.map((s) => {
-          const path = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(new Date(p.t).getTime()).toFixed(1)},${yScale(p.r).toFixed(1)}`).join(' ');
+        {plotted.map((s) => {
+          const path = s.plotPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(new Date(p.t).getTime()).toFixed(1)},${yScale(p.r).toFixed(1)}`).join(' ');
           return (
             <g key={s.key}>
               <path d={path} fill="none" stroke={colors[s.key]} strokeWidth={1.5} />
-              {s.points.map((p, i) => (
-                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={s.points.length === 1 ? 3.6 : 2.5} fill={colors[s.key]}>
+              {s.plotPoints.map((p, i) => (
+                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={s.plotPoints.length === 1 ? 3.6 : 2.5} fill={colors[s.key]}>
                   <title>{`${t(`players.tc.${s.key}`)} ${p.r} · ${new Date(p.t).toLocaleDateString()}`}</title>
                 </circle>
               ))}
@@ -534,6 +546,11 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
       <p className="mt-3 text-xs leading-relaxed text-chesscom-500">
         {t('insights.ratingExplanation', { defaultValue: 'Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.' })}
       </p>
+      {condensed && (
+        <p className="mt-1 text-xs leading-relaxed text-chesscom-500">
+          {t('insights.ratingCondensed', { defaultValue: 'Long histories are condensed on the chart, keeping recorded endpoints and high/low values. The summaries use every rating entry.' })}
+        </p>
+      )}
       <div role="list" className="mt-3 grid gap-2 sm:grid-cols-2">
         {series.map((s) => (
           <div key={s.key} role="listitem" className="min-w-0 rounded-lg bg-chesscom-50/70 p-3 dark:bg-chesscom-900/40">
