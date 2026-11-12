@@ -1429,6 +1429,46 @@ try {
       assert.ok(await timeline.evaluate(el=>document.activeElement===el),
         'Keyboard arrows must retain slider focus and use saved-game plies');
       await page.screenshot({path:join(output,`variation-graph-keyboard-scrub-${width}.png`)});
+      // The saved move list is below the board on phones, just like the
+      // original timeline. A tapped SAN must reveal the selected original
+      // board; keyboard SAN navigation must keep focus in the move list.
+      const childPicker=page.getByRole('button',{name:'Variation 2 · 9 moves',exact:true});
+      await childPicker.click();
+      await expectProgress('Var 9 / 9');
+      const savedList=page.getByRole('region',{name:'Moves'});
+      const firstSaved=savedList.getByRole('button',{name:/^1\. White e4/});
+      await firstSaved.scrollIntoViewIfNeeded();
+      const beforeMoveClick=await page.evaluate(()=>window.scrollY);
+      await firstSaved.click();
+      await expectProgress(`1 / ${savedMoves.length}`);
+      assert.equal(await firstSaved.getAttribute('aria-current'),'step',
+        'Selecting a saved SAN must highlight the matching move, not the variation');
+      if(width===390){
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('review-board-square'),
+          undefined,{timeout:2500});
+        const board=await page.locator('.review-board-square').boundingBox();
+        assert.ok(board && board.y>=40 && board.y<=110,
+          `A tapped saved SAN must reveal its original board on mobile: ${JSON.stringify(board)}`);
+      }else{
+        const afterMoveClick=await page.evaluate(()=>window.scrollY);
+        assert.ok(Math.abs(afterMoveClick-beforeMoveClick)<=3,
+          `Desktop SAN clicks must keep their side-by-side scroll: ${beforeMoveClick} -> ${afterMoveClick}`);
+      }
+      await page.screenshot({path:join(output,`variation-movelist-return-board-${width}.png`)});
+      await childPicker.click();
+      await expectProgress('Var 9 / 9');
+      await firstSaved.focus();
+      await page.keyboard.press('Enter');
+      await expectProgress(`1 / ${savedMoves.length}`);
+      assert.ok(await firstSaved.evaluate(el=>document.activeElement===el),
+        'Keyboard SAN selection must keep focus in the list for rapid comparison');
+      const secondSaved=savedList.getByRole('button',{name:/^1… Black e5/});
+      await secondSaved.focus();
+      await page.keyboard.press('Enter');
+      await expectProgress(`2 / ${savedMoves.length}`);
+      assert.ok(await secondSaved.evaluate(el=>document.activeElement===el),
+        'Successive keyboard SAN selections must not steal focus');
+      await page.screenshot({path:join(output,`variation-movelist-keyboard-${width}.png`)});
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
     }finally{await nestedContext.close();}
   }

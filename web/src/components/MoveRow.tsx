@@ -11,7 +11,7 @@ interface Props {
   white?: Move;
   black?: Move;
   current: number;
-  onSelect: (ply: number) => void;
+  onSelect: (ply: number, input: 'keyboard' | 'pointer') => void;
   /** Plies singled out by a game report filter; others are dimmed. */
   highlight?: Set<number> | null;
 }
@@ -60,7 +60,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
   num: number;
   side: 'white' | 'black';
   current: boolean;
-  onSelect: (p: number) => void;
+  onSelect: (p: number, input: 'keyboard' | 'pointer') => void;
   t: (key: string) => string;
   highlight?: Set<number> | null;
 }) {
@@ -72,7 +72,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
   return (
     <button
       type="button"
-      onClick={() => onSelect(move.ply)}
+      onClick={(event) => onSelect(move.ply, event.detail === 0 ? 'keyboard' : 'pointer')}
       aria-current={current ? 'step' : undefined}
       aria-label={`${num}${side === 'white' ? '.' : '…'} ${t(`review.${side}`)} ${move.san}${label ? `: ${label}` : ''}`}
       title={label ?? undefined}

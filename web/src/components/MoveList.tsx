@@ -9,7 +9,7 @@ interface Move { ply: number; san: string; classification?: string }
 interface Props {
   moves: Move[];
   current: number;
-  onSelect: (ply: number) => void;
+  onSelect: (ply: number, input: 'keyboard' | 'pointer') => void;
   /** Optional phase split — when present, inserts OPENING / MIDDLEGAME /
    *  ENDGAME divider rows between move-pairs to match chess.com Game Review. */
   phaseSplit?: PhaseSplit | null;
@@ -58,7 +58,7 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
       </div>
       <button
         type="button"
-        onClick={() => onSelect(0)}
+        onClick={(event) => onSelect(0, event.detail === 0 ? 'keyboard' : 'pointer')}
         aria-current={current === 0 ? 'step' : undefined}
         className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
       >

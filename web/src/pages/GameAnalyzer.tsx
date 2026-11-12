@@ -768,6 +768,15 @@ function GameAnalyzerView() {
     boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     boardFocusRef.current?.focus({ preventScroll: true });
   };
+  /** A mobile tap in the rail should reveal the board that changed above.
+   * Keep focus in the rail for keyboard/assistive selections so successive
+   * moves can be compared without losing the active control. */
+  const selectSavedFromRail = (selectedPly: number, input: 'keyboard' | 'pointer') => {
+    setPly(selectedPly);
+    if (input === 'pointer' && window.matchMedia('(max-width: 959px)').matches) {
+      requestAnimationFrame(jumpToBoard);
+    }
+  };
   // In the stacked/mobile layout the board is above the analysis rail.
   // Merely updating the ply after selecting a Key Moment leaves the actual
   // position off-screen. Move focus and scroll to the board on narrow screens;
@@ -1087,15 +1096,7 @@ function GameAnalyzerView() {
                 <EvalGraph
                   evals={timeline.evals}
                   current={isVariation ? undefined : ply}
-                  onClick={(p, input) => {
-                    setPly(p);
-                    // The timeline is below the board on phones. After a
-                    // tap, reveal the saved position; leave keyboard focus
-                    // on the slider for uninterrupted arrow-key scrubbing.
-                    if (input === 'pointer' && window.matchMedia('(max-width: 959px)').matches) {
-                      requestAnimationFrame(jumpToBoard);
-                    }
-                  }}
+                  onClick={selectSavedFromRail}
                   markers={analysis.moves
                     .filter((m) => ['blunder','mistake','inaccuracy','miss','brilliant','great'].includes(m.classification))
                     .map((m) => ({ ply: m.ply, classification: m.classification }))}
@@ -1201,7 +1202,7 @@ function GameAnalyzerView() {
                     <MoveList
                       moves={timeline.moves}
                       current={isVariation ? -1 : ply}
-                      onSelect={setPly}
+                      onSelect={selectSavedFromRail}
                       phaseSplit={analysis.phase_split}
                       startFen={positions[0]?.fen}
                       highlight={pickedSet}

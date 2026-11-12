@@ -568,3 +568,22 @@
 ### Next high-impact issue
 
 - `MoveList` in the Game Review right rail still uses `onSelect={setPly}`. On 390px mobile, choosing a saved SAN from that list likely changes the offscreen board without revealing it, just as the evaluation graph did before this fix. Audit the actual nested-branch-to-saved-MoveList workflow in Chromium, with keyboard focus preserved for list navigation if appropriate. Correct only if reproducible; keep desktop side-by-side and original PGN intact.
+
+## 2026-11-12: mobile SAN move-list navigation without breaking keyboard review
+
+### Reproduction and fix
+
+- Continued directly from clean pushed `b6414da` into the recorded move-list navigation gap. From a legal nine-move nested exploratory branch, a 390px phone tap on the original saved SAN `1.e4` updated the selected ply but left the board out of view. An authenticated Chromium baseline **failed** waiting for `.review-board-square` focus after the tap. This was distinct from the already fixed original evaluation graph input, and was not previously investigated.
+- `MoveList`/`MoveRow` now preserve the input origin for a SAN selection (native click `detail===0` for keyboard/assistive activation, otherwise pointer). Reused a single Game Review-only `selectSavedFromRail` handler for the evaluation graph and move list. A mobile **pointer** tap restores focus/scroll to the saved chessboard; keyboard Enter leaves focus on the selected move button so learners can continue selecting adjacent moves. Starting-position selection uses the same input-origin handling. Desktop side-by-side scroll remains stationary. Move, score, branch, PGN, and source semantics are unchanged.
+
+### Verification
+
+- Focused MoveList/MoveRow/EvalGraph tests: **10 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped**, 107 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**, including 390/1024px pointer selection of saved `1.e4` while leaving a nine-move child branch, saved move highlight, correct ply count, mobile board focus/reveal, desktop stationary scroll, keyboard Enter on `1.e4` then `1...e5` keeping focus on each list button, and original PGN invariance. All previous branch/graph/keyboard/source/coach/responsive checks remain green.
+- Opened/inspected actual `qa-artifacts/agent-a/movelist-return-after-20261112/variation-movelist-return-board-{390,1024}.png` and `variation-movelist-keyboard-{390,1024}.png`: phone tap displays saved `e4` board above the fold; keyboard focus visibly remains on selected `e5` within the original history; desktop shows board and selected SAN side by side without layout overflow.
+- Browser scores are synthetic fixture values, not Stockfish certification. No merge, deploy, production SQLite mutation or other-agent edits.
+
+### Next scope-specific issue
+
+- Audit review move-list tactile and accessible targets: SAN cells currently use `min-h-10` (40px), unlike the 44px+ high-value navigation controls, and the list's `Starting position` row is even shorter. Verify actual 320/390px Chromium hitboxes and whether SAN buttons clip long localized or check/checkmate text. If a genuine reachability issue is confirmed, fix it in Game Review's MoveList/MoveRow without touching Agent B's global design system.
