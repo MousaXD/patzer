@@ -1042,3 +1042,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **multiple bookmark saves completing out of order**. The Library fallback currently holds one failed game id; when two bookmark requests are started from separate cards, a late error from an older attempt could replace a newer failure warning or continue after a later success. Use delayed synthetic Chromium PATCH responses and assert that all visible bookmark states, error announcements, and recovery links refer to the correct affected game. Avoid changing global mutation behavior or unrelated Game Review code.
+
+## 2026-11-13 — Retain every failed bookmark across concurrent save responses
+
+- Recovered clean pushed `3192507` and used isolated Chromium fixtures to start two bookmark PATCH requests from different game cards, switch to Starred-only, then reject the **second** request before the **first**. The previous single `bookmarkFailureId` held only the last settled error, so the first failure replaced the second warning and its game became unrecoverable. The new browser regression failed before the fix.
+- Replaced the single fallback ID with a Library-local collection of `{id, players}` failures. Starting a new bookmark attempt removes only that game's prior failure; an error adds that game once, and account changes clear the collection. The Library still renders one live `role=alert`, but lists separate, keyboard-accessible direct recovery links for every hidden failed game; multiple links include the player names so a returning player can tell them apart. Card-local inline errors are unchanged, and the collection excludes failures whose cards are currently visible to prevent duplicate notices. No server-side or Game Review mutation behavior changed.
+- Chromium confirmed both late errors persist with the correct game routes, exactly one alert, and no mobile overflow. Inspected `qa-artifacts/agent-c-library/library-concurrent-bookmark-failures-dark-390.png`: the warning and two player-labeled recovery links fit on a 390px dark screen. All existing Starred-only pending success/failure, keyboard, pagination, PGN and localization journeys passed.
+
+### Verification
+
+- Focused Library React tests: **57/57 passed**. Full repository suite: **109 passed files, 2 skipped; 1,135 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full isolated Chromium desktop 1440px, mobile 390/320px light/dark, out-of-order bookmark failure, German status, search, import, PGN file chooser, cursor pagination and recovery: passed, no JS exceptions or overflow.
+- Changes restricted to Agent C Library state, its Chromium regression and progress report. No provider requests, production data, other-agent code, merge or deployment.
+
+### Next independent audit
+
+- Verify **account switching while multiple bookmark requests are pending and failures settle late**. Existing component coverage isolates one bookmark update, but the new multi-failure collection should also remain empty for the next signed-in account even if two old-account mutations reject after the account has switched. Reproduce with account-switching React tests and prevent account-specific cache or error leakage without introducing global state.

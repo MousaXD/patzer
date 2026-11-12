@@ -109,7 +109,7 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false, pendingStarResult = null,
-    hideFailedBookmarkAfterRefresh = false,
+    hideFailedBookmarkAfterRefresh = false, concurrentBookmarkFailures = false,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
@@ -128,6 +128,10 @@ async function newPage(theme, width, height,
   let failedBookmarkRefresh = false;
   let releaseStarSave;
   const starSaveGate = new Promise(resolve=>{releaseStarSave=resolve;});
+  let releaseFirstBookmark;
+  let releaseSecondBookmark;
+  const firstBookmarkGate = new Promise(resolve=>{releaseFirstBookmark=resolve;});
+  const secondBookmarkGate = new Promise(resolve=>{releaseSecondBookmark=resolve;});
   let releaseContinuation;
   const continuationGate=new Promise(resolve=>{releaseContinuation=resolve;});
   const removedStars = new Set();
@@ -210,6 +214,9 @@ async function newPage(theme, width, height,
     } else if (longPlayerNames && path === '/api/games/9003/bookmark' && request.method() === 'PATCH') {
       longPlayerBookmarked = !!request.postDataJSON().bookmarked;
       json = {bookmarked:Number(longPlayerBookmarked)};
+    } else if (concurrentBookmarkFailures && /^\/api\/games\/[12]\/bookmark$/.test(path) && request.method()==='PATCH') {
+      await (path.includes('/1/') ? firstBookmarkGate : secondBookmarkGate);
+      status=503; json={error:'synthetic_concurrent_bookmark_failure'};
     } else if (pendingStarResult && path === '/api/games/1/bookmark' && request.method() === 'PATCH') {
       await starSaveGate;
       if (pendingStarResult === 'failure') {
@@ -287,6 +294,7 @@ async function newPage(theme, width, height,
     }
   }
   return {page,context,pageErrors,seenPgnFiles,releaseContinuation,releaseStarSave,
+    releaseFirstBookmark,releaseSecondBookmark,
     allowValidProviderSummary:()=>{invalidProviderSummary=false;},
     allowContinuationRetry:()=>{continuationFailureActive=false;}};
 }
@@ -1339,6 +1347,44 @@ try {
     assert.deepEqual(pageErrors,[],'Bookmark recovery after server result reordering threw a JS error');
     console.log('PASS hidden failed bookmark offers direct recovery even after server result reordering');
   } finally {disappeared.releaseStarSave();await disappeared.context.close();}
+
+  const simultaneous=await newPage('dark',390,844,{concurrentBookmarkFailures:true});
+  try {
+    const {page,pageErrors,releaseFirstBookmark,releaseSecondBookmark}=simultaneous;
+    for (const id of [1,2]) {
+      const pending=page.waitForRequest(req=>new URL(req.url()).pathname===`/api/games/${id}/bookmark` &&
+        req.method()==='PATCH');
+      await page.locator(`.card-hover > a[href="/review/${id}"]`).locator('..')
+        .getByRole('button',{name:'Bookmark game'}).click();
+      await pending;
+    }
+    await page.getByRole('button',{name:'All games',exact:true}).click();
+    await page.getByText('40 of 56 games').waitFor();
+    const secondResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/games/2/bookmark');
+    releaseSecondBookmark();
+    await secondResponse;
+    await page.getByRole('alert').getByRole('link',{name:'Open game to retry'}).waitFor();
+    const firstResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/games/1/bookmark');
+    releaseFirstBookmark();
+    await firstResponse;
+    const recovery=page.getByRole('alert');
+    await recovery.getByRole('link',{name:'Open game to retry · fixtureuser vs Opponent 1'}).waitFor();
+    await recovery.getByRole('link',{name:'Open game to retry · Opponent 2 vs fixtureuser'}).waitFor();
+    assert.equal(await page.getByRole('alert').count(),1,
+      'Two failed bookmark requests should have a single consolidated live announcement');
+    assert.equal(await recovery.getByRole('link').count(),2,
+      'Both failed bookmarked games must remain independently recoverable');
+    const box=await recovery.boundingBox();
+    assert.ok(box && box.x>=0 && box.x+box.width<=392,
+      `Concurrent bookmark recovery must fit mobile viewport: ${JSON.stringify(box)}`);
+    await recovery.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-concurrent-bookmark-failures-dark-390.png')});
+    assert.deepEqual(pageErrors,[],'Concurrent bookmark failures caused a browser error');
+    console.log('PASS concurrent bookmark failures retain both game recovery links in one alert');
+  } finally {
+    simultaneous.releaseFirstBookmark(); simultaneous.releaseSecondBookmark();
+    await simultaneous.context.close();
+  }
 
   const germanBookmarkError=await newPage('dark',390,844,{locale:'de',starredOnlyScenario:true});
   try {

@@ -97,7 +97,7 @@ export default function Review() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
-  const [bookmarkFailureId, setBookmarkFailureId] = useState<number | null>(null);
+  const [bookmarkFailures, setBookmarkFailures] = useState<{id:number; players:string}[]>([]);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
   const [dateAdjustment, setDateAdjustment] = useState<'start' | 'end' | null>(null);
@@ -113,7 +113,7 @@ export default function Review() {
     // A previously signed-in account's import result must not remain visible
     // when another account begins using this browser.
     setImportMsg(null);
-    setBookmarkFailureId(null);
+    setBookmarkFailures([]);
     setPgnFile(null);
     if (pgnInputRef.current) pgnInputRef.current.value = '';
     return () => {
@@ -481,6 +481,7 @@ export default function Review() {
     !q && !activeFilters && !bookmarkedOnly;
   const emptyFilteredResults = !isLoading && !initialError && games.length === 0 && !firstUseEmpty;
   const importControlsVisible = firstUseEmpty || importPanelOpen;
+  const hiddenBookmarkFailures = bookmarkFailures.filter(failure => !games.some(game => game.id === failure.id));
 
   function toggleBookmarkedOnly() {
     const next = new URLSearchParams(searchParams);
@@ -872,12 +873,18 @@ export default function Review() {
           onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}
       </div>
 
-      {bookmarkFailureId != null && !games.some(game => game.id === bookmarkFailureId) && (
+      {hiddenBookmarkFailures.length > 0 && (
         <div role="alert" className="card flex flex-wrap items-center justify-between gap-2 border-bad/30 p-3">
           <p className="text-sm text-bad">{t('review.bookmarkFailed', {defaultValue:'Bookmark could not be saved. Try again.'})}</p>
-          <Link to={`/review/${bookmarkFailureId}`} className="btn-secondary min-h-11 shrink-0 text-xs">
-            {t('review.bookmarkFailureOpenGame', {defaultValue:'Open game to retry'})}
-          </Link>
+          <div className="flex max-w-full min-w-0 flex-wrap gap-2">
+            {hiddenBookmarkFailures.map(failure => (
+              <Link key={failure.id} to={`/review/${failure.id}`}
+                className="btn-secondary min-h-11 min-w-0 max-w-full whitespace-normal break-words px-3 text-left text-xs">
+                {t('review.bookmarkFailureOpenGame', {defaultValue:'Open game to retry'})}
+                {hiddenBookmarkFailures.length > 1 ? ` · ${failure.players}` : ''}
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
@@ -920,9 +927,10 @@ export default function Review() {
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
           {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
-            onBookmarkAttempt={() => setBookmarkFailureId(null)}
-            onBookmarkFailure={(gameId) => {
-              if (accountIdRef.current === user?.id) setBookmarkFailureId(gameId);
+            onBookmarkAttempt={(gameId) => setBookmarkFailures(current => current.filter(failure => failure.id !== gameId))}
+            onBookmarkFailure={(gameId, players) => {
+              if (accountIdRef.current === user?.id) setBookmarkFailures(current =>
+                current.some(failure => failure.id === gameId) ? current : [...current, {id:gameId, players}]);
             }} />)}
         </div>
       )}
@@ -953,7 +961,7 @@ export default function Review() {
 
 function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFailure }: {
   g: GameRow; accountId: number | undefined; starredOnly: boolean;
-  onBookmarkAttempt: () => void; onBookmarkFailure: (id: number) => void;
+  onBookmarkAttempt: (id: number) => void; onBookmarkFailure: (id: number, players: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   // The same display identities must be announced by the Practice action:
@@ -967,7 +975,7 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
     mutationFn: (next: boolean) => api.patch(`/api/games/${g.id}/bookmark`, { bookmarked: next }),
     onMutate: async (next: boolean) => {
       setBookmarkError(false);
-      onBookmarkAttempt();
+      onBookmarkAttempt(g.id);
       await qc.cancelQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) });
       // A pending removal in Starred only must not display an unstarred card
       // inside the filtered list. Keep it visible and starred until the
@@ -983,7 +991,7 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
           (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
       }
       setBookmarkError(true);
-      onBookmarkFailure(g.id);
+      onBookmarkFailure(g.id, `${whiteName} ${t('players.vs')} ${blackName}`);
     },
     onSettled: () => qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) }),
   });
