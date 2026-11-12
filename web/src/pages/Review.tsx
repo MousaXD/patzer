@@ -94,7 +94,7 @@ export default function Review() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
-  const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
   const [pgnFile, setPgnFile] = useState<File | null>(null);
@@ -112,13 +112,23 @@ export default function Review() {
     };
   }, [user?.id]);
 
-  function showImportResult(result: { text: string; error?: boolean }, durationMs: number) {
+  function showImportResult(result: { text: string; error?: boolean; scope: 'provider' | 'pgn' }, durationMs: number) {
     if (importMessageTimer.current != null) window.clearTimeout(importMessageTimer.current);
     setImportMsg(result);
     importMessageTimer.current = window.setTimeout(() => {
       importMessageTimer.current = null;
       setImportMsg(null);
     }, durationMs);
+  }
+  function renderImportFeedback(scope: 'provider' | 'pgn') {
+    if (!importMsg || importMsg.scope !== scope) return null;
+    return (
+      <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
+        ? 'border-bad/30 bg-bad/10 text-bad'
+        : 'border-board-dark/30 bg-board-dark/10 text-ui-success')}>
+        {importMsg.text}
+      </div>
+    );
   }
   // Platform Backend validates the server-side query at 120 characters.
   // Bound both typed searches and hand-edited/deep-linked URLs consistently.
@@ -348,7 +358,7 @@ export default function Review() {
       sentences.push(t('review.providerImportRecentOnly', {
         defaultValue:'This imports recent games only, not your entire history.',
       }));
-      showImportResult({ text: sentences.join(' ') }, 9000);
+      showImportResult({ text: sentences.join(' '), scope:'provider' }, 9000);
     },
     onError: (e, { accountId }) => {
       if ((e as Error).message === 'import_invalid_summary') {
@@ -361,7 +371,7 @@ export default function Review() {
       const guidance = code === 'linked_account_changed' || code === 'linked_account_mismatch'
         ? t('review.importError.linked_account_changed', { defaultValue: 'Your linked account changed during import. Check Settings and retry.' })
         : t(`review.importError.${code}`, { defaultValue: t('review.importError.generic') });
-      showImportResult({ text: guidance, error: true }, 6000);
+      showImportResult({ text: guidance, error: true, scope:'provider' }, 6000);
     },
   });
   const pgnMut = useMutation({
@@ -399,7 +409,7 @@ export default function Review() {
     onSuccess: (result, {accountId}) => {
       void qc.invalidateQueries({predicate:({queryKey})=>isOwnHistoryQuery(queryKey, accountId)});
       if (accountIdRef.current !== accountId) return;
-      showImportResult({text: t('review.pgnImportSuccess', {
+      showImportResult({scope:'pgn',text: t('review.pgnImportSuccess', {
         total:result.total, imported:result.imported, duplicates:result.duplicates,
         defaultValue:`${result.imported} new games saved from ${result.total} PGNs (${result.duplicates} already saved). No player identity or result was assumed.`,
       })}, 12_000);
@@ -422,7 +432,7 @@ export default function Review() {
       const index = (error as {data?:{game_index?:unknown}})?.data?.game_index;
       const gameLabel = Number.isSafeInteger(index) && Number(index) > 0
         ? `${t('review.pgnGameIndex', {index, defaultValue:`Game ${index}`})}: ` : '';
-      showImportResult({error:true,text:`${gameLabel}${t(`review.pgnError.${code}`, {
+      showImportResult({scope:'pgn',error:true,text:`${gameLabel}${t(`review.pgnError.${code}`, {
         defaultValue:t('review.pgnError.generic', {defaultValue:'Could not import the PGN file. Check the file and retry.'}),
       })}`}, 12_000);
     },
@@ -478,7 +488,7 @@ export default function Review() {
       </header>
 
       <div id="library-import-controls" hidden={!importControlsVisible} className="space-y-5">
-      {linked.length > 0 && (
+      {linked.length > 0 && (<>
         <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
           aria-labelledby="library-recent-import-title" aria-describedby="library-recent-import-help">
           <div className="min-w-0 sm:max-w-48">
@@ -506,7 +516,8 @@ export default function Review() {
             ))}
           </div>
         </section>
-      )}
+        {renderImportFeedback('provider')}
+      </>)}
 
       <section className="card flex min-w-0 flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
         aria-label={t('review.pgnImportHeading', {defaultValue:'Import a PGN file'})}>
@@ -549,15 +560,11 @@ export default function Review() {
           </button>
         </div>
       </section>
+      {renderImportFeedback('pgn')}
       </div>
 
-      {importMsg && (
-        <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
-          ? 'border-bad/30 bg-bad/10 text-bad'
-          : 'border-board-dark/30 bg-board-dark/10 text-ui-success')}>
-          {importMsg.text}
-        </div>
-      )}
+      {/* Keep late results visible if the controls were collapsed while an import ran. */}
+      {!importControlsVisible && (renderImportFeedback('provider') || renderImportFeedback('pgn'))}
 
       {firstUseEmpty && (
         <section aria-labelledby="library-first-use-title" className="card flex flex-col items-center justify-center gap-3 p-5 text-center sm:p-8">

@@ -520,6 +520,39 @@ try {
     console.log(`PASS German provider result counts and light WCAG AA contrast ${contrast.ratio.toFixed(2)}:1`);
   } finally {await germanResult.context.close();}
 
+  const mobileFeedback=await newPage('light',320,700,{locale:'de',providerImportBreakdown:true});
+  try {
+    const {page,pageErrors}=mobileFeedback;
+    await page.locator('button[aria-controls="library-import-controls"]').click();
+    const section=page.getByRole('region',{name:'Letzte Partien importieren'});
+    const submit=section.getByRole('button',{name:/Von Chess.com importieren/});
+    await submit.click();
+    const saved=page.getByRole('status').getByText(/100 neue Partien aus 109 abgerufenen Partien gespeichert/);
+    await saved.waitFor();
+    const successRect=await saved.boundingBox();
+    const providerRect=await section.boundingBox();
+    assert.ok(successRect && successRect.y>=0 && successRect.y<700,
+      `Provider success should begin within the initiating mobile viewport: ${JSON.stringify(successRect)}`);
+    assert.ok(providerRect && successRect.y>=providerRect.y+providerRect.height &&
+      successRect.y<=providerRect.y+providerRect.height+24,
+      'Provider success should appear directly after the provider panel, before the PGN picker');
+    await page.screenshot({path:join(output,'library-provider-result-inline-light-320.png')});
+    await section.getByRole('combobox',{name:'Anzahl der Partien'}).selectOption('100');
+    await submit.click();
+    const error=page.getByRole('alert').getByText(/Chess.com begrenzt derzeit die Anfragen/);
+    await error.waitFor();
+    const errorRect=await error.boundingBox();
+    assert.ok(errorRect && errorRect.y>=0 && errorRect.y<700,
+      `Provider failure should begin within the initiating mobile viewport: ${JSON.stringify(errorRect)}`);
+    await page.locator('button[aria-controls="library-import-controls"]').click();
+    assert.equal(await page.getByRole('alert').count(),1,
+      'A late provider failure must remain visible after collapsing the import controls');
+    assert.equal(await page.getByRole('status').count(),0,
+      'A collapsed import must not duplicate the previous success announcement');
+    assert.deepEqual(pageErrors,[],'Localized provider status placement caused a JS exception');
+    console.log('PASS provider import success and failure are visible beside the initiating 320px action');
+  } finally {await mobileFeedback.context.close();}
+
   const invalidProvider=await newPage('dark',390,844,{locale:'de',providerImportInvalidSummary:true});
   try {
     const {page,pageErrors,allowValidProviderSummary}=invalidProvider;
@@ -725,7 +758,14 @@ try {
     assert.ok(await importButton.isDisabled(), 'PGN import should require a selected file');
     await input.setInputFiles({name:'history.pgn',mimeType:'text/plain',buffer:Buffer.from(good)});
     await importButton.click();
-    await page.getByText(/1 new games saved from 2 PGNs \(1 already saved\)/).waitFor();
+    const pgnSuccess=page.getByRole('status').getByText(/1 new games saved from 2 PGNs \(1 already saved\)/);
+    await pgnSuccess.waitFor();
+    const pgnSection=page.getByRole('region',{name:'Import a PGN file'});
+    const resultRect=await pgnSuccess.boundingBox();
+    const pgnRect=await pgnSection.boundingBox();
+    assert.ok(resultRect && pgnRect && resultRect.y>=pgnRect.y+pgnRect.height &&
+      resultRect.y<=pgnRect.y+pgnRect.height+24,
+      'PGN success should be displayed directly after its own file controls');
     await page.getByText('2 of 2 games').waitFor();
     await page.getByText('Date unavailable').first().waitFor();
     assert.ok(await importButton.isDisabled(), 'Successful import must clear the file selection');

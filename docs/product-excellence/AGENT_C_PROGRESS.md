@@ -884,3 +884,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **visibility of import success/error feedback at the place where the player initiates an import** on a small phone. The current combined import result is below both the provider panel and PGN picker; a returning player importing a 200-game batch may not notice the success/error status without manual scrolling. Reproduce with a 390px Chromium fixture and measured viewport geometry before deciding on a small, source-specific inline feedback placement. Preserve polite/live alert semantics and any existing auto-clear timing.
+
+## 2026-11-13 — Keep import feedback beside the action that produced it
+
+- Recovered pushed `f20d09f` and preserved an unfinished isolated 320px German browser fixture from this audit. The initial pre-fix Chromium run reproduced the usability problem: after a successful bounded provider import, the `role=status` result began at **y=787px** in a **700px** viewport because a separate PGN import card sat between the provider buttons and feedback. The user could see neither the outcome nor the retry guidance without scrolling.
+- Added a `scope` (`provider` or `pgn`) to the existing single import-message state, keeping the original account-change safety, timer cleanup and 9s/6s/12s auto-expiry semantics. Render the message immediately after its matching import panel; preserve exactly one `role=status`/`role=alert` with a fallback outside the controls when a pending import completes after the panel has been collapsed. No duplicate announcements, new timer, or API changes. Retained the existing success/error palette, including measured success contrast.
+- Extended the real German 320px Chromium fixture to assert provider success and failure are visible within the initiating viewport, spatially adjacent to the provider section, and that a late error remains visible after the options are collapsed. The PGN fixture separately asserts its result appears adjacent to the PGN picker and that invalid PGN retries still work after collapsing/reopening. Reviewed `qa-artifacts/agent-c-library/library-provider-result-inline-light-320.png`: provider details are now visibly anchored beneath the correct buttons, rather than below the next import section.
+
+### Verification
+
+- Focused Library React suite: **56/56 passed**. Full repository suite: **109 passed files, 2 skipped; 1,124 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full isolated Chromium desktop 1440px, 390/320px light/dark, German import outcomes, PGN keyboard chooser, pagination, account guards and recovery: passed without JS exceptions or horizontal overflow.
+- Only Agent C's Library view, browser fixture and progress report changed. No production data, API, other-agent worktree, merge or deploy touched.
+
+### Next independent audit
+
+- Verify **first-use PGN upload feedback after automatic transition from empty Library to imported games**. `firstUseEmpty` changes to false and the import-options container may close, so the success message must remain visible and the imported collection must become discoverable without hiding errors or losing the first-use path. Reproduce at 320px light/dark and preserve account-switch isolation and retryable PGN selection.
