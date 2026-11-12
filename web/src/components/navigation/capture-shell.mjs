@@ -383,6 +383,37 @@ try {
   }
   fixtureUsername = 'sample-player';
   profile.language = 'en';
+  // The rounded Recent Games list clips a regular outline drawn outside its
+  // linked rows. Drive real Tab navigation and require an inset focus ring
+  // visible inside the link, across desktop/mobile and both themes.
+  for (const focusTheme of ['light', 'dark']) {
+    theme = focusTheme;
+    for (const width of [320, 1440]) {
+      await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
+      const recentRow = page.locator('main a[href="/review/103"]');
+      await recentRow.waitFor();
+      await page.waitForFunction((dark) =>
+        document.documentElement.classList.contains('dark') === dark, focusTheme === 'dark');
+      let focused = false;
+      for (let step = 0; step < 40; step++) {
+        await page.keyboard.press('Tab');
+        if (await recentRow.evaluate((row) => document.activeElement === row)) {
+          focused = true;
+          break;
+        }
+      }
+      const evidence = await recentRow.evaluate((row) => ({
+        focusVisible: row.matches(':focus-visible'),
+        insetRing: getComputedStyle(row).boxShadow.includes('inset'),
+        parentClips: getComputedStyle(row.closest('ul')).overflow === 'hidden',
+      }));
+      if (!focused || !evidence.focusVisible || !evidence.insetRing || !evidence.parentClips) {
+        throw new Error(`Recent games ${focusTheme}/${width}px: focused row outline is clipped without inset indication: ${JSON.stringify({ focused, ...evidence })}`);
+      }
+      await page.screenshot({ path: resolve(output, `home-recent-focus-${focusTheme}-${width}.png`) });
+    }
+  }
   theme = 'light';
   fixtureUserColor = 'white';
   await page.setViewportSize({ width: 320, height: 700 });

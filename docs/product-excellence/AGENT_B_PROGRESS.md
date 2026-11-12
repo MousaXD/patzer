@@ -1082,3 +1082,31 @@
 ### Next audit
 
 - Audit Home's actual keyboard traversal from the hero through Recent Games at narrow and desktop widths, especially the discoverability and focus state of the individual recent-game link; only change code if Chromium demonstrates an interaction or visibility problem. Alternatively, investigate homepage data-state clarity for a returning player if keyboard behavior is sound.
+
+## 2026-11-12: Restore visible keyboard focus to Recent Games rows
+
+### Reproduction in actual Chromium
+
+- Continued from clean pushed `5038b88` and audited the next recorded Home keyboard-usage issue, without reworking the shared shell's already-correct focus rules.
+- At **320px** and **1440px** in dark mode, repeated real Tab presses focused the `/review/103` game link. Chromium confirmed `:focus-visible` and a **3px** computed focus outline, yet the screenshots showed **no visible indicator** around the row.
+- Root cause: the row sits flush against the rounded list's `overflow-hidden` boundary (only a 1px inset on all sides), which clips the global 3px outline and 3px outline offset. Pre-fix computed `boxShadow` was `none`; the visually focused link looked identical to an unfocused row.
+
+### Scoped solution
+
+1. Give only the Home Recent Games row links a **2px inset focus-visible ring** using the shared `ui-focus` color, visible inside the rounded clipping parent without changing list geometry.
+2. Keep the global outline rule, normal hover state, click navigation, aria name, result badge and touch sizing unchanged.
+3. Strengthen the Home unit test for inset-ring classes and the persistent real Chromium fixture to navigate by Tab and require a `:focus-visible` inset shadow, at **320 and 1440px**, in both light and dark themes.
+
+### Verification
+
+- Negative-control Chromium screenshots: `artifacts/agent-02/audit-home-row-focus-320.png` and `audit-home-row-focus-1440.png` showed no visible focus cue despite correctly focused game links.
+- Targeted post-fix Chromium checked keyboard focus plus computed **inset 2px shadow** and the screenshots showed a clear blue ring in both sizes.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including full prior responsive/theme/localization coverage and the added four keyboard-focus cases; screenshots `home-recent-focus-{light,dark}-{320,1440}.png`.
+- `npx vitest run web/src --maxWorkers=2`: **439/439 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Only the Home component, its tests and this progress report changed; no main merge, deployment, production data, or other-agent worktrees touched.
+
+### Next audit
+
+- Check computed text contrast for the **Unreviewed** status and Recent Games metadata across light/dark themes, particularly its 11px uppercase presentation, because the dark-mode screenshots show a faint secondary label. Reproduce and measure before changing semantic color tokens.

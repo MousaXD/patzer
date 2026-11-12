@@ -126,6 +126,8 @@ describe('Home statistics failure', () => {
     expect(viewAll.className).toContain('min-h-11');
     const recentGame = screen.getByRole('link', { name: /OpponentWithALongName/ });
     expect(recentGame.getAttribute('href')).toBe('/review/103');
+    expect(recentGame.className).toContain('focus-visible:ring-inset');
+    expect(recentGame.className).toContain('focus-visible:ring-ui-focus');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('line-clamp-2');
     expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex');

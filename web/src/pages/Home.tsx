@@ -601,7 +601,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
           <li key={g.id}>
             <Link
               to={`/review/${g.id}`}
-              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40 sm:px-4 sm:py-3"
+              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-chesscom-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus dark:hover:bg-chesscom-900/40 sm:px-4 sm:py-3"
             >
               <ResultGlyph r={g.result} />
               <div className="min-w-0 flex-1">
