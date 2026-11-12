@@ -51,6 +51,12 @@ const ICON_BY_KIND: Record<GoalKind, string> = {
   win_streak: 'Flame',
 };
 
+// Progress based on engine quality must never use a row made obsolete by a
+// game edit or a legacy analysis without authoritative source provenance.
+// Reuse the same current-source gate as Insights and personal Training.
+const CURRENT_ANALYSIS_SQL = `a.scoring_version >= ? AND a.source_hash IS NOT NULL
+  AND a.source_revision = g.source_revision AND a.analysis_generation > 0`;
+
 function parseMeta(s: string | null): Record<string, unknown> | null {
   if (!s) return null;
   try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; }
@@ -100,7 +106,8 @@ function computeProgress(userId: number, row: GoalRow): number {
       const r = db.prepare(`
         SELECT COUNT(*) AS c FROM analyses a
         JOIN games g ON g.id = a.game_id
-        WHERE g.user_id = ? AND a.created_at >= ? AND a.created_at < ? AND a.scoring_version >= ?
+        WHERE g.user_id = ? AND a.created_at >= ? AND a.created_at < ?
+          AND (${CURRENT_ANALYSIS_SQL})
           AND ((g.user_color='white' AND a.accuracy_white >= ?)
             OR (g.user_color='black' AND a.accuracy_black >= ?))
       `).get(userId, row.created_at, row.completes_at, SCORING_VERSION, min, min) as { c: number };
@@ -161,7 +168,8 @@ function pickSeedGoals(userId: number): SeedSpec[] {
   const analyzedCount = db.prepare(`
     SELECT COUNT(*) AS c FROM analyses a
     JOIN games g ON g.id = a.game_id
-    WHERE g.user_id = ? AND a.scoring_version >= ?
+    WHERE g.user_id = ? AND g.user_color IN ('white','black')
+      AND (${CURRENT_ANALYSIS_SQL})
   `).get(userId, SCORING_VERSION) as { c: number };
 
   if (analyzedCount.c >= 5) {

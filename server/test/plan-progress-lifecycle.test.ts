@@ -33,12 +33,14 @@ beforeAll(async () => {
     (3,'expired-player','x','user'), (4,'other-player','x','user'),
     (5,'late-activity','x','user'), (6,'late-completion','x','user'),
     (7,'streak-player','x','user'), (8,'unobserved-streak','x','user'),
-    (9,'opening-player','x','user')`).run();
+    (9,'opening-player','x','user'), (10,'seed-source','x','user'),
+    (11,'accuracy-source','x','user')`).run();
   db.prepare(`INSERT INTO profiles (user_id,display_name) VALUES
     (1,'Practice Player'), (2,'Completed Player'),
     (3,'Expired Player'), (4,'Other Player'),
     (5,'Late Activity'), (6,'Late Completion'), (7,'Streak Player'),
-    (8,'Unobserved Streak'), (9,'Opening Player')`).run();
+    (8,'Unobserved Streak'), (9,'Opening Player'),
+    (10,'Seed Source'), (11,'Accuracy Source')`).run();
 });
 
 afterAll(() => {
@@ -173,5 +175,48 @@ describe('weekly Plan uses real play and training progress', () => {
     db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color,eco,end_time)
       VALUES (903,9,'lichess','','Opening Player','Bot','win','white','C50',datetime('now','+9 days'))`).run();
     expect((await goals(9)).goals).toMatchObject([{ kind: 'opening_play',progress: 1,status: 'active' }]);
+  });
+
+  it('does not suggest an accuracy goal until at least one analysis is current and attributable', async () => {
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color)
+      VALUES (1001,10,'played','1. e4 e5','Seed Source','Bot','win','white')`).run();
+    db.prepare(`INSERT INTO analyses(game_id,depth,moves_json,accuracy_white,scoring_version,created_at)
+      VALUES (1001,14,'[]',92,?,datetime('now','-1 hour'))`).run(SCORING_VERSION);
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color)
+      VALUES (1002,10,'played','1. d4 d5','Unknown Player','Bot','win',NULL)`).run();
+    db.prepare(`INSERT INTO analyses(game_id,depth,moves_json,accuracy_white,scoring_version,
+      source_hash,source_revision,analysis_generation,created_at)
+      VALUES (1002,14,'[]',95,?,'valid-but-unattributed',0,1,datetime('now','-1 hour'))`).run(SCORING_VERSION);
+
+    const initial = (await goals(10)).goals;
+    expect(initial.some((g) => g.kind === 'accuracy')).toBe(false);
+
+    db.prepare(`UPDATE analyses SET source_hash='fresh-fixture',source_revision=0,analysis_generation=1
+      WHERE game_id=1001`).run();
+    const regenerate = await plan.request('/regenerate', { method: 'POST', headers: { Cookie: cookie(10) } });
+    expect(regenerate.status).toBe(200);
+    const result = await regenerate.json() as { goals: { kind: string; status: string; progress: number }[] };
+    expect(result.goals.some((g) => g.kind === 'accuracy' && g.status === 'active' && g.progress === 0)).toBe(true);
+  });
+
+  it('does not award high-accuracy progress from an obsolete analysis after a PGN edit', async () => {
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,metadata,status,created_at,completes_at)
+      VALUES (11,'accuracy','Earn a high accuracy','Current game analysis',1,
+        '{"min_accuracy":75}','active',datetime('now','-1 day'),datetime('now','+6 days'))`).run();
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color)
+      VALUES (1101,11,'played','1. e4 e5','Accuracy Source','Bot','win','white')`).run();
+    db.prepare(`INSERT INTO analyses(game_id,depth,moves_json,accuracy_white,scoring_version,
+      source_hash,source_revision,analysis_generation)
+      VALUES (1101,14,'[]',91,?,'old-fixture',0,1)`).run(SCORING_VERSION);
+    db.prepare(`UPDATE games SET pgn='1. d4 d5' WHERE id=1101`).run();
+
+    expect((await goals(11)).goals).toMatchObject([{ kind: 'accuracy',status: 'active',progress: 0 }]);
+    db.prepare(`UPDATE analyses SET source_hash='current-fixture',
+      source_revision=(SELECT source_revision FROM games WHERE id=1101),
+      analysis_generation=analysis_generation+1 WHERE game_id=1101`).run();
+    expect((await goals(11)).goals).toMatchObject([{ kind: 'accuracy',status: 'completed',progress: 1 }]);
   });
 });
