@@ -231,8 +231,21 @@ try {
     if ((await breadcrumb.locator('[aria-current="page"]').textContent()) !== nested.current) {
       throw new Error(`Wrong translated breadcrumb for ${nested.path}`);
     }
+    const currentWidth = await breadcrumb.locator('[aria-current="page"]').evaluate((element) => ({
+      visible: element.clientWidth,
+      content: element.scrollWidth,
+    }));
+    if (currentWidth.content > currentWidth.visible + 1) {
+      throw new Error(`320px breadcrumb title was clipped: ${nested.path} ${JSON.stringify(currentWidth)}`);
+    }
+    const parent = breadcrumb.locator(`a[href="${nested.parent}"]`);
+    if ((await parent.locator('svg').count()) !== 1) {
+      throw new Error(`320px breadcrumb missing mobile back affordance: ${nested.path}`);
+    }
     await checkNoHorizontalOverflow(page, `German breadcrumb ${nested.path}`);
     await page.screenshot({ path: resolve(output, `breadcrumb-${nested.path.split('/')[1]}-320-de.png`) });
+    await parent.click();
+    await page.waitForURL((url) => url.pathname === nested.parent);
   }
   profile.language = 'en';
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');

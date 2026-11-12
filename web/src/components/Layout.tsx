@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
+  ArrowLeft, BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
   ListChecks, LogOut, Menu, Microscope, Search, Server, Link2, Settings as SettingsIcon,
   Swords, Target, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
@@ -286,10 +286,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               <nav aria-label={t('navigation.breadcrumb', { defaultValue: 'Breadcrumb' })} className="flex min-w-0 items-center gap-1 text-sm sm:text-base" data-current-section>
                 <Link
                   to={location.pathname.startsWith('/review/') ? '/review' : '/players'}
-                  className="shrink-0 rounded px-1 py-1 font-medium text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:text-white"
-                >{nestedSection}</Link>
-                <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-chesscom-400" />
-                <span className="min-w-0 truncate font-semibold" aria-current="page">{nestedTitle}</span>
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded px-1 font-medium text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white md:h-auto md:w-auto md:py-1"
+                  title={nestedSection}
+                >
+                  <ArrowLeft aria-hidden="true" className="h-4 w-4 md:hidden" />
+                  <span className="sr-only md:not-sr-only">{nestedSection}</span>
+                </Link>
+                <ChevronRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 text-chesscom-400 md:block" />
+                <span className="min-w-0 truncate font-semibold" aria-current="page" title={nestedTitle}>{nestedTitle}</span>
               </nav>
             ) : (
               <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>

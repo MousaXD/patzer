@@ -99,3 +99,11 @@
 
 - The signed-in navigation shell and auth shell are frontend-fixture certified, not live-production certified. Check further translations, responsive keyboard focus, error/empty states and contrast where the running application reveals actual problems.
 - Ownership remains only on the common shell, homepage, shared styles and public authentication frame. No modifications to other agents' Game Review, Games Library, Play or Insights internals, and no merges, deployments or production-data operations.
+
+## 2026-11-12: Narrow-mobile nested-navigation correction
+
+- **Verified issue:** German `/review/42` at 320px truncated the page name to `Parti…` in the top bar. The parent breadcrumb consumed most of the available space next to the logo, search and menu controls, making the current context ambiguous.
+- **Fix:** On sub-768px screens, render the parent as an accessible, focusable back-arrow link with a screen-reader-only parent name; keep the full parent + separator + child breadcrumb on desktop. The current title is now prominent without a second header row or moving global controls.
+- **Browser regression:** `capture-shell.mjs` now asserts 320px German current title is not clipped (actual scroll versus client width), the parent back affordance exists, clicking it changes to the correct parent URL, and the screen has no horizontal overflow. Both nested Review and Player Profile paths are covered.
+- **Validation:** `node web/src/components/navigation/capture-shell.mjs` **passed** the full light/dark responsive smoke; inspected the regenerated `breadcrumb-review-320-de.png` showing complete `Partiedetails`. `npm run build -w web` **passed**; 60 focused tests across navigation, login and locales **passed**.
+- **Next:** Continue auditing meaningful cross-app shell problems: mobile keyboard and focus behaviors, global header search/keyboard shortcuts, and localized empty/error states. Leave all other agent feature internals untouched.
