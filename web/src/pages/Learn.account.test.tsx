@@ -62,7 +62,8 @@ vi.mock('../components/learn/LessonPlayer', async () => {
   };
 });
 
-import Learn from './Learn';
+import Learn, { canResumeLesson, suggestedLesson, type LessonProgress } from './Learn';
+import type { Curriculum, LessonRef } from '../learn/content';
 
 beforeEach(() => {
   mocks.accountId = 7;
@@ -155,5 +156,49 @@ describe('Learn load recovery', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('learn.allDone')).toBeTruthy();
+  });
+});
+
+describe('next lesson recommendations', () => {
+  const reference = (id: string, order: number): LessonRef => ({
+    lesson: { id, steps: [{ type: 'info' }, { type: 'quiz' }, { type: 'info' }] },
+    course: { id: 'pieces' }, order,
+  } as unknown as LessonRef);
+  const board = reference('board', 0);
+  const rook = reference('rook', 1);
+  const bishop = reference('bishop', 2);
+  const cur = {
+    lessons: [board, rook, bishop],
+    byId: new Map([board, rook, bishop].map((r) => [r.lesson.id, r])),
+  } as unknown as Curriculum;
+  const row = (lesson_id: string, step: number, completed_at: string | null, updated_at: string): LessonProgress => ({
+    lesson_id, step, completed_at, updated_at, stars: completed_at ? 3 : 0, flawed: 0,
+  });
+
+  it('prefers genuinely unfinished progress over a more recently replayed completed lesson', () => {
+    const progress = new Map([
+      ['board', row('board', 2, '2026-11-10', '2026-11-12')],
+      ['rook', row('rook', 1, null, '2026-11-11')],
+    ]);
+    expect(suggestedLesson(cur, progress)?.lesson.id).toBe('rook');
+    expect(canResumeLesson(board, progress.get('board'))).toBe(true); // replay remains accessible
+  });
+
+  it('uses the first uncompleted lesson if a previous step index is no longer valid', () => {
+    const progress = new Map([
+      ['rook', row('rook', 42, null, '2026-11-12')],
+      ['board', row('board', 0, '2026-11-10', '2026-11-10')],
+    ]);
+    expect(suggestedLesson(cur, progress)?.lesson.id).toBe('rook');
+    expect(canResumeLesson(rook, progress.get('rook'))).toBe(false);
+  });
+
+  it('does not offer a finished replay as the next lesson when all lessons are complete', () => {
+    const progress = new Map([
+      ['board', row('board', 1, '2026-11-10', '2026-11-12')],
+      ['rook', row('rook', 0, '2026-11-11', '2026-11-11')],
+      ['bishop', row('bishop', 0, '2026-11-11', '2026-11-11')],
+    ]);
+    expect(suggestedLesson(cur, progress)).toBeNull();
   });
 });

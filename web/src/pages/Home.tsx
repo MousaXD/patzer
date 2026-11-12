@@ -14,7 +14,7 @@ import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
 import { goalText } from '../lib/goalText';
 import type { GameRow } from '../types';
 import { LEARN_QUERY_KEY } from '../components/learn/LessonPlayer';
-import { fetchLearnProgress, suggestedLesson, useLearnContent } from './Learn';
+import { canResumeLesson, fetchLearnProgress, suggestedLesson, useLearnContent } from './Learn';
 import { levelOf } from '../learn/engine';
 import { localDay } from '../lib/openingTrainer';
 
@@ -287,7 +287,7 @@ function LearnTile() {
   const progress = new Map((data?.lessons ?? []).map((r) => [r.lesson_id, r]));
   const stars = [...progress.values()].reduce((s, r) => s + r.stars, 0);
   const next = cur ? suggestedLesson(cur, progress) : null;
-  const started = next ? (progress.get(next.lesson.id)?.step ?? 0) > 0 : false;
+  const started = next ? canResumeLesson(next, progress.get(next.lesson.id)) : false;
   return (
     <Link to={next ? `/learn?lesson=${next.lesson.id}` : '/learn'} className="card-hover flex h-full items-start gap-3 p-4">
       <Pill tone="board" Icon={GraduationCap} />

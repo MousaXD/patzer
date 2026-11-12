@@ -127,3 +127,14 @@
 - Improve learning guidance where an already-completed lesson is replayed and has an in-progress step: do not recommend that completed lesson ahead of a genuinely unfinished one.
 - Evaluate honest progress indicators and navigation when lesson saves are still pending; preserve account privacy and avoid promising persistence before acknowledgment.
 - Bot-game resume after a device sleeps still needs a live local engine check when Stockfish becomes available; currently browser-backed PvP and mocked bot state are verified.
+
+## Seventh pass — 2026-11-12 (continued from `306d53a`)
+
+### Suggest genuinely unfinished lessons ahead of already-completed replays
+
+- **Problem:** The site-wide `suggestedLesson` chose the most recently updated `step > 0` even when that record had `completed_at`. Replaying a completed lesson and leaving halfway would wrongly make it the top suggestion on both Learn and Home, overriding a genuinely unfinished lesson. If course content changed and a saved step was beyond the new step count, Home could incorrectly offer a resume action that the lesson player would actually restart.
+- **Fix:** The shared Learn suggestion requires `completed_at === null` and a step inside the current lesson. Otherwise it chooses the first unfinished lesson in curriculum order. Extracted `canResumeLesson` so Learn's own resume state, its overview button, course lesson labels, and the Home learning tile agree about whether a saved step is actually resumable. Completed lessons can still be deliberately replayed or resumed from their course; they no longer displace the user's recommended unfinished lesson.
+- **Tests:** Added three focused regression cases covering completed replays versus unfinished progress, stale/out-of-range resume indices, and a fully completed curriculum while one finished lesson is being replayed.
+- **Actual browser:** Local Chrome at 390px using authenticated API fixtures: a newer completed-board replay (`step 2`) and older unfinished rook (`step 1`) correctly showed **Continue: The rook** on Learn and **Continue where you left off** on Home. A stale rook index beyond its present lesson steps instead showed **Next lesson: The rook** on Learn and **Your next lesson** on Home. No uncaught browser errors or page-level overflow. Captured settled screenshots in `qa/agent-d-browser/learn/next-lesson-{overview,home}.png`.
+- **Scope:** The only Home change is the shared learning-resume predicate; global navigation and design-system code remain untouched.
+- **Final verification:** `npm run typecheck`, `npm run build`, and `npx vitest run --maxWorkers=4` passed: **982 tests passed, 12 skipped, 0 failures** across 113 files. Both Chrome fixture scenarios passed and screenshots were inspected after transition animations settled.

@@ -60,11 +60,21 @@ export function useLearnContent(): { cur: Curriculum | null; failed: boolean; re
   return { cur: cur && textsFor === lang ? cur : null, failed, retry };
 }
 
-/** The lesson to suggest: one you're in the middle of, else the first one
- *  you haven't finished yet. */
+/** A saved step is only resumable if it belongs to this version of a lesson.
+ * A completed lesson can be replayed, but its replay should never outrank an
+ * unfinished lesson in the recommended next action. */
+export function canResumeLesson(ref: LessonRef, row: LessonProgress | undefined): row is LessonProgress {
+  return !!row && row.step > 0 && row.step < ref.lesson.steps.length;
+}
+
+/** Prefer a genuine unfinished run; otherwise suggest the first unfinished
+ * lesson in curriculum order. */
 export function suggestedLesson(cur: Curriculum, progress: Map<string, LessonProgress>): LessonRef | null {
   const started = [...progress.values()]
-    .filter((p) => p.step > 0 && cur.byId.has(p.lesson_id))
+    .filter((p) => {
+      const ref = cur.byId.get(p.lesson_id);
+      return !!ref && !p.completed_at && canResumeLesson(ref, p);
+    })
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
   if (started) return cur.byId.get(started.lesson_id)!;
   return cur.lessons.find((r) => !progress.get(r.lesson.id)?.completed_at) ?? null;
@@ -116,7 +126,7 @@ export default function Learn() {
   const ref = lessonId ? cur.byId.get(lessonId) : undefined;
   if (ref) {
     const row = progress.get(ref.lesson.id);
-    const resume = row && row.step > 0 && row.step < ref.lesson.steps.length
+    const resume = canResumeLesson(ref, row)
       ? { step: row.step, flawed: row.flawed }
       : { step: 0, flawed: 0 };
     return (
@@ -196,7 +206,7 @@ function Overview({ cur, progress, totalStars, onOpenLesson, onOpenCourse }: {
                 className="group mt-5 inline-flex items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift"
               >
                 <Play className="h-4 w-4 fill-current" />
-                {nextRow && nextRow.step > 0 ? t('learn.resumeLesson') : done ? t('learn.nextUp') : t('learn.startHere')}: {tl(`${next.lesson.id}.title`)}
+                {canResumeLesson(next, nextRow) ? t('learn.resumeLesson') : done ? t('learn.nextUp') : t('learn.startHere')}: {tl(`${next.lesson.id}.title`)}
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </button>
             )}
@@ -364,7 +374,7 @@ function CourseView({ course, level, cur, progress, onOpen, onBack }: {
         {course.lessons.map((lesson, i) => {
           const row = progress.get(lesson.id);
           const complete = !!row?.completed_at;
-          const inProgress = !!row && row.step > 0;
+          const inProgress = canResumeLesson(cur.byId.get(lesson.id)!, row);
           const isNext = lesson.id === nextId;
           const tasks = lesson.steps.filter((st) => st.type !== 'info').length;
           return (
