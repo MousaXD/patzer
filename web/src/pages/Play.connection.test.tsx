@@ -6,6 +6,8 @@ import { MemoryRouter } from 'react-router-dom';
 const socketHarness = vi.hoisted(() => ({
   current: null as null | {
     connected: boolean;
+    connectCalls: number;
+    disconnectCalls: number;
     sent: { type: string; uci?: string }[];
     accept(): void;
     drop(): void;
@@ -58,12 +60,14 @@ vi.mock('react-i18next', () => ({
 vi.mock('../lib/reconnectingSocket', () => ({
   ReconnectingSocket: class {
     connected = false;
+    connectCalls = 0;
+    disconnectCalls = 0;
     sent: { type: string; uci?: string }[] = [];
     constructor(private readonly opts: { onMessage(event: MessageEvent): void; onStatusChange(up: boolean): void }) {
       socketHarness.current = this;
     }
-    connect() { this.connected = false; }
-    disconnect() { this.connected = false; }
+    connect() { this.connectCalls++; this.connected = false; }
+    disconnect() { this.disconnectCalls++; this.connected = false; }
     send(payload: { type: string; uci?: string }) {
       if (!this.connected) return false;
       this.sent.push(payload);
@@ -138,5 +142,39 @@ describe('Play authoritative game readiness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm resignation' }));
     expect(ws.sent).toEqual([{ type: 'resign' }]);
     expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('pauses a displaced PvP tab until the player explicitly takes control again', () => {
+    render(<MemoryRouter initialEntries={['/play?game=9']}><Play /></MemoryRouter>);
+    const ws = socketHarness.current!;
+    const board = screen.getByTestId('chess-board') as HTMLButtonElement;
+    expect(ws.connectCalls).toBe(1);
+
+    act(() => {
+      ws.accept();
+      ws.receive({
+        type: 'pvp_hello', fen: START, history: [], your_color: 'white', time_control: 'untimed',
+        you: { user_id: 1, display_name: 'Tester' },
+        opponent: { user_id: 2, display_name: 'Opponent', online: true },
+      });
+    });
+    expect(board.disabled).toBe(false);
+
+    act(() => ws.receive({ type: 'session_replaced' }));
+    expect(board.disabled).toBe(true);
+    expect(ws.connected).toBe(false);
+    expect(ws.disconnectCalls).toBe(1);
+    expect(screen.getByRole('alert').textContent).toContain('This game was opened in another tab');
+    fireEvent.click(board);
+    expect(ws.sent).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take control here' }));
+    expect(ws.connectCalls).toBe(2);
+    expect(screen.queryByText('This game was opened in another tab. Play is paused here until you take control again.')).toBeNull();
+    expect(board.disabled).toBe(true); // a new connection alone is not sufficient
+    act(() => ws.accept());
+    expect(board.disabled).toBe(true);
+    act(() => ws.receive({ type: 'pvp_hello', fen: START, history: [], your_color: 'white', time_control: 'untimed' }));
+    expect(board.disabled).toBe(false);
   });
 });

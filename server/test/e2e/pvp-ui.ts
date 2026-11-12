@@ -205,16 +205,44 @@ if (hasBar) {
   await P.waitForTimeout(1200);
   await P.screenshot({ path: `${SHOTS}/pvp-phone-sheet.png` });
   ok(true, 'phone: moves sheet opens');
+  await P.getByRole('button', { name: /^close$/i }).first().click();
+  await P.waitForTimeout(400); // let the sheet finish its exit before the paused-tab screenshot
 }
 
-// PvP currently keeps one active WebSocket per player. The mobile context
-// above reattached Alice's player session; leave that viewing context and
-// refresh the desktop game so its socket receives the resignation response.
-// Simultaneous tabs for the same player are a separate integration concern.
+// --- One active tab per player, with an explicit handoff ------------------
+// The mobile phone reused Alice's authenticated session above. It should
+// become the active controller; desktop must be paused, never silently left
+// with a live-looking board and an obsolete WebSocket. Test both directions.
+const pauseText = /This game was opened in another tab/;
+const pausedDesktop = A.getByRole('alert').filter({ hasText: pauseText });
+ok(await pausedDesktop.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: opening on phone pauses old desktop controller');
+ok(await A.getByRole('button', { name: /^resign$/i }).first().isDisabled(),
+  'tabs: old controller cannot send an irreversible game action');
+await A.screenshot({ path: `${SHOTS}/pvp-desktop-paused.png` });
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: replacing Alice socket does not falsely mark her offline for Bob');
+
+await A.getByRole('button', { name: /Take control here/i }).click();
+const pausedPhone = P.getByRole('alert').filter({ hasText: pauseText });
+ok(await pausedPhone.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: explicit desktop takeover pauses the phone');
+await P.screenshot({ path: `${SHOTS}/pvp-phone-paused.png` });
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: an old socket closing does not report a false disconnect to the opponent');
+
+await P.getByRole('button', { name: /Take control here/i }).click();
+ok(await pausedDesktop.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: phone can deliberately retake control and pause the desktop again');
 await P.close();
-await A.reload();
-await A.getByRole('button', { name: /^resign$/i }).first().waitFor({ state: 'visible', timeout: 10000 });
-await A.waitForTimeout(400);
+await A.getByRole('button', { name: /Take control here/i }).click();
+const controlsRestored = await A.waitForFunction(() => {
+  const resign = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Resign');
+  return !!resign && !resign.disabled;
+}, null, { timeout: 10000 }).then(() => true).catch(() => false);
+ok(controlsRestored, 'tabs: desktop regains playable controls after authoritative replay');
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: opponent remains online throughout same-player handoffs');
 
 // --- deliberate resignation, never a one-tap accidental forfeiture --------
 if (hasRematch) {

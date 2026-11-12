@@ -118,6 +118,9 @@
     "tabFriend": "Gegen Freund",
     "checking": "Wird geprüft…",
     "connecting": "Verbinde mit der Partie…",
+    "pausedOtherTab": "In diesem Tab pausiert",
+    "otherTabControl": "Die Partie wurde in einem anderen Tab geöffnet. Hier kannst du erst weiterspielen, wenn du die Steuerung übernimmst.",
+    "takeControlHere": "Hier weiterspielen",
     "warn": {
       "mistake": "Das sieht nach einem Fehler aus!",
       "blunder": "Moment — das ist ein grober Patzer!",

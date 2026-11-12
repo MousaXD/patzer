@@ -228,6 +228,7 @@ export default function Play() {
   // invalid until the next snapshot arrives.
   const [gameReady, setGameReady] = useState(false);
   const [hasSyncedGame, setHasSyncedGame] = useState(false);
+  const [sessionReplaced, setSessionReplaced] = useState(false);
   const [live, setLive] = useState<LiveGames | null>(null);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
@@ -432,6 +433,7 @@ export default function Play() {
     resultRef.current = null;
     setGameReady(false);
     setHasSyncedGame(false);
+    setSessionReplaced(false);
     setFen(START_FEN);
     // New games have no clock snapshot until the server greets us. Never
     // display a previous game's remaining time during this transition.
@@ -494,6 +496,7 @@ export default function Play() {
         if (msg.time_control) setTc(msg.time_control as typeof TIME_CONTROLS[number]);
         setGameReady(true);
         setHasSyncedGame(true);
+        setSessionReplaced(false);
         if (msg.your_color) userColorRef.current = msg.your_color;
         // Rebuild the position list from the SAN history (PvP reconnect can land mid-game).
         loadHistory(msg.history, startFen, msg.start_fen);
@@ -649,6 +652,25 @@ export default function Play() {
         break;
       case 'analysis_ready':
         // PvP analysis is ready — could refresh UI; for now just no-op
+        break;
+      case 'session_replaced':
+        // Another tab took this player's active PvP socket. Do not keep
+        // reconnecting in the background and wresting control back from it.
+        // The player can explicitly choose to take control on this tab.
+        socketRef.current?.disconnect();
+        setConnected(false);
+        connectedRef.current = false;
+        setGameReady(false);
+        setSessionReplaced(true);
+        setPending(null);
+        setPreviewing(false);
+        setBlunder(null);
+        setHintLoading(false);
+        setHint(null);
+        setResignConfirm(false);
+        setMoreOpen(false);
+        clearPremoves();
+        forceBoardSync();
         break;
       case 'resume_failed':
         // The stored game is gone or unplayable. Say so and go back to setup
@@ -1026,7 +1048,9 @@ export default function Play() {
   const isPvP = !!pvpGameId;
   const oppDisconnected = isPvP && opponent && !opponent.online;
 
-  const statusNode = !canInteract ? <span className="font-medium text-amber-600">{hasSyncedGame
+  const statusNode = sessionReplaced
+    ? <span className="font-medium text-amber-600">{t('play.pausedOtherTab', { defaultValue: 'Paused in this tab' })}</span>
+    : !canInteract ? <span className="font-medium text-amber-600">{hasSyncedGame
     ? t('play.waitingForSync', { defaultValue: 'Waiting for the game to reconnect' })
     : t('play.connecting', { defaultValue: 'Connecting to game…' })}</span>
     : isBrowsing ? <span className="font-medium text-amber-600">{t('play.browsingPast')}</span>
@@ -1046,7 +1070,19 @@ export default function Play() {
           {/* Say it plainly rather than letting a dead socket look like a live
               game. The clock is frozen behind this and the game is safe on the
               server — which is the reassurance worth giving. */}
-          {!canInteract && phase === 'playing' && (
+          {sessionReplaced && phase === 'playing' && (
+            <div role="alert" className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-800 dark:text-amber-200">
+              <span className="min-w-0 flex-1">
+                {t('play.otherTabControl', { defaultValue: 'This game was opened in another tab. Play is paused here until you take control again.' })}
+              </span>
+              {pvpGameId && (
+                <button type="button" onClick={() => connectPvp(pvpGameId)} className="btn-secondary min-h-11 shrink-0 text-sm">
+                  {t('play.takeControlHere', { defaultValue: 'Take control here' })}
+                </button>
+              )}
+            </div>
+          )}
+          {!canInteract && !sessionReplaced && phase === 'playing' && (
             <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
               <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
               <span role="status">{hasSyncedGame

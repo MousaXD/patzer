@@ -118,6 +118,9 @@
     "tabFriend": "vs Friend",
     "checking": "Checking…",
     "connecting": "Connecting to game…",
+    "pausedOtherTab": "Paused in this tab",
+    "otherTabControl": "This game was opened in another tab. Play is paused here until you take control again.",
+    "takeControlHere": "Take control here",
     "warn": {
       "mistake": "That looks like a mistake!",
       "blunder": "Wait — this is a big blunder!",
