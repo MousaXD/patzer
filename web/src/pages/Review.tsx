@@ -37,7 +37,7 @@ function validCalendarDate(value: string | null): string {
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : '';
 }
-type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
+type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean; next_cursor?: string | null };
 type OpeningSummary = {
   total: number;
   classified: number;
@@ -51,7 +51,7 @@ type OpponentSummary = {
   opponents: { source: 'chesscom' | 'lichess'; name: string; games: number }[];
 };
 type ExploreMode = 'openings' | 'opponents';
-type PageRequest = { offset: number; limit: number };
+type PageRequest = { offset: number; limit: number; cursor?: string };
 
 function isOwnGameQuery(queryKey: readonly unknown[], accountId: number | undefined): boolean {
   return accountId != null && queryKey[0] === 'games' &&
@@ -215,10 +215,11 @@ export default function Review() {
     // Never reuse another account's cached library after a logout/login.
     queryKey: ['games', 'library', user?.id, { bookmarkedOnly, q, filterSignature }],
     enabled: user?.id != null,
-    initialPageParam: { offset: 0, limit: PAGE_SIZE } satisfies PageRequest,
+    initialPageParam: { offset: 0, limit: PAGE_SIZE } as PageRequest,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: String(pageParam.limit) });
-      if (pageParam.offset) params.set('offset', String(pageParam.offset));
+      if (pageParam.cursor) params.set('cursor', pageParam.cursor);
+      else if (pageParam.offset) params.set('offset', String(pageParam.offset));
       if (bookmarkedOnly) params.set('bookmarked', '1');
       if (q.trim()) params.set('q', q.trim());
       for (const [key, value] of Object.entries(filters)) {
@@ -233,6 +234,12 @@ export default function Review() {
     getNextPageParam: (lastPage, _pages, lastRequest): PageRequest | undefined => {
       if (typeof lastPage.has_more === 'boolean') {
         if (!lastPage.has_more || lastPage.games.length === 0) return undefined;
+        // New servers issue a stable continuation cursor. Keep offset
+        // compatibility with older deployments that omit next_cursor.
+        if (typeof lastPage.next_cursor === 'string' && lastPage.next_cursor) {
+          return {cursor:lastPage.next_cursor, offset:lastRequest.offset + lastPage.games.length,
+            limit:PAGE_SIZE};
+        }
         const nextOffset = (lastPage.offset ?? lastRequest.offset) + lastPage.games.length;
         return nextOffset <= 1_000_000 ? { offset: nextOffset, limit: PAGE_SIZE } : undefined;
       }

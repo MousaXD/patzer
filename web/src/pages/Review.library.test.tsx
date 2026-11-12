@@ -265,6 +265,34 @@ describe('Review library with large histories', () => {
     expect(requests.every((params) => Number(params.get('limit')) === 40)).toBe(true);
   });
 
+  it('uses a stable continuation cursor rather than offset after concurrent library inserts', async () => {
+    const original = Array.from({length:90},(_,i)=>makeGame(90-i));
+    const requests:URLSearchParams[]=[];
+    mocks.get.mockImplementation(async (url:string) => {
+      if (url === '/api/games/openings') return {total:90,classified:0,unclassified:90,openings:[]};
+      const params = new URLSearchParams(url.split('?')[1] ?? '');
+      requests.push(params);
+      const cursor = params.get('cursor');
+      if (!cursor) return {games:original.slice(0,40),total:90,offset:0,has_more:true,next_cursor:'stable-page-40'};
+      if (cursor === 'stable-page-40') return {games:original.slice(40,80),total:90,
+        offset:0,has_more:true,next_cursor:'stable-page-80'};
+      if (cursor === 'stable-page-80') return {games:original.slice(80),total:90,
+        offset:0,has_more:false,next_cursor:null};
+      throw new Error(`Unexpected cursor ${cursor}`);
+    });
+    mount();
+    await screen.findByText('40 of 90 games');
+    fireEvent.click(screen.getByRole('button',{name:'Load more games'}));
+    await screen.findByText('80 of 90 games');
+    fireEvent.click(screen.getByRole('button',{name:'Load more games'}));
+    await screen.findByText('90 of 90 games');
+    expect(document.querySelectorAll('a[href^="/review/"]')).toHaveLength(90);
+    expect(new Set([...document.querySelectorAll('a[href^="/review/"]')].map(x=>x.getAttribute('href'))).size).toBe(90);
+    expect(requests.map(p=>p.get('cursor'))).toEqual([null,'stable-page-40','stable-page-80']);
+    expect(requests.every(p=>!p.has('offset'))).toBe(true);
+    expect(screen.queryByRole('button',{name:'Load more games'})).toBeNull();
+  });
+
   it('preserves loaded games when a later page fails and retries only that page', async () => {
     let failSecondPage = true;
     mocks.get.mockImplementation(async (url: string) => {

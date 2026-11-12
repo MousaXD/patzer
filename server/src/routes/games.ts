@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { parseGameId, parseGameListQuery } from './platformQueries.js';
+import { decodeGameListCursor, encodeGameListCursor } from './gameListCursor.js';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
@@ -20,6 +21,8 @@ router.get('/', (c) => {
   const user = c.get('user');
   const query = parseGameListQuery(new URL(c.req.url).searchParams);
   if (!query) return c.json({ error: 'invalid_input' }, 400);
+  const anchor = query.cursor ? decodeGameListCursor(user.id,query) : null;
+  if (query.cursor && !anchor) return c.json({error:'invalid_cursor'},400);
 
   // Both queries enforce user ownership. Stale analyses are not "analyzed".
   const filters: string[] = ['g.user_id = ?'];
@@ -68,12 +71,33 @@ router.get('/', (c) => {
     params.push(query.q, query.q, query.q, query.q);
   }
   const joined = 'FROM games g LEFT JOIN analyses a ON a.game_id = g.id';
-  const where = `WHERE ${filters.join(' AND ')}`;
+  // Freeze the upper auto-increment ID at the first request. Later imports do
+  // not alter the remaining pages of an in-progress browsing session.
+  const snapshotWhere = `WHERE ${[...filters, ...(anchor ? ['g.id <= ?'] : [])].join(' AND ')}`;
+  const snapshotParams = [...params, ...(anchor ? [anchor.maxId] : [])];
   // The common unfiltered-by-analysis count needs only the user_id index;
   // avoid an unnecessary analyses lookup for every saved game.
   const countFrom = query.analyzed === null ? 'FROM games g' : joined;
-  const total = db.prepare(`SELECT COUNT(*) AS n ${countFrom} ${where}`)
-    .get(...params) as { n: number };
+  const total = db.prepare(`SELECT COUNT(*) AS n, MAX(g.id) AS max_id ${countFrom} ${snapshotWhere}`)
+    .get(...snapshotParams) as {n:number;max_id:number|null};
+  const maxId = anchor?.maxId ?? total.max_id ?? 0;
+  const pageFilters = [...filters];
+  const pageParams: (string|number)[] = [...params];
+  if (anchor) {
+    pageFilters.push('g.id <= ?');
+    pageParams.push(anchor.maxId);
+    const idComparator = query.sort === 'newest' ? '<' : '>';
+    if (anchor.endTime === null) {
+      pageFilters.push(`(g.end_time IS NULL AND g.id ${idComparator} ?)`);
+      pageParams.push(anchor.id);
+    } else {
+      const timeComparator = query.sort === 'newest' ? '<' : '>';
+      pageFilters.push(`(g.end_time IS NULL OR g.end_time ${timeComparator} ?
+        OR (g.end_time = ? AND g.id ${idComparator} ?))`);
+      pageParams.push(anchor.endTime,anchor.endTime,anchor.id);
+    }
+  }
+  const where = `WHERE ${pageFilters.join(' AND ')}`;
   // Never interpolate raw query parameters into ORDER BY.
   const order = query.sort === 'oldest'
     ? 'g.end_time ASC NULLS LAST, g.id ASC'
@@ -92,11 +116,16 @@ router.get('/', (c) => {
     ORDER BY ${order}
     LIMIT ? OFFSET ?
   `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION,
-    ...params, query.limit, query.offset) as { id: number }[];
+    ...pageParams, query.limit + 1, anchor ? 0 : query.offset) as {id:number;end_time:string|null}[];
+  const visible = rows.slice(0, query.limit);
+  const hasMore = rows.length > query.limit;
+  const last = visible.at(-1);
   return c.json({
-    games: rows, total: total.n,
+    games: visible, total: total.n,
     limit: query.limit, offset: query.offset,
-    has_more: query.offset + rows.length < total.n,
+    has_more: hasMore,
+    next_cursor: hasMore && last ? encodeGameListCursor(user.id,query,
+      {endTime:last.end_time,id:last.id,maxId}) : null,
   });
 });
 

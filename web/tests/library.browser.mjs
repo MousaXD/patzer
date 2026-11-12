@@ -66,6 +66,26 @@ function list(params) {
     offset, limit, has_more: offset + limit < filtered.length };
 }
 
+/** A disposable history that receives a newer game between two page reads.
+ * Keep the first page's high-water ID in the cursor, just like the new API.
+ * An offset-only client would duplicate the boundary card after the insert.
+ */
+function changingHistoryPage(params, newGamePresent) {
+  const newGame = {...games[0], id:9999, white:'New Arrival',
+    end_time:'2027-01-01T00:00:00.000Z'};
+  const all = newGamePresent ? [newGame,...games] : games;
+  const cursor=params.get('cursor');
+  const anchor=cursor ? JSON.parse(Buffer.from(cursor,'base64url').toString('utf8')) : null;
+  const maxId=anchor ? anchor[1] : Math.max(...all.map(g=>g.id));
+  const snapshot=all.filter(g=>g.id <= maxId);
+  const offset=anchor ? snapshot.findIndex(g=>g.id===anchor[0])+1 : Number(params.get('offset')||0);
+  const limit=Number(params.get('limit')||40);
+  const slice=snapshot.slice(offset,offset+limit);
+  const hasMore=offset+slice.length<snapshot.length;
+  return {games:slice,total:snapshot.length,offset:cursor?0:offset,limit,has_more:hasMore,
+    next_cursor:hasMore && slice.length ? Buffer.from(JSON.stringify([slice.at(-1).id,maxId])).toString('base64url') : null};
+}
+
 let preview, browser;
 const queries = [];
 async function awaitUp() {
@@ -78,12 +98,13 @@ async function awaitUp() {
 }
 
 async function newPage(theme, width, height,
-  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false} = {}) {
+  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false, changingHistory = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
   let hasPgnImports = false;
+  let latestGameInserted = false;
   const seenPgnFiles = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/**', async route => {
@@ -122,7 +143,11 @@ async function newPage(theme, width, height,
           {id:9002, source:'imported',white:'Chris',black:'Dana',result:null,time_control:null,
             end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"Queen's Pawn Game",notes:''},
         ], total:2,offset:0,limit:40,has_more:false};
-      } else json = emptyLibrary ? {games:[],total:0,offset:0,limit:40,has_more:false} : list(parsed.searchParams);
+      } else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
+      else if (changingHistory) {
+        json = changingHistoryPage(parsed.searchParams,latestGameInserted);
+        latestGameInserted = true;
+      } else json = list(parsed.searchParams);
     } else if (path === '/api/games/import/pgn' && request.method() === 'POST') {
       const pgn = request.postDataJSON().pgn;
       seenPgnFiles.push(pgn);
@@ -319,6 +344,31 @@ try {
     await page.screenshot({path:join(output,'library-firstuse-imported-light-320.png')});
     console.log('PASS first-use empty unlinked library through PGN picker to first reviewable game');
   } finally {await firstUse.context.close();}
+
+  const movingHistory = await newPage('dark',390,844,{changingHistory:true});
+  try {
+    const {page,pageErrors}=movingHistory;
+    await page.getByRole('button',{name:'Load more games'}).click();
+    await page.getByText('80 of 620 games').waitFor();
+    assert.equal(await page.locator('a[href="/review/40"]').count(),1,
+      'A concurrent import duplicated the original page boundary');
+    assert.equal(await page.locator('a[href="/review/80"]').count(),1,
+      'The moving library skipped game 80');
+    assert.equal(await page.locator('a[href="/review/9999"]').count(),0,
+      'An in-flight history snapshot unexpectedly incorporated a newer game');
+    const gameLinks=await page.locator('a[href^="/review/"]').evaluateAll(els=>els
+      .map(el=>el.getAttribute('href')).filter(href=>/^\/review\/\d+$/.test(href)));
+    assert.equal(gameLinks.length,80);
+    assert.equal(new Set(gameLinks).size,80);
+    assert.ok(queries.some(q=>new URLSearchParams(q).has('cursor')),
+      'Browser Load more never sent the new continuation token');
+    await page.screenshot({path:join(output,'library-cursor-after-new-import-dark-390.png')});
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.getByText('40 of 621 games').waitFor();
+    await page.locator('a[href="/review/9999"]').waitFor();
+    assert.deepEqual(pageErrors,[], 'Cursor pagination produced a browser error');
+    console.log('PASS stable cursor load-more after concurrent import and fresh history refresh');
+  } finally {await movingHistory.context.close();}
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

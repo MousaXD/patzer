@@ -320,3 +320,24 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next highest-impact investigation
 
 - Audit large-history pagination under concurrent imports, deletions, or edits: offset pagination may duplicate or skip cards if new games arrive between page requests. Reproduce with a disposable fixture and test whether the existing deduped UI provides sufficient recovery; prefer a scoped, compatibility-safe fix and avoid undocumented API breaks.
+
+## 2026-11-12 — Stable, backwards-compatible Game Library pagination
+
+- Recovered clean, pushed `f596557` and reproduced the highest-impact outstanding history issue with two **red** authenticated Hono/SQLite regression tests. A newer import inserted before page two caused OFFSET pagination to repeat the last page-one game. Deleting a page-one entry caused OFFSET pagination to skip an unseen game. UI de-duplication could hide the repeated card but could not restore the skipped one.
+- Added optional, account/filter/sort-bound **keyset continuation tokens** (`next_cursor`) while preserving existing bounded `limit`/`offset`, `total` and `has_more` fields for older API clients. New clients prefer the cursor; older backends without cursors still use offset and retain the existing 200-game legacy ceiling. The parser rejects malformed, oversized or duplicate cursors, cursor+offset mixing, another account's cursor and tokens reused with changed filters/sort.
+- A continuation token carries the final saved game's `(end_time, id)` and a first-page `MAX(id)` high-water mark. Game IDs use `INTEGER PRIMARY KEY AUTOINCREMENT`; newer imports are intentionally absent from the in-flight browsing snapshot and appear when the user refreshes/starts new filtered history. Both newest/oldest ordering, tied timestamps and NULL end times are handled explicitly; a removed earlier entry no longer shifts the continuation position.
+- The server still enforces `g.user_id = ?` for every row and analysis provenance gate. Query parameters remain bound to SQLite placeholders, and sort expressions are hardcoded. No production migration, cursor storage or full-history background job was required.
+- Added backend tests for insertion, deletion, NULL dates, equal timestamps, source/filter/sort invalidation, cross-account isolation, malformed tokens, no-auth rejection and old offset compatibility. React tests certify new cursor navigation and continued compatibility with offset-only and legacy servers.
+- Isolated Chromium reproduced a newer game arriving between page requests on a 390px dark-mode history, then verified all 80 original cards were present exactly once, the new game was absent from that snapshot, and a fresh reload displayed it. Captured/inspected `qa-artifacts/agent-c-library/library-cursor-after-new-import-dark-390.png`. Existing 1440/390/320 light/dark, PGN imports, search, filters and recovery flows also passed.
+
+### Verification / performance
+
+- Targeted backend+frontend: **80 passed**. Full repository test suite: **109 files passed, 2 skipped; 1,041 tests passed, 12 skipped; zero failures**.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`: **passed**.
+- Disposable real Hono/SQLite benchmark, **30,000 owner games plus 2,500 other-user games**, with no production access: first 40-game page ~24 ms cold; next cursor page ~4 ms. A deep page after 25,000 records took **~5.7 ms with cursor vs ~21.2 ms with offset**; 12 cursor probes had median ~5.7 ms. These are single-machine smoke timings, not SLOs.
+
+### Remaining boundaries / next audit
+
+- The high-water-ID cursor protects against later **inserts and deletions**. A concurrent modification of an *existing* game's `end_time` or membership in a filtered collection can still reorder that existing game; this is not an immutable SQLite transaction snapshot. Avoid claiming one without a real snapshot mechanism.
+- Independently audit filter resets and reopening a saved game while browsing a cursor-paginated history. Verify filters, bookmarks and navigation do not leave stale cursors or incorrectly reset to the beginning; prioritize reproducible UX failures only.
+- The full historical Chess.com in-app sync job remains intentionally unimplemented pending durable checkpoints, opt-in consent, throttling, cancellation and recovery design.

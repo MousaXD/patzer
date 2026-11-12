@@ -86,6 +86,120 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect((await oldest.json() as typeof data).games[0]?.id).toBe(1);
   });
 
+  it('continues a stable history after a newer import without repeating or skipping saved games', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const request = (params:string) => gamesRoute.request(`/?${params}`, {headers:{Cookie:ownCookie}});
+    const insert = db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. e4 e5 *','Alice','Bob',?)`);
+    const ids:number[]=[];
+    try {
+      for (let i=0; i<7; i++) ids.push(Number(insert.run(`agentc-cursor-${i}`,`2026-10-${String(i+1).padStart(2,'0')}T12:00:00.000Z`).lastInsertRowid));
+      const first = await (await request('limit=3')).json() as {games:{id:number}[];next_cursor?:string;total:number};
+      expect(first.games.map(g=>g.id)).toEqual(ids.slice(4).reverse());
+      expect(first.total).toBe(7);
+      expect(first.next_cursor).toEqual(expect.any(String));
+      ids.push(Number(insert.run('agentc-cursor-late','2026-11-01T12:00:00.000Z').lastInsertRowid));
+      const offset = await (await request('limit=3&offset=3')).json() as {games:{id:number}[]};
+      expect(offset.games[0]?.id).toBe(first.games.at(-1)?.id); // reproduced legacy overlap
+      const second = await (await request(`limit=3&cursor=${encodeURIComponent(first.next_cursor!)}`)).json() as typeof first;
+      expect(second.games.map(g=>g.id)).toEqual(ids.slice(1,4).reverse());
+      expect(second.total).toBe(7); // snapshot excludes later imports
+      expect(second.next_cursor).toEqual(expect.any(String));
+      const third = await (await request(`limit=3&cursor=${encodeURIComponent(second.next_cursor!)}`)).json() as typeof first;
+      expect(third.games.map(g=>g.id)).toEqual([ids[0]]);
+      expect(third.next_cursor).toBeNull();
+      expect([...first.games,...second.games,...third.games].map(g=>g.id)).toEqual(ids.slice(0,7).reverse());
+      const fresh = await (await request('limit=1')).json() as typeof first;
+      expect(fresh.games[0]?.id).toBe(ids[7]);
+      expect(fresh.total).toBe(8);
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
+  it('keeps oldest-first and undated game boundaries stable after earlier games are removed', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const request = (params:string) => gamesRoute.request(`/?${params}`, {headers:{Cookie:ownCookie}});
+    const insert=db.prepare(`INSERT INTO games(user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. d4 d5 *','Alice','Bob',?)`);
+    const ids:number[]=[];
+    try {
+      for(let i=0;i<4;i++) ids.push(Number(insert.run(`agentc-oldest-${i}`,`2026-08-0${i+1}T00:00:00Z`).lastInsertRowid));
+      ids.push(Number(insert.run('agentc-undated-1',null).lastInsertRowid));
+      ids.push(Number(insert.run('agentc-undated-2',null).lastInsertRowid));
+      const first=await (await request('limit=2&sort=oldest')).json() as {games:{id:number}[];next_cursor?:string};
+      expect(first.games.map(g=>g.id)).toEqual(ids.slice(0,2));
+      db.prepare('DELETE FROM games WHERE id=?').run(ids[0]);
+      const next=await (await request(`limit=2&sort=oldest&cursor=${encodeURIComponent(first.next_cursor!)}`)).json() as typeof first;
+      expect(next.games.map(g=>g.id)).toEqual(ids.slice(2,4));
+      const undated=await (await request(`limit=2&sort=oldest&cursor=${encodeURIComponent(next.next_cursor!)}`)).json() as typeof first;
+      expect(undated.games.map(g=>g.id)).toEqual(ids.slice(4));
+      expect(undated.next_cursor).toBeNull();
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
+  it('binds continuation cursors to account, filters and sort, rejecting malformed or replayed tokens', async () => {
+    const first=await (await get('/?limit=2&source=chesscom')).json() as {next_cursor:string};
+    const cursor=encodeURIComponent(first.next_cursor);
+    expect(first.next_cursor).toEqual(expect.any(String));
+    const valid=await get(`/?limit=2&source=chesscom&cursor=${cursor}`);
+    expect(valid.status).toBe(200);
+    for(const path of [
+      `/?limit=2&cursor=${cursor}`,
+      `/?limit=2&source=lichess&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&sort=oldest&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&q=opponent&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&offset=0&cursor=${cursor}`,
+      `/?cursor=${cursor}&cursor=${cursor}`,
+      '/?cursor=bogus',
+      `/?cursor=${'x'.repeat(401)}`,
+    ]) {
+      const response=await get(path);
+      expect(response.status,`Invalid cursor accepted: ${path.slice(0,90)}`).toBe(400);
+    }
+    const {createSession, SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const otherCookie=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(2))}`;
+    expect((await gamesRoute.request(`/?source=chesscom&cursor=${cursor}`,
+      {headers:{Cookie:otherCookie}})).status).toBe(400);
+    expect((await gamesRoute.request(`/?source=chesscom&cursor=${cursor}`)).status).toBe(401);
+  });
+
+  it('continues newest-first across equal timestamps and NULL dates without overlapping pages', async () => {
+    const {createSession, SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const ownCookie=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games(user_id,source,external_id,pgn,white,black,end_time)
+      VALUES(3,'imported',?,'1. e4 e5 *','A','B',?)`);
+    const ids:number[]=[];
+    try {
+      for(let i=0;i<3;i++) ids.push(Number(insert.run(`agentc-tie-${i}`,'2026-10-01T00:00:00Z').lastInsertRowid));
+      for(let i=0;i<3;i++) ids.push(Number(insert.run(`agentc-null-${i}`,null).lastInsertRowid));
+      const result:number[]=[];
+      let cursor:string|null=null;
+      for(let n=0;n<4;n++) {
+        const response=await gamesRoute.request(`/?limit=2${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`,
+          {headers:{Cookie:ownCookie}});
+        expect(response.status).toBe(200);
+        const body=await response.json() as {games:{id:number}[];next_cursor:string|null;has_more:boolean};
+        result.push(...body.games.map(g=>g.id));
+        cursor=body.next_cursor;
+        if(!body.has_more) break;
+        expect(cursor).toEqual(expect.any(String));
+      }
+      expect(result).toEqual([...ids.slice(0,3).reverse(),...ids.slice(3).reverse()]);
+      expect(new Set(result).size).toBe(6);
+      expect(cursor).toBeNull();
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
   it('applies structured filters and current-version analysis coverage', async () => {
     const response = await get('/?source=chesscom&time_class=rapid&result=win&analyzed=1&limit=200');
     const data = await response.json() as { total: number; games: { analyzed: number }[] };
