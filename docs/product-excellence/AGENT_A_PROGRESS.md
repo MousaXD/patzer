@@ -1252,3 +1252,21 @@
 ### Next independent Game Review audit
 
 - Inspect keyboard behavior on the separate **Move details** expander and other focused Review toolbar actions (especially Home/End). Check whether those controls advertise disclosure semantics or can still trigger an unrelated chess move. Reproduce in Chromium at a nonzero saved ply and restrict any change to the precise control class that is affected.
+
+## 2026-11-12: keep keyboard shortcuts from hijacking focused Review actions
+
+### Browser-reproduced scope and targeted correction
+
+- Recovered from clean pushed `0b9563f` and investigated the logged Move details / toolbar concern without repeating the disclosure investigation. A new authenticated Chromium assertion **failed before product changes**: focusing the mobile **Move details** action at `1 / 24` and pressing Home silently moved the saved chessboard to `0 / 24`, even though focus remained on the original button.
+- The shared global Review key handler was overly broad: it exempted some specific controls but treated other focused native buttons as a request to navigate the game. Restricted global arrow/Home/End shortcuts to non-interactive focused surfaces by exempting `button`, links, native inputs/summary, and ARIA buttons/textbox/listbox/menu/slider/tablist, while keeping board and document/background navigation intact. No change to engine calculations, saved-game controller, or per-control click/Enter behavior.
+- Expanded the same source-verified browser scenario at ply 1 to test focused Move details, Star, and transport Next buttons with both Home and ArrowRight, plus Engine Lines / Threat / Master Games disclosures and a **positive control**: board-focused Home and ArrowRight still navigate from ply 1 → 0 → 1. All retain focus as expected; no original PGN mutation.
+
+### Verification and boundaries
+
+- `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium viewport/locale/source/engine/keyboard/variation/PGN matrix: **PASS (exit 0)** on port 8967. No production services, saved user data, deployment, merge or other-agent branch changed.
+
+### Next independent Game Review audit
+
+- Audit the actual **on-screen shortcut instructions** against the new focus-safe keyboard behavior. If the hint implies arrows/Home/End always navigate even when a button is focused, clarify it without cluttering narrow mobile UI; if existing text is accurate, investigate another user-visible reliability or learning gap instead.

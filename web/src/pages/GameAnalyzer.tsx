@@ -533,11 +533,11 @@ function GameAnalyzerView() {
       // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
       if (document.querySelector('[data-practice-mode], [data-practice-picker]')) return;
       const target = e.target instanceof Element ? e.target : null;
-      // Never hijack editing, focused sliders/menus, native or ARIA
-      // disclosures, tablist navigation, or a modal. A disclosure header is
-      // a real button: Home/Arrow must not silently change the saved chess
-      // position while keyboard users interact with the panel's controls.
-      if (target?.closest('input, textarea, select, summary, button[aria-expanded][aria-controls], [contenteditable], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
+      // Global Review shortcuts apply to the board and document, never to a
+      // focused action. A Move details/Star/transport button is as much a
+      // keyboard control as an ARIA disclosure: Home/Arrow must not change
+      // the saved PGN position while focus stays on that other action.
+      if (target?.closest('button, a[href], input, textarea, select, summary, [contenteditable], [role="button"], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')) return;
       const key = e.key;
       if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {

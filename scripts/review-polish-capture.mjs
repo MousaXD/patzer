@@ -1273,6 +1273,24 @@ try {
     await page.keyboard.press('ArrowRight');
     assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
       'Global Home and ArrowRight must still navigate the board outside disclosure controls');
+    // The mobile jump-to-details and toolbar buttons are actions, not board
+    // navigation surfaces. Focused action buttons should not accidentally
+    // replay a move when a keyboard user presses Home or an arrow key.
+    for(const action of [
+      page.locator('[data-review-jump-to-details]'),
+      page.getByRole('button',{name:'Star',exact:true}),
+      page.locator('[data-move-transport] button').nth(3),
+    ]){
+      await action.focus();
+      await page.keyboard.press('Home');
+      assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+        'Home on a focused Game Review action button must not jump to the opening');
+      await page.keyboard.press('ArrowRight');
+      assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+        'ArrowRight on a focused Game Review action button must not play an unintended move');
+      assert.ok(await action.evaluate(element=>document.activeElement===element),
+        'A focused Review action button should retain keyboard focus');
+    }
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
   // Engine Lines can be collapsed while an HTTP search is still in flight.
