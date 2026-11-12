@@ -727,10 +727,20 @@ try {
     assert.ok(contrastAndSize.retryWidth>=44 && contrastAndSize.retryHeight>=44,
       `Engine recovery Retry must have a 44px minimum touch target: ${JSON.stringify(contrastAndSize)}`);
     const scoredAgain=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position')&&response.status()===200);
-    await page.getByRole('button',{name:'Retry',exact:true}).click();
+    await page.getByRole('button',{name:'Retry',exact:true}).focus();
+    await page.keyboard.press('Enter');
     await scoredAgain;
     const validMove=page.getByRole('button',{name:'Follow played move e4'});
     await validMove.waitFor({state:'visible',timeout:5000});
+    const focused=await page.evaluate(()=>({
+      tag:document.activeElement?.tagName,
+      id:document.activeElement?.id,
+    }));
+    assert.equal(focused.id,'review-engine-lines-content',
+      `Keyboard Retry must retain context after the disappearing button unmounts: ${JSON.stringify(focused)}`);
+    await page.keyboard.press('Tab');
+    assert.ok(await validMove.evaluate(el=>document.activeElement===el),
+      'Tab from recovered engine content should enter the first playable engine line');
     await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'hidden'});
     await page.screenshot({path:join(output,'engine-line-matched-after-retry-390.png')});
     const pvContrast=await renderedContrast(page,'#review-engine-lines-content button[aria-label="Follow played move e4"] span:nth-child(4)');

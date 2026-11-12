@@ -138,3 +138,22 @@
 ### Next candidate
 
 - Verify that activating Engine Lines Retry with Enter preserves keyboard focus when the Retry button unmounts after a success or a pending request; the already-fixed variation scorer had a similar keyboard trap. Reproduce first in the isolated browser fixture, then fix only if confirmed.
+
+## 2026-11-12: keyboard recovery after Engine Lines Retry
+
+### Reproduction
+
+- Continued from `100f845` and audited the existing Engine Lines 503→valid-response fixture with actual keyboard navigation. Focusing Retry and pressing Enter caused the button to disappear as analysis restarted and left `document.activeElement` on `BODY` after the score returned.
+- A deliberately failing Chromium assertion recorded **`{tag:BODY,id:''}`** instead of keeping the user in the Engine Lines workspace.
+
+### Fix and verification
+
+- Added a persistent, programmatically focusable `role="region"` for the expanded Engine Lines content, labeled with the current locale's Engine Lines title; the Retry action focuses that region in the next frame after triggering the existing request. The region remains mounted across loading/error/success states.
+- Keyboard regression confirms Enter→Retry→valid engine result leaves focus in `#review-engine-lines-content` and Tab reaches the first playable engine move; the saved PGN remains unchanged. Opened the real 390px dark Chromium screenshot at `qa-artifacts/agent-a/engine-line-retry-focus-after-20261112/engine-line-matched-after-retry-390.png` and inspected the visible focus ring on the playable move.
+- `npm run typecheck`: PASS; `npm run build`: PASS; `npm test -- --testTimeout=20000`: **970 passed / 12 skipped** (107 passing test files).
+- Disposable authenticated Chromium full matrix: **PASS (exit 0)**, covering Engine Lines keyboard focus, German localization, 320/390px touch targets, stale requests, variation source matching, and PGN immutability. Synthetic HTTP fixture scores are not Stockfish certification.
+- No merge, deployment, production SQLite or unrelated-agent files changed.
+
+### Next priority
+
+- Inspect the actual mobile variation transport. Existing screenshots show `1 · var / 24`: the denominator is the saved mainline's length even when the transport buttons are navigating a short unsaved branch. Reproduce whether this counter miscommunicates the active branch length and whether it remains untranslated in the five supported locales before deciding a focused fix.

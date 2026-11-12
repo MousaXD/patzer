@@ -1469,12 +1469,21 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
   onHover: (l: EngineLine | null) => void;
 }) {
   const { t } = useTranslation();
+  const linesContentRef = useRef<HTMLDivElement>(null);
+  const retryLines = () => {
+    onRetry();
+    // Retry disappears when a new engine request starts. Focus this persistent
+    // content region rather than dropping keyboard users back to document BODY.
+    requestAnimationFrame(() => linesContentRef.current?.focus({ preventScroll: true }));
+  };
   return (
     <div className="card overflow-hidden">
       <ReviewDisclosureHeader icon={Search} label={t('review.lines', { defaultValue: 'Engine lines' })}
         expanded={enabled} onToggle={onToggle} controlsId="review-engine-lines-content"
         title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })} />
-      <div id="review-engine-lines-content" hidden={!enabled} className="space-y-1 p-2">
+      <div ref={linesContentRef} id="review-engine-lines-content" role="region"
+        aria-label={t('review.lines')} tabIndex={-1} hidden={!enabled}
+        className="space-y-1 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
         {enabled && (
           <>
           {loading && lines.length === 0 && (
@@ -1488,7 +1497,7 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
           {error && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
               <span>{t(error === 'busy' ? 'review.linesBusy' : 'review.linesUnavailable')}</span>
-              <button type="button" onClick={onRetry} disabled={loading}
+              <button type="button" onClick={retryLines} disabled={loading}
                 className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">{t('review.linesRetry')}</button>
             </div>
           )}
