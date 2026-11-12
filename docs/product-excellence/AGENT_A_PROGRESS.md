@@ -1555,3 +1555,13 @@
 ### Next independent Game Review protection audit
 
 - Verify that a pending, unacknowledged private Notes draft triggers native browser leave protection on **hard refresh, closing a tab or navigating to an external URL**, while a safely stored draft does not trigger a false warning. The current internal SPA navigation guard has extensive coverage, but `beforeunload` is a separate loss-prevention path. Use the disposable Chromium fixture; preserve the user's ability to deliberately leave and do not change native dialog text.
+
+## 2026-11-13: verify native hard-navigation protection for unsaved Notes
+
+- Continued from clean pushed `6afdef0`. Added a real Chromium **browser-native beforeunload dialog** scenario to the authenticated disposable Review fixture. Typed a new private Notes draft without blurring/saving, confirmed the Unsaved status, provided keyboard user activation, and attempted a full document navigation to `/review` (not an in-app React Router transition). Chromium emitted exactly one `beforeunload` dialog; dismissing it kept the original Game Review URL and the entire local draft mounted.
+- Blurred the editor to perform the actual backend Notes PATCH and waited for the exact acknowledged Saved status. A second full document navigation then succeeded without another dialog. Verified the persisted database notes equal the user's text and the saved PGN is unchanged. This tests actual browser behavior rather than only dispatching a synthetic JavaScript event. No application changes were necessary.
+- Full authenticated disposable Chromium desktop/mobile, locale, engine, source, game navigation, Notes, bookmark, blind-practice and keyboard matrix: **PASS (exit 0)** on port 9006. Browser script syntax and `git diff --check` PASS. Prior app checkpoint passed **1006 tests / 12 skipped**, typecheck and build. Test-only change, no merge, deployment, production account, or other-agent worktree modification.
+
+### Next independently scoped audit
+
+- The Notes toolbar can remain open while a new **game source revision** arrives. Audit whether old saved Notes, incorrect evaluation, or a stale classification can appear during a source update. A new practice source must either remain source-verified or enter the safe unavailable/recovery state; avoid touching the original PGN. Work only with disposable source-attested fixtures and change code only for a reproduced defect.

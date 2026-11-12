@@ -866,6 +866,51 @@ try {
       'Reopening Notes must display the latest successful draft');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await collapsedNotesContext.close();}
+  // Internal React Router navigation uses useBlocker; closing/reloading the
+  // document instead relies on the native beforeunload warning. Verify an
+  // unsaved editor keeps its draft after a dismissed hard-leave attempt, and
+  // that a confirmed save does not warn on a later normal hard navigation.
+  const hardLeaveContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await hardLeaveContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await hardLeaveContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const seenDialogs=[];
+    page.on('dialog',async dialog=>{
+      seenDialogs.push(dialog.type());
+      await dialog.dismiss();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    const draft='Draft protected against a native hard navigation';
+    await editor.fill(draft);
+    await page.locator('[data-review-meta-toolbar]').getByText(enNotes.review.notesUnsaved,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    // User activation is required for browser-native beforeunload dialogs.
+    await editor.press('ArrowRight');
+    const originalUrl=page.url();
+    await page.goto(`${base}/review`,{waitUntil:'commit',timeout:4000}).catch(()=>{});
+    assert.deepEqual(seenDialogs,['beforeunload'],
+      'A genuinely unsaved Notes draft must request confirmation before leaving the document');
+    assert.equal(page.url(),originalUrl,
+      'Dismissing the browser-native leave prompt must keep Game Review open');
+    assert.equal(await editor.inputValue(),draft,'A cancelled hard leave must retain the full private draft');
+    const savedResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/notes`)
+      && res.status()===200 && res.request().postDataJSON().notes===draft);
+    await editor.press('Tab');
+    await savedResponse;
+    await page.locator('[data-review-meta-toolbar]').getByText(enNotes.common.saved,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    await page.goto(`${base}/review`,{waitUntil:'domcontentloaded',timeout:5000});
+    assert.equal(new URL(page.url()).pathname,'/review');
+    assert.deepEqual(seenDialogs,['beforeunload'],
+      'The native leave warning must be removed after the Notes PATCH is acknowledged');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,draft);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await hardLeaveContext.close();}
   // Leaving Review while a blurred note PATCH is unresolved must not silently
   // discard the only copy of a private draft. Hold a failing request while a
   // user follows the real Back link; source PGN must never be affected.
