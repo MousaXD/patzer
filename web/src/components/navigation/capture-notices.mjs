@@ -116,6 +116,43 @@ try {
         }
       }
       await page.screenshot({ path: resolve(output, `release-notice-${color}-${viewport.width}.png`) });
+      // The external release-notes link and the dismiss button must have a
+      // predictable keyboard order. Global overlays must trap focus while
+      // open and restore it to the link when dismissed.
+      const whatsNew = page.getByRole('link', { name: "What's new" });
+      const noticeDismiss = page.getByRole('button', { name: 'Dismiss until the next release' });
+      await whatsNew.focus();
+      await page.keyboard.press('Tab');
+      if (!(await noticeDismiss.evaluate((el) => el === document.activeElement))) {
+        throw new Error(`${color} ${viewport.width}px: Tab skipped release notice dismissal`);
+      }
+      await page.keyboard.press('Shift+Tab');
+      if (!(await whatsNew.evaluate((el) => el === document.activeElement))) {
+        throw new Error(`${color} ${viewport.width}px: Shift+Tab did not return to What's new`);
+      }
+      await page.keyboard.press('?');
+      const help = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+      await help.waitFor();
+      for (let index = 0; index < 4; index++) {
+        await page.keyboard.press('Tab');
+        await assertInside(page, help, `shortcut overlay from release notice ${color} ${viewport.width}px`);
+      }
+      await page.keyboard.press('Escape');
+      await help.waitFor({ state: 'detached' });
+      if (!(await whatsNew.evaluate((el) => el === document.activeElement))) {
+        throw new Error(`${color} ${viewport.width}px: shortcuts did not return focus to release link`);
+      }
+      await page.keyboard.press('Control+k');
+      const palette = page.getByRole('dialog', { name: 'Search' });
+      await palette.waitFor();
+      if ((await page.getByRole('dialog').count()) !== 1) {
+        throw new Error(`${color} ${viewport.width}px: release notice opened multiple modal dialogs`);
+      }
+      await page.keyboard.press('Escape');
+      await palette.waitFor({ state: 'detached' });
+      if (!(await whatsNew.evaluate((el) => el === document.activeElement))) {
+        throw new Error(`${color} ${viewport.width}px: search did not return focus to release link`);
+      }
       const dialog = await openChangelog(page, viewport.width < 768);
       await dialog.waitFor();
       await dialog.getByText('Improved learning paths').waitFor();

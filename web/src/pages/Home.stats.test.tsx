@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), learnProgress: vi.fn(), today: '2026-11-10' }));
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(), learnProgress: vi.fn(), today: '2026-11-10',
+  displayName: 'Player', avatarEmoji: '♟',
+}));
 // Unit tests only exercise loading, errors and retry. Disable motion wrappers
 // here so happy-dom does not reject pending Web Animations on unmount.
 vi.mock('framer-motion', async () => {
@@ -17,7 +20,10 @@ vi.mock('framer-motion', async () => {
 });
 vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../state/auth', () => ({
-  useAuth: () => ({ user: { id: 7, profile: { display_name: 'Player', avatar_emoji: '♟' } } }),
+  useAuth: () => ({
+    user: { id: 7, username: 'sample-player',
+      profile: { display_name: mocks.displayName, avatar_emoji: mocks.avatarEmoji } },
+  }),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -43,10 +49,37 @@ function mount() {
   );
 }
 
-beforeEach(() => { mocks.today = '2026-11-10'; mocks.learnProgress.mockResolvedValue({ lessons: [] }); });
+beforeEach(() => {
+  mocks.today = '2026-11-10';
+  mocks.displayName = 'Player';
+  mocks.avatarEmoji = '♟';
+  mocks.learnProgress.mockResolvedValue({ lessons: [] });
+});
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
+  it('shows a recognizable first-run identity and touch-sized hero actions when profile fields are blank', () => {
+    mocks.displayName = '   ';
+    mocks.avatarEmoji = '';
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+
+    mount();
+    const name = screen.getByRole('heading', { level: 1, name: 'sample-player' });
+    expect(name.parentElement?.previousElementSibling?.textContent).toBe('♟');
+    const hero = name.closest('section');
+    for (const path of ['/play', '/review']) {
+      const action = hero?.querySelector<HTMLAnchorElement>(`a[href="${path}"]`);
+      expect(action?.className).toContain('min-h-11');
+    }
+  });
+
   it('shows a retryable error instead of the no-games tagline after a failed stats request', async () => {
     let offline = true;
     mocks.get.mockImplementation((url: string) => {

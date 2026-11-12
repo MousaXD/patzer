@@ -95,6 +95,20 @@ async function openWithFixture(page, viewport) {
   await page.waitForTimeout(1100);
   await checkNoHorizontalOverflow(page, viewport.width + 'x' + viewport.height);
   await checkHomeCardContrast(page, `${theme} ${viewport.width}x${viewport.height}`);
+  const heroHeading = page.getByRole('heading', { level: 1, name: 'Sample Player' });
+  const heroAvatar = await heroHeading.evaluate((heading) =>
+    heading.parentElement?.previousElementSibling?.textContent?.trim() ?? '');
+  const hero = page.locator('main section').first();
+  const actionSizes = [];
+  for (const [name, path] of [['Play', '/play'], ['Game Review', '/review']]) {
+    const link = hero.locator(`a[href="${path}"]`);
+    const bounds = await link.boundingBox();
+    actionSizes.push({ name, width: bounds?.width ?? 0, height: bounds?.height ?? 0 });
+  }
+  const undersized = actionSizes.filter((action) => action.height < 44 || action.width < 44);
+  if (!heroAvatar || undersized.length) {
+    throw new Error(`${theme} ${viewport.width}px homepage hero lacks identity/touch targets: ${JSON.stringify({ heroAvatar, undersized })}`);
+  }
   const onboarding = page.locator('[data-home-onboarding]');
   if ((await onboarding.locator('a[href="/play"]').count()) !== 1 ||
       (await onboarding.locator('a[href="/review"]').count()) !== 1) {
@@ -223,6 +237,20 @@ try {
       }
     }
   }
+
+  // Some provider-created profiles legitimately have no display name or
+  // avatar emoji. The homepage must still introduce the signed-in player.
+  profile.display_name = '   ';
+  profile.avatar_emoji = '   ';
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('heading', { level: 1, name: 'sample-player' }).waitFor();
+  const defaultAvatar = await page.getByRole('heading', { level: 1, name: 'sample-player' })
+    .evaluate((heading) => heading.parentElement?.previousElementSibling?.textContent?.trim() ?? '');
+  if (!defaultAvatar) throw new Error('Homepage hero has no fallback avatar for an empty profile');
+  await page.screenshot({ path: resolve(output, 'home-missing-profile-390.png') });
+  profile.display_name = 'Sample Player';
+  profile.avatar_emoji = '';
 
   theme = 'dark';
   await openWithFixture(page, { width: 1440, height: 900 });

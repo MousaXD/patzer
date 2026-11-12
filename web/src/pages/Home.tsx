@@ -86,8 +86,8 @@ export default function Home() {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5">
       <Hero
-        displayName={user?.profile.display_name ?? ''}
-        avatar={user?.profile.avatar_emoji ?? '♟'}
+        displayName={user?.profile.display_name?.trim() || user?.username || t('app.name')}
+        avatar={user?.profile.avatar_emoji?.trim() || '♟'}
         stats={stats ?? null}
         loading={statsLoading}
         error={statsError}
@@ -200,7 +200,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
         <div className="flex flex-wrap gap-2 md:flex-col md:items-end">
           <Link
             to="/play"
-            className="group inline-flex items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900"
+            className="group inline-flex min-h-11 items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none"
           >
             <Swords className="h-4 w-4" />
             {t('home.playTitle')}
@@ -208,7 +208,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
           </Link>
           <Link
             to="/review"
-            className="inline-flex items-center gap-2 rounded-md bg-white/10 px-4 py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-white/10 px-4 py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none"
           >
             <BookOpen className="h-3.5 w-3.5" />
             {t('home.reviewTitle')}

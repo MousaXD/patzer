@@ -891,3 +891,31 @@
 ### Next audit
 
 - Investigate keyboard navigation of the release notice's **What's new** link and dismissal control when the notice is combined with a global modal or an unusually tall translated notice. Avoid expanding global UI chrome without a reproduced need.
+
+## 2026-11-12: Release-notice keyboard audit and first-run homepage identity
+
+### Recovery and negative controls
+
+- Recovered the clean, pushed Agent B branch at `d670cdc`, verified independent worktrees and resumed the precise pending update-notice keyboard-navigation audit instead of repeating prior work.
+- Expanded actual Chromium checks for the release notice's **What's new → Dismiss → What's new** Tab order at **1440, 390 and 320px**, both light and dark modes. Opening global Shortcuts (`?`) and Search (`Ctrl+K`) from the notice link kept just one active dialog, trapped Tab inside it and returned focus to the same link after Escape. All checks **passed before any change** to the notice itself; no unnecessary redesign.
+- Audited the shared homepage next. Chromium negative control found a blank square in the greeting hero for profiles with an empty avatar emoji. The profile fixture legitimately supplies `avatar_emoji: ''`, but the Home `??` fallback treated that empty string as meaningful. The hero also rendered 40px-tall Play and 32px-tall Game Review links, both undersized as touch targets.
+
+### Scoped correction
+
+1. The Home greeting now uses a visible chess-piece avatar when the profile emoji is empty/whitespace, and falls back from empty/whitespace display names to the existing username (then the app name if required). This preserves personalization without an empty first impression.
+2. Both main hero actions use a **44px minimum height** and restrained, visible keyboard focus states. Reduced-motion users retain immediate interactions without unnecessary transitions.
+3. Extended the existing real Chromium responsive-shell fixture to assert hero identity and both touch-target bounding rectangles, across the full **1920/1440/1024/768/640/390/320** matrix in light/dark modes. Added a whitespace-only profile regression at 390px and inspected its screenshot alongside 320px/1440px presentation.
+4. Added an isolated homepage unit regression for the missing display name and emoji, and the two guaranteed hero touch-target classes. Previous Home stats/error/learning coverage remains intact.
+
+### Verification
+
+- `node web/src/components/navigation/capture-notices.mjs`: **passed** all original release-notice/changelog, localization, and new banner+overlay keyboard checks.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** after the original negative control reported blank avatar and undersized hero actions.
+- `npx vitest run web/src --maxWorkers=2`: **427/427 passed across 73 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No change to game review, library, imports, play internals, production operations or other agent worktrees.
+
+### Next audit
+
+- Verify first-run home activity tiles and recent-game links at **320px** under keyboard/touch input. The banner and hero are stable; look for a genuine focus or tap-target problem in the first navigation journey, without rebuilding already-polished cards.
