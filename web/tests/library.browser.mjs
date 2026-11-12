@@ -392,6 +392,19 @@ try {
     const {page,pageErrors}=narrowGerman;
     const layout=await metrics(page);
     assert.ok(layout.overflow<=2,'German Library must not overflow at 320px');
+    const starred=await page.getByRole('button',{name:'Alle Partien',exact:true}).boundingBox();
+    const searchBox=await page.getByRole('searchbox').boundingBox();
+    const controlSizes=await page.locator('#library-filters select, #library-filters input[type="date"]').evaluateAll(nodes=>nodes.map(node=>({
+      label:node.getAttribute('aria-label'), height:node.getBoundingClientRect().height,
+      width:node.getBoundingClientRect().width,
+      x:node.getBoundingClientRect().x,
+    })));
+    assert.ok(starred && starred.height>=44,
+      `The mobile Starred-only toggle must have a 44px target: ${JSON.stringify(starred)}`);
+    assert.ok(searchBox && searchBox.height>=44,
+      `The mobile Library search input must have a 44px target: ${JSON.stringify(searchBox)}`);
+    assert.ok(controlSizes.length===7 && controlSizes.every(node=>node.height>=44 && node.x>=0 && node.x+node.width<=322),
+      `Mobile Library filter/date controls need 44px unclipped targets: ${JSON.stringify(controlSizes)}`);
     for (const select of layout.selectSizes.filter(s=>s.width>0)) {
       assert.ok(select.x>=-2 && select.right<=322,
         `Localized narrow filter is clipped: ${JSON.stringify(select)}`);

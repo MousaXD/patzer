@@ -693,3 +693,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **mobile starred-only toggle and Library filter touch target sizes**. The adjacent bookmark and clear-search controls now meet 44px, but the starred-only toggle and native filter selects may still have shorter hit areas on 320px screens. Measure their real Chromium geometry first, then make narrowly scoped changes that preserve compact 2-column layout and visible first-fold recovery.
+
+## 2026-11-12 — Ensure Library filter controls are genuinely touch-sized on mobile
+
+- Recovered clean pushed `eb6b25b` and built failing component + 320px German browser regressions for the Starred-only toggle, five filter selects and two date inputs. Chromium reproduced the Starred-only toggle at **34px high**. After a first pass adding ordinary `min-h-11` utilities, the toggle reached 44px, but all seven native form controls remained at **38px** in the browser, despite correctly updated React classes.
+- Traced the discrepancy to the existing global base rule `:where(input,textarea,select):not([type=...])`, which has higher specificity and is declared after Tailwind utilities. Fixed the root issue **locally to Library controls** with `!min-h-11` on its search field, five selects and two date inputs; ordinary `min-h-11` suffices on the Starred-only button. Did not touch shared CSS or the controls owned by other agents. The tests now specifically guard the important variant so this CSS override is not accidentally reintroduced.
+- Re-ran real Chromium measurements at 320px: search, Starred-only, all five selects and both date inputs each now have visible **44px-or-taller** targets and remain within the 320px screen width. The translated German values remain fully visible without horizontal overflow. Inspected `qa-artifacts/agent-c-library/library-german-filters-light-320.png`; 2-column filter alignment, search visibility, and first-fold recovery remain intact.
+
+### Verification
+
+- Focused Library React suite: **48/48 passed**. Full repository suite: **109 passed files, 2 skipped; 1,086 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Isolated Chromium desktop 1440px, mobile 390/320px light and dark, plus German localization, imports, no-match/Starred-only recovery, search clear keyboard+touch, bookmarks, Unicode, dates and cursors all passed. No browser JS errors or horizontal overflow.
+- No shared stylesheet, production data, external provider action, Game Review implementation, other agents' worktrees, merge or deploy touched.
+
+### Next independent audit
+
+- Check **Practice mistakes entry labels for imported games with missing player metadata**. A Library card may show translated **Unknown player** for a saved PGN while its practice link interpolates `g.white` / `g.black` directly into an accessible sentence. Confirm the accessible name in a real browser when an imported dated/analyzed game has null or blank player tags, then ensure keyboard and screen-reader users receive meaningful identities without changing the Game Review or Practice implementations.

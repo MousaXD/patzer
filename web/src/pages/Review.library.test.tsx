@@ -768,6 +768,7 @@ describe('Review library with large histories', () => {
     const search=screen.getByRole('searchbox') as HTMLInputElement;
     expect(search.value).toBe('Alekhine');
     const clear=screen.getByRole('button',{name:'Clear search'});
+    expect(search.className).toContain('!min-h-11');
     expect(clear.className).toContain('h-11');
     expect(clear.className).toContain('w-11');
     fireEvent.click(clear);
@@ -777,6 +778,18 @@ describe('Review library with large histories', () => {
       const p=new URLSearchParams(String(url).split('?')[1] ?? '');
       return !p.has('q') && p.get('sort')==='oldest';
     })).toBe(true));
+  });
+
+  it('gives starred-only, all filter dropdowns and date fields 44px minimum mobile touch targets', async () => {
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    expect(screen.getByRole('button',{name:'All games'}).className).toContain('min-h-11');
+    for (const label of ['Game source','Game speed','Game result','Review status','Sort games']) {
+      expect(screen.getByRole('combobox',{name:label}).className,label).toContain('!min-h-11');
+    }
+    for (const label of ['Games from date','Games through date']) {
+      expect(screen.getByLabelText(label).className,label).toContain('!min-h-11');
+    }
   });
 
   it('shows a recoverable error, never the no-games onboarding state', async () => {

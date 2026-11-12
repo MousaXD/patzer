@@ -679,7 +679,7 @@ export default function Review() {
             maxLength={MAX_SEARCH_LENGTH}
             aria-label={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
             placeholder={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
-            className="input min-h-11 pl-8 pr-12 text-sm"
+            className="input !min-h-11 pl-8 pr-12 text-sm"
           />
           {searchDraft && (
             <button
@@ -696,7 +696,7 @@ export default function Review() {
           onClick={toggleBookmarkedOnly}
           aria-pressed={bookmarkedOnly}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors',
+            'inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 py-2 text-xs font-medium transition-colors',
             bookmarkedOnly
               ? 'border-gold-500 bg-gold-500/10 text-gold-700 dark:text-gold-400'
               : 'border-chesscom-200 bg-white text-chesscom-600 hover:bg-chesscom-50 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-300',
@@ -750,7 +750,7 @@ export default function Review() {
           return <label key={key} className="block min-w-0 text-xs text-chesscom-500 sm:w-auto">
             <span className="sr-only">{filterLabel}</span>
             <select aria-label={filterLabel}
-              className="input w-full min-w-0 text-xs sm:w-auto" value={filters[key]}
+              className="input !min-h-11 w-full min-w-0 text-xs sm:w-auto" value={filters[key]}
               onChange={(e) => updateFilter(key, e.target.value)}>
               {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>
                 {t(`review.libraryFilterOptions.${key}.${value || 'all'}`, { defaultValue: label })}
@@ -763,13 +763,13 @@ export default function Review() {
             <span className="mb-1 block">{t('review.fromDate', {defaultValue: 'From date'})}</span>
             <input aria-label={t('review.gamesFromDate', {defaultValue: 'Games from date'})} type="date" value={fromDate}
               max={toDate || undefined} onChange={(e) => updateDateFilter('from_date', e.target.value)}
-              className="input w-full min-w-0 text-xs sm:w-40" />
+              className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
           <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
             <span className="mb-1 block">{t('review.throughDate', {defaultValue: 'Through date'})}</span>
             <input aria-label={t('review.gamesThroughDate', {defaultValue: 'Games through date'})} type="date" value={toDate}
               min={fromDate || undefined} onChange={(e) => updateDateFilter('to_date', e.target.value)}
-              className="input w-full min-w-0 text-xs sm:w-40" />
+              className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
         </div>
         {(activeFilters || bookmarkedOnly || q) && !emptyFilteredResults && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
