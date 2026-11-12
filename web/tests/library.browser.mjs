@@ -110,8 +110,8 @@ async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
     unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false,
-    locale = 'en'} = {}) {
-  const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
+    locale = 'en', timeZone = 'UTC', dateBoundary = false} = {}) {
+  const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
@@ -175,6 +175,9 @@ async function newPage(theme, width, height,
           opening_name:"King's Pawn Game",notes:''}],
         total:1,offset:0,limit:40,has_more:false,
       };
+      else if (dateBoundary) json = list(parsed.searchParams, [{
+        ...games[0], source:'imported', end_time:'2026-11-09T23:45:00Z',
+      }]);
       else if (unicodeLibrary) json = list(parsed.searchParams,unicodeGames);
       else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
       else if (changingHistory) {
@@ -366,10 +369,21 @@ try {
     const {page,pageErrors}=germanDesktop;
     const card=page.locator('a[href="/review/1"]');
     await card.locator('span.badge').getByText('Analysieren',{exact:true}).waitFor();
+    await card.getByText('9.11.2026',{exact:true}).waitFor();
     await page.screenshot({path:join(output,'library-german-desktop-action-dark-1440.png')});
     assert.deepEqual(pageErrors,[],'German desktop Library caused a browser exception');
     console.log('PASS German desktop game-card Review action is translated');
   } finally {await germanDesktop.context.close();}
+
+  const timezoneBoundary=await newPage('light',390,844,{
+    locale:'de',timeZone:'Asia/Dubai',dateBoundary:true,
+  });
+  try {
+    const {page,pageErrors}=timezoneBoundary;
+    await page.locator('a[href="/review/1"]').getByText('10.11.2026',{exact:true}).waitFor();
+    assert.deepEqual(pageErrors,[], 'Localized near-midnight imported PGN caused a JS error');
+    console.log('PASS German Library date respects a local day boundary in Dubai');
+  } finally {await timezoneBoundary.context.close();}
 
   const narrowGerman=await newPage('light',320,700,{locale:'de'});
   try {

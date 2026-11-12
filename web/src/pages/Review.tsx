@@ -827,7 +827,7 @@ export default function Review() {
 }
 
 function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number | undefined; starredOnly: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [bookmarkError, setBookmarkError] = useState(false);
   const star = useMutation({
@@ -869,7 +869,7 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-chesscom-500">
-            <span>{g.end_time ? new Date(g.end_time).toLocaleDateString()
+            <span>{g.end_time ? new Date(g.end_time).toLocaleDateString(i18n?.language || undefined)
               : g.source === 'imported' ? t('review.pgnUnknownDate', {defaultValue:'Date unavailable'})
                 : t('review.inProgress', { defaultValue: 'In progress' })}</span>
             <span>·</span>

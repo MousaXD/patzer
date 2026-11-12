@@ -630,3 +630,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **imported and provider game dates on Library cards in non-English locales**. Desktop German currently displays US-style `11/9/2026` despite a German UI; browser locale and i18next profile language are not the same. Reproduce with the existing German fixture and a stable UTC date. Render game dates according to the selected UI locale without accidental timezone date shifts, preserving explicit `Date unavailable` for undated PGNs and keeping mobile card widths safe.
+
+## 2026-11-12 — Respect selected UI language when displaying saved-game dates
+
+- Resumed clean pushed `1a83f93`, audited the Library game's `end_time` rendering and confirmed a real locale mismatch: the German-profile Chromium fixture was still displaying **11/9/2026**, because card dates used `toLocaleDateString()` with only the browser locale. Added a failing real-browser assertion requiring **9.11.2026** on the November 9 fixture.
+- Changed only the Library card to pass the active `i18n.language` to `Date#toLocaleDateString`, with a default-language fallback for component test stubs. This does **not** force UTC or change the browser's local timezone: existing users still see the date in their own calendar day, now formatted in their selected UI language. It does not alter date filters, backend date storage, game timestamps, or null-date classification.
+- Extended the synthetic fixture with a near-midnight imported PGN (`2026-11-09T23:45:00Z`) under an explicit `Asia/Dubai` browser timezone. Verified that this game appears as **10.11.2026** locally, rather than moving the calendar day back by forcing UTC. Existing imported undated PGN tests continued to show **Date unavailable** and never a fabricated 1970 date. Re-inspected the resulting German 1440px desktop screenshot, which now shows `9.11.2026` in the game card.
+
+### Verification
+
+- Focused Library suite: **46/46 passed**. Full suite: **109 passed files, 2 skipped; 1,074 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Isolated Chromium passed desktop 1440px and 390/320px mobile light/dark matrix, 390px German dark and 320px German light, plus near-midnight Dubai timezone fixture; no JS errors or horizontal overflow. All existing import, search, discovery, keyboard, bookmark and cursor tests passed.
+- No shared components, Game Review internals, server, other agents, production data, merge or deploy touched.
+
+### Next independent audit
+
+- Audit **Library "No results" and "Starred only" empty states in internationalized interfaces**: ensure the Library's empty-result recovery is understandable and that clearing a stale filter really reveals games. Use a German mobile fixture with a specific unmatched search and verify the user's action without inventing a missing-data state. Prioritize functional recovery and accessibility over cosmetic changes.
