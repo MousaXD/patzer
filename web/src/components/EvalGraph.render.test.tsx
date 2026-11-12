@@ -17,6 +17,17 @@ describe('Game Review evaluation graph marker rendering', () => {
     expect(html).not.toContain('Evaluation unavailable');
     expect(html).not.toContain('aria-valuetext="0.00"');
   });
+  it('announces the saved-game timeline as unselected while exploring a variation', () => {
+    const html = renderToStaticMarkup(createElement(EvalGraph, {
+      evals: [{ ply: 1, cp: 40 }, { ply: 2, cp: -20 }],
+      current: undefined,
+      onClick: () => undefined,
+    }));
+    expect(html).toContain('role="slider"');
+    expect(html).toContain('aria-valuenow="0"');
+    expect(html).toContain('aria-valuetext="review.variationTimelineHint"');
+    expect(html).not.toContain('aria-valuetext="review.variationEvalUnavailable"');
+  });
   it('uses non-interactive, fixed-pixel circular markers for scored points only', () => {
     const html = renderToStaticMarkup(createElement(EvalGraph, {
       evals: [{ ply: 1, cp: null }, { ply: 2, cp: 100 }, { ply: 3, cp: -120 }],

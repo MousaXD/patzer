@@ -1288,6 +1288,11 @@ try {
       assert.equal(parentSquares.length,2,'The original c7-c5 should highlight two board squares');
       await dragMove('d2','d4');
       await expectProgress('Var 1 / 1');
+      const originalTimeline=page.getByRole('slider',{name:'Move evaluation timeline'});
+      await originalTimeline.waitFor({state:'visible'});
+      const english=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+      assert.equal(await originalTimeline.getAttribute('aria-valuetext'),english.review.variationTimelineHint,
+        'Exploring a variation must not label the original timeline as an unavailable current evaluation');
       await trail.getByRole('button',{name:'Go to c5 in variation 1'}).waitFor({state:'visible'});
       await trail.getByRole('button',{name:'Go to d4 in variation 2'}).waitFor({state:'visible'});
       assert.equal((await trail.locator('[data-review-trail-move]').allInnerTexts()).join(' '),'c5 d4');

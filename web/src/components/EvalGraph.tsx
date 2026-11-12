@@ -51,9 +51,11 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
   const hoverPoint = points.find((point) => point.ply === hoverPly);
   const currentPoint = points.find((point) => point.ply === current);
   const currentX = current === 0 ? 0 : currentPoint?.x;
-  const currentLabel = current === 0
-    ? t('review.startingPosition', { defaultValue: 'Starting position' })
-    : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp);
+  const currentLabel = current === undefined
+    ? t('review.variationTimelineHint')
+    : current === 0
+      ? t('review.startingPosition', { defaultValue: 'Starting position' })
+      : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp);
 
   function pickPly(clientX: number, rect: DOMRect): number {
     return evalPlyAtRatio(evals, (clientX - rect.left) / rect.width);

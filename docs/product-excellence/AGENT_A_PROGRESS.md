@@ -522,3 +522,26 @@
 ### Next candidate
 
 - Audit Game Review's evaluation graph keyboard slider while an exploratory variation is active. Its `current` prop becomes `undefined` to avoid a misleading saved-game marker, but the graph currently maps that undefined selection to `aria-valuenow=0` and a "Starting position" label. Verify the announced timeline position in actual Chromium and avoid presenting a false saved-game position, while preserving click-to-return functionality and localized instructions.
+
+## 2026-11-12: truthful saved-timeline accessibility in variation mode
+
+### Reproduction
+
+- Continued from clean `3c3a668` and its recorded next review-semantic audit. While the player explores a hypothetical branch, `GameAnalyzer` deliberately hides the saved-game EvalGraph's current marker by passing `current={undefined}`, but the graph's screen-reader slider continued announcing an **unavailable position evaluation**. This was misleading: no original-game move was selected, and the control was a different timeline, not the current variation's evaluation.
+- Added a focused static-render regression requiring the existing translated `review.variationTimelineHint` instead of `review.variationEvalUnavailable` for an unselected original graph. **Before fix the test failed**. Added an actual 390/1024px Chromium check in the nested `e4 c5 d4` variation that **failed** with `Position evaluation unavailable` vs `Original game timeline · select a move to return to the saved line.`
+
+### Minimal fix
+
+- In Game Review's only EvalGraph component, distinguish `current===undefined` (original timeline has no active selection during exploratory play) from a specific saved ply with missing evaluation. The former now announces the already translated original-timeline instruction; the latter continues announcing the localized unavailable score. Preserved keyboard Arrow/Home/End navigation, `aria-valuenow` keyboard-origin behavior, graph rendering and source/PGN semantics.
+
+### Verification and evidence
+
+- Focused EvalGraph rendering/graph-model tests: **6 passed**.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including the new original timeline accessibility check on 390 and 1024px nested branches, Spanish missing-evaluation behavior, previous engine errors/retry, source, keyboard, responsive and PGN integrity. Opened/inspected actual `qa-artifacts/agent-a/variation-timeline-after-20261112/nested-variation-cursors-1024.png`: original graph remains a separate, usable saved-game rail surface with a clear explanatory heading; active exploratory branch stays independently visible.
+- Browser scoring values are injected fixtures, not real Stockfish scoring certification. No production SQLite, merge, deploy or cross-agent edits.
+
+### Next issue
+
+- Verify that choosing a saved move from the original evaluation graph while the player is in a nested variation exits exploration cleanly and focuses the correct saved board/move details (especially keyboard slider navigation). Reproduce focus, ply and PGN behavior in Chromium before touching the existing graph or controller.
