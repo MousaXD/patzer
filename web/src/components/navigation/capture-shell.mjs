@@ -159,9 +159,24 @@ try {
       await page.screenshot({ path: resolve(output, `${nextTheme}-${viewport.width}x${viewport.height}.png`) });
       if (viewport.width <= 390) {
         const open = page.getByRole('button', { name: 'Open menu' });
+        const touchControls = [
+          ['Open menu', open],
+          ['Search', page.getByRole('button', { name: /Command palette/ })],
+          ['Patzer logo', page.locator('[data-workspace-header] a[href="/"]')],
+        ];
+        for (const [name, control] of touchControls) {
+          const rect = await control.boundingBox();
+          if (!rect || rect.height < 44 || rect.width < 44) {
+            throw new Error(`${nextTheme} ${viewport.width}: undersized mobile header touch target ${name} ${JSON.stringify(rect)}`);
+          }
+        }
         await open.click();
         const mobileDrawer = page.getByRole('dialog', { name: 'Mobile navigation' });
         await mobileDrawer.waitFor();
+        const closeRect = await mobileDrawer.getByRole('button', { name: 'Close menu' }).boundingBox();
+        if (!closeRect || closeRect.width < 44 || closeRect.height < 44) {
+          throw new Error(`${nextTheme} ${viewport.width}: undersized mobile drawer close target ${JSON.stringify(closeRect)}`);
+        }
         for (const to of paths) {
           if ((await mobileDrawer.locator('a[href="' + to + '"]').count()) !== 1) {
             throw new Error(`${nextTheme} ${viewport.width}: missing mobile route ${to}`);
@@ -211,6 +226,8 @@ try {
   await page.keyboard.press('Tab');
   const focusedHref = await page.evaluate(() => document.activeElement?.getAttribute('href'));
   if (focusedHref !== '#patzer-main') throw new Error(`Skip link was not first in tab order: ${focusedHref}`);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement?.id === 'patzer-main');
 
   // Nested section headers must remain usable at 320px with longer translated
   // labels. 404 fixture responses are intentional: no game or user data is
@@ -285,6 +302,38 @@ try {
     throw new Error('Desktop navigation left keyboard focus on stale link: ' + desktopFocus);
   }
   await page.screenshot({ path: resolve(output, 'desktop-navigation-focus.png') });
+
+  // Browser Back should return to a long page at the position users left.
+  // It must not force them to find their former place in the dashboard again.
+  await openWithFixture(page, { width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.waitForFunction(() => window.scrollY > 100);
+  const beforeHistory = await page.evaluate(() => window.scrollY);
+  // Navigate using the documented keyboard shortcut. Clicking the header's
+  // menu via a headless test can scroll that trigger into view first, which
+  // legitimately changes the position before the route is left.
+  await page.keyboard.press('g');
+  await page.keyboard.press('r');
+  await page.waitForURL((url) => url.pathname === '/review');
+  await page.waitForFunction(() => document.activeElement?.id === 'patzer-main');
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname === '/');
+  await page.getByRole('heading', { name: 'Continue improving' }).waitFor();
+  await page.waitForTimeout(350);
+  const afterHistory = await page.evaluate(() => window.scrollY);
+  if (Math.abs(afterHistory - beforeHistory) > 20) {
+    throw new Error(`Back navigation failed to restore dashboard scroll: before=${beforeHistory} after=${afterHistory}`);
+  }
+  await page.goForward();
+  await page.waitForURL((url) => url.pathname === '/review');
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname === '/');
+  await page.getByRole('heading', { name: 'Continue improving' }).waitFor();
+  await page.waitForTimeout(300);
+  const secondReturn = await page.evaluate(() => window.scrollY);
+  if (Math.abs(secondReturn - beforeHistory) > 20) {
+    throw new Error(`Repeated Back navigation lost the dashboard position: before=${beforeHistory} after=${secondReturn}`);
+  }
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {
   await browser?.close();

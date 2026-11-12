@@ -366,3 +366,30 @@
 ### Next shared-shell audit
 
 - Look for remaining focus and scroll inconsistencies around browser Back/Forward, skip-link activation and the transition from temporary loading to a settled workspace. Preserve feature-level focus and internal move-list navigation; only change shared shell behavior with browser evidence.
+
+## 2026-11-12: Browser history audit and 44px mobile touch targets
+
+### Recovery and investigation
+
+- Resumed the exact uncommitted history-position investigation on clean pushed `b368ecd`, not an earlier design cycle.
+- An initial Back-navigation browser check appeared to lose the dashboard scroll position. Investigated React Router's `ScrollRestoration` and a custom position-caching hook, then used a **negative control without either implementation**. The original browser test clicked the header menu after programmatically scrolling to the bottom; Playwright moved the page to bring the menu button into view before leaving the route, changing the expected position. With navigation triggered from the original position using Patzer's real `g r` keyboard shortcut, native browser restoration correctly preserved scroll even on repeated Back/Forward.
+- **Decision:** Rejected the custom scroll manager and reverted the experimental `ScrollRestoration` addition. No extra state or potentially competing scroll behavior was shipped. Preserved regression coverage for genuine history navigation and verified skip-link activation.
+- A separate real-browser mobile control audit **failed before editing**: the header Open menu button measured only **36 × 36px** at 390px; other small header targets and the drawer close action had the same insufficient touch-target pattern.
+
+### Shipped implementation
+
+1. Enlarged the mobile header's **Open menu**, **Command palette**, and logo home link, plus the drawer's **Close menu** action, to at least **44 × 44px**. Desktop-density control sizing remains unchanged.
+2. Tightened mobile-only header gaps to preserve the full nested-page title at 320px alongside the larger tap areas; inspected the 320px German `Partiedetails` breadcrumb screenshot with no truncation.
+3. Extended `capture-shell.mjs` to measure all four actual touch-target rectangles at 390px and 320px in both themes, test skip-link Enter focusing the main landmark, and check that repeated Back/Forward returns to the same dashboard scroll position without feature-level changes.
+
+### Verification
+
+- `npm run build -w web`: **passed** (TypeScript + Vite).
+- `npx vitest run web/src --maxWorkers=2`: **400/400 passed across 68 files**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** for all existing viewports and light/dark themes plus the new 44px targets, skip link and native history checks.
+- `git diff --check`: **passed**.
+- No modifications to Games Library, Imports, Review, Play or Insights internals. No branch merging, deployment or production data changes.
+
+### Next area to inspect
+
+- Audit consistent mobile modal/dialog touch targets and dismiss affordances in the shared shell, and verify narrow-screen orientation/contrast behavior with real browser evidence. Continue design-system and navigation work without modifying feature-owned pages.
