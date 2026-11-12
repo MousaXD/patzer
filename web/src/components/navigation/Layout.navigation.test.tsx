@@ -187,7 +187,7 @@ describe('Patzer navigation rail', () => {
     expect(skip.getAttribute('href')).toBe('#patzer-main');
     expect(main?.getAttribute('tabindex')).toBe('-1');
     expect(main?.className).toContain('scroll-mt-[56px]');
-    expect(main?.className).toContain('sm:scroll-mt-14');
+    expect(main?.className).toContain('sm:scroll-mt-[56px]');
     expect(main?.className).toContain('md:scroll-mt-[56px]');
     expect(main?.className).toContain('xl:scroll-mt-14');
     expect(skip.className).toContain('focus:z-[70]');
@@ -220,7 +220,7 @@ describe('Patzer navigation rail', () => {
     mount('/');
     const header = document.querySelector('[data-workspace-header]');
     expect(header?.className).toContain('h-[56px]');
-    expect(header?.className).toContain('sm:h-14');
+    expect(header?.className).toContain('sm:h-[56px]');
     expect(header?.className).toContain('px-[12px]');
     const logo = header?.querySelector('a[aria-label="Patzer"]');
     expect(logo?.className).toContain('w-[44px]');
@@ -231,6 +231,23 @@ describe('Patzer navigation rail', () => {
       expect(control.className).toMatch(/min-w-\[44px\]|w-\[44px\]/);
     }
     expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
+  });
+
+  it('preserves physical 44px controls and 56px header across the 640-767px breakpoint', () => {
+    mount('/');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(header?.className).toContain('sm:h-[56px]');
+    expect(header?.className).toContain('sm:gap-[8px]');
+    expect(header?.className).toContain('sm:px-[20px]');
+    const logo = header?.querySelector('a[aria-label="Patzer"]');
+    expect(logo?.className).toContain('sm:w-[44px]');
+    for (const name of ['Open command palette', 'Keyboard shortcuts', 'Open menu']) {
+      const control = within(header as HTMLElement).getByRole('button', { name });
+      expect(control.className).toContain('sm:h-[44px]');
+    }
+    expect(within(header as HTMLElement).getByRole('link', { name: 'Settings' }).className)
+      .toContain('sm:min-w-[44px]');
+    expect(document.getElementById('patzer-main')?.className).toContain('sm:scroll-mt-[56px]');
   });
 
   it.each([

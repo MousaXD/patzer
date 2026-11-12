@@ -349,9 +349,9 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           if (searchTriggerRef.current) searchTriggerRef.current.focus({ preventScroll: true });
           else mainRef.current?.focus({ preventScroll: true });
         }} />
-        <header className="sticky top-0 z-30 flex h-[56px] shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-[12px] shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:h-14 sm:gap-2 sm:px-5 md:h-[56px] md:gap-[8px] md:px-[20px] xl:h-14 xl:gap-2 xl:px-5" data-workspace-header>
+        <header className="sticky top-0 z-30 flex h-[56px] shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-[12px] shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:h-[56px] sm:gap-[8px] sm:px-[20px] md:h-[56px] md:gap-[8px] md:px-[20px] xl:h-14 xl:gap-2 xl:px-5" data-workspace-header>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
-            <NavLink to="/" className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:h-11 sm:w-11 md:hidden" aria-label={t('app.name')}>
+            <NavLink to="/" className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:h-[44px] sm:w-[44px] md:hidden" aria-label={t('app.name')}>
               <LogoMark size={27} />
             </NavLink>
             {nestedSection && nestedTitle ? (
@@ -376,7 +376,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               ref={searchTriggerRef}
               type="button"
               onClick={onOpenPalette}
-              className="flex h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:h-11 sm:min-w-11 sm:px-3 md:h-[44px] md:min-w-[44px] md:px-0 lg:min-w-11 lg:px-3 xl:h-9 xl:min-w-9"
+              className="flex h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:h-[44px] sm:min-w-[44px] sm:px-[12px] md:h-[44px] md:min-w-[44px] md:px-0 lg:min-w-11 lg:px-3 xl:h-9 xl:min-w-9"
               aria-label={searchLabel}
               title={searchLabel}
             >
@@ -391,7 +391,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               onClick={onOpenShortcuts}
               aria-label={shortcutsLabel}
               title={shortcutsLabel}
-              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex md:h-[44px] md:w-[44px] xl:h-9 xl:w-9"
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex sm:h-[44px] sm:w-[44px] md:h-[44px] md:w-[44px] xl:h-9 xl:w-9"
             >
               <Keyboard aria-hidden="true" className="h-[18px] w-[18px]" />
             </button>
@@ -399,7 +399,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} /></div>
           <NavLink
             to="/settings"
-            className="hidden h-11 min-w-11 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex md:h-[44px] md:min-w-[44px] md:px-0 xl:h-9 xl:min-w-0 xl:px-2"
+            className="hidden h-11 min-w-11 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex sm:h-[44px] sm:min-w-[44px] sm:px-[8px] md:h-[44px] md:min-w-[44px] md:px-0 xl:h-9 xl:min-w-0 xl:px-2"
             aria-label={profileLabel}
             title={profileLabel}
           >
@@ -420,7 +420,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
             type="button"
             ref={menuTriggerRef}
             onClick={() => setDrawerOpen(true)}
-            className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 sm:h-11 sm:w-11 md:hidden"
+            className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 sm:h-[44px] sm:w-[44px] md:hidden"
             aria-label={openMenuLabel}
             aria-expanded={drawerOpen}
             aria-controls="patzer-mobile-drawer"
@@ -457,7 +457,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
         {/* No global max-width on the analysis route. This is Agent 03's
             predictable full-width, min-w-0 flex workspace contract. */}
         <main ref={mainRef} id="patzer-main" tabIndex={-1} aria-label={nestedTitle ?? pageTitle}
-          className="flex min-h-0 min-w-0 w-full flex-1 flex-col scroll-mt-[56px] sm:scroll-mt-14 md:scroll-mt-[56px] xl:scroll-mt-14" data-shell-main>
+          className="flex min-h-0 min-w-0 w-full flex-1 flex-col scroll-mt-[56px] sm:scroll-mt-[56px] md:scroll-mt-[56px] xl:scroll-mt-14" data-shell-main>
           <div className={cn(
             'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',

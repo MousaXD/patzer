@@ -1845,3 +1845,36 @@
 ### Next audit
 
 - Check the **640–767px in-between navigation breakpoint** at 150%–200% root font scaling. The shared header uses font-relative `sm` control sizes there, unlike its fixed-geometry phone and `md` variants. Verify whether the current-page title, Search/Shortcuts and language access remain visible, and whether the responsive skip-link offset matches the *actual* header height. Reproduce in Chromium before changing anything.
+
+## 2026-11-13: Keep page titles and utility controls usable between phone and tablet breakpoints
+
+### Browser reproduction
+
+- Resumed from clean pushed `febbed5`. The earlier mobile and tablet audits had not covered the **640–767px `sm` breakpoint** at 150%–200% root scaling.
+- Measured **60 Chromium cases** (640/767px, 16/24/32px root fonts, five languages, both themes). At **640px and 200%**, the authenticated page title shrank to a **36px** box and visibly appeared as **"S.."** in German. The header height grew to **112px**, and Search, keyboard shortcuts, profile and menu controls expanded to **88px** despite being icon-only at that width. No document-level horizontal overflow occurred, so the issue was easy to miss.
+- Root cause: the original `sm:h-14`, `sm:h-11`, `sm:w-11`, `sm:px-5` and related font-relative gap/padding rules were still active from 640px to 767px. The breakpoint's header scaled its chrome rather than reserving space for the page title.
+
+### Scoped implementation
+
+1. Keep the `sm` header at **56 physical pixels**, with 8px gaps and 20px horizontal padding; preserve existing `md` and `xl` behavior. Keep mobile logo, Search, Shortcuts, Settings and Menu controls at **44 physical pixels** with usable hit areas.
+2. Match the `sm` skip-to-main scroll offset to the new physical 56px header, preserving the previous keyboard skip/focus fix and avoiding a mismatched empty scroll gap.
+3. Add a navigation component assertion for the intermediate breakpoint, including title space, accessible utility controls and skip-target offsets.
+4. Add `web/src/components/navigation/capture-midwidth-shell.mjs`: a local **60-case** Chromium fixture checking actual header/control rectangles, 56px header height, complete localized title, no overflow, keyboard skip offset, and modal Menu open/Escape/focus restoration at 200% text scaling.
+
+### Verification
+
+- Before: **640px/200%** title visible width **36px**, header height **112px** and Search button **88px**; German title displayed as **"S.."**.
+- After: full Home title visible at 640px/200%, **73px minimum title width** across the five languages, **56px header** and **44px controls** at both 640px and 767px.
+- `node web/src/components/navigation/capture-midwidth-shell.mjs`: **60/60 passed**.
+- Inspected `artifacts/agent-02/mid-header-before-light-de-640-font32.png` and its dark counterpart after the local rerun: `Start` is fully visible, the header is compact, and all icon controls remain distinct.
+- `npx vitest run web/src/components/navigation/Layout.navigation.test.tsx --maxWorkers=2`: **24/24 passed**.
+- `node web/src/components/navigation/capture-scaled-header.mjs`: **60/60 passed** for existing narrow-phone zoom behavior.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **477/477 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' worktrees, feature-owned pages, production data, main branch or deployment modified.
+
+### Next audit
+
+- Check **large-desktop (1280/1440/1920px) shared header scaling** at 150%–200% text, both themes and all five languages. The `xl` header still uses `h-14`, font-relative utility-control sizes and a visible keyboard shortcut; inspect actual header density, title availability, localized search labels and skip-target geometry before considering changes.
