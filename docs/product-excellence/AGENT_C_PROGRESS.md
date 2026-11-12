@@ -994,3 +994,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **debounced search history restoration using Back/Forward while a draft is in progress**. A player can navigate through saved search URLs; the input's draft and the URL must remain synchronized without a pending timer overwriting a restored query. Reproduce in real Chromium with distinct search terms and browser history transitions before deciding on any Library-local fix.
+
+## 2026-11-13 — Verify draft search does not overwrite history-restored queries
+
+- Recovered clean pushed `dff6e76` and added an isolated Chromium search-history scenario: start from `source=chesscom&q=Opponent 501`, switch provider, commit `Opponent 502` through the 300ms debounce, navigate Back to the earlier query, begin typing a different unfinished draft (`Opponent 503`), then navigate Forward before its debounce timer fires.
+- The initial browser assertion checked the controlled input immediately after a URL change, before React had synchronized it. Corrected the test to wait for the rendered input value using `waitForFunction`. The full real browser run then showed both Back and Forward restored the correct visible draft and URL query; the incomplete draft never overwrote the restored forward entry, and the expected game card was still present.
+- **No runtime issue reproduced.** Left the URL, draft sync, debounce, and browser-history handling untouched; kept only the narrowly scoped real-browser regression.
+
+### Verification
+
+- Full repository suite: **109 passed files, 2 skipped; 1,130 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `node --check web/tests/library.browser.mjs` and `git diff --check`: passed.
+- Complete Chromium desktop/mobile light/dark, history restoration, rapid search, date correction, German import/PGN, pagination, bookmarks, and error recovery: passed without browser exceptions or horizontal overflow.
+- Only Agent C's browser regression and progress report modified; no production runtime, provider, other-agent branch, merge or deployment.
+
+### Next independent audit
+
+- Test **bookmark save while switching immediately to the Starred-only Library**. Existing coverage checks pending unstar inside Starred-only, but a newly starred game might be missing from the filtered result until a late server response and subsequent refresh. Exercise rapid toggling, server success and rejection, visible card/count consistency, and keyboard interaction in synthetic Chromium before changing optimistic update or filter logic.

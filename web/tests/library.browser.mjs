@@ -751,6 +751,39 @@ try {
     console.log('PASS rapid search/filter changes, explicit clear and opening navigation do not revive stale queries');
   } finally {await searchFilterRace.context.close();}
 
+  const searchHistory=await newPage('light',390,844);
+  try {
+    const {page,pageErrors}=searchHistory;
+    await page.goto(`${url}/review?source=chesscom&q=Opponent%20501`);
+    const search=page.getByRole('searchbox');
+    await page.getByText('1 of 1 games').waitFor();
+    assert.equal(await search.inputValue(),'Opponent 501');
+    await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+    await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess');
+    await search.fill('Opponent 502');
+    await page.waitForURL(href=>new URL(href).searchParams.get('q')==='Opponent 502');
+    await page.getByText('1 of 1 games').waitFor();
+    await page.goBack();
+    await page.waitForURL(href=>new URL(href).searchParams.get('source')==='chesscom' &&
+      new URL(href).searchParams.get('q')==='Opponent 501');
+    await page.waitForFunction(()=>document.querySelector('input[type="search"]')?.value==='Opponent 501');
+    assert.equal(await search.inputValue(),'Opponent 501',
+      'Browser Back should restore its saved query in the visible search field');
+    await search.fill('Opponent 503');
+    await page.goForward();
+    await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess' &&
+      new URL(href).searchParams.get('q')==='Opponent 502');
+    await page.waitForFunction(()=>document.querySelector('input[type="search"]')?.value==='Opponent 502');
+    await sleep(450);
+    assert.equal(await search.inputValue(),'Opponent 502',
+      'Browser Forward must restore its query rather than an unfinished Back-entry draft');
+    assert.equal(new URL(page.url()).searchParams.get('q'),'Opponent 502',
+      'A pending debounce overwrote the restored browser history entry');
+    await page.locator('a[href="/review/502"]').waitFor();
+    assert.deepEqual(pageErrors,[],'Search history restoration caused browser errors');
+    console.log('PASS search draft and URL remain aligned after Back/Forward during unfinished typing');
+  } finally {await searchHistory.context.close();}
+
   const germanDateNotice=await newPage('dark',320,700,{locale:'de'});
   try {
     const {page,pageErrors}=germanDateNotice;
