@@ -2628,6 +2628,31 @@ try {
     assert.equal(await flipButton.getAttribute('aria-pressed'),'false');
     assert.ok(await flipButton.evaluate(element=>document.activeElement===element),
       'Black-player flip must preserve keyboard focus in both directions');
+    // Route transitions can reuse the React Router element. The entire
+    // GameAnalyzerView is intentionally keyed by game id so the *next*
+    // saved game does not inherit this Black player's chosen flip state.
+    await flipButton.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-white'));
+    assert.equal(await flipButton.getAttribute('aria-pressed'),'true');
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    await page.waitForURL(`${base}/review`);
+    await page.locator(`a[href="/review/${id}"]`).first().click();
+    await page.waitForURL(`${base}/review/${id}`);
+    const whiteFlip=page.getByRole('button',{name:'Flip',exact:true});
+    await whiteFlip.waitFor({state:'visible',timeout:5000});
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-white'));
+    assert.equal(await whiteFlip.getAttribute('aria-pressed'),'false',
+      'In-app navigation from flipped Black game must reset the next White game to its player default');
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    await page.waitForURL(`${base}/review`);
+    await page.locator(`a[href="/review/${blackPlayerId}"]`).first().click();
+    await page.waitForURL(`${base}/review/${blackPlayerId}`);
+    const returnedFlip=page.getByRole('button',{name:'Flip',exact:true});
+    await returnedFlip.waitFor({state:'visible',timeout:5000});
+    await page.waitForFunction(()=>document.querySelector('.review-board-square .cg-wrap')?.classList.contains('orientation-black'));
+    assert.equal(await returnedFlip.getAttribute('aria-pressed'),'false',
+      'Returning to a Black-player game through the library must also restore its default perspective');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(blackPlayerId).pgn,blackGame.pgn(),
       'Changing the board perspective must preserve the Black-player saved PGN');
   }finally{await blackPlayerContext.close();}

@@ -1394,3 +1394,14 @@
 ### Next independent Game Review reliability audit
 
 - Check whether **Flip board** retains an unintended orientation when navigating between two different saved games via in-app client routing, rather than returning to the new game's player-facing perspective. The toolbar is keyed by game but the parent `flipped` state is not. Reproduce in actual Chromium before resetting state; preserve per-game player colors, URL history and original saved PGNs.
+
+## 2026-11-13: certify Flip orientation resets across client-side game changes
+
+- Resumed from clean pushed `a966bd1`. A source audit found that GameAnalyzer's outer component already renders `<GameAnalyzerView key={id} />`; routing between saved game IDs remounts the parent state, correctly resetting `flipped` and source-derived analysis. No product change is warranted.
+- Added direct Chromium proof inside the existing separate source-attested Black-player fixture. Flipped Black to a White-at-bottom perspective, navigated with the app's **Back** link to the real Review library (no page reload), opened the White-player game through its library link, and verified that its board starts White-at-bottom with Flip `aria-pressed=false`. Returned through the library to the Black-player saved game; its default Black-at-bottom perspective and unpressed Flip were restored. Neither the Black player's PGN nor the original sample source was changed by orientation/navigation actions.
+- Complete authenticated disposable Chromium viewport, locale, source, keyboard, variation and PGN matrix: **PASS (exit 0)** on port 8983. `git diff --check`, `node --check scripts/review-polish-capture.mjs`: PASS. Test-only change; prior application typecheck/build and **1006/12** unit suite remain valid.
+- No merge, deployment, live database/service changes, or interference with other agents.
+
+### Next high-value saved-notes reliability audit
+
+- Notes autosaves on textarea blur, including when navigating away from Game Review. Investigate an in-app navigation from the unsaved editor with a **delayed or rejected PATCH**: confirm whether the pending save continues, and whether a failed save can silently lose a private draft when the page unmounts. Do not alter routing or introduce blockers without a verified failure and a minimally invasive, accessible solution.
