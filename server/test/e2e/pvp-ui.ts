@@ -75,7 +75,11 @@ const bobLogin = await api('/api/auth/login', { username: 'bob', password: 'bob-
 ok(bobLogin.status === 200, 'second account (Bob) created');
 const bobId = bobLogin.json.user.id;
 
-const browser = await chromium.launch();
+// CI installs Playwright's pinned Chromium. For local audits, an already
+// installed Chrome can be used without downloading a second browser build.
+const browser = await chromium.launch(process.env.PATZER_CHROME_EXECUTABLE
+  ? { executablePath: process.env.PATZER_CHROME_EXECUTABLE }
+  : {});
 const ctxA = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const ctxB = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 const A = await login(ctxA, 'alice', 'alice-password-1');
@@ -108,13 +112,18 @@ const orientB: 'white' | 'black' = 'black';
 
 // --- moves ----------------------------------------------------------------
 await move(A, 'e2', 'e4', orientA);
-await B.waitForTimeout(900);
-const bobSeesE4 = await B.locator('text=e4').first().isVisible().catch(() => false);
+// The board can move up after the connection banner disappears without
+// resizing. Test a real first click at the newly displayed square position,
+// and fail here rather than timing out later on a disabled Takeback button.
+const bobSeesE4 = await B.locator('text=e4').first().waitFor({ state: 'visible', timeout: 10000 })
+  .then(() => true).catch(() => false);
 ok(bobSeesE4, 'Alice\'s 1.e4 appeared on Bob\'s board (the relay that was broken before 7.10)');
+if (!bobSeesE4) throw new Error('Opening e2-e4 was not delivered. Check Chessground input bounds before testing takebacks.');
 await move(B, 'e7', 'e5', orientB);
-await A.waitForTimeout(900);
-const aliceSeesE5 = await A.locator('text=e5').first().isVisible().catch(() => false);
+const aliceSeesE5 = await A.locator('text=e5').first().waitFor({ state: 'visible', timeout: 10000 })
+  .then(() => true).catch(() => false);
 ok(aliceSeesE5, 'Bob\'s 1...e5 came back to Alice');
+if (!aliceSeesE5) throw new Error('Black\'s e7-e5 was not delivered. Stopping before draw/takeback checks.');
 await move(A, 'g1', 'f3', orientA);
 await B.waitForTimeout(800);
 await move(B, 'b8', 'c6', orientB);

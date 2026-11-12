@@ -72,6 +72,16 @@ export default function ChessBoard({
     if (prev) apiRef.current.redrawAll();
   }
 
+  // Chessground memoizes the board's screen rectangle. Connection, opponent,
+  // and offer banners can disappear above an already-mounted board without
+  // changing its width/height (so ResizeObserver never fires). Its cached top
+  // can then be a full square out of date: tapping e2 selects empty e3 instead.
+  // Invalidate the cheap bounds memo *before* Chessground handles a mouse or
+  // touch start. Do not redrawAll here: it replaces the event target mid-click.
+  function refreshInputBounds() {
+    apiRef.current?.state.dom.bounds.clear();
+  }
+
   function handleAfter(orig: Key, dest: Key) {
     if (analysisModeRef.current) {
       // Events are optimistic: never submit an old position or duplicate drop.
@@ -199,7 +209,12 @@ export default function ChessBoard({
 
   return (
     <div className="relative">
-      <div ref={ref} style={style} />
+      <div
+        ref={ref}
+        style={style}
+        onMouseDownCapture={refreshInputBounds}
+        onTouchStartCapture={refreshInputBounds}
+      />
       {promotion && (
         <PromotionPicker
           color={promotion.color}

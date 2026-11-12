@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 
 // chessground needs a real layout engine; we only care about what ChessBoard
 // asks it to do, so the api is a spy.
@@ -9,6 +9,7 @@ const api = {
   setShapes: vi.fn(),
   redrawAll: vi.fn(),
   destroy: vi.fn(),
+  state: { dom: { bounds: { clear: vi.fn() } } },
 };
 vi.mock('chessground', () => ({ Chessground: vi.fn(() => api) }));
 
@@ -34,6 +35,25 @@ beforeEach(() => {
 });
 
 describe('ChessBoard keeps chessground\'s cached bounds fresh', () => {
+  it('refreshes bounds before native mouse and touch input after a layout-only shift', () => {
+    const { container } = render(<ChessBoard fen={START} orientation="white" turnColor="white" movable />);
+    const wrap = container.firstElementChild!.firstElementChild!;
+    const board = document.createElement('cg-board');
+    wrap.appendChild(board);
+
+    // Chessground listens for mousedown/touchstart on cg-board in the bubble
+    // phase. Its cached rectangle must already be cleared when that happens.
+    const counts: number[] = [];
+    board.addEventListener('mousedown', () => counts.push(api.state.dom.bounds.clear.mock.calls.length));
+    board.addEventListener('touchstart', () => counts.push(api.state.dom.bounds.clear.mock.calls.length));
+    rect = { ...rect, y: 68 }; // a banner above the board appeared/disappeared
+    fireEvent.mouseDown(board);
+    fireEvent.touchStart(board);
+
+    expect(counts).toEqual([1, 2]);
+    expect(api.redrawAll).not.toHaveBeenCalled(); // never replace the target mid-event
+  });
+
   it('calls redrawAll when the board moves on screen without resizing', () => {
     // Black's board mounts while the "opponent is offline" banner is up…
     const { rerender } = render(<ChessBoard fen={START} orientation="black" turnColor="white" movable={false} />);
