@@ -164,6 +164,7 @@ function GameAnalyzerView() {
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [shareCopyFailed, setShareCopyFailed] = useState(false);
+  const [shareCopyAttempt, setShareCopyAttempt] = useState(0);
   useEffect(() => { setShareCopyFailed(false); }, [gameId]);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
@@ -443,6 +444,16 @@ function GameAnalyzerView() {
   const shareCurrentPosition = () => isVariation
     ? `${window.location.origin}/lab#${encodeURI(variations.currentFen)}`
     : window.location.href;
+  const currentShareUrl = shareCurrentPosition();
+  const previousShareUrlRef = useRef(currentShareUrl);
+  useEffect(() => {
+    if (previousShareUrlRef.current === currentShareUrl) return;
+    previousShareUrlRef.current = currentShareUrl;
+    // Manual share text belongs to one exact mainline/variation position.
+    // Do not leave the previous copy fallback open after the board URL moves.
+    setShareCopyFailed(false);
+    setLinkCopied(false);
+  }, [currentShareUrl]);
   // Both the toolbar button and the S keyboard shortcut must share the same
   // copy success/error feedback. A denied clipboard still offers a manual URL.
   const copySharePosition = async () => {
@@ -455,6 +466,9 @@ function GameAnalyzerView() {
     } catch {
       setLinkCopied(false);
       setShareCopyFailed(true);
+      // The same denied action or keyboard S shortcut can be invoked again
+      // while the fallback is mounted. Remount its textarea to reselect it.
+      setShareCopyAttempt((current) => current + 1);
     }
   };
   const displayedLastMove = variations.lastMove;
@@ -1395,8 +1409,9 @@ function GameAnalyzerView() {
             onFlip={() => setFlipped((f) => !f)}
             linkCopied={linkCopied}
             shareCopyFailed={shareCopyFailed}
+            shareCopyAttempt={shareCopyAttempt}
             sharingVariation={isVariation}
-            shareUrl={shareCurrentPosition()}
+            shareUrl={currentShareUrl}
             onShare={copySharePosition}
           />
           {/* Export is derived from the legal saved PGN/current FEN, never
@@ -1413,7 +1428,7 @@ function GameAnalyzerView() {
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; flipped: boolean; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, shareCopyAttempt, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; flipped: boolean; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; shareCopyAttempt: number; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
@@ -1612,7 +1627,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
             submitBookmark(bookmarkRetryTarget);
           }}>{t('review.bookmarkRetry')}</button>
       </div>}
-      {shareCopyFailed && <ClipboardManualFallback
+      {shareCopyFailed && <ClipboardManualFallback key={shareCopyAttempt}
         label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
         value={shareUrl}
       />}

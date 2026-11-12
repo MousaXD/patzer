@@ -594,6 +594,27 @@ try {
     assert.equal(await shareFallback.locator('textarea').inputValue(),page.url(),
       'Denied Share position must expose the displayed review URL, not another move');
     await page.screenshot({path:join(output,'clipboard-denied-share-320.png')});
+    // Repeating a denied Share while the fallback remains mounted must once
+    // again focus and select its URL, not strand focus on the Share button.
+    const shareField=shareFallback.locator('textarea');
+    const selectedShare=async(message)=>{
+      assert.equal(await shareField.inputValue(),page.url(),message);
+      const state=await shareField.evaluate(field=>({focused:document.activeElement===field,
+        selected:field.selectionStart===0 && field.selectionEnd===field.value.length}));
+      assert.ok(state.focused && state.selected,`${message}: ${JSON.stringify(state)}`);
+    };
+    await page.getByRole('button',{name:'Share position',exact:true}).click();
+    await selectedShare('Repeated denied Share should focus/select the current position URL');
+    const oldShareUrl=page.url();
+    await page.getByRole('button',{name:'Next',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')
+      ?.textContent?.trim()==='16 / 24',undefined,{timeout:3000});
+    await page.waitForFunction(previous=>window.location.href!==previous,oldShareUrl,{timeout:3000});
+    assert.notEqual(page.url(),oldShareUrl,'The selected mainline URL should follow the next saved move');
+    await shareFallback.waitFor({state:'hidden',timeout:3000});
+    await page.getByRole('button',{name:'Share position',exact:true}).click();
+    await shareFallback.waitFor({state:'visible',timeout:3000});
+    await selectedShare('A fresh Share after move navigation should offer only the new URL');
     await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
       configurable:true,value:{writeText:async()=>{}},
     }));
@@ -620,6 +641,9 @@ try {
     assert.ok(shortcutGeometry.focused && shortcutGeometry.selected && shortcutGeometry.top>=56
       && shortcutGeometry.bottom<=shortcutGeometry.viewport-8,
       `Keyboard S recovery must be visible, focused and selected: ${JSON.stringify(shortcutGeometry)}`);
+    await page.locator('.review-board-square').focus();
+    await page.keyboard.press('s');
+    await selectedShare('Repeated denied S shortcut must reselect the current share URL');
     await page.screenshot({path:join(output,'clipboard-denied-keyboard-share-320.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
       (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn,
