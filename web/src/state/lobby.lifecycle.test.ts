@@ -41,6 +41,50 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('keeps the newest same-account challenge snapshot when requests finish out of order', async () => {
+    let resolveOld!: (value: { challenges: Challenge[] }) => void;
+    let requests = 0;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/incoming') {
+        if (++requests === 1) return new Promise((resolve) => { resolveOld = resolve; });
+        return Promise.resolve({ challenges: [invitation(52)] });
+      }
+      return Promise.resolve({ challenges: [], users: [] });
+    });
+    useLobby.getState().connect(1);
+    const old = useLobby.getState().refreshChallenges();
+    const latest = useLobby.getState().refreshChallenges();
+    await latest;
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([52]);
+
+    resolveOld({ challenges: [invitation(11)] });
+    await old;
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([52]);
+  });
+
+  it('never resurrects a cancelled invitation from an older HTTP response after a socket event', async () => {
+    let resolveOld!: (value: { challenges: Challenge[] }) => void;
+    let requests = 0;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/incoming') {
+        if (++requests === 1) return new Promise((resolve) => { resolveOld = resolve; });
+        return Promise.resolve({ challenges: [] });
+      }
+      return Promise.resolve({ challenges: [], users: [] });
+    });
+    useLobby.getState().connect(1);
+    const old = useLobby.getState().refreshChallenges();
+    const socket = FakeSocket.opened[0]!;
+    socket.emit({ type: 'challenge_received', challenge: invitation(60) });
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([60]);
+    socket.emit({ type: 'challenge_cancelled', challenge_id: 60 });
+    expect(useLobby.getState().incoming).toEqual([]);
+
+    resolveOld({ challenges: [invitation(60)] });
+    await old;
+    expect(useLobby.getState().incoming).toEqual([]);
+  });
+
   it('clears another account’s invitations and never reconnects after deliberate sign-out', () => {
     useLobby.getState().connect(101);
     const oldSocket = FakeSocket.opened[0]!;

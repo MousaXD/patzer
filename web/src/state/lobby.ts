@@ -44,6 +44,7 @@ export const useLobby = create<LobbyState>((set, get) => {
   let currentUserId: number | null = null;
   let generation = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let challengesRequestId = 0;
 
   return {
   ws: null,
@@ -85,13 +86,18 @@ export const useLobby = create<LobbyState>((set, get) => {
         set((s) => ({ users: s.users.map((u) => ({ ...u, online: (msg.online as number[]).includes(u.id) })) }));
       } else if (msg.type === 'challenge_received') {
         set((s) => ({ incoming: [msg.challenge as Challenge, ...s.incoming.filter((c) => c.id !== (msg.challenge as Challenge).id)] }));
+        // Reconciliation invalidates any older, still-pending REST snapshot.
+        void get().refreshChallenges();
       } else if (msg.type === 'challenge_accepted') {
         set({ pendingAcceptedNav: msg as unknown as AcceptedNav });
         set((s) => ({ outgoing: s.outgoing.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
+        void get().refreshChallenges();
       } else if (msg.type === 'challenge_declined') {
         set((s) => ({ outgoing: s.outgoing.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
+        void get().refreshChallenges();
       } else if (msg.type === 'challenge_cancelled') {
         set((s) => ({ incoming: s.incoming.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
+        void get().refreshChallenges();
       }
     };
     ws.onclose = () => {
@@ -110,6 +116,7 @@ export const useLobby = create<LobbyState>((set, get) => {
   disconnect: () => {
     currentUserId = null;
     generation++;
+    challengesRequestId++;
     if (reconnectTimer !== null) clearTimeout(reconnectTimer);
     reconnectTimer = null;
     const ws = get().ws;
@@ -129,12 +136,16 @@ export const useLobby = create<LobbyState>((set, get) => {
   refreshChallenges: async () => {
     const userId = currentUserId;
     const epoch = generation;
+    // Within one account, concurrent requests also finish out of order.
+    // Only the latest started read can replace the challenge snapshot.
+    const requestId = ++challengesRequestId;
     try {
       const [inc, out] = await Promise.all([
         api.get<{ challenges: Challenge[] }>('/api/challenges/incoming'),
         api.get<{ challenges: Challenge[] }>('/api/challenges/outgoing'),
       ]);
-      if (userId !== null && currentUserId === userId && epoch === generation) {
+      if (userId !== null && currentUserId === userId && epoch === generation
+        && requestId === challengesRequestId) {
         set({ incoming: inc.challenges, outgoing: out.challenges });
       }
     } catch { /* ignore */ }
