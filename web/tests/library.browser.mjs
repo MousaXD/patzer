@@ -113,7 +113,7 @@ async function newPage(theme, width, height,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
     delayedContinuation = null, failContinuationUntilRetry = false,
-    providerImportBreakdown = false} = {}) {
+    providerImportBreakdown = false, providerImportInvalidSummary = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -121,6 +121,7 @@ async function newPage(theme, width, height,
   let hasPgnImports = false;
   let latestGameInserted = false;
   let longPlayerBookmarked = false;
+  let invalidProviderSummary = providerImportInvalidSummary;
   let continuationFailureActive=failContinuationUntilRetry;
   let releaseContinuation;
   const continuationGate=new Promise(resolve=>{releaseContinuation=resolve;});
@@ -222,8 +223,11 @@ async function newPage(theme, width, height,
       if (body.limit === 100 && path.endsWith('/chesscom')) { status = 429; json = {error: 'chesscom_rate_limited'}; }
       else if (body.limit === 100) { status = 409; json = {error: 'linked_account_changed'}; }
       else if (body.limit === 20 && path.endsWith('/lichess')) { status = 502; json = {error: 'lichess_unavailable'}; }
+      else if (invalidProviderSummary && path.endsWith('/chesscom')) {
+        json = {imported:-1,total:200,duplicates:0,skipped:0,enriched:0};
+      }
       else if (providerImportBreakdown && body.limit === 200 && path.endsWith('/chesscom')) {
-        json = {imported:100,total:200,duplicates:6,skipped:3,enriched:7};
+        json = {imported:100,total:109,duplicates:6,skipped:3,enriched:5};
       }
       else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0, enriched: body.limit === 200 ? 7 : 0};
     } else if (path === '/api/games/live') json = {bot: null, pvp: []};
@@ -267,6 +271,7 @@ async function newPage(theme, width, height,
     }
   }
   return {page,context,pageErrors,seenPgnFiles,releaseContinuation,
+    allowValidProviderSummary:()=>{invalidProviderSummary=false;},
     allowContinuationRetry:()=>{continuationFailureActive=false;}};
 }
 async function measureStatusContrast(node) {
@@ -496,11 +501,11 @@ try {
     await page.locator('button[aria-controls="library-import-controls"]').click();
     const section=page.getByRole('region',{name:'Letzte Partien importieren'});
     await section.getByRole('button',{name:/Von Chess.com importieren/}).click();
-    const success=page.getByRole('status').getByText(/100 neue Partien aus 200 abgerufenen Partien gespeichert/);
+    const success=page.getByRole('status').getByText(/100 neue Partien aus 109 abgerufenen Partien gespeichert/);
     await success.waitFor();
     for (const detail of [
       '6 bereits gespeichert', '3 nicht unterstützt oder ungültig',
-      '7 vorhandene Partien haben neue Eröffnungsdetails erhalten',
+      '5 vorhandene Partien haben neue Eröffnungsdetails erhalten',
       'Es werden nur die letzten Partien importiert, nicht dein vollständiger Spielverlauf',
     ]) {
       assert.ok((await success.textContent()).includes(detail),
@@ -515,13 +520,34 @@ try {
     console.log(`PASS German provider result counts and light WCAG AA contrast ${contrast.ratio.toFixed(2)}:1`);
   } finally {await germanResult.context.close();}
 
+  const invalidProvider=await newPage('dark',390,844,{locale:'de',providerImportInvalidSummary:true});
+  try {
+    const {page,pageErrors,allowValidProviderSummary}=invalidProvider;
+    await page.locator('button[aria-controls="library-import-controls"]').click();
+    const submit=page.getByRole('region',{name:'Letzte Partien importieren'})
+      .getByRole('button',{name:/Von Chess.com importieren/});
+    await submit.click();
+    const warning=page.getByRole('alert').getByText(/Das Importergebnis konnte nicht überprüft werden/);
+    await warning.waitFor();
+    assert.ok((await warning.textContent()).includes('Einige Partien könnten bereits gespeichert sein'));
+    assert.equal(await page.getByRole('status').getByText(/neue Partien aus/).count(),0,
+      'An invalid HTTP success must not announce that games were saved');
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
+    allowValidProviderSummary();
+    await submit.click();
+    await page.getByRole('status').getByText(/100 neue Partien aus 200 abgerufenen Partien gespeichert/).waitFor();
+    assert.equal(await page.getByRole('alert').count(),0);
+    assert.deepEqual(pageErrors,[],'Bad provider summary and retry caused a JS exception');
+    console.log('PASS German invalid provider counts report uncertainty and allow safe retry');
+  } finally {await invalidProvider.context.close();}
+
   const darkSuccess=await newPage('dark',390,844,{locale:'de',providerImportBreakdown:true});
   try {
     const {page,pageErrors}=darkSuccess;
     await page.locator('button[aria-controls="library-import-controls"]').click();
     await page.getByRole('region',{name:'Letzte Partien importieren'})
       .getByRole('button',{name:/Von Chess.com importieren/}).click();
-    const success=page.getByRole('status').getByText(/100 neue Partien aus 200 abgerufenen Partien gespeichert/);
+    const success=page.getByRole('status').getByText(/100 neue Partien aus 109 abgerufenen Partien gespeichert/);
     await success.waitFor();
     const contrast=await measureStatusContrast(success);
     assert.ok(contrast.ratio>=4.5,

@@ -305,8 +305,28 @@ export default function Review() {
   });
 
   const importMut = useMutation({
-    mutationFn: ({ source, limit }: { source: ImportSource; accountId: number; limit: number }) =>
-      api.post<{ imported: number; total: number; skipped?: number; duplicates?: number; enriched?: number }>(`/api/games/import/${source}`, { limit }),
+    mutationFn: async ({ source, limit }: { source: ImportSource; accountId: number; limit: number }) => {
+      const result = await api.post<{ imported: number; total: number; skipped?: number; duplicates?: number; enriched?: number }>(`/api/games/import/${source}`, { limit });
+      // HTTP 200 is not evidence of a successful import if the response is
+      // malformed. Server counts classify each retrieved game as imported,
+      // duplicate or skipped; enrichment applies only to duplicates.
+      const validCount = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
+      const optionalCount = (value: unknown) => value === undefined || validCount(value);
+      if (!result || !validCount(result.imported) || !validCount(result.total) ||
+          !optionalCount(result.duplicates) || !optionalCount(result.skipped) ||
+          !optionalCount(result.enriched) || result.total > limit ||
+          result.imported > result.total ||
+          (result.duplicates !== undefined && result.duplicates > result.total) ||
+          (result.skipped !== undefined && result.skipped > result.total) ||
+          (result.enriched !== undefined && result.enriched > result.total) ||
+          (result.enriched !== undefined && result.duplicates !== undefined &&
+            result.enriched > result.duplicates) ||
+          (result.duplicates !== undefined && result.skipped !== undefined &&
+            result.imported + result.duplicates + result.skipped !== result.total)) {
+        throw new Error('import_invalid_summary');
+      }
+      return result;
+    },
     onSuccess: (r, { accountId }) => {
       void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
       if (accountIdRef.current !== accountId) return;
@@ -331,6 +351,11 @@ export default function Review() {
       showImportResult({ text: sentences.join(' ') }, 9000);
     },
     onError: (e, { accountId }) => {
+      if ((e as Error).message === 'import_invalid_summary') {
+        // A provider import may have written games before its response failed
+        // validation; refresh only that account's cache without claiming success.
+        void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
+      }
       if (accountIdRef.current !== accountId) return;
       const code = (e as Error).message;
       const guidance = code === 'linked_account_changed' || code === 'linked_account_mismatch'

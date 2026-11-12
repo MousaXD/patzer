@@ -441,6 +441,7 @@
     "linesPlayed": "jugada",
     "importLichess": "Importar de Lichess",
     "importError": {
+      "import_invalid_summary": "No se pudo verificar el resultado de la importación. Es posible que ya se hayan guardado partidas. Actualiza tu biblioteca antes de volver a intentarlo.",
       "player_not_found": "No se encontró ningún jugador con ese nombre de usuario.",
       "lichess_rate_limited": "Lichess pide una breve pausa: inténtalo de nuevo en un minuto.",
       "lichess_unavailable": "No se puede conectar con Lichess ahora mismo. Inténtalo más tarde.",

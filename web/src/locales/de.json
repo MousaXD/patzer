@@ -499,6 +499,7 @@
     "bestLabel": "besser:",
     "importLichess": "Von Lichess importieren",
     "importError": {
+      "import_invalid_summary": "Das Importergebnis konnte nicht überprüft werden. Einige Partien könnten bereits gespeichert sein. Aktualisiere deine Bibliothek vor einem neuen Versuch.",
       "player_not_found": "Kein Spieler mit diesem Benutzernamen gefunden.",
       "lichess_rate_limited": "Lichess bittet um eine kurze Pause — versuch es in einer Minute erneut.",
       "lichess_unavailable": "Lichess ist gerade nicht erreichbar. Versuch es später erneut.",

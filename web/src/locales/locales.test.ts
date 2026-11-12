@@ -160,6 +160,11 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(text,`${lang}: ${key}`).not.toBe(english);
       }
     });
+    it('provides a translated, non-misleading response to an unverifiable provider import summary', () => {
+      const text=locale.review.importError.import_invalid_summary;
+      expect(text?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(text).not.toEqual(en.review.importError.import_invalid_summary);
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);

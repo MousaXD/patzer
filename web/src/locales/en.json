@@ -499,6 +499,7 @@
     "bestLabel": "best:",
     "importLichess": "Import from Lichess",
     "importError": {
+      "import_invalid_summary": "Import status could not be verified. Some games may already be saved. Refresh your Library before trying again.",
       "player_not_found": "No player with that username was found.",
       "lichess_rate_limited": "Lichess asks for a short break — try again in a minute.",
       "lichess_unavailable": "Lichess can't be reached right now. Try again later.",

@@ -29,6 +29,7 @@ vi.mock('react-i18next', () => ({
             'review.pgnError.pgn_too_large': 'The PGN file exceeds the 4 MB limit. Split it into smaller files.',
             'review.pgnError.pgn_bad_encoding': 'This file is not valid UTF-8. Convert the PGN to UTF-8 and retry; no games were imported.',
             'review.pgnError.pgn_invalid_summary': 'Import status could not be verified. Some games may already be saved. Retry the same file; identical PGNs will be skipped.',
+            'review.importError.import_invalid_summary': 'Import status could not be verified. Some games may already be saved. Refresh your Library before trying again.',
           } as Record<string,string>)[key] ?? opts?.defaultValue ?? key,
   }),
 }));
@@ -778,6 +779,24 @@ describe('Review library with large histories', () => {
     expect(screen.getByText(/42 already saved\. 8 unsupported or invalid\./)).toBeTruthy();
     expect(screen.getByText(/12 existing games gained opening details/)).toBeTruthy();
     expect(screen.getByText(/not your entire history/)).toBeTruthy();
+  });
+  it.each([
+    {imported:-1,total:20,duplicates:0,skipped:0,enriched:0},
+    {imported:13.5,total:20,duplicates:6,skipped:0,enriched:0},
+    {imported:12,total:20,duplicates:2,skipped:1,enriched:0},
+    {imported:12,total:20,duplicates:8,skipped:0,enriched:9},
+    {imported:12,total:201,duplicates:189,skipped:0,enriched:0},
+  ])('does not claim a successful provider import for inconsistent counts %#', async (summary) => {
+    mocks.user.profile.chesscom_username='tester';
+    mocks.post.mockResolvedValue(summary);
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
+    fireEvent.click(screen.getByRole('button',{name:/review\.import \(@tester\)/}));
+    const alert=await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/Import status could not be verified/);
+    expect(screen.queryByText(/new games saved from/)).toBeNull();
+    expect(screen.getByRole('button',{name:/review\.import \(@tester\)/}).hasAttribute('disabled')).toBe(false);
   });
 
   it('explains a changed linked account and announces failed imports accessibly', async () => {

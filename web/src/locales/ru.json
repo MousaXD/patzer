@@ -499,6 +499,7 @@
     "bestLabel": "лучший:",
     "importLichess": "Импорт с Lichess",
     "importError": {
+      "import_invalid_summary": "Не удалось проверить результат импорта. Некоторые партии уже могли сохраниться. Обнови библиотеку перед повторной попыткой.",
       "player_not_found": "Игрок с таким именем не найден.",
       "lichess_rate_limited": "Lichess просит небольшую паузу — попробуй через минуту.",
       "lichess_unavailable": "Lichess сейчас недоступен. Попробуй позже.",
