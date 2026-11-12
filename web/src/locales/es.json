@@ -32,6 +32,13 @@
     "retry": "Reintentar",
     "reconnecting": "Reconectando…"
   },
+  "routerError": {
+    "alertLabel": "Página no disponible",
+    "title": "No se pudo cargar esta página",
+    "description": "Algo interrumpió Patzer. Intenta recargar la página o volver al inicio.",
+    "reload": "Recargar página",
+    "home": "Ir al inicio"
+  },
   "authShell": {
     "intro": "Acerca de Patzer",
     "eyebrow": "Un lugar para mejorar tu ajedrez",

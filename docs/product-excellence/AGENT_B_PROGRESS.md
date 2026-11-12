@@ -279,3 +279,32 @@
 ### Next audit
 
 - Examine the global top-level React Router error presentation. A render exception outside normal API errors may currently expose React Router's generic technical fallback instead of a helpful, branded and accessible recovery path; verify in an isolated fixture before changing the shared router.
+
+## 2026-11-12: Branded, safe top-level route failure experience
+
+### Reproduction
+
+- Resumed from clean pushed `0d77e30`; followed the specific pending router-error audit without altering previously completed improvements.
+- Tested an intentionally malformed session response with local Chromium API fixtures. **Before editing**, React Router's default error page displayed `Unexpected Application Error!`, a `TypeError` and full component-stack details. This was observable directly in the browser (not inferred from source).
+
+### Changes
+
+1. Added a light/dark, narrow/desktop responsive `GlobalRouterError` for the shared `createBrowserRouter` boundary. The page provides an accessible, localized heading and readable explanation, along with **Reload page** and **Go home** recovery actions.
+2. Deliberately does not render exception objects, stack traces or sensitive server details. The fallback is independent of auth state and feature internals, so it works when auth state caused the original crash.
+3. Programmatic heading focus announces the new page to screen readers; a narrowly scoped focus exception avoids drawing a misleading button-style outline on this noninteractive heading, while the actual recovery controls retain their focus indicators.
+4. Added translations for the last-resort fallback across English, German, Spanish, Russian and Bulgarian.
+5. Created `capture-router-error.mjs`, verifying real Chromium error handling at 1440px/390px/320px in both themes, no exception detail leakage in displayed body text, no horizontal overflow, and recovery to sign-in after reloading against a healthy API fixture.
+6. Added React Router integration tests in `GlobalRouterError.test.tsx` with a deliberately throwing route, screen-reader heading, recovery controls, localization and no internal-exception output.
+
+### Validation
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **395/395 passed across 67 files**.
+- `node web/src/components/navigation/capture-router-error.mjs`: **passed**, with screenshots inspected at 320px dark and 1440px light.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** after the shared router change.
+- `git diff --check`: **passed**.
+- Only the isolated Agent B worktree was changed. No production service, real user data, other agent worktree, merge or deployment.
+
+### Next audit
+
+- Inspect the shared first-run setup/onboarding experience at narrow widths, both themes, and keyboard-only navigation. Specifically verify language controls, responsive overflow, accessible labels and reduced motion before editing.

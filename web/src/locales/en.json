@@ -32,6 +32,13 @@
     "retry": "Try again",
     "reconnecting": "Reconnecting…"
   },
+  "routerError": {
+    "alertLabel": "Page unavailable",
+    "title": "This page could not load",
+    "description": "Something interrupted Patzer. Try reloading the page or returning home.",
+    "reload": "Reload page",
+    "home": "Go home"
+  },
   "authShell": {
     "intro": "About Patzer",
     "eyebrow": "A place to sharpen your chess",

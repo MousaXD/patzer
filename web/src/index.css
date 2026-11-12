@@ -459,6 +459,10 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 .release-notes-content a { color:var(--ui-primary); text-decoration:underline; text-underline-offset:3px; }
 .release-notes-content a:focus-visible { outline:2px solid var(--ui-focus); outline-offset:2px; border-radius:2px; }
 
+/* The emergency route heading receives focus for screen readers, but is not
+   keyboard-actionable. Keep visible focus rings on its actual recovery controls. */
+.router-error-heading:focus-visible { outline:none!important; }
+
 @media (prefers-reduced-motion:reduce) {
  :root { --ui-duration:0ms; }
  :where(*,*::before,*::after) { animation-duration:.01ms!important;

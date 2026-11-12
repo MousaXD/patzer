@@ -32,6 +32,13 @@
     "retry": "Erneut versuchen",
     "reconnecting": "Verbindung wird wiederhergestellt…"
   },
+  "routerError": {
+    "alertLabel": "Seite nicht verfügbar",
+    "title": "Diese Seite konnte nicht geladen werden",
+    "description": "Bei Patzer ist ein Fehler aufgetreten. Lade die Seite neu oder gehe zur Startseite.",
+    "reload": "Seite neu laden",
+    "home": "Zur Startseite"
+  },
   "authShell": {
     "intro": "Über Patzer",
     "eyebrow": "Ein Ort, um besser Schach zu spielen",
