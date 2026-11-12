@@ -129,7 +129,10 @@ describe('Home statistics failure', () => {
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('line-clamp-2');
     expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex');
-    expect(recentGame.querySelector('.hidden.sm\\:block')?.textContent).toContain('sample-player');
+    expect(recentGame.querySelector('[data-home-recent-desktop-matchup]')?.textContent).toContain('sample-player');
+    const desktopOpponent = recentGame.querySelector('[data-home-recent-desktop-opponent]');
+    expect(desktopOpponent?.textContent?.trim()).toBe('OpponentWithALongName');
+    expect(desktopOpponent?.className).toContain('flex-1');
   });
 
   it('shows the white opponent, not the signed-in player, when the recent game was played as black', async () => {
@@ -149,6 +152,9 @@ describe('Home statistics failure', () => {
     const recentGame = await screen.findByRole('link', { name: /OpponentWithALongName/ });
     expect(recentGame.getAttribute('href')).toBe('/review/104');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
+    const desktopOpponent = recentGame.querySelector('[data-home-recent-desktop-opponent]');
+    expect(desktopOpponent?.textContent?.trim()).toBe('OpponentWithALongName');
+    expect(desktopOpponent?.className).toContain('flex-1');
     expect(within(recentGame).getByRole('img', { name: 'Loss' })).toBeTruthy();
   });
 

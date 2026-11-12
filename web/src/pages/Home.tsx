@@ -615,20 +615,26 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                       {g.user_color === 'white' ? g.black : g.white}
                     </span>
                   </div>
-                  <div className="hidden truncate sm:block">
-                    {g.user_color === 'white' ? (
-                      <>
-                        <span className="text-chesscom-900 dark:text-chesscom-100">{g.white}</span>
-                        <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                        <span className="text-ui-mutedText">{g.black}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-ui-mutedText">{g.white}</span>
-                        <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                        <span className="text-chesscom-900 dark:text-chesscom-100">{g.black}</span>
-                      </>
-                    )}
+                  <div data-home-recent-desktop-matchup className="hidden min-w-0 items-center gap-1.5 sm:flex">
+                    <span
+                      data-home-recent-desktop-opponent={g.user_color === 'black' ? '' : undefined}
+                      title={g.white}
+                      className={g.user_color === 'white'
+                        ? 'max-w-[40%] shrink-0 truncate text-chesscom-900 dark:text-chesscom-100'
+                        : 'min-w-0 flex-1 truncate text-ui-mutedText'}
+                    >
+                      {g.white}
+                    </span>
+                    <span className="shrink-0 text-chesscom-400">{t('players.vs')}</span>
+                    <span
+                      data-home-recent-desktop-opponent={g.user_color === 'white' ? '' : undefined}
+                      title={g.black}
+                      className={g.user_color === 'black'
+                        ? 'max-w-[40%] shrink-0 truncate text-chesscom-900 dark:text-chesscom-100'
+                        : 'min-w-0 flex-1 truncate text-ui-mutedText'}
+                    >
+                      {g.black}
+                    </span>
                   </div>
                 </div>
                 <div className="text-xs text-ui-mutedText">

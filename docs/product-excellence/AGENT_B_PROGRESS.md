@@ -1052,3 +1052,33 @@
 ### Next audit
 
 - Investigate extremely long, unbroken player names and translated status text at **320px** to confirm the responsive opponent presentation remains legible, then audit first-use Home navigation accessibility or onboarding if the row is sound. Require Chromium reproduction before making further changes.
+
+## 2026-11-12: Protect opponent visibility for long usernames on tablets
+
+### Independent follow-up audit and negative control
+
+- Resumed from clean, pushed `a96ca2e`. A separate ignored Playwright edge-case audit verified the 320px presentation stays within the viewport for an unusually long, unbroken opponent name in English, German and Bulgarian, across light/dark themes.
+- The same audit **reproduced a substantive tablet regression** in the retained desktop-style White-vs-Black line: a 44-character owner username left **0px** of the opponent visible at **640px**, and only **35.2px** visible at **768px**, in both themes. Captured and inspected `artifacts/agent-02/audit-long-owner-tablet-640.png`.
+- Root cause: the whole desktop matchup was one `truncate` line, so the repeated owner name consumed the line before the opponent. The mobile-only fix did not apply at Tailwind's `sm` breakpoint.
+
+### Scoped implementation
+
+1. Present the larger-screen matchup as a flex row containing separately truncated White and Black names with a fixed `vs` separator.
+2. Limit the signed-in player's name to at most 40% of the available matchup width, reserving the remaining space for the opponent regardless of whether they played White or Black. Normal-length names remain fully visible; both full names remain accessible to assistive technology and via native title tooltips.
+3. Add explicit opponent/matchup fixture markers and strengthen the local Chromium test with long-owner German cases at **640 and 768px**, in both player colors and light/dark themes, verifying at least **100px** of visible opponent text and no page overflow. Preserve existing mobile and desktop behavior.
+4. Extend Home component tests for the responsive desktop opponent mapping and available-width classes.
+
+### Verification
+
+- Negative-control audit: opponent visibility **0px at 640px**, **35.2px at 768px** before fix.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including new German long-owner tablet matrix, original responsive modes, localization, accessibility and outage assertions.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **12/12 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **439/439 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Inspected final `home-recent-long-owner-light-white-640.png`, `home-recent-long-owner-light-black-640.png`, `home-recent-long-owner-dark-white-768.png`; both player names and the review status are readable and correctly ordered.
+- No other agent-owned pages or worktrees, production environment, deployment, or main merge touched.
+
+### Next audit
+
+- Audit Home's actual keyboard traversal from the hero through Recent Games at narrow and desktop widths, especially the discoverability and focus state of the individual recent-game link; only change code if Chromium demonstrates an interaction or visibility problem. Alternatively, investigate homepage data-state clarity for a returning player if keyboard behavior is sound.

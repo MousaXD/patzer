@@ -40,8 +40,8 @@ const fixtures = (pathname) => {
   if (pathname === '/api/meta') return { version: '7.19.0' };
   if (pathname === '/api/meta/update') return { enabled: false, updateAvailable: false, current: '7.19.0', latest: null };
   if (pathname === '/api/games') return { games: homeGamesMode === 'recent' ? [{
-    id: 103, white: fixtureUserColor === 'white' ? 'sample-player' : 'OpponentWithALongName',
-    black: fixtureUserColor === 'white' ? 'OpponentWithALongName' : 'sample-player',
+    id: 103, white: fixtureUserColor === 'white' ? fixtureUsername : 'OpponentWithALongName',
+    black: fixtureUserColor === 'white' ? 'OpponentWithALongName' : fixtureUsername,
     user_color: fixtureUserColor, end_time: '2026-11-12T12:00:00.000Z',
     result: fixtureGameResult, time_control: '600', opening_name: 'Italian Game', analyzed: false,
   }] : [] };
@@ -334,7 +334,7 @@ try {
             throw new Error(`Recent games ${recentTheme}/${color}/${viewport.width}px: opponent not legible beside vs: ${JSON.stringify(result)}`);
           }
         } else {
-          const names = row.locator('.hidden.sm\\:block');
+          const names = row.locator('[data-home-recent-desktop-matchup]');
           await names.waitFor({ state: 'visible' });
           const value = await names.innerText();
           if (!value.includes('sample-player') || !value.includes('OpponentWithALongName')) {
@@ -346,6 +346,43 @@ try {
       }
     }
   }
+  // A very long signed-in player's name previously consumed the desktop
+  // matchup line at 640px, completely hiding the opponent (0px visible).
+  // Keep both sides on the line while protecting the opponent's space.
+  fixtureUsername = 'AccountOwnerWithVeryLongNameIndeed1234567890';
+  profile.language = 'de';
+  for (const recentTheme of ['light', 'dark']) {
+    theme = recentTheme;
+    for (const color of ['white', 'black']) {
+      fixtureUserColor = color;
+      for (const width of [640, 768]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        const row = page.locator('main a[href="/review/103"]');
+        const opponent = row.locator('[data-home-recent-desktop-opponent]');
+        await opponent.waitFor({ state: 'visible' });
+        await page.waitForFunction((dark) =>
+          document.documentElement.classList.contains('dark') === dark, recentTheme === 'dark');
+        await page.evaluate(() => document.fonts.ready);
+        const visible = await opponent.evaluate((element) => {
+          const opponentBox = element.getBoundingClientRect();
+          const lineBox = element.closest('[data-home-recent-desktop-matchup]').getBoundingClientRect();
+          return {
+            opponent: element.textContent?.trim(),
+            width: Math.max(0, Math.min(opponentBox.right, lineBox.right) -
+              Math.max(opponentBox.left, lineBox.left)),
+          };
+        });
+        if (visible.opponent !== 'OpponentWithALongName' || visible.width < 100) {
+          throw new Error(`Recent games ${recentTheme}/${color}/${width}px: long owner crowds out the opponent: ${JSON.stringify(visible)}`);
+        }
+        await checkNoHorizontalOverflow(page, `long owner recent games ${recentTheme}/${color}/${width}px`);
+        await page.screenshot({ path: resolve(output, `home-recent-long-owner-${recentTheme}-${color}-${width}.png`) });
+      }
+    }
+  }
+  fixtureUsername = 'sample-player';
+  profile.language = 'en';
   theme = 'light';
   fixtureUserColor = 'white';
   await page.setViewportSize({ width: 320, height: 700 });
