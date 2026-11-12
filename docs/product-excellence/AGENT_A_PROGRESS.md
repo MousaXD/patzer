@@ -71,3 +71,29 @@
 ### Next
 
 - Audit another source-accuracy boundary within Game Review: live engine-line payloads may carry a legal UCI but an inconsistent SAN/PV description. Verify whether mismatched move descriptions can reach the UI before patching. Any correction must preserve position/source identity and not manufacture analysis.
+
+## 2026-11-12: source-safe live engine-line move names and continuations
+
+### Baseline and diagnosis
+
+- Audited `verifiedPositionEngineLines` in the Game Review presentation boundary. It previously accepted any legal `uci` from the requested FEN while trusting an unrelated `san` and arbitrary `pv_san` strings. This could label a clickable e2e4 as "d4" or display an illegal explanation line. The server normally derives SAN by replaying UCI, but a stale/corrupted/inconsistent HTTP payload must not be treated as verified coaching.
+- Added a targeted failing unit test: `uci=e2e4`, `san=d4`, `pv_san=[d4]` was accepted despite a correct FEN. Baseline result **FAIL** with the mismatched line returned instead of `null`.
+- Added real authenticated disposable Chromium interception for `/api/analyze/position` to return the same mismatched FEN-valid result. Baseline browser **FAIL** (the UI never showed the expected unavailable/retry recovery state), confirming the malformed response escaped the source guard.
+
+### Minimal fix
+
+- Check exact legal first-move UCI and canonical SAN, require a nonempty PV of at most the backend's 8 SAN plies, and replay each SAN move against the requested FEN with `chess.js`, validating canonical notation and the first move's UCI. Bad data rejects the entire response rather than inventing a corrected score or misleading move label.
+- Added unit cases for mismatched SAN, mismatched first PV move, empty PV, illegal later continuation and unparseable SAN; preserved the valid legal PV path.
+- In the Chromium regression, the bad line disappears and the panel shows its existing unavailable/Retry state. Retry returns a valid source-matched `e4 e5 Nf3` line; clicking the validated saved move advances original ply to 1 without altering the game's PGN.
+
+### Verification
+
+- `npx vitest run web/src/components/review/reviewPosition.test.ts --testTimeout=20000`: **7/7 passed** (baseline new test intentionally failed before fix).
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **965 passed / 12 skipped**, 107 passed files, 2 skipped.
+- Full disposable authenticated Chromium harness: **PASS (exit 0)** with new malformed-line rejection/retry/forward/PGN assertions plus previous source, variation, focus, locale and viewport checks. Opened actual images `qa-artifacts/agent-a/line-sanity-fixed-20261112/engine-line-{wrong-san-rejected,matched-after-retry}-390.png`.
+- The scores in these screenshots are synthetic intercepted HTTP test fixtures, not real Stockfish analysis certification; no backend scoring, persisted PGN or production SQLite changed.
+
+### Next highest-impact visual issue
+
+- The real dark-mode engine-lines screenshots reveal visually weak secondary text in the error/Retry and active line row. Measure actual Chromium contrast of error guidance, move score, PV, and action text before adjusting only the review Engine Lines panel; avoid global theme changes owned by Agent B.

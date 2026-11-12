@@ -69,4 +69,21 @@ describe('review position-safe suggestions', () => {
     expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, cp: null, mate: null }] }, fen)).toBeNull();
     expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, san: null }] }, fen)).toBeNull();
   });
+
+  it('refuses a live engine line whose legal UCI is mislabeled or whose continuation is not legal', () => {
+    const fen = new Chess().fen();
+    const good = { uci: 'e2e4', san: 'e4', pv_san: ['e4', 'e5', 'Nf3'], cp: 45, mate: null, multipv: 1 };
+    expect(verifiedPositionEngineLines({ fen, lines: [good] }, fen)).toEqual([good]);
+    // A truthful FEN and legal e2e4 arrow are not enough to authenticate
+    // a different visible move label or fabricated coaching continuation.
+    for (const changes of [
+      { san: 'd4', pv_san: ['d4'] },
+      { pv_san: ['d4'] },
+      { pv_san: [] },
+      { pv_san: ['e4', 'e4'] },
+      { pv_san: ['e4', 'not a move'] },
+    ]) {
+      expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, ...changes }] }, fen), JSON.stringify(changes)).toBeNull();
+    }
+  });
 });

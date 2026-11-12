@@ -660,6 +660,48 @@ try {
     await page.screenshot({path:join(output,'matched-variation-score-after-retry-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await mismatchedContext.close();}
+  // A position-matched engine result can still lie about the move itself:
+  // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
+  // board must not offer that result as a truthful clickable engine move.
+  const engineLineContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await engineLineContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await engineLineContext.newPage();
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const initialFen=new Chess().fen();
+    let engineRequests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      const data=route.request().postDataJSON();
+      assert.equal(data.fen,initialFen,'The engine query must use the displayed pre-move FEN');
+      engineRequests++;
+      const scoredLine={uci:'e2e4',san:'e4',pv_san:['e4','e5','Nf3'],cp:45,mate:null,multipv:1};
+      const lines=engineRequests===1
+        ? [{...scoredLine,san:'d4',pv_san:['d4']}]
+        : [scoredLine];
+      await route.fulfill({status:200,contentType:'application/json',
+        body:JSON.stringify({fen:initialFen,depth:18,lines})});
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await page.locator('#review-engine-lines-content').waitFor({state:'visible'});
+    await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.getByRole('button',{name:'Follow played move d4'}).count(),0,
+      'A legal UCI must never be displayed under another move name');
+    await page.getByText('Engine lines are unavailable.',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-line-wrong-san-rejected-390.png')});
+    const scoredAgain=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position')&&response.status()===200);
+    await page.getByRole('button',{name:'Retry',exact:true}).click();
+    await scoredAgain;
+    const validMove=page.getByRole('button',{name:'Follow played move e4'});
+    await validMove.waitFor({state:'visible',timeout:5000});
+    await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'hidden'});
+    await page.screenshot({path:join(output,'engine-line-matched-after-retry-390.png')});
+    await validMove.click();
+    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+    assert.equal(engineRequests,2);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await engineLineContext.close();}
   // A scoring failure belongs to a specific exploratory move. An error from
   // d4 must never follow the user to an already scored c4 branch when the
   // browser reselects it from cache (no new engine request is sent there).

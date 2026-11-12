@@ -1,3 +1,4 @@
+import { Chess } from 'chess.js';
 import { legalAnalysisMove } from '../../lib/analysisVariations';
 
 /** Review-only presentation rules. Never suggest a move evaluated on a
@@ -36,7 +37,9 @@ export function visibleEngineLines<T>(lines: T[], resultFen: string, displayedFe
 }
 
 /** Reject a mismatched or malformed engine response before presenting arrows.
- * A late result claiming another FEN must not be labelled as the current one.
+ * A matching position and legal UCI are not enough: the visible SAN and PV
+ * must also describe that exact move and a legal continuation. Otherwise the
+ * analysis panel could invite the player to try e4 while claiming it is d4.
  */
 export function verifiedPositionEngineLines<T>(
   payload: { fen?: unknown; lines?: unknown },
@@ -46,15 +49,25 @@ export function verifiedPositionEngineLines<T>(
   if (!payload.lines.every((line: unknown) => {
     if (!line || typeof line !== 'object' || Array.isArray(line)) return false;
     const record = line as Record<string, unknown>;
-    return typeof record.uci === 'string'
-      && legalAnalysisMove(requestedFen, record.uci) !== null
-      && typeof record.san === 'string'
-      && Array.isArray(record.pv_san)
-      && record.pv_san.every((san: unknown) => typeof san === 'string')
-      && (record.cp === null || (typeof record.cp === 'number' && Number.isFinite(record.cp)))
-      && (record.mate === null || (typeof record.mate === 'number' && Number.isFinite(record.mate)))
-      && (record.cp !== null || record.mate !== null)
-      && Number.isSafeInteger(record.multipv) && (record.multipv as number) >= 1;
+    const first = typeof record.uci === 'string' ? legalAnalysisMove(requestedFen, record.uci) : null;
+    if (!first || record.san !== first.san
+      || !Array.isArray(record.pv_san) || record.pv_san.length === 0 || record.pv_san.length > 8
+      || !record.pv_san.every((san: unknown) => typeof san === 'string')
+      || (record.cp !== null && (typeof record.cp !== 'number' || !Number.isFinite(record.cp)))
+      || (record.mate !== null && (typeof record.mate !== 'number' || !Number.isFinite(record.mate)))
+      || (record.cp === null && record.mate === null)
+      || !Number.isSafeInteger(record.multipv) || (record.multipv as number) < 1) return false;
+    try {
+      const replay = new Chess(requestedFen);
+      for (const [index, san] of record.pv_san.entries()) {
+        const actual = replay.move(san);
+        if (!actual || actual.san !== san) return false;
+        if (index === 0 && actual.from + actual.to + (actual.promotion || '') !== first.uci) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
   })) return null;
   return payload.lines as T[];
 }
