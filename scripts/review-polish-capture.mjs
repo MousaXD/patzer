@@ -649,6 +649,57 @@ try {
       (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn,
       'Denied and successful clipboard operations must never rewrite saved PGN');
   }finally{await blockedContext.close();}
+  // Browser clipboard permission may settle *after* the board has moved.
+  // A late result belongs to its originating URL, not to the next position;
+  // it must not show Copied or an irrelevant manual fallback on the new ply.
+  const lateShareContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await lateShareContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await lateShareContext.newPage();
+    await page.addInitScript(()=>{
+      window.__deferredShareCopies=[];
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+        writeText:text=>new Promise((resolve,reject)=>window.__deferredShareCopies.push({text,resolve,reject})),
+      }});
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    const share=page.getByRole('button',{name:'Share position',exact:true});
+    const fallback=page.locator('[data-review-meta-toolbar] [data-review-clipboard-fallback]');
+    const moveNext=async(expected)=>{
+      const prior=page.url();
+      await page.getByRole('button',{name:'Next',exact:true}).click();
+      await page.waitForFunction(value=>document.querySelector('[data-review-move-progress]')
+        ?.textContent?.trim()===value,`${expected} / 24`,{timeout:3000});
+      await page.waitForFunction(previous=>location.href!==previous,prior,{timeout:3000});
+    };
+    await share.click();
+    await page.waitForFunction(()=>window.__deferredShareCopies.length===1);
+    const firstUrl=await page.evaluate(()=>window.__deferredShareCopies[0].text);
+    assert.equal(firstUrl,page.url());
+    await moveNext(16);
+    await page.evaluate(()=>window.__deferredShareCopies[0].reject(new DOMException('Permission denied','NotAllowedError')));
+    await page.waitForTimeout(200);
+    assert.equal(await fallback.count(),0,
+      'A clipboard denial for the previous position must not show a manual URL for the new position');
+    assert.equal(await share.count(),1);
+    await share.click();
+    await page.waitForFunction(()=>window.__deferredShareCopies.length===2);
+    assert.equal(await page.evaluate(()=>window.__deferredShareCopies[1].text),page.url());
+    await moveNext(17);
+    await page.evaluate(()=>window.__deferredShareCopies[1].resolve());
+    await page.waitForTimeout(200);
+    assert.equal(await share.count(),1,
+      'A successful clipboard write from the previous ply must not mark the new ply Copied');
+    assert.equal(await fallback.count(),0);
+    await share.click();
+    await page.waitForFunction(()=>window.__deferredShareCopies.length===3);
+    assert.equal(await page.evaluate(()=>window.__deferredShareCopies[2].text),page.url());
+    await page.evaluate(()=>window.__deferredShareCopies[2].resolve());
+    await page.getByRole('button',{name:'Copied',exact:true}).waitFor({state:'visible',timeout:3000});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
+      (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn);
+  }finally{await lateShareContext.close();}
   // Notes remain private, editable and recoverable after a real failed PATCH.
   // Verify the localized retry against the disposable authenticated backend.
   const spanishNotes=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));

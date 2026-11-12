@@ -445,10 +445,16 @@ function GameAnalyzerView() {
     ? `${window.location.origin}/lab#${encodeURI(variations.currentFen)}`
     : window.location.href;
   const currentShareUrl = shareCurrentPosition();
+  const currentShareUrlRef = useRef(currentShareUrl);
+  const shareRequestVersionRef = useRef(0);
+  // Update during render so an async clipboard settlement cannot win a race
+  // against the next position before effect cleanup has run.
+  currentShareUrlRef.current = currentShareUrl;
   const previousShareUrlRef = useRef(currentShareUrl);
   useEffect(() => {
     if (previousShareUrlRef.current === currentShareUrl) return;
     previousShareUrlRef.current = currentShareUrl;
+    shareRequestVersionRef.current += 1;
     // Manual share text belongs to one exact mainline/variation position.
     // Do not leave the previous copy fallback open after the board URL moves.
     setShareCopyFailed(false);
@@ -457,13 +463,21 @@ function GameAnalyzerView() {
   // Both the toolbar button and the S keyboard shortcut must share the same
   // copy success/error feedback. A denied clipboard still offers a manual URL.
   const copySharePosition = async () => {
+    const requestedUrl = currentShareUrlRef.current;
+    const requestVersion = ++shareRequestVersionRef.current;
+    const stillCurrent = () => requestVersion === shareRequestVersionRef.current
+      && currentShareUrlRef.current === requestedUrl;
     try {
       if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
-      await navigator.clipboard.writeText(shareCurrentPosition());
+      await navigator.clipboard.writeText(requestedUrl);
+      if (!stillCurrent()) return;
       setShareCopyFailed(false);
       setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 1400);
+      setTimeout(() => { if (stillCurrent()) setLinkCopied(false); }, 1400);
     } catch {
+      // Permission can settle after the learner moves to another saved ply
+      // or exploratory branch. Ignore feedback for an obsolete source URL.
+      if (!stillCurrent()) return;
       setLinkCopied(false);
       setShareCopyFailed(true);
       // The same denied action or keyboard S shortcut can be invoked again
