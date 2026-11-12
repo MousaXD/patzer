@@ -338,6 +338,9 @@
       "player_not_found": "No se encontró ningún jugador con ese nombre de usuario.",
       "lichess_rate_limited": "Lichess pide una breve pausa: inténtalo de nuevo en un minuto.",
       "lichess_unavailable": "No se puede conectar con Lichess ahora mismo. Inténtalo más tarde.",
+      "chesscom_rate_limited": "Chess.com limita temporalmente las solicitudes. Inténtalo de nuevo en un minuto.",
+      "chesscom_unavailable": "No se puede conectar con Chess.com ahora mismo. Inténtalo más tarde.",
+      "linked_account_changed": "La cuenta vinculada cambió durante la importación. Revisa Configuración e inténtalo de nuevo.",
       "generic": "La importación falló. Inténtalo de nuevo más tarde."
     },
     "gameChanged": "La partida ha cambiado. Analízala de nuevo para generar un informe actualizado.",

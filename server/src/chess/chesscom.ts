@@ -44,21 +44,30 @@ async function get(url: string): Promise<unknown> {
   });
   if (res.status === 404) throw new Error('not_found');
   if (!res.ok) throw new Error(`chesscom_${res.status}`);
-  return res.json();
+  try { return await res.json(); }
+  catch { throw new Error('chesscom_invalid_response'); }
 }
 
 export async function getPlayer(username: string): Promise<{ username: string; avatar?: string; country?: string } | null> {
+  assertValidUsername(username);
+  let data: Record<string, unknown>;
   try {
-    assertValidUsername(username);
-    const data = (await get(`https://api.chess.com/pub/player/${encodeURIComponent(username)}`)) as Record<string, unknown>;
-    return {
-      username: String(data.username ?? username),
-      avatar: typeof data.avatar === 'string' ? data.avatar : undefined,
-      country: typeof data.country === 'string' ? data.country : undefined,
-    };
-  } catch {
-    return null;
+    data = (await get(`https://api.chess.com/pub/player/${encodeURIComponent(username)}`)) as Record<string, unknown>;
+  } catch (error) {
+    // Only an explicit HTTP 404 proves the user doesn't exist. Rate limits,
+    // timeouts and network errors must not be reported as a missing profile.
+    if (error instanceof Error && error.message === 'not_found') return null;
+    throw error;
   }
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      typeof data.username !== 'string' || data.username.toLowerCase() !== username.toLowerCase()) {
+    throw new Error('chesscom_invalid_response');
+  }
+  return {
+    username: data.username,
+    avatar: typeof data.avatar === 'string' ? data.avatar : undefined,
+    country: typeof data.country === 'string' ? data.country : undefined,
+  };
 }
 
 export async function listArchives(username: string): Promise<string[]> {

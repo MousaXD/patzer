@@ -396,6 +396,9 @@
       "player_not_found": "No player with that username was found.",
       "lichess_rate_limited": "Lichess asks for a short break — try again in a minute.",
       "lichess_unavailable": "Lichess can't be reached right now. Try again later.",
+      "chesscom_rate_limited": "Chess.com is limiting requests — try again in a minute.",
+      "chesscom_unavailable": "Chess.com could not be reached. Please try again later.",
+      "linked_account_changed": "Your linked account changed during import. Check Settings and retry.",
       "import_in_progress": "An import is already running — wait until it has finished.",
       "generic": "The import failed. Please try again later."
     },

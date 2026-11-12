@@ -272,6 +272,37 @@ describe('manual Chess.com import resilience', () => {
     });
   }
 
+  it.each([
+    [404, 404, 'player_not_found'],
+    [429, 429, 'chesscom_rate_limited'],
+    [503, 502, 'chesscom_unavailable'],
+  ])('distinguishes a Chess.com profile HTTP %i from genuine missing players', async (upstream, responseStatus, code) => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ error: 'provider_error' }), { status: upstream }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(responseStatus);
+      expect(await response.json()).toEqual({ error: code });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('does not mistake network failure or a malformed profile reply for an absent player', async () => {
+    for (const provider of [
+      async () => { throw new TypeError('fetch failed'); },
+      async () => new Response(JSON.stringify({ unrelated: 'value' }), { status: 200 }),
+      async () => new Response(JSON.stringify({ username: 'different_account' }), { status: 200 }),
+      async () => new Response('not valid json', { status: 200 }),
+    ]) {
+      vi.stubGlobal('fetch', vi.fn(provider));
+      try {
+        const response = await postImport();
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'chesscom_unavailable' });
+      } finally { vi.unstubAllGlobals(); }
+    }
+  });
+
   it('preserves unknown results without recording false losses and skips malformed or cross-user games', async () => {
     mockFetch([
       sample(99001),

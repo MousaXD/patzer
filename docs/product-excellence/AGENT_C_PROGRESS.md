@@ -84,3 +84,15 @@ All implementation stays in Game Library, provider imports and dedicated tests. 
 2. Inspect large-library opening/opponent discovery flows for more useful navigation without adding speculative data.
 3. Review Chess.com provider error classification: the initial `getPlayer()` lookup currently maps network/rate failures to `player_not_found`; users may be told their existing profile is missing when the provider is unavailable.
 4. Maintain independent release certification; do not merge or deploy without integrator review.
+
+## 2026-11-12 — Chess.com profile failure classification
+
+Recovered `0330b63` and finished the previously uncommitted Chess.com import error work.
+
+- `server/src/chess/chesscom.ts`: `getPlayer()` now treats **only** an explicit HTTP 404 as an absent player. HTTP 429, HTTP 503, network failures, malformed JSON, and invalid/unexpected player payloads propagate as provider failures; account identity in the returned payload must match the linked username case-insensitively.
+- `server/src/routes/games.ts`: rate limiting becomes `chesscom_rate_limited` (429); unavailable or malformed provider responses become `chesscom_unavailable` (502). A genuine missing Chess.com profile remains `player_not_found` (404). SQL errors still fail normally and do not masquerade as network errors.
+- Added clear error text for all five supported UI languages (en/bg/es/de/ru). The browser fixture verifies distinct alerts for Chess.com rate limiting, changed linked account, and Lichess unavailability.
+- Targeted backend/frontend tests: **43 passed**. `npm run typecheck`: **passed**. `npm run build -w web`: **passed**. Isolated Chromium fixtures in both themes at **1440, 390, 320px**: **passed**, including import error alerts and search/pagination.
+- No real provider requests, production accounts, production databases, or merges/deploys.
+
+**Next audit hypothesis:** `listArchives()` currently silently filters invalid archive URLs and `getMonth()` treats missing game-array properties as an empty monthly archive. The full-history CLI reuses those clients; malformed upstream replies could therefore incorrectly appear complete. Confirm with isolated mocks before changing behavior.

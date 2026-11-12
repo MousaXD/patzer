@@ -237,7 +237,15 @@ router.post('/import/chesscom', async (c) => {
     if (!player) return c.json({ error: 'player_not_found' }, 404);
     return c.json(await importChessComGames(user.id, username, parsed.data.limit));
   } catch (error) {
-    if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    if (message === 'chesscom_429') return c.json({ error: 'chesscom_rate_limited' }, 429);
+    if (message === 'invalid_username') return c.json({ error: 'invalid_input' }, 400);
+    if (message === 'not_found' || message.startsWith('chesscom_') ||
+        /fetch failed|network|timed out|timeout|abort|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT/i.test(message) ||
+        (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))) {
+      return c.json({ error: 'chesscom_unavailable' }, 502);
+    }
     throw error;
   } finally {
     chesscomImportsRunning.delete(user.id);
