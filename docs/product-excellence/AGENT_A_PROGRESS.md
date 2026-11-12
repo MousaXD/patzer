@@ -50,3 +50,24 @@
 ### Next investigation
 
 - Verify keyboard/screen-reader focus after activating Retry: the feedback unmounts during a retry; if the focused action disappears, focus may jump to the document and force a keyboard user to navigate from the top. Reproduce in Chromium, then repair if confirmed. Other agents' shell/library/Play areas remain out of scope.
+
+## 2026-11-12: keyboard Retry focus continuity
+
+### Reproduction and fix
+
+- Resumed exactly from Agent A commit `7f50e42` with clean worktree and the pending browser focus audit.
+- Updated the disposable Chromium source-mismatch/retry fixture to **focus Retry, activate Enter, await its repaired engine score, then inspect `document.activeElement`**. Before the fix, the test failed: `tag: BODY`, `onMoveSummary: false`.
+- The selected-move summary is now a persistent programmatically focusable group with an explicit focus-visible outline; activating Retry uses a common handler and moves focus to that summary after the disappearing Retry button unmounts. It retains the current selected variation identity, score, engine-request cancellation and source gating.
+- Browser fixture now checks keyboard focus, recovered source-matched classification, hidden mismatch warning and preserved saved PGN.
+
+### Verification
+
+- `npm run typecheck`: PASS.
+- `npm test -- --testTimeout=20000`: **964 passed / 12 skipped** (107 passed test files, 2 skipped).
+- `npm run build`: PASS.
+- Disposable authenticated Chromium harness: **PASS (exit 0)**, including the new keyboard Enter/focus assertion, 320/390/1024px checks, locale matrix, stale engine responses, source mismatch and recovered scoring, and unchanged PGN. Captures: `qa-artifacts/agent-a/retry-focus-fixed-20261112/`.
+- Browser fixtures include synthetic quality data, not independently certified Stockfish scores.
+
+### Next
+
+- Audit another source-accuracy boundary within Game Review: live engine-line payloads may carry a legal UCI but an inconsistent SAN/PV description. Verify whether mismatched move descriptions can reach the UI before patching. Any correction must preserve position/source identity and not manufacture analysis.

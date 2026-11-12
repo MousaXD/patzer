@@ -144,6 +144,7 @@ function GameAnalyzerView() {
   const [pick, setPick] = useState<MovePick | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const boardFocusRef = useRef<HTMLDivElement | null>(null);
+  const moveSummaryRef = useRef<HTMLDivElement | null>(null);
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -384,6 +385,13 @@ function GameAnalyzerView() {
   } | null>(null);
   const qualityError = qualityKey && qualityFailure?.key === qualityKey ? qualityFailure.reason : '';
   const [qualityRetry, setQualityRetry] = useState(0);
+  const retryVariationScoring = () => {
+    setQualityFailure(null);
+    setQualityRetry((previous) => previous + 1);
+    // Retry hides its own button while a new score is loading. Without a
+    // durable focus target, keyboard users are thrown back to document BODY.
+    requestAnimationFrame(() => moveSummaryRef.current?.focus({ preventScroll: true }));
+  };
   const variationQuality = qualityKey && qualityMatchesVariationMove(qualityCache[qualityKey], branchMove)
     ? qualityCache[qualityKey] : null;
   const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
@@ -862,7 +870,8 @@ function GameAnalyzerView() {
             highlighted
           />
 
-          <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft dark:bg-chesscom-800">
+          <div ref={moveSummaryRef} data-review-move-summary tabIndex={-1}
+            className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 dark:bg-chesscom-800">
             <div className="min-w-0 truncate text-chesscom-500">
               {isVariation ? (
                 <><span className="font-medium text-amber-600">{t('review.variationMove', { san: branchMove?.san ?? t('review.startingPosition') })}</span>
@@ -891,7 +900,7 @@ function GameAnalyzerView() {
                 {t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}
               </span>
               <button type="button" className="min-h-11 shrink-0 rounded border border-amber-500/50 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
-                onClick={() => { setQualityFailure(null); setQualityRetry((previous) => previous + 1); }}>
+                onClick={retryVariationScoring}>
                 {t('review.variationRetryScoring')}
               </button>
             </div>

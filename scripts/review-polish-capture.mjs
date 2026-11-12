@@ -644,9 +644,17 @@ try {
     assert.ok(await page.getByLabel(locale.review.variationEvalUnavailable).count()>0,
       'Rejected engine data must not display a fabricated active variation evaluation');
     const matchedAgain=page.waitForResponse(response=>response.url().endsWith('/api/analyze/variation-move') && response.status()===200);
-    await page.getByRole('button',{name:locale.review.variationRetryScoring}).click();
+    const retryButton=page.getByRole('button',{name:locale.review.variationRetryScoring});
+    await retryButton.focus();
+    await page.keyboard.press('Enter');
     await matchedAgain;
     await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true}).waitFor({state:'visible',timeout:3000});
+    const retryFocus=await page.evaluate(()=>({
+      tag:document.activeElement?.tagName,
+      onMoveSummary:document.activeElement?.hasAttribute('data-review-move-summary'),
+    }));
+    assert.equal(retryFocus.onMoveSummary,true,
+      `Keyboard Retry must focus the current move status after its action unmounts: ${JSON.stringify(retryFocus)}`);
     await page.getByText(locale.review.variationSourceMismatch,{exact:true}).waitFor({state:'hidden'});
     assert.equal(receivedScoringRequests.length,2,'Retry should fetch a fresh response for the same authoritative move');
     await page.screenshot({path:join(output,'matched-variation-score-after-retry-390.png')});
