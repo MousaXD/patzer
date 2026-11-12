@@ -130,6 +130,16 @@ function GameAnalyzerView() {
   const setAnalysis = useCallback((value: AnalysisResult | null) => {
     setAnalysisSnapshot({ gameId, value });
   }, [gameId]);
+  const runAnalysisButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    // The native disabled state stops duplicate engine requests, but can drop
+    // keyboard focus to BODY while Stockfish runs. Restore the enabled retry
+    // after failure only when focus was lost, not when the user navigated to
+    // a different control during the request.
+    if (!analyzing && analysisError && !analysis && document.activeElement === document.body) {
+      runAnalysisButtonRef.current?.focus({ preventScroll: true });
+    }
+  }, [analyzing, analysisError, analysis]);
   const [coachConfigured, setCoachConfigured] = useState(false);
   const [requestedDepth, setRequestedDepth] = useState(16);
   const [showDepthControl, setShowDepthControl] = useState(false);
@@ -1058,7 +1068,7 @@ function GameAnalyzerView() {
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{t(analysisError)}</div>}
           {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
           {!analysis && (
-            <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
+            <button ref={runAnalysisButtonRef} onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
               {analyzing
                 ? t('review.analyzing', { progress: '…' })

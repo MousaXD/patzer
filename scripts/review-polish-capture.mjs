@@ -2145,12 +2145,20 @@ try {
     assert.ok(await retryAnalysis.isEnabled(),
       'An invalid cached classification must offer an explicit reanalysis action');
     await page.screenshot({path:join(output,'unreadable-cache-es-after.png')});
-    await Promise.all([
-      page.waitForRequest(request=>request.url().endsWith('/api/analyze') && request.method()==='POST'),
-      retryAnalysis.click(),
-    ]);
+    const firstAttempt=page.waitForRequest(request=>request.url().endsWith('/api/analyze') && request.method()==='POST');
+    await retryAnalysis.focus();
+    await page.keyboard.press('Enter');
+    await firstAttempt;
     await page.getByText(spanish.review.analysisError.unavailable,{exact:true})
       .waitFor({state:'visible',timeout:10000});
+    assert.ok(await retryAnalysis.evaluate(button=>document.activeElement===button),
+      'A failed engine analysis must restore keyboard focus to the enabled Retry action');
+    const secondAttempt=page.waitForRequest(request=>request.url().endsWith('/api/analyze') && request.method()==='POST');
+    await page.keyboard.press('Enter');
+    await secondAttempt;
+    await page.getByText(spanish.review.analysisError.unavailable,{exact:true})
+      .waitFor({state:'visible',timeout:10000});
+    assert.ok(await retryAnalysis.isEnabled(),'A second failed attempt must leave reanalysis available');
     await page.screenshot({path:join(output,'engine-retry-unavailable-es-after.png')});
     const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
     assert.equal(sourceAttested.json.game.pgn,originalPgn,

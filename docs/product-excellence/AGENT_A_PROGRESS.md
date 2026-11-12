@@ -502,3 +502,23 @@
 ### Next issue
 
 - The existing Spanish reanalysis failure test clicks Run engine with the mouse and checks the failure banner, but does not assert keyboard focus or meaningful retry after the enabled button is disabled during an in-flight request. Audit actual Chromium Enter→engine failure→retry focus and repeated request behavior. Correct only genuine Game Review interaction failures; do not change shared API error semantics or other agents' areas.
+
+## 2026-11-12: retain keyboard retry access after failed full-game reanalysis
+
+### Reproduction and correction
+
+- Continued from clean `25f1a5c` and the recorded next accessibility audit. The existing Spanish Chromium fixture covered corrupt cached analysis and an engine failure after a mouse click, but did not verify keyboard Retry usability.
+- Extended the **same** authenticated disposable browser fixture: focus Run engine analysis, press Enter, await actual backend POST `/api/analyze` 503 and translated recovery banner, assert focus remains on the enabled action, press Enter again, and verify a second real POST and a retryable failure. **Before fix Chromium failed**: disabling the focused native button during engine work moved focus away, and it did not return after the engine error.
+- Added a stable button ref and small Game Review-only effect: after an analysis error clears the in-progress disabled state, restore focus to the enabled analysis action **only when `document.activeElement` is BODY**. This preserves native disabled semantics and avoids stealing focus from users who navigated elsewhere during the request. No shared error contract, engine behavior, source provenance, or cross-agent code changed.
+
+### Verified evidence
+
+- Focused analysis-error/stored-source tests: **14 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **983 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including two sequential keyboard Enter POST requests on engine-unavailable recovery, actual Spanish error text, restored focus, a re-enabled retry action, unchanged PGN and previous responsive/source/variation/coaching cases.
+- Opened and inspected `qa-artifacts/agent-a/reanalysis-focus-after-20261112/engine-retry-unavailable-es-after.png`: the Spanish error banner and focused green engine-analysis action remain accessible beneath the selected saved move.
+- No merge, deployment, production SQLite mutation or other-agent edits. Browser scores/fixture annotations are not Stockfish accuracy certification.
+
+### Next candidate
+
+- Audit Game Review's evaluation graph keyboard slider while an exploratory variation is active. Its `current` prop becomes `undefined` to avoid a misleading saved-game marker, but the graph currently maps that undefined selection to `aria-valuenow=0` and a "Starting position" label. Verify the announced timeline position in actual Chromium and avoid presenting a false saved-game position, while preserving click-to-return functionality and localized instructions.
