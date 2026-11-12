@@ -1053,6 +1053,39 @@ try {
     await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
     assert.equal(await page.getByPlaceholder(enNotes.review.notesPlaceholder).inputValue(),draft);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn,pgn);
+    // The new in-review practice query is also a directly openable URL. A
+    // bookmark must start on a truly blind attempt, without rendering the
+    // saved move list, graph, notes or engine hints before the learner exits.
+    await page.goto(`${base}/review/${practiceGameId}?ply=17&practicePly=17`,{waitUntil:'domcontentloaded'});
+    const directPractice=page.locator('[data-practice-mode="true"]');
+    await directPractice.waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.locator('[data-review-move-progress]').count(),0,
+      'A directly opened valid attempt must not mount the scored saved-game transport');
+    assert.equal(await page.locator('[data-review-meta-toolbar]').count(),0,
+      'A direct blind-practice URL must not reveal the saved Notes or Review rail');
+    assert.equal(await page.locator('[data-review-workspace]').count(),0);
+    assert.equal(await page.locator('[data-practice-mode] h1').evaluate(el=>document.activeElement===el),true,
+      'Direct blind practice must focus its own heading for keyboard users');
+    const returnSaved=page.getByRole('button',{name:enNotes.practice.returnSaved,exact:true});
+    await returnSaved.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'17 / 24');
+    assert.ok(!new URL(page.url()).searchParams.has('practicePly'),
+      'Returning to normal Review must remove the transient practice query');
+    assert.ok(await page.locator('#learn-from-mistake').evaluate(el=>document.activeElement===el),
+      'Returning from blind practice should restore focus to the selected mistake action');
+    // Invalid or no-longer-eligible targets must remain in the isolated
+    // unavailable screen rather than unmounting it to reveal PGN/hints.
+    await page.goto(`${base}/review/${practiceGameId}?ply=17&practicePly=999`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('alert').getByRole('button',{name:enNotes.practice.returnSaved,exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.locator('[data-review-workspace]').count(),0,
+      'An invalid direct practice target must not expose the scored Game Review workspace');
+    await page.getByRole('alert').getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).click();
+    await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
+    assert.ok(!new URL(page.url()).searchParams.has('practicePly'));
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn,pgn);
   }finally{releasePracticeNotes();await practiceNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.

@@ -1496,3 +1496,14 @@
 ### Next scoped audit
 
 - Independently verify a **normal, already-saved in-review practice entry** and its Return-to-review keyboard focus and URL history without a pending Notes request. Also validate that direct practice URLs cannot expose the original saved move before the learner chooses to exit. Keep any change within Agent A's game-review/practice boundary.
+
+## 2026-11-13: certify direct practice links, spoiler safety and return focus
+
+- Resumed clean pushed `aee5f33` after the in-review Notes-guard fix. Expanded the same **completed, source-attested** synthetic game fixture with direct URL navigation to `/review/<id>?ply=17&practicePly=17`, without first entering through the library picker. The real Chromium page rendered the isolated blind practice board, focused its own heading, and **did not mount** the saved-game move transport, Review workspace/graph, or Notes toolbar before an attempt. No source data or engine hint leaked into the blind view.
+- Keyboard Enter on **Return to saved game** removed the transient `practicePly` parameter, returned to the original 17/24 saved position, and restored focus to the relevant **Retry this mistake** action. The route was replaced, not pushed as an unnecessary additional history entry.
+- Opening an invalid direct `practicePly=999` rendered only the accessible **Practice unavailable** recovery screen, not the scored Review UI. Its Return button removed the invalid parameter and restored regular Game Review. Original PGN and already-recovered private note were unchanged.
+- Complete authenticated, disposable Chromium desktop/mobile, theme, locale, keyboard, engine, variation, source/PGN and practice matrix **PASS (exit 0)** on isolated port 8999. `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. This change adds browser regression coverage only; the preceding product checkpoint passed **1006 tests / 12 skipped**, typecheck and production build. No merge, deployment, live user data, or other agent worktree edits.
+
+### Next independent Game Review audit
+
+- Audit the **recovery focus after practice becomes unavailable during a background game refetch** (e.g., source revision changes while an attempt is mounted). Verify that the practice error surfaces the correct recovery action, doesn't reveal the saved solution, and returns focus safely. Test with a source-attested synthetic response before altering product behavior.
