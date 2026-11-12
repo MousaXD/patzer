@@ -92,7 +92,7 @@ async function newPage(theme, width, height) {
       if (body.limit === 100 && path.endsWith('/chesscom')) { status = 429; json = {error: 'chesscom_rate_limited'}; }
       else if (body.limit === 100) { status = 409; json = {error: 'linked_account_changed'}; }
       else if (body.limit === 20 && path.endsWith('/lichess')) { status = 502; json = {error: 'lichess_unavailable'}; }
-      else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0};
+      else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0, enriched: body.limit === 200 ? 7 : 0};
     } else if (path === '/api/games/live') json = {bot: null, pvp: []};
     else { status = 404; json = {error: 'test_fixture_not_implemented'}; }
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
@@ -208,6 +208,7 @@ try {
     // Import shows the number *newly saved* vs *retrieved* — not "all history".
     await page.getByRole('button',{name:/@fixtureuser/}).first().click();
     await page.getByText(/100 new games saved from 200 retrieved/).waitFor();
+    await page.getByText(/7 existing games gained opening details/).waitFor();
     await page.getByText(/not your entire history/).waitFor();
     await page.getByRole('combobox',{name:'Recent games to fetch'}).selectOption('20');
     await page.getByRole('button',{name:/@fixtureuser/}).first().click();

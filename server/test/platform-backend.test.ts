@@ -411,6 +411,47 @@ describe('manual Chess.com import resilience', () => {
     }
   });
 
+  it('enriches identical pre-existing Chess.com PGNs without changing any source or user data', async () => {
+    const game = sample(99522);
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, eco, opening_name, bookmarked, notes, source_revision)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', NULL, NULL, 1, 'Keep this note', 7)`)
+      .run(game.url, game.pgn).lastInsertRowid);
+    mockFetch([game]);
+    try {
+      expect(await (await postImport()).json()).toMatchObject({imported:0,duplicates:1,enriched:1});
+      expect(db.prepare(`SELECT pgn, eco, opening_name, bookmarked, notes, source_revision, result, user_color
+        FROM games WHERE id = ?`).get(id)).toMatchObject({
+          pgn: game.pgn, eco: 'C20', opening_name: "King's Pawn Game",
+          bookmarked: 1, notes: 'Keep this note', source_revision: 7, result: 'win', user_color: 'white',
+        });
+      expect(await (await postImport()).json()).toMatchObject({imported:0,duplicates:1,enriched:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
+  });
+
+  it('does not enrich mismatched PGNs or override a conflicting stored Chess.com ECO', async () => {
+    const game = sample(99523);
+    const wrongPgn = '[White "importer"]\n[Black "opponent"]\n\n1. d4 d5 *';
+    const insert = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, eco, opening_name)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', ?, NULL)`);
+    const id1 = Number(insert.run(game.url, wrongPgn, null).lastInsertRowid);
+    const other = sample(99524);
+    const id2 = Number(insert.run(other.url, other.pgn, 'A00').lastInsertRowid);
+    mockFetch([game, other]);
+    try {
+      expect(await (await postImport()).json()).toMatchObject({imported:0, duplicates:2, enriched:0});
+      expect(db.prepare('SELECT pgn,eco,opening_name FROM games WHERE id = ?').get(id1)).toEqual({pgn:wrongPgn, eco:null, opening_name:null});
+      expect(db.prepare('SELECT pgn,eco,opening_name FROM games WHERE id = ?').get(id2)).toEqual({pgn:other.pgn, eco:'A00', opening_name:null});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id IN (?, ?)').run(id1,id2);
+    }
+  });
+
   it('bounds concurrent manual imports per user and releases the slot after completion', async () => {
     let release = () => {};
     let entered = () => {};
@@ -475,6 +516,30 @@ describe('manual Chess.com import resilience', () => {
         .get(sample(99896).url, sample(badId).url)).toEqual({ n: 0 });
     } finally { db.exec('DROP TRIGGER agentc_chesscom_failure'); vi.unstubAllGlobals(); }
   });
+
+  it('rolls back duplicate opening enrichment if another game in the batch fails', async () => {
+    const first = sample(99895);
+    const second = sample(99894);
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, source_revision)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', 11)`)
+      .run(first.url, first.pgn).lastInsertRowid);
+    db.exec(`CREATE TRIGGER agentc_chesscom_metadata_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${second.url}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    mockFetch([first, second]);
+    try {
+      expect((await postImport()).status).toBe(500);
+      expect(db.prepare('SELECT eco,opening_name,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({eco:null,opening_name:null,source_revision:11});
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?').get(second.url))
+        .toEqual({n:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.exec('DROP TRIGGER agentc_chesscom_metadata_failure');
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
+  });
 });
 
 describe('manual Lichess import integrity', () => {
@@ -527,6 +592,23 @@ describe('manual Lichess import integrity', () => {
     } finally {
       vi.unstubAllGlobals();
       db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess' AND external_id = ?").run(game.id);
+    }
+  });
+
+  it('enriches a duplicate Lichess game only when its original PGN matches', async () => {
+    const original = lichessGame('agentc_lc_duplicate_opening');
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, bookmarked, notes, source_revision)
+      VALUES (6, 'lichess', ?, ?, 'importer', 'opponent', 'win', 'white', 1, 'Keep note', 4)`)
+      .run(original.id, original.pgn).lastInsertRowid);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(original), {status:200})));
+    try {
+      expect(await (await importLichess()).json()).toMatchObject({imported:0,duplicates:1,enriched:1});
+      expect(db.prepare('SELECT pgn,eco,opening_name,bookmarked,notes,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({pgn:original.pgn,eco:'C20',opening_name:"King's Pawn Game",bookmarked:1,notes:'Keep note',source_revision:4});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
     }
   });
   it('rejects truncated export responses before committing any game', async () => {
@@ -584,6 +666,30 @@ describe('manual Lichess import integrity', () => {
       expect(response.status).toBe(500);
       expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
     } finally { db.exec('DROP TRIGGER agentc_lichess_failure'); vi.unstubAllGlobals(); }
+  });
+
+  it('rolls back duplicate Lichess opening enrichment when a later insertion fails', async () => {
+    const first = lichessGame('agentc_lc_metadata_original');
+    const second = lichessGame('agentc_lc_metadata_failure');
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, source_revision)
+      VALUES (6, 'lichess', ?, ?, 'importer', 'opponent', 'win', 'white', 12)`)
+      .run(first.id, first.pgn).lastInsertRowid);
+    db.exec(`CREATE TRIGGER agentc_lichess_metadata_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${second.id}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response([first,second].map(x => JSON.stringify(x)).join('\n'), {status:200})));
+    try {
+      expect((await importLichess()).status).toBe(500);
+      expect(db.prepare('SELECT eco,opening_name,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({eco:null,opening_name:null,source_revision:12});
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?').get(second.id))
+        .toEqual({n:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.exec('DROP TRIGGER agentc_lichess_metadata_failure');
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
   });
 });
 

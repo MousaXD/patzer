@@ -192,13 +192,14 @@ export default function Review() {
 
   const importMut = useMutation({
     mutationFn: ({ source, limit }: { source: ImportSource; accountId: number; limit: number }) =>
-      api.post<{ imported: number; total: number; skipped?: number; duplicates?: number }>(`/api/games/import/${source}`, { limit }),
+      api.post<{ imported: number; total: number; skipped?: number; duplicates?: number; enriched?: number }>(`/api/games/import/${source}`, { limit }),
     onSuccess: (r, { accountId }) => {
       void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
       if (accountIdRef.current !== accountId) return;
       const details = [r.duplicates ? `${r.duplicates} already saved` : '', r.skipped ? `${r.skipped} unsupported or invalid` : '']
         .filter(Boolean).join(', ');
-      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${details ? ` (${details})` : ''}. This imports recent games only, not your entire history.` }, 9000);
+      const enrichment = r.enriched ? ` ${r.enriched} existing games gained opening details.` : '';
+      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${details ? ` (${details})` : ''}.${enrichment} This imports recent games only, not your entire history.` }, 9000);
     },
     onError: (e, { accountId }) => {
       if (accountIdRef.current !== accountId) return;

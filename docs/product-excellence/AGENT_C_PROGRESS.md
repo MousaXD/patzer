@@ -148,3 +148,24 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next highest-impact issue
 
 - **Previously imported games:** The new insert-only enrichment does not fill opening metadata on existing duplicate IDs (`ON CONFLICT DO NOTHING`), so older collections may remain undiscoverable by opening. Investigate a carefully scoped PGN-identity-preserving enrichment strategy for duplicate imports, with regression tests proving no original PGN, user ownership, analysis provenance or conflicting existing ECO is changed. Do not claim a full-history metadata backfill unless it is explicitly implemented and tested.
+
+## 2026-11-12 — Enrich opening details on safe reimports
+
+- Recovered clean `9a2a59b`. The outstanding duplicate-import gap was reproduced with **3 failing tests** (existing games did not gain opening metadata).
+- Added a shared, prepared SQLite enrichment statement for Chess.com and Lichess. On a duplicate game, only missing ECO/name data can be added, and **only when user ID, source, external ID and the complete original PGN match**. An existing ECO or opening name cannot be overwritten. Conflicting ECO is not assigned a guessed opening name. Original PGN, ownership, result, bookmarks, notes, ratings, source revision and saved analyses remain unchanged.
+- Both import routes return a separate `enriched` count, without inflating `imported`; the Library's success message explains how many existing games gained opening details while still stating the recent-game limit.
+- Proved no-op repeated imports, preservation of mismatched original PGNs and conflicting ECOs, and transaction rollback of prior enrichment if a subsequent insert fails. Separate Chess.com and Lichess Hono/SQLite negative controls use disposable test data and synthetic SQLite abort triggers.
+- **Limit:** This applies only to games encountered in an explicit recent-game reimport. It is **not** a complete backfill of every historical game and does not silently scan the production database.
+
+### Verification
+
+- Targeted backend/frontend tests: **58 passed**. Full suite: **108 test files passed, 2 skipped; 1,008 tests passed, 12 skipped** (no failures).
+- `npm run typecheck`, web build and server build: **passed**. `git diff --check`: passed.
+- Reusable isolated Chromium browser fixture: **passed** at 1440px, 390px and 320px in both themes. Checked distinct opening-enrichment feedback, old history pagination, server-side opening search, import errors and mobile geometry.
+- No live provider requests, production DB access, deployment or changes to another agent worktree.
+
+### Next improvement candidates
+
+1. Evaluate performance and SQLite query plans for 10k+ historical games using disposable fixtures. Avoid premature indexes.
+2. Explore useful library-based opening and opponent discovery from *actual stored game data*, clearly distinguishing recognized from unclassified openings. No synthetic history or claimed complete backfill.
+3. Design explicit, durable opt-in historical metadata enrichment if the operator wants to classify earlier archived games that cannot appear in the 200-game recent fetch.

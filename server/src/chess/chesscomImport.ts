@@ -4,9 +4,9 @@
 import { db } from '../db.js';
 import { fetchRecentGames, type ChessComGame } from './chesscom.js';
 import { Chess } from 'chess.js';
-import { importOpeningMetadata } from './importOpening.js';
+import { importOpeningMetadata, prepareImportedOpeningEnrichment } from './importOpening.js';
 
-export async function importChessComGames(userId: number, username: string, limit: number): Promise<{ imported: number; total: number; skipped: number; duplicates: number }> {
+export async function importChessComGames(userId: number, username: string, limit: number): Promise<{ imported: number; total: number; skipped: number; duplicates: number; enriched: number }> {
   const games = await fetchRecentGames(username, limit);
   // Imported chess.com games are NEVER rated in Patzer's pool — they have their
   // own chess.com rating that lives there. Only PvP games inside Patzer count.
@@ -15,6 +15,7 @@ export async function importChessComGames(userId: number, username: string, limi
     VALUES (?, 'chesscom', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
+  const enrichOpening = prepareImportedOpeningEnrichment(db);
   // Validate PGNs before taking SQLite's writer lock. Only the short insert
   // phase belongs inside the all-or-nothing transaction.
   const rows: ImportRow[] = [];
@@ -34,13 +35,17 @@ export async function importChessComGames(userId: number, username: string, limi
     if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
     let imported = 0;
     let duplicates = 0;
+    let enriched = 0;
     for (const row of rows) {
       const r = stmt.run(userId, row.url, row.pgn, row.white, row.black, row.result,
         row.timeControl, row.timeClass, row.endTime, row.userColor, row.eco, row.openingName);
       if (r.changes > 0) imported++;
-      else duplicates++;
+      else {
+        duplicates++;
+        if (enrichOpening(userId, 'chesscom', row.url, row.pgn, {eco: row.eco, openingName: row.openingName})) enriched++;
+      }
     }
-    return { imported, total: games.length, skipped, duplicates };
+    return { imported, total: games.length, skipped, duplicates, enriched };
   })();
 }
 

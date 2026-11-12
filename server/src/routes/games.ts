@@ -5,6 +5,7 @@ import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
+import { prepareImportedOpeningEnrichment } from '../chess/importOpening.js';
 import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
 import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
@@ -300,6 +301,7 @@ router.post('/import/lichess', async (c) => {
     VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
+  const enrichOpening = prepareImportedOpeningEnrichment(db);
   const rows: NonNullable<ReturnType<typeof toImportRow>>[] = [];
   for (const g of games) {
     const row = toImportRow(g, username);
@@ -313,13 +315,18 @@ router.post('/import/lichess', async (c) => {
       if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
       let imported = 0;
       let duplicates = 0;
+      let enriched = 0;
       for (const row of rows) {
         const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
           row.time_control, row.time_class, row.end_time, row.user_color, row.eco, row.opening_name);
         if (r.changes > 0) imported++;
-        else duplicates++;
+        else {
+          duplicates++;
+          if (enrichOpening(user.id, 'lichess', row.external_id, row.pgn,
+            {eco: row.eco, openingName: row.opening_name})) enriched++;
+        }
       }
-      return { imported, total: games.length, skipped, duplicates };
+      return { imported, total: games.length, skipped, duplicates, enriched };
     })();
     return c.json(result);
   } catch (error) {

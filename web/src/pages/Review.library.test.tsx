@@ -219,7 +219,7 @@ describe('Review library with large histories', () => {
 
   it('requests a clearly bounded recent import batch rather than silently fetching only 20', async () => {
     mocks.user.profile.chesscom_username = 'tester';
-    mocks.post.mockResolvedValue({ imported: 150, total: 200, duplicates: 42, skipped: 8 });
+    mocks.post.mockResolvedValue({ imported: 150, total: 200, duplicates: 42, skipped: 8, enriched: 12 });
     mount();
     await screen.findByText(/40 of 1,000 games/);
     expect((screen.getByRole('combobox', { name: 'Recent games to fetch' }) as HTMLSelectElement).value).toBe('200');
@@ -227,6 +227,7 @@ describe('Review library with large histories', () => {
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
     expect(await screen.findByText(/150 new games saved from 200 retrieved/)).toBeTruthy();
     expect(screen.getByText(/42 already saved, 8 unsupported or invalid/)).toBeTruthy();
+    expect(screen.getByText(/12 existing games gained opening details/)).toBeTruthy();
     expect(screen.getByText(/not your entire history/)).toBeTruthy();
   });
 
