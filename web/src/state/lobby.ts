@@ -30,6 +30,22 @@ type AcceptedNav = {
 };
 type ListStatus = 'loading' | 'ready' | 'error';
 
+function isIncomingChallenge(value: unknown): value is Challenge {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Partial<Challenge>;
+  const sender = c.from;
+  const recipient = c.to;
+  return Number.isSafeInteger(c.id) && Number(c.id) > 0
+    && c.status === 'pending'
+    && (c.color === 'white' || c.color === 'black' || c.color === 'random')
+    && typeof c.time_control === 'string' && c.time_control.length > 0
+    && !!sender && Number.isSafeInteger(sender.id)
+    && typeof sender.username === 'string'
+    && typeof sender.display_name === 'string'
+    && typeof sender.avatar_emoji === 'string'
+    && !!recipient && Number.isSafeInteger(recipient.id);
+}
+
 interface LobbyState {
   ws: WebSocket | null;
   online: Set<number>;
@@ -118,7 +134,11 @@ export const useLobby = create<LobbyState>((set, get) => {
         // Update users list with new online flags
         set((s) => ({ users: s.users.map((u) => ({ ...u, online: (msg.online as number[]).includes(u.id) })) }));
       } else if (msg.type === 'challenge_received') {
-        set((s) => ({ incoming: [msg.challenge as Challenge, ...s.incoming.filter((c) => c.id !== (msg.challenge as Challenge).id)] }));
+        // Ignore incomplete/malformed socket payloads instead of inserting a
+        // broken invitation that could crash the global modal for everyone.
+        if (!isIncomingChallenge(msg.challenge)) return;
+        const challenge = msg.challenge;
+        set((s) => ({ incoming: [challenge, ...s.incoming.filter((c) => c.id !== challenge.id)] }));
         // Reconciliation invalidates any older, still-pending REST snapshot.
         void get().refreshChallenges();
       } else if (msg.type === 'challenge_accepted') {

@@ -41,6 +41,16 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('ignores malformed real-time invitations without breaking a later valid challenge', () => {
+    useLobby.getState().connect(1);
+    const socket = FakeSocket.opened[0]!;
+    socket.emit({ type: 'challenge_received', challenge: null });
+    socket.emit({ type: 'challenge_received', challenge: { id: 'not-a-number', from: null } });
+    expect(useLobby.getState().incoming).toEqual([]);
+    socket.emit({ type: 'challenge_received', challenge: invitation(99) });
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([99]);
+  });
+
   it('keeps two accepted games available when separate outgoing challenges are accepted together', () => {
     useLobby.getState().connect(1);
     useLobby.getState().setActivePlaySession(true);
