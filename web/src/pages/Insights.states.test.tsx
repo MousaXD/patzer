@@ -122,4 +122,45 @@ describe('Insights data states', () => {
     expect(screen.getByText('1 recorded rating')).toBeTruthy();
     expect(screen.getByText('Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.')).toBeTruthy();
   });
+
+  it('labels an accuracy history by analyzed-game count and recorded period', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 14, games_analyzed: 3, activity_heatmap: [], rating_trajectory: {},
+        time_class_stats: {}, opening_repertoire: [], mistake_taxonomy: {},
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        accuracy_trend: [
+          { t: '2026-10-01T12:00:00Z', acc: 52.5, result: 'loss' },
+          { t: '2026-10-16T12:00:00Z', acc: 70.5, result: 'win' },
+          { t: '2026-11-12T12:00:00Z', acc: 75, result: 'draw' },
+        ],
+      });
+    });
+    mount();
+    expect(await screen.findByText('3 analyzed games')).toBeTruthy();
+    expect(screen.getByText('avg 66.0%')).toBeTruthy();
+    expect(screen.getByText('Each point is one of your latest analyzed games. The average covers only the games shown; changes between individual games do not automatically mean you are improving or declining.')).toBeTruthy();
+    expect(screen.getByText('Draw / unknown')).toBeTruthy();
+    expect(screen.getByText('Oct 1, 2026')).toBeTruthy();
+    expect(screen.getByText('Nov 12, 2026')).toBeTruthy();
+  });
+
+  it('does not draw a misleading accuracy trend from a single analyzed game', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 1, games_analyzed: 1, activity_heatmap: [], rating_trajectory: {},
+        time_class_stats: {}, opening_repertoire: [], mistake_taxonomy: {},
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        accuracy_trend: [{ t: '2026-11-12T12:00:00Z', acc: 72.4, result: 'win' }],
+      });
+    });
+    mount();
+    expect(await screen.findByText('1 analyzed game')).toBeTruthy();
+    expect(screen.getByText('One analyzed game is not enough to show an accuracy trend.')).toBeTruthy();
+    const chart = screen.getByRole('img', { name: 'Accuracy trend across analyzed games' });
+    expect(chart.querySelectorAll('circle')).toHaveLength(1);
+    expect(chart.querySelectorAll('path')).toHaveLength(0);
+  });
 });

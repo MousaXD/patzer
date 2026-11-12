@@ -171,3 +171,13 @@
 - **Actual browser:** Replayed the identical 6,000-point rating fixture in Chrome at 390px. After the change, the page rendered **320 circles** instead of 6,000, with no errors or horizontal overflow. The graph retained the large peak and trough, the correct first-to-last +260 summary and the full 6,000-entry count. `qa/agent-d-browser/insights-rating-long-history.png` was visually checked.
 - **Scope:** This is only a client rendering cap, not server-side truncation or deletion of rating history. Do not claim exact timing improvements without a controlled benchmark.
 - **Final verification:** `npm run typecheck` and production `npm run build` passed; the full `npx vitest run --maxWorkers=4` suite passed with **992 tests, 12 skipped and zero failures** across 114 files. The 6,000-point Chrome fixture still showed correct recorded summaries after condensation.
+
+## Eleventh pass — 2026-11-12 (continued from `814010b`)
+
+### Explain the accuracy sample and avoid a false one-game trend
+
+- **Problem:** The accuracy history chart showed a line and unlabeled horizontal span, with no visible coverage dates, sample count, or clarification of the averaging denominator. A lone analyzed game could appear as a trend even though one score cannot describe improvement.
+- **Fix:** Expose the recorded start and end dates, the analyzed-game count displayed, win/loss/draw-or-unknown dot legend, and the fact that the average covers only the plotted games, not all saved games. For exactly one analyzed game, center its recorded point, omit the connecting line and average reference line, and explicitly state that a trend cannot be inferred. Added English/German/Russian messages, with grammatical singular/plural cases.
+- **Tests:** Expanded `Insights.states.test.tsx` with 3-game sample/date/average/legend coverage and a one-game regression asserting one circle and no trend path. Focused component suite passed after correcting a test's expected accessible chart label to the actual translated accessible name.
+- **Real browser:** Chrome with authenticated API fixtures, 390px dark/reduced-motion for one analyzed game and 1440px light/reduced-motion for three games. Both scenarios displayed the expected labels and SVG points (1 circle/no connecting path; 3 circles/1 path), with no console errors or page overflow. Saved and visually inspected `qa/agent-d-browser/insights-accuracy-{phone,desktop}.png`.
+- **Final verification:** `npm run typecheck`, production `npm run build` and complete `npx vitest run --maxWorkers=4` passed: **994 passed, 12 skipped, 0 failed** across 114 test files. The browser observations use mock data, not production user statistics.

@@ -585,7 +585,7 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
 
 /* ───── Accuracy trend ─────────────────────────────────────────────────── */
 function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (data.length === 0) {
     return (
       <section className="card p-4">
@@ -598,13 +598,14 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
     );
   }
   const W = 480, H = 140, padX = 28, padY = 14;
-  const xs = data.map((_, i) => i);
-  const xMin = 0, xMax = Math.max(1, xs[xs.length - 1] ?? 1);
   const yMin = 0, yMax = 100;
-  const xScale = (i: number) => padX + ((i - xMin) / Math.max(1, xMax - xMin)) * (W - 2 * padX);
+  // These are the latest analyzed games, chronologically ordered by the
+  // server; one game is a point, not a trend line.
+  const xScale = (i: number) => data.length === 1 ? W / 2 : padX + (i / (data.length - 1)) * (W - 2 * padX);
   const yScale = (v: number) => H - padY - ((v - yMin) / (yMax - yMin)) * (H - 2 * padY);
   const path = data.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(p.acc).toFixed(1)}`).join(' ');
   const avg = data.reduce((a, b) => a + b.acc, 0) / data.length;
+  const date = (timestamp: string) => new Date(timestamp).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
   return (
     <section className="card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -612,7 +613,7 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <Target className="h-4 w-4 text-gold-500" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.accuracyTrend', { defaultValue: 'Accuracy trend' })}</h2>
         </div>
-        <span className="font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
+        <span className="shrink-0 font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
         aria-label={t('insights.accuracyTrend', { defaultValue: 'Accuracy trend across analyzed games' })}>
@@ -620,10 +621,10 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <line key={v} x1={padX} x2={W - padX} y1={yScale(v)} y2={yScale(v)} className="stroke-chesscom-200 dark:stroke-chesscom-700" strokeWidth={0.5} strokeDasharray="2 3" />
         ))}
         {/* avg line */}
-        <line x1={padX} x2={W - padX} y1={yScale(avg)} y2={yScale(avg)} stroke="#e0a02b" strokeWidth={0.7} strokeDasharray="3 3" opacity={0.7} />
-        <path d={path} fill="none" stroke="#769656" strokeWidth={1.5} />
+        {data.length > 1 && <line x1={padX} x2={W - padX} y1={yScale(avg)} y2={yScale(avg)} stroke="#e0a02b" strokeWidth={0.7} strokeDasharray="3 3" opacity={0.7} />}
+        {data.length > 1 && <path d={path} fill="none" stroke="#769656" strokeWidth={1.5} />}
         {data.map((p, i) => (
-          <circle key={i} cx={xScale(i)} cy={yScale(p.acc)} r={1.8} fill={p.result === 'win' ? '#769656' : p.result === 'loss' ? '#c63b3a' : '#6c7a89'}>
+          <circle key={i} cx={xScale(i)} cy={yScale(p.acc)} r={data.length === 1 ? 3.5 : 2.4} fill={p.result === 'win' ? '#769656' : p.result === 'loss' ? '#c63b3a' : '#6c7a89'}>
             <title>{`${p.acc.toFixed(1)}% · ${p.result ? t(`insights.result.${p.result}`) : '—'} · ${new Date(p.t).toLocaleDateString()}`}</title>
           </circle>
         ))}
@@ -631,6 +632,32 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
         <text x={padX - 4} y={yScale(50) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">50</text>
         <text x={padX - 4} y={yScale(100) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">100</text>
       </svg>
+      <div className={`mt-1 flex text-[11px] text-chesscom-500 ${data.length === 1 ? 'justify-center' : 'justify-between'}`}>
+        <span>{date(data[0]!.t)}</span>
+        {data.length > 1 && <span>{date(data[data.length - 1]!.t)}</span>}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-chesscom-500">
+        <span>{t('insights.accuracySampleCount', {
+          defaultValue: data.length === 1 ? '{{count}} analyzed game' : '{{count}} analyzed games',
+          count: data.length,
+        })}</span>
+        <span className="inline-flex items-center gap-2">
+          {([
+            ['#769656', t('insights.result.win', { defaultValue: 'Win' })],
+            ['#c63b3a', t('insights.result.loss', { defaultValue: 'Loss' })],
+            ['#6c7a89', t('insights.accuracyDrawOther', { defaultValue: 'Draw / unknown' })],
+          ] as const).map(([color, label]) => (
+            <span key={color} className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />{label}
+            </span>
+          ))}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-chesscom-500">
+        {data.length === 1
+          ? t('insights.accuracySingle', { defaultValue: 'One analyzed game is not enough to show an accuracy trend.' })
+          : t('insights.accuracyExplanation', { defaultValue: 'Each point is one of your latest analyzed games. The average covers only the games shown; changes between individual games do not automatically mean you are improving or declining.' })}
+      </p>
     </section>
   );
 }
