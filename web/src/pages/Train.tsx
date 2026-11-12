@@ -32,7 +32,7 @@ export default function Train() {
   const tabClass = (active: boolean) => `tab-pill flex items-center gap-1.5 ${active ? 'is-active' : ''}`;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4">
       <div role="tablist" className="flex gap-1 border-b border-chesscom-200 dark:border-chesscom-700">
         <button role="tab" aria-selected={tab === 'mine'} onClick={() => setTab('mine')} className={tabClass(tab === 'mine')}>
           <Target className="h-4 w-4" /> {t('train.tabs.mine')}
@@ -140,7 +140,7 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full min-w-0 max-w-5xl">
       {header}
       <OwnPuzzle key={`${user.id}:${puzzle.game_id}:${puzzle.ply}:${run}`} puzzle={puzzle} onNext={() => setRun((r) => r + 1)} />
     </div>
@@ -344,7 +344,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <div className={`mx-auto w-full lg:flex-1 lg:max-w-[640px] board-theme-${user?.profile.board_theme ?? 'green'}`}>
+      <div className={`mx-auto w-full min-w-0 lg:flex-1 lg:max-w-[640px] board-theme-${user?.profile.board_theme ?? 'green'}`}>
         <div className="mb-2 flex items-center justify-between rounded-md bg-white px-3 py-2 text-xs shadow-soft dark:bg-chesscom-800">
           <span className="font-medium text-chesscom-700 dark:text-chesscom-200">
             {puzzle.side_to_move === 'white' ? t('train.whiteToMove', { defaultValue: 'White to move' }) : t('train.blackToMove', { defaultValue: 'Black to move' })}
@@ -365,7 +365,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
         />
       </div>
 
-      <aside className="lg:w-[340px] space-y-3">
+      <aside className="min-w-0 space-y-3 lg:w-[340px] lg:shrink-0">
         <div className="card p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="text-[11px] uppercase tracking-wider text-chesscom-500">{t('train.taskTitle', { defaultValue: 'Find the move you missed' })}</div>
