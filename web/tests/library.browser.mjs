@@ -109,7 +109,8 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
-    unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false,
+    unknownImportedNames = false, practiceForUnknownNames = false,
+    unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
@@ -170,8 +171,11 @@ async function newPage(theme, width, height,
             end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"Queen's Pawn Game",notes:''},
         ], total:2,offset:0,limit:40,has_more:false};
       } else if (unknownImportedNames) json = {
-        games:[{id:9001, source:'imported', white:null, black:null, result:null,
-          time_control:null,end_time:null,user_color:null,bookmarked:0,analyzed:0,
+        games:[{id:9001, source:'imported', white:null,
+          black:practiceForUnknownNames ? '  ' : null,
+          result:practiceForUnknownNames ? 'loss' : null,
+          time_control:null,end_time:practiceForUnknownNames ? '2026-11-09T12:00:00Z' : null,
+          user_color:null,bookmarked:0,analyzed:practiceForUnknownNames ? 1 : 0,
           opening_name:"King's Pawn Game",notes:''}],
         total:1,offset:0,limit:40,has_more:false,
       };
@@ -225,7 +229,7 @@ async function newPage(theme, width, height,
   } else if (unicodeLibrary) {
     await page.getByText('3 of 3 games').waitFor();
   } else if (unknownImportedNames) {
-    await page.getByText('1 of 1 games').waitFor();
+    await page.getByText(locale === 'de' ? 'Partien: 1 von 1' : '1 of 1 games').waitFor();
   } else if (emptyLibrary) {
     await page.getByText('Your game history starts here').waitFor();
     await page.getByText('0 of 0 games').waitFor();
@@ -608,6 +612,27 @@ try {
     assert.deepEqual(pageErrors,[], 'Unknown-player card produced a JavaScript error');
     console.log('PASS imported PGN without player headers has explicit mobile player labels');
   } finally { await unknownNames.context.close(); }
+
+  const practiceUnknown=await newPage('dark',390,844,{
+    locale:'de',unknownImportedNames:true,practiceForUnknownNames:true,
+  });
+  try {
+    const {page,pageErrors}=practiceUnknown;
+    const card=page.locator('a[href="/review/9001"]');
+    assert.equal(await card.getByText('Unbekannter Spieler',{exact:true}).count(),2);
+    const practice=page.locator('a[href="/review/9001?practice=1"]');
+    assert.equal(await practice.getAttribute('aria-label'),
+      'Fehler in Unbekannter Spieler gegen Unbekannter Spieler ohne Lösungshinweise üben',
+      'A dated imported game with blank players must announce both visible fallback identities');
+    const target=await practice.boundingBox();
+    assert.ok(target && target.height>=44 && target.x>=0 && target.x+target.width<=392,
+      `Practice action with unknown identities must remain mobile touch-accessible: ${JSON.stringify(target)}`);
+    await practice.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForURL('**/review/9001?practice=1');
+    assert.deepEqual(pageErrors,[], 'Practice navigation with missing imported identities caused a JS exception');
+    console.log('PASS imported unknown players have a meaningful German Practice link and keyboard navigation');
+  } finally {await practiceUnknown.context.close();}
 
   const longPlayers=await newPage('light',320,700,{longPlayerNames:true});
   try {

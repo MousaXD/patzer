@@ -844,6 +844,11 @@ export default function Review() {
 
 function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number | undefined; starredOnly: boolean }) {
   const { t, i18n } = useTranslation();
+  // The same display identities must be announced by the Practice action:
+  // imported PGNs can have missing or whitespace-only White/Black headers.
+  const unknownPlayer = t('review.unknownPlayer', {defaultValue:'Unknown player'});
+  const whiteName = g.white?.trim() || unknownPlayer;
+  const blackName = g.black?.trim() || unknownPlayer;
   const qc = useQueryClient();
   const [bookmarkError, setBookmarkError] = useState(false);
   const star = useMutation({
@@ -877,9 +882,9 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="inline-flex max-w-full min-w-0 items-baseline gap-x-2">
-              <span title={g.white?.trim() || undefined} className={cn('min-w-0 font-semibold', g.white?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.white?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
+              <span title={g.white?.trim() || undefined} className={cn('min-w-0 font-semibold', g.white?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{whiteName}</span>
               <span className="shrink-0 text-chesscom-400">{t('players.vs')}</span>
-              <span title={g.black?.trim() || undefined} className={cn('min-w-0 font-semibold', g.black?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.black?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
+              <span title={g.black?.trim() || undefined} className={cn('min-w-0 font-semibold', g.black?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{blackName}</span>
             </span>
             <span className="text-xs text-chesscom-400">· {fmtTimeControl(g.time_control, t)}</span>
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
@@ -924,7 +929,7 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
         </span>
       {g.analyzed && g.end_time && g.result !== '*' && g.result !== 'ongoing' ? (
         <Link to={`/review/${g.id}?practice=1`}
-          aria-label={t('practice.entryAria', { white: g.white, black: g.black })}
+          aria-label={t('practice.entryAria', { white: whiteName, black: blackName })}
           className="btn-secondary min-h-11 shrink-0 px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 sm:px-3">
           {t('practice.entry')}
         </Link>

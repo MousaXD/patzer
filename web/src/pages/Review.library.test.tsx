@@ -158,6 +158,22 @@ describe('Review library with large histories', () => {
     expect(card.textContent).toContain('Date unavailable');
   });
 
+  it('describes missing imported player identities in the Practice action as the card displays them', async () => {
+    mocks.get.mockImplementation(async (url:string) => url==='/api/games/openings'
+      ? {total:1,classified:1,unclassified:0,openings:[{name:'Italian Game',games:1}]}
+      : {games:[{...makeGame(1),source:'imported',white:null,black:'  ',
+        user_color:null,analyzed:1,result:'loss'}],total:1,offset:0,has_more:false});
+    mount();
+    await screen.findByText('1 of 1 games');
+    const card=document.querySelector<HTMLAnchorElement>('a[href="/review/1"]');
+    expect(card).not.toBeNull();
+    expect(card?.textContent?.match(/Unknown player/g)).toHaveLength(2);
+    const practice=screen.getByRole('link',{
+      name:'Practice mistakes in Unknown player versus Unknown player without spoilers',
+    });
+    expect(practice.getAttribute('href')).toBe('/review/1?practice=1');
+  });
+
   it('keeps long international player names inside a truncatable card label with the full text available', async () => {
     const white='棋手名'.repeat(40);
     const black='JOSÉ-'.repeat(22);

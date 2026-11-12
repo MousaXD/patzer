@@ -709,3 +709,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Check **Practice mistakes entry labels for imported games with missing player metadata**. A Library card may show translated **Unknown player** for a saved PGN while its practice link interpolates `g.white` / `g.black` directly into an accessible sentence. Confirm the accessible name in a real browser when an imported dated/analyzed game has null or blank player tags, then ensure keyboard and screen-reader users receive meaningful identities without changing the Game Review or Practice implementations.
+
+## 2026-11-12 — Use the Library's visible player identities in Practice accessible names
+
+- Recovered clean pushed `466eb1f` with this exact next audit. Added a dated, analyzed synthetic imported PGN with `white: null`, whitespace-only Black, and a valid result to test Practice availability. Before the change, isolated 390px German Chromium reproduced a real mismatch: the card showed **Unbekannter Spieler** for each player, but the Practice link announced `Fehler in  gegen    ohne Lösungshinweise üben`.
+- In the Library card only, compute `whiteName` and `blackName` once from trimmed PGN metadata, falling back to translated `review.unknownPlayer`. Reuse those exact values in the displayed card and the existing `practice.entryAria` translation. Preserved the Practice route, existing availability checks, accessible labels for known players, card truncation, and the Game Review/Practice implementations.
+- Added failing focused React regression and an isolated Chromium fixture that verifies both visible German fallback names, exact localized Practice link, a 44px mobile target, and Enter navigation to `/review/9001?practice=1`. The first focused rerun caught only an overbroad test locator after both links correctly contained player names; narrowed the fixture to the card's exact href and verified the product behavior without changing it again.
+
+### Verification
+
+- Focused Library React tests: **49/49 passed**. Full repository suite: **109 passed files, 2 skipped; 1,087 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Isolated Chromium 1440px desktop, 390/320px mobile light/dark, German mobile unknown-name Practice, imports, filters, bookmarks, Unicode search, pagination and recovery: passed with no JS exceptions or horizontal overflow.
+- Only Agent C's Library page, focused React tests, isolated browser fixture, and progress report changed. No production data, provider import, other-agent worktree, merge or deploy touched.
+
+### Next independent audit
+
+- Audit **Library's pagination behavior when filters change during a pending "Load more" request**. A returning player can change source/search/sort while a continuation page is in flight; verify that stale pages cannot appear under a new filter, the button stays correctly enabled, and any late failures don't create misleading errors. Reproduce using a delayed synthetic browser fixture before changing the query logic; keep all changes isolated to the Library.
