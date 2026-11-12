@@ -1525,6 +1525,24 @@ try {
       console.log(`${width}px filter controls:`,JSON.stringify(filterButtons));
       assert.ok(filterButtons.length===3 && filterButtons.every(button=>button.name && button.width>=44 && button.height>=44),
         `Previous/Next/Clear classification controls must have labeled 44px touch targets: ${JSON.stringify(filterButtons)}`);
+      // The move list itself is the primary review control on phones; SAN
+      // entries and the starting-position action need the same usable touch
+      // targets as the surrounding history and filter navigation.
+      const list=page.getByRole('region',{name:'Moves'});
+      const moveHitboxes=await Promise.all([
+        list.getByRole('button',{name:'starting position',exact:true}),
+        list.getByRole('button',{name:/^1\. White e4/}),
+        list.getByRole('button',{name:/^1… Black e5/}),
+      ].map(async(button)=>{
+        const rect=await button.boundingBox();
+        return {label:await button.getAttribute('aria-label') || (await button.innerText()).trim(),
+          width:rect?.width,height:rect?.height};
+      }));
+      console.log(`${width}px move history targets:`,JSON.stringify(moveHitboxes));
+      assert.ok(moveHitboxes.every(item=>item.width>=44 && item.height>=44),
+        `Game Review move-history targets must be at least 44px in both dimensions: ${JSON.stringify(moveHitboxes)}`);
+      await list.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`review-move-list-targets-${width}.png`)});
       const english=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
       assert.deepEqual(filterButtons.map(button=>button.name),
         [english.review.filterPrev,english.review.filterNext,english.review.filterClear],

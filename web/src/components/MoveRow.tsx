@@ -77,7 +77,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
       aria-label={`${num}${side === 'white' ? '.' : '…'} ${t(`review.${side}`)} ${move.san}${label ? `: ${label}` : ''}`}
       title={label ?? undefined}
       className={cn(
-        'group flex min-h-10 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
+        'group flex min-h-11 min-w-0 items-center justify-between gap-1.5 px-2 py-2 text-left text-sm transition-colors focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500',
         current
           ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50'
           : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800',

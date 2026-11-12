@@ -587,3 +587,27 @@
 ### Next scope-specific issue
 
 - Audit review move-list tactile and accessible targets: SAN cells currently use `min-h-10` (40px), unlike the 44px+ high-value navigation controls, and the list's `Starting position` row is even shorter. Verify actual 320/390px Chromium hitboxes and whether SAN buttons clip long localized or check/checkmate text. If a genuine reachability issue is confirmed, fix it in Game Review's MoveList/MoveRow without touching Agent B's global design system.
+
+## 2026-11-12: accessible 44px Game Review move-history touch targets
+
+### Exact recovery, reproduction, and narrow fix
+
+- Resumed from clean pushed `9481f09` and the unfinished Chromium measurement of the Game Review Starting Position and SAN move-list buttons, without repeating previous navigation/source investigations. Recovered one dirty browser test addition. Its first attempt was blocked only by an incorrect capitalized locator; the English UI intentionally labels the action `starting position` (lowercase), so corrected the test selector without changing the product.
+- The corrected **320px real Chromium hitbox regression intentionally failed**: Starting Position was **268 x 32px**; White e4 and Black e5 SAN buttons were each **116 x 40px**. This was a real small touch-target defect compared with surrounding 44px filter/transport controls.
+- Raised only `MoveList` Starting Position and `MoveRow` SAN buttons to Tailwind `min-h-11` (44px), retaining move positions, classification icons, two-column layout, keyboard semantics, and source handling. Updated existing static move-list/row tests to assert the new minimum sizing.
+
+### Verification
+
+- Focused MoveList/MoveRow unit tests: **7 passed**. `npm run typecheck`: PASS. `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped** across 107 passing test files.
+- Full authenticated disposable Chromium browser matrix: **PASS (exit 0)**, covering the new measured targets on both phone widths, classification filter navigation, nested variations, scoring source, coaching, keyboard and saved PGN integrity.
+- Actual measured rendered hitboxes **after** the fix:
+  - 320px: Starting Position **268 x 44px**; White e4 and Black e5 **116 x 44px** each.
+  - 390px: Starting Position **338 x 44px**; both SAN buttons **151 x 44px**.
+  - 1024px: Starting Position **312 x 44px**; both SAN buttons **138 x 44px**.
+- Opened/inspected `qa-artifacts/agent-a/move-targets-after-20261112/review-move-list-targets-320.png` and `review-move-list-targets-390.png`: selected Qd7 and accompanying move classifications remain legible, with aligned SAN columns and no horizontal overflow. Screenshot fixtures use synthetic chess evaluations, not live Stockfish certification.
+- No merge, deploy, production SQLite change or other-agent worktree modifications.
+
+### Next high-impact interaction candidate
+
+- The Game Review global Left/Right keyboard shortcuts remain active when a SAN move button holds focus. They advance the saved ply, but the DOM focus may remain on the *previous* SAN, causing assistive technology to announce the wrong highlighted move. Reproduce the focus/selection discrepancy using a real Chromium keyboard sequence, then scope any fix to MoveList and preserve global shortcuts elsewhere, including the board and original evaluation slider.

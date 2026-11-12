@@ -60,7 +60,7 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
         type="button"
         onClick={(event) => onSelect(0, event.detail === 0 ? 'keyboard' : 'pointer')}
         aria-current={current === 0 ? 'step' : undefined}
-        className={`block w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
+        className={`block min-h-11 w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}
       >
         {t('review.startingPosition', { defaultValue: 'Starting position' })}
       </button>

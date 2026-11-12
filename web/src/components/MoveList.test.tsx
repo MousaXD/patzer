@@ -25,6 +25,7 @@ describe('Game Review move history', () => {
     expect(html).toContain('role="region"');
     expect(html).toContain('Game move history');
     expect(html).toContain('Starting position');
+    expect(html).toContain('min-h-11 w-full');
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
   });
 
