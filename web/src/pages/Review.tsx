@@ -307,7 +307,8 @@ export default function Review() {
     },
   });
   const pgnMut = useMutation({
-    mutationFn: async ({file}: {file: File; accountId: number}) => {
+    mutationFn: async ({file, accountId}: {file: File; accountId: number}) => {
+      if (accountIdRef.current !== accountId) throw new Error('account_changed');
       if (file.size > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
       if (!/\.(pgn|txt)$/i.test(file.name)) throw new Error('pgn_bad_file_type');
       // File.text() silently replaces malformed UTF-8 with U+FFFD. That can
@@ -318,6 +319,10 @@ export default function Review() {
       try { pgn = new TextDecoder('utf-8', {fatal:true}).decode(bytes); }
       catch { throw new Error('pgn_bad_encoding'); }
       if (new TextEncoder().encode(pgn).byteLength > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
+      // Reading a large local PGN is asynchronous. If the signed-in account
+      // changed meanwhile, never submit the old account's selected file using
+      // the new account's authentication cookie/session.
+      if (accountIdRef.current !== accountId) throw new Error('account_changed');
       return api.post<{total:number;imported:number;duplicates:number}>('/api/games/import/pgn', {pgn});
     },
     onSuccess: (result, {accountId}) => {

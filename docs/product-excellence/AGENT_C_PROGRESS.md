@@ -304,3 +304,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next audit
 
 - Verify asynchronous file reading cannot submit account A's selected PGN under account B's session if a user switches accounts while the bytes are being read. The upload mutation already guards result UI by account; test and independently verify the pre-request identity boundary.
+
+## 2026-11-12 — Block cross-account uploads during asynchronous PGN reads
+
+- Recovered clean `4144c8c` and finished the exact outstanding account-switch audit. Reproduced a **cross-account privacy issue** with a deferred `File.arrayBuffer()` read: an upload initiated under account A could send the chosen PGN after a switch to account B, when the API would use the new account's active browser session. The original UI had only guarded success/error feedback, not the upload request itself. The focused regression failed before the fix.
+- Added explicit account-ID checks before reading and immediately before sending the decoded PGN. If the user changed while the file was being decoded, the mutation aborts without calling the API; the existing post-result guards ensure no stale alert appears in account B's Library.
+- Added a deterministic component test that suspends `arrayBuffer()`, changes the active account, resumes the file read, and proves **zero upload API calls** and no stale success/error feedback. No auth or cross-agent state files were modified.
+
+### Verification
+
+- Targeted Library component suite: **35 passed**. Full repository suite: **109 files passed, 2 skipped; 1,036 tests passed, 12 skipped**, no failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium browser fixture passed 1440/390/320 widths in both themes, valid/invalid PGN encoding paths, first-use import, normal upload feedback, search/pagination and error recovery.
+- No real accounts, external providers, production data, service restarts, merges or other agents' worktrees were touched.
+
+### Next highest-impact investigation
+
+- Audit large-history pagination under concurrent imports, deletions, or edits: offset pagination may duplicate or skip cards if new games arrive between page requests. Reproduce with a disposable fixture and test whether the existing deduped UI provides sufficient recovery; prefer a scoped, compatibility-safe fix and avoid undocumented API breaks.

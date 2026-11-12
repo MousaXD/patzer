@@ -187,6 +187,27 @@ describe('Review library with large histories', () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 
+  it('does not send a selected PGN under another account when file reading finishes after an account switch', async () => {
+    mocks.post.mockResolvedValue({total:1,imported:1,duplicates:0});
+    const {rerenderReview} = mount();
+    const pgn = '[Event "Private Game"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const file = new File([pgn], 'private.pgn', {type:'text/plain'});
+    let completeRead!: (bytes: ArrayBuffer) => void;
+    const read = vi.fn(() => new Promise<ArrayBuffer>((resolve) => {completeRead=resolve;}));
+    Object.defineProperty(file,'arrayBuffer',{value:read});
+    fireEvent.change(screen.getByLabelText('Choose a PGN file'),{target:{files:[file]}});
+    fireEvent.click(screen.getByRole('button',{name:'Import PGN file'}));
+    await waitFor(()=>expect(read).toHaveBeenCalledTimes(1));
+
+    mocks.user = {id:101,profile:{chesscom_username:null,lichess_username:null}};
+    rerenderReview();
+    await act(async ()=>{completeRead(new TextEncoder().encode(pgn).buffer);});
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Import PGN file'}).hasAttribute('disabled')).toBe(true));
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.queryByText(/new games saved from/)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('labels a PGN game without a verified date as unknown, not in progress', async () => {
     mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
       ? {total:1,classified:0,unclassified:1,openings:[]}
