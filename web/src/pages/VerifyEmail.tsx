@@ -40,7 +40,7 @@ export default function VerifyEmail() {
               <CheckCircle2 className="h-10 w-10 text-accent-600" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyOk')}</p>
             </div>
-            <Link to="/login" className="btn-primary w-full justify-center">{t('login.submit')}</Link>
+            <Link to="/login" className="btn-primary min-h-11 w-full justify-center">{t('login.submit')}</Link>
           </>
         )}
         {state === 'fail' && (
@@ -49,7 +49,7 @@ export default function VerifyEmail() {
               <AlertCircle className="h-10 w-10 text-bad" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyFail')}</p>
             </div>
-            <Link to="/verify-email" className="btn-secondary w-full justify-center">{t('auth.resendVerification')}</Link>
+            <Link to="/verify-email" className="btn-secondary min-h-11 w-full justify-center">{t('auth.resendVerification')}</Link>
           </>
         )}
       </AuthShell>
@@ -84,7 +84,7 @@ function ResendForm() {
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.resendSentBody')}</p>
         </div>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -96,12 +96,12 @@ function ResendForm() {
           <label className="label mb-1 block" htmlFor="verify-email-address">{t('common.email')}</label>
           <input id="verify-email-address" className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <button type="submit" disabled={!valid || busy} className="btn-primary w-full">
+        <button type="submit" disabled={!valid || busy} className="btn-primary min-h-11 w-full">
           <Mail className="h-4 w-4" />
           {busy ? t('auth.sending') : t('auth.resendVerification')}
         </button>
         <div className="pt-1 text-center text-sm">
-          <Link to="/login" className="text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
+          <Link to="/login" className="inline-flex min-h-11 max-w-full items-center justify-center text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
         </div>
       </form>
     </AuthShell>

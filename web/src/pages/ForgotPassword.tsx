@@ -38,7 +38,7 @@ export default function ForgotPassword() {
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.forgotSentBody')}</p>
         </div>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -51,12 +51,12 @@ export default function ForgotPassword() {
           <input id="forgot-email" className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
-        <button type="submit" disabled={!valid || busy} className="btn-primary w-full">
+        <button type="submit" disabled={!valid || busy} className="btn-primary min-h-11 w-full">
           <Mail className="h-4 w-4" />
           {busy ? t('auth.sending') : t('auth.sendResetLink')}
         </button>
         <div className="pt-1 text-center text-sm">
-          <Link to="/login" className="text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
+          <Link to="/login" className="inline-flex min-h-11 max-w-full items-center justify-center text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
         </div>
       </form>
     </AuthShell>

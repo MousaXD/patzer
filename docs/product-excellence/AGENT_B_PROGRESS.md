@@ -1374,3 +1374,32 @@
 ### Next audit
 
 - Audit the other **public account-recovery routes** (Forgot Password, Reset Password, Verify Email) for mobile touch-target consistency and meaningful keyboard-focus recovery in error/confirmation states. Reproduce actual shortcomings in Chromium first and prioritize the most noticeable one; leave auth request logic and server behavior unchanged.
+
+## 2026-11-12: Keep public recovery actions touch-accessible in every state
+
+### Browser reproduction
+
+- Resumed from clean pushed `4415060` and inspected **Forgot Password, Reset Password and Verify Email** in Chromium using local-only auth fixtures for form, missing-token, confirmed and expired-link states, both themes, English/German, 320px/390px/1440px widths and enlarged root text.
+- The submit controls were **36px high**, plain `Back to sign in` links only **17px**, and the missing-token `Request a new link` control **38px** at default text size. Verification-success and failure actions likewise failed the 44px touch-target benchmark. Input fields already received the previous scoped shared-auth CSS correction and were not changed again.
+- The original 80-case reproduction had **86 undersized hit areas** and no horizontal overflow. The issue was confined to the three public recovery pages' link/button classes; form submission and token processing were already correct.
+
+### Implementation
+
+1. Add `min-h-11` to submit and action links in `web/src/pages/ForgotPassword.tsx`, `ResetPassword.tsx` and `VerifyEmail.tsx`. Plain back links now use `inline-flex min-h-11 max-w-full items-center justify-center` so the entire readable label has a real touch area.
+2. Preserve all request URLs, server-response handling, disabled/validity guards, token conditions, labels, button colors and link destinations.
+3. Add **nine unit regression tests** in `web/src/pages/AuthRecovery.touch.test.tsx`, covering initial forms, disabled buttons, email/password semantics, successful submissions and the rejected verification token path.
+4. Add a durable dedicated local Chromium fixture `web/src/components/navigation/capture-auth-recovery.mjs` that exercises **nine route/outcome scenarios × both themes × English/German × 320px normal/enlarged and 1440px normal text**. It verifies each real action/input hit rectangle is at least 44px tall and wide, there is no horizontal overflow, and `document.lang` matches the selected language.
+
+### Verified outcome
+
+- `node web/src/components/navigation/capture-auth-recovery.mjs`: **108/108 cases passed** across form, sent, token-missing, reset-complete, verification-success and verification-failure states.
+- Inspected real Chromium screenshots `artifacts/agent-02/auth-recovery-forgot-form-light-320.png`, `auth-recovery-reset-done-dark-320.png` and `auth-recovery-verify-token-failed-dark-320.png`. Touch areas remain clear, mobile hierarchy is balanced, and translations wrap without overflow.
+- `npx vitest run web/src/pages/AuthRecovery.touch.test.tsx --maxWorkers=2`: **9/9 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **465/465 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No production requests, live emails, backend auth changes, main merge, deployment or modifications to other agents' worktrees.
+
+### Next audit
+
+- Inspect **keyboard focus and announcement after asynchronous recovery success/failure**. The form is replaced by a confirmation screen or token failure state, which may leave keyboard focus on a removed submit button or body. Reproduce with Chromium and improve focus/announcements only if the actual DOM demonstrates the defect.

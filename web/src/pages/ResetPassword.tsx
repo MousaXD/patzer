@@ -38,7 +38,7 @@ export default function ResetPassword() {
     return (
       <AuthShell title={t('auth.resetTitle')}>
         <p className="text-sm text-bad">{t('auth.errInvalidOrExpired')}</p>
-        <Link to="/forgot-password" className="btn-secondary w-full justify-center">{t('auth.requestNewLink')}</Link>
+        <Link to="/forgot-password" className="btn-secondary min-h-11 w-full justify-center">{t('auth.requestNewLink')}</Link>
       </AuthShell>
     );
   }
@@ -50,7 +50,7 @@ export default function ResetPassword() {
           <CheckCircle2 className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.resetDoneBody')}</p>
         </div>
-        <Link to="/login" className="btn-primary w-full justify-center">{t('login.submit')}</Link>
+        <Link to="/login" className="btn-primary min-h-11 w-full justify-center">{t('login.submit')}</Link>
       </AuthShell>
     );
   }
@@ -69,7 +69,7 @@ export default function ResetPassword() {
           {confirm.length > 0 && !matchOk && <p className="mt-1 text-xs text-bad">{t('auth.passwordsNoMatch')}</p>}
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
-        <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
+        <button type="submit" disabled={!canSubmit} className="btn-primary min-h-11 w-full">
           <KeyRound className="h-4 w-4" />
           {busy ? t('auth.saving') : t('auth.setNewPassword')}
         </button>
