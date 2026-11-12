@@ -40,3 +40,25 @@ The final Agent D patches are restricted to Play and its test/evidence files, so
 4. The real production release remains a separate decision. Agent D has not merged or deployed anything.
 
 **Outcome:** Agent D is **finished and individually merge-ready** at the pinned audit state. The *four-agent integrated product* is not certified as complete until the combined checks above run.
+
+## Final combined-code compatibility result (2026-11-13, 02:23 Dubai time)
+
+**One integration blocker exists outside Agent D's scope.** The four branches combine without Git textual conflicts, but an *unmodified* combined-tree `npm run typecheck` fails with:
+
+`web/src/pages/Review.library.test.tsx(1045,94): error TS2554: Expected 1-3 arguments, but got 4.`
+
+The Library branch (`agent/patzer-library-import-explorer-20261112`, observed at `1b1d195`) contains:
+
+```ts
+screen.findByRole('button', { name: 'Remove bookmark' }, undefined, { timeout: 5000 })
+```
+
+`findByRole` accepts at most three arguments. The Library agent or integration owner should use the documented third argument for the wait options:
+
+```ts
+screen.findByRole('button', { name: 'Remove bookmark' }, { timeout: 5000 })
+```
+
+To isolate the issue, the corrected call was applied **only in a disposable combined-code clone**; with that temporary correction, the **combined `npm run typecheck` and `npm run build` both passed**. No other errors were exposed in those two checks. The original Library branch, other agents' worktrees and all production branches remain unchanged. The corrected version was not pushed; the Library agent/integrator owns that correction. The combined full Vitest and browser suites have **not** been run, and should run after the actual fix lands.
+
+**Final qualification:** Agent D itself is **done, fully tested, clean and pushed**. The unmodified four-agent integration is **not yet certified** until the external Library test-signature issue is fixed and integrated checks are repeated.
