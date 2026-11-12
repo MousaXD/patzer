@@ -1248,7 +1248,7 @@
       },
       "win_streak": {
         "title": "Gewinne {{target}} Partien in Folge",
-        "description": "Reihe drei Siege aneinander und festige deine Form."
+        "description": "Reihe {{target}} Siege aneinander und festige deine Form."
       }
     }
   },

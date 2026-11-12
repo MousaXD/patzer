@@ -65,11 +65,12 @@ function computeProgress(userId: number, row: GoalRow): number {
       const r = db.prepare(`
         SELECT
           (SELECT COUNT(*) FROM puzzle_attempts
-            WHERE user_id = ? AND solved = 1 AND created_at >= ?)
+            WHERE user_id = ? AND solved = 1 AND created_at >= ? AND created_at < ?)
           +
           (SELECT COUNT(*) FROM tactics_attempts
-            WHERE user_id = ? AND solved = 1 AND created_at >= ?) AS c
-      `).get(userId, row.created_at, userId, row.created_at) as { c: number };
+            WHERE user_id = ? AND solved = 1 AND created_at >= ? AND created_at < ?) AS c
+      `).get(userId, row.created_at, row.completes_at,
+        userId, row.created_at, row.completes_at) as { c: number };
       return r.c;
     }
     case 'opening_play': {
@@ -80,16 +81,16 @@ function computeProgress(userId: number, row: GoalRow): number {
       const r = db.prepare(`
         SELECT COUNT(*) AS c FROM games
         WHERE user_id = ? AND eco = ? AND user_color = ?
-          AND created_at >= ?
-      `).get(userId, eco, color, row.created_at) as { c: number };
+          AND created_at >= ? AND created_at < ?
+      `).get(userId, eco, color, row.created_at, row.completes_at) as { c: number };
       return r.c;
     }
     case 'review_games': {
       const r = db.prepare(`
         SELECT COUNT(*) AS c FROM analyses a
         JOIN games g ON g.id = a.game_id
-        WHERE g.user_id = ? AND a.created_at >= ?
-      `).get(userId, row.created_at) as { c: number };
+        WHERE g.user_id = ? AND a.created_at >= ? AND a.created_at < ?
+      `).get(userId, row.created_at, row.completes_at) as { c: number };
       return r.c;
     }
     case 'accuracy': {
@@ -98,29 +99,32 @@ function computeProgress(userId: number, row: GoalRow): number {
       const r = db.prepare(`
         SELECT COUNT(*) AS c FROM analyses a
         JOIN games g ON g.id = a.game_id
-        WHERE g.user_id = ? AND a.created_at >= ? AND a.scoring_version >= ?
+        WHERE g.user_id = ? AND a.created_at >= ? AND a.created_at < ? AND a.scoring_version >= ?
           AND ((g.user_color='white' AND a.accuracy_white >= ?)
             OR (g.user_color='black' AND a.accuracy_black >= ?))
-      `).get(userId, row.created_at, SCORING_VERSION, min, min) as { c: number };
+      `).get(userId, row.created_at, row.completes_at, SCORING_VERSION, min, min) as { c: number };
       return r.c;
     }
     case 'win_streak': {
-      // Current ongoing win streak across games whose end_time is on or after
-      // the goal's creation. Walk most-recent first; the streak is the run
-      // length until we hit anything not-a-win.
+      // A weekly goal is earned by the *best* run within its window, not the
+      // current ongoing run. Later losses must not erase a streak already
+      // achieved, especially if the player only opens Plan days afterward.
       interface ResRow { result: string | null }
       const rows = db.prepare(`
         SELECT result FROM games
-        WHERE user_id = ? AND end_time IS NOT NULL AND end_time >= ?
+        WHERE user_id = ? AND end_time IS NOT NULL
+          AND datetime(end_time) >= datetime(?) AND datetime(end_time) < datetime(?)
           AND result IS NOT NULL
-        ORDER BY end_time DESC, id DESC
-      `).all(userId, row.created_at) as ResRow[];
+        ORDER BY datetime(end_time) ASC, id ASC
+      `).all(userId, row.created_at, row.completes_at) as ResRow[];
       let streak = 0;
+      let best = 0;
       for (const g of rows) {
         if (g.result === 'win') streak++;
-        else break;
+        else streak = 0;
+        if (streak > best) best = streak;
       }
-      return streak;
+      return best;
     }
   }
   return 0;
@@ -244,7 +248,9 @@ function listAndScore(userId: number): GoalOut[] {
 
   const out: GoalOut[] = [];
   for (const r of rows) {
-    let progress = computeProgress(userId, r);
+    // Completed goals are latched achievements, not live streaks. A later
+    // loss cannot make a verified completion display 0 / target.
+    let progress = r.status === 'completed' ? r.target : computeProgress(userId, r);
     let status = r.status;
     if (status === 'active' && progress >= r.target) {
       db.prepare(`UPDATE goals SET status='completed', completed_at=datetime('now') WHERE id = ?`).run(r.id);
@@ -279,11 +285,27 @@ function listAndScore(userId: number): GoalOut[] {
 
 router.get('/', (c) => {
   const me = c.get('user');
-  // A weekly plan expires at its own deadline, even if its page is not open
-  // when that moment arrives. Completed goals are still the *same* plan:
-  // never auto-create a second plan simply because every goal was achieved.
-  db.prepare(`UPDATE goals SET status='expired'
-    WHERE user_id = ? AND status = 'active' AND completes_at <= datetime('now')`).run(me.id);
+  // Check the bounded activity *before* closing an overdue week. A player
+  // may have earned a goal during its window without opening Plan to see it.
+  const overdue = db.prepare(`SELECT id,user_id,kind,title,description,target,metadata,status,
+    created_at,completes_at,completed_at FROM goals
+    WHERE user_id = ? AND status = 'active' AND completes_at <= datetime('now')
+  `).all(me.id) as GoalRow[];
+  const closeOverdue = db.transaction(() => {
+    for (const row of overdue) {
+      if (computeProgress(me.id, row) >= row.target) {
+        // Exact success time is not stored for all goal kinds. The deadline
+        // is a grounded latest-possible completion time, not the read time.
+        db.prepare(`UPDATE goals SET status='completed', completed_at=completes_at
+          WHERE id=? AND user_id=? AND status='active'`).run(row.id, me.id);
+      } else {
+        db.prepare(`UPDATE goals SET status='expired'
+          WHERE id=? AND user_id=? AND status='active'`).run(row.id, me.id);
+      }
+    }
+  });
+  closeOverdue();
+  // A completed goal still within its week prevents duplicate auto-seeding.
   const current = db.prepare(`SELECT COUNT(*) AS c FROM goals
     WHERE user_id = ? AND (
       status = 'active' OR (status = 'completed' AND completes_at > datetime('now'))

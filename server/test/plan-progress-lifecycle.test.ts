@@ -30,10 +30,14 @@ beforeAll(async () => {
   cookie = (userId) => `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(userId))}`;
   db.prepare(`INSERT INTO users (id,username,password_hash,role) VALUES
     (1,'practice-player','x','user'), (2,'completed-player','x','user'),
-    (3,'expired-player','x','user'), (4,'other-player','x','user')`).run();
+    (3,'expired-player','x','user'), (4,'other-player','x','user'),
+    (5,'late-activity','x','user'), (6,'late-completion','x','user'),
+    (7,'streak-player','x','user'), (8,'unobserved-streak','x','user')`).run();
   db.prepare(`INSERT INTO profiles (user_id,display_name) VALUES
     (1,'Practice Player'), (2,'Completed Player'),
-    (3,'Expired Player'), (4,'Other Player')`).run();
+    (3,'Expired Player'), (4,'Other Player'),
+    (5,'Late Activity'), (6,'Late Completion'), (7,'Streak Player'),
+    (8,'Unobserved Streak')`).run();
 });
 
 afterAll(() => {
@@ -89,5 +93,66 @@ describe('weekly Plan uses real play and training progress', () => {
     expect(results.goals.find((g) => g.kind === 'puzzles_solve' && g.status === 'expired')).toBeTruthy();
     expect(results.goals.filter((g) => g.status === 'active').length).toBeGreaterThanOrEqual(3);
     expect((await goals(3)).goals.length).toBe(results.goals.length);
+  });
+
+  it('does not credit activity that happened after the weekly deadline to an expired goal', async () => {
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,status,created_at,completes_at)
+      VALUES (5,'puzzles_solve','Old goal','Last week',1,'active',
+        datetime('now','-9 days'), datetime('now','-2 days'))`).run();
+    const puzzle = tactics.allPuzzles()[5]!;
+    expect(tactics.recordAttempt(5, puzzle.id, true)?.rated).toBe(true);
+    const outcome = (await goals(5)).goals;
+    const old = outcome.find((g) => g.target === 1 && g.kind === 'puzzles_solve');
+    expect(old).toMatchObject({ kind: 'puzzles_solve', status: 'expired', progress: 0 });
+    expect(outcome.some((g) => g.status === 'active')).toBe(true);
+  });
+
+  it('recognizes an achieved deadline-bound goal even if Plan was not opened that week', async () => {
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,status,created_at,completes_at)
+      VALUES (6,'puzzles_solve','A week ago','Achieved offline',1,'active',
+        datetime('now','-9 days'),datetime('now','-2 days'))`).run();
+    const puzzle = tactics.allPuzzles()[6]!;
+    expect(tactics.recordAttempt(6, puzzle.id, true)?.rated).toBe(true);
+    // The record was genuinely created during the old window; only the page
+    // was opened after the deadline. Backdate data in this disposable DB.
+    db.prepare(`UPDATE tactics_attempts SET created_at=datetime('now','-5 days')
+      WHERE user_id=6 AND puzzle_id=?`).run(puzzle.id);
+    const outcome = (await goals(6)).goals;
+    const achieved = outcome.find((g) => g.target === 1);
+    expect(achieved).toMatchObject({ kind: 'puzzles_solve', status: 'completed', progress: 1 });
+    expect(outcome.some((g) => g.status === 'active')).toBe(true);
+    expect(db.prepare(`SELECT status,completed_at FROM goals WHERE user_id=6 AND target=1`).get())
+      .toMatchObject({ status: 'completed' });
+  });
+
+  it('keeps an earned win-streak goal completed after later games break the ongoing streak', async () => {
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,status,created_at,completes_at)
+      VALUES (7,'win_streak','Win one game','Goal',1,'active',
+        datetime('now','-1 day'),datetime('now','+6 days'))`).run();
+    db.prepare(`INSERT INTO games
+      (id,user_id,source,pgn,white,black,result,end_time,user_color)
+      VALUES (701,7,'played','','Streak Player','Bot','win',datetime('now','-30 minutes'),'white')`).run();
+    expect((await goals(7)).goals).toMatchObject([{ kind: 'win_streak',status: 'completed',progress: 1 }]);
+    db.prepare(`INSERT INTO games
+      (id,user_id,source,pgn,white,black,result,end_time,user_color)
+      VALUES (702,7,'played','','Streak Player','Bot','loss',datetime('now','-10 minutes'),'white')`).run();
+    expect((await goals(7)).goals).toMatchObject([{ kind: 'win_streak',status: 'completed',progress: 1 }]);
+  });
+
+  it('recognizes a best streak achieved this week even when Plan was not opened before the next loss', async () => {
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,status,created_at,completes_at)
+      VALUES (8,'win_streak','Win two games in a row','Goal',2,'active',
+        datetime('now','-1 day'),datetime('now','+6 days'))`).run();
+    const insert = db.prepare(`INSERT INTO games
+      (id,user_id,source,pgn,white,black,result,end_time,user_color)
+      VALUES (?,8,'played','','Unobserved Streak','Bot',?,datetime('now',?),'white')`);
+    insert.run(801,'win','-3 hours');
+    insert.run(802,'win','-2 hours');
+    insert.run(803,'loss','-1 hour');
+    expect((await goals(8)).goals).toMatchObject([{ kind: 'win_streak',status: 'completed',progress: 2 }]);
   });
 });

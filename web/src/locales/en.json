@@ -1248,7 +1248,7 @@
       },
       "win_streak": {
         "title": "Get a {{target}}-game win streak",
-        "description": "Stack three wins in a row to lock in your form."
+        "description": "Stack {{target}} wins in a row to lock in your form."
       }
     }
   },
