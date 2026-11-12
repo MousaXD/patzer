@@ -785,7 +785,15 @@
       "comesBack": "Not at the first try, so this puzzle comes back tomorrow.",
       "solution": "Solution:",
       "playedArrow": "Red arrow: the move you played in the game ({{played}})",
-      "coachTitle": "Why {{best}} is better than {{played}}"
+      "coachTitle": "Why {{best}} is better than {{played}}",
+      "savingAttempt": "Saving your practice result…",
+      "saveFailed": "Your first attempt was not saved. Retry before moving on, or it may appear again.",
+      "retrySave": "Retry saving",
+      "continueUnsaved": "Continue without saving (this puzzle may repeat)",
+      "unsavedTitle": "Your practice attempt is not saved yet",
+      "unsavedDesc": "You can stay while it saves, retry a failed save, or leave without recording this attempt.",
+      "stay": "Stay here",
+      "leaveUnsaved": "Leave without saving"
     },
     "tabs": {
       "mine": "From your games",

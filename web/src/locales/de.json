@@ -785,7 +785,15 @@
       "comesBack": "Nicht im ersten Versuch – deshalb kommt diese Aufgabe morgen noch einmal.",
       "solution": "Lösung:",
       "playedArrow": "Roter Pfeil: dein Zug in der Partie ({{played}})",
-      "coachTitle": "Warum {{best}} besser ist als {{played}}"
+      "coachTitle": "Warum {{best}} besser ist als {{played}}",
+      "savingAttempt": "Dein Übungsergebnis wird gespeichert…",
+      "saveFailed": "Dein erster Versuch wurde nicht gespeichert. Versuche es erneut, bevor du weitermachst, sonst erscheint die Aufgabe womöglich wieder.",
+      "retrySave": "Erneut speichern",
+      "continueUnsaved": "Ohne Speichern fortfahren (Aufgabe kann wiederkommen)",
+      "unsavedTitle": "Dein Übungsversuch ist noch nicht gespeichert",
+      "unsavedDesc": "Du kannst bleiben und auf das Speichern warten, es erneut versuchen oder den Bereich ohne Aufzeichnung verlassen.",
+      "stay": "Hierbleiben",
+      "leaveUnsaved": "Ohne Speichern verlassen"
     },
     "tabs": {
       "mine": "Aus deinen Partien",

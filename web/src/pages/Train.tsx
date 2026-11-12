@@ -4,9 +4,9 @@
 // A second tab (?tab=puzzles) has general puzzles for when you've run out of
 // your own, or have no analyzed games yet (components/TacticsPuzzles.tsx).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useBlocker, useSearchParams, type BlockerFunction } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Chess } from 'chess.js';
 import { Target, RotateCcw, ArrowRight, Lightbulb, Check, X, Trophy, BookOpen, Zap, Eye, Loader2, Repeat } from 'lucide-react';
@@ -153,6 +153,8 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
 type Status = 'play' | 'checking' | 'wrong' | 'solved' | 'shown';
 
 interface AttemptResult { counted: boolean; done: boolean; due_on: string | null }
+interface AttemptPayload { game_id: number; ply: number; solved: boolean; attempted_uci?: string; today: string }
+type AttemptSaveState = 'idle' | 'pending' | 'saved' | 'error';
 
 function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
   const { t } = useTranslation();
@@ -172,18 +174,55 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
   const [alt, setAlt] = useState<{ san: string; fen: string; lastMove: [string, string] } | null>(null);
   // The move the engine is looking at stays on the board meanwhile.
   const [trying, setTrying] = useState<{ fen: string; lastMove: [string, string] } | null>(null);
-  const [result, setResult] = useState<AttemptResult | null>(null);
+  const [saveState, setSaveState] = useState<AttemptSaveState>('idle');
+  // The first try is authoritative. A retry must resend that same attempt,
+  // not overwrite a failed first move with a later corrected move.
+  const attemptRef = useRef<AttemptPayload | null>(null);
+
+  function persist(body: AttemptPayload) {
+    setSaveState('pending');
+    void api.post<AttemptResult>('/api/train/attempt', body)
+      .then(() => {
+        setSaveState('saved');
+        void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] });
+      })
+      .catch(() => setSaveState('error'));
+  }
+
+  const retrySave = () => {
+    if (saveState !== 'error' || !attemptRef.current) return;
+    persist(attemptRef.current);
+  };
+
+  const unsaved = saveState === 'pending' || saveState === 'error';
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    if (!unsaved || user?.id == null) return false;
+    if (['/login', '/setup', '/signup', '/forgot-password', '/reset-password', '/verify-email'].includes(nextLocation.pathname)) return false;
+    return currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search;
+  }, [unsaved, user?.id]);
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (saveState === 'saved' && blocker.state === 'blocked') blocker.proceed();
+  }, [saveState, blocker]);
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
 
   const pos = useMemo(() => positionAt(line, n), [line, n]);
   const done = n >= puzzle.line.length;
   const yourTurn = !done && n % 2 === 0 && (status === 'play' || status === 'wrong');
 
   function send(solved: boolean, attempted?: string) {
-    api.post<AttemptResult>('/api/train/attempt', {
+    if (attemptRef.current) return;
+    const body: AttemptPayload = {
       game_id: puzzle.game_id, ply: puzzle.ply, solved, attempted_uci: attempted, today: localDay(),
-    })
-      .then((r) => { setResult(r); void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] }); })
-      .catch(() => { /* the puzzle goes on; it just isn't in the queue */ });
+    };
+    attemptRef.current = body;
+    persist(body);
   }
   function lose(attempted?: string) {
     if (!clean) return;
@@ -369,7 +408,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-board-dark" />
                 {alt ? t('train.mine.alsoGood', { best: puzzle.line_san[n] ?? puzzle.best_san }) : t('train.correct', { defaultValue: 'Correct!' })}
               </div>
-              {clean && puzzle.review && <div className="text-xs text-chesscom-500">{t('train.mine.learned')}</div>}
+              {clean && puzzle.review && saveState === 'saved' && <div className="text-xs text-chesscom-500">{t('train.mine.learned')}</div>}
             </div>
           )}
           {status === 'shown' && (
@@ -377,8 +416,25 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
               <Eye className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" /> {done ? t('train.puzzles.shownDone') : t('train.puzzles.showing')}
             </div>
           )}
-          {!clean && (finished || status === 'wrong') && (
+          {!clean && saveState === 'saved' && (finished || status === 'wrong') && (
             <div className="mt-1 text-xs text-chesscom-500">{t('train.mine.comesBack')}</div>
+          )}
+
+          {saveState === 'pending' && (
+            <div role="status" className="mt-3 flex items-center gap-2 text-xs text-chesscom-500">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              {t('train.mine.savingAttempt', { defaultValue: 'Saving your practice result…' })}
+            </div>
+          )}
+          {saveState === 'error' && (
+            <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-move-mistake/40 bg-move-mistake/5 p-3 text-xs">
+              <span className="text-chesscom-700 dark:text-chesscom-200">
+                {t('train.mine.saveFailed', { defaultValue: 'Your first attempt was not saved. Retry before moving on, or it may appear again.' })}
+              </span>
+              <button type="button" onClick={retrySave} className="btn-secondary min-h-10 text-xs">
+                {t('train.mine.retrySave', { defaultValue: 'Retry saving' })}
+              </button>
+            </div>
           )}
 
           {finished && (
@@ -404,10 +460,15 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
                   <RotateCcw className="h-4 w-4" /> {t('train.puzzles.tryIt')}
                 </button>
               )}
-              <button onClick={onNext} disabled={!done && !alt} className="btn-primary flex-1 text-sm">
+              <button onClick={onNext} disabled={(!done && !alt) || unsaved} className="btn-primary flex-1 text-sm">
                 {t('train.nextPuzzle', { defaultValue: 'Next puzzle' })} <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+          )}
+          {finished && saveState === 'error' && (
+            <button type="button" onClick={onNext} className="mt-2 min-h-10 w-full text-xs text-chesscom-600 underline underline-offset-2 dark:text-chesscom-300">
+              {t('train.mine.continueUnsaved', { defaultValue: 'Continue without saving (this puzzle may repeat)' })}
+            </button>
           )}
         </div>
 
@@ -433,6 +494,41 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
           <span className="text-chesscom-600 dark:text-chesscom-200">{t('train.openInReview', { defaultValue: 'Open this position in the full review' })}</span>
         </Link>
       </aside>
+      {blocker.state === 'blocked' && (
+        <div role="presentation" className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4" onClick={() => blocker.reset()}>
+          <div role="alertdialog" aria-modal="true" aria-label={t('train.mine.unsavedTitle', { defaultValue: 'Your practice attempt is not saved yet' })}
+            className="card w-full max-w-md space-y-3 p-5 shadow-lift"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); blocker.reset(); }
+              if (event.key === 'Tab') {
+                const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                const first = buttons[0], last = buttons[buttons.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+              }
+              event.stopPropagation();
+            }}>
+            <h2 className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">
+              {t('train.mine.unsavedTitle', { defaultValue: 'Your practice attempt is not saved yet' })}
+            </h2>
+            <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+              {t('train.mine.unsavedDesc', { defaultValue: 'You can stay while it saves, retry a failed save, or leave without recording this attempt.' })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" autoFocus onClick={() => blocker.reset()} className="btn-primary min-h-11 flex-1 text-sm">
+                {t('train.mine.stay', { defaultValue: 'Stay here' })}
+              </button>
+              {saveState === 'error' && <button type="button" onClick={retrySave} className="btn-secondary min-h-11 flex-1 text-sm">
+                {t('train.mine.retrySave', { defaultValue: 'Retry saving' })}
+              </button>}
+              <button type="button" onClick={() => blocker.proceed()} className="btn-secondary min-h-11 flex-1 text-sm">
+                {t('train.mine.leaveUnsaved', { defaultValue: 'Leave without saving' })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
