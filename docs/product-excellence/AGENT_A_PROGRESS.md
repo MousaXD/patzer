@@ -1153,3 +1153,21 @@
 ### Next independent review audit candidate
 
 - Add a real-browser custom-FEN **stalemate** saved-game fixture to independently certify that the new terminal explanation announces a draw without a Retry or invented line, including non-White-to-move start positions. Unit tests already prove the classifier; this would close the untested end-user flow.
+
+## 2026-11-12: certify a saved custom-FEN stalemate end to end
+
+### Recovery and browser verification
+
+- Resumed the isolated Agent A worktree from pushed `50c6560` and the single unfinished modification in `scripts/review-polish-capture.mjs`. Preserved the existing in-flight, disposable Chromium run and did not repeat earlier completed source or keyboard investigations.
+- Built a genuine custom-start PGN with a legal `Qf7` from `7k/4Q3/6K1/8/8/8/8/8 w - - 0 1`, leaving Black to move with no legal moves and **not** in check. Attached a source-revision-attested, synthetic one-move analysis *only* to the temporary fixture so the real scored Review rail mounts. An intercepted, FEN-matched engine request returns no lines.
+- The browser asserted the visible, localized **“Stalemate. No legal moves remain; the game is drawn.”** message, absence of checkmate and Retry, exactly one engine request, and byte-for-byte unchanged custom-start PGN. Inspected `qa-artifacts/agent-a/engine-lines-stalemate-browser-20261112/engine-lines-terminal-stalemate-390.png`: the draw explanation is legible in the 390px dark rail and no made-up move appears.
+
+### Verification and boundaries
+
+- `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS.
+- Complete authenticated disposable Chromium responsive/theme/locale/source/keyboard/variation/PGN matrix: **PASS (exit 0)** on port 8954, including the custom-FEN stalemate. No application code was changed; the preceding implementation `50c6560` passed **1005 tests / 12 skipped**, typecheck, production build and the full Chromium matrix.
+- No merge, deployment, active database or service change, or edits to the other agent branches.
+
+### Next independent review audit
+
+- Examine whether the current saved Game Review score header, EvalBar, and graph can still render an unsupported bare checkmate glyph (`#`/`-#`) from a large **cp-only** number without authoritative mate evidence. Unlike explicit mate distances, that claim can mislead the learner. First verify the classifier's high-cp saved format and the existing graph/cached-data contract before changing semantics; keep source-backed mate distances and White perspective intact.

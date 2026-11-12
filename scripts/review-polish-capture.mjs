@@ -228,6 +228,59 @@ try {
     await page.screenshot({path:join(output,'engine-lines-terminal-checkmate-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(terminalId).pgn,terminalSavedPgn);
   }finally{await terminalContext.close();}
+  // A custom-FEN game can finish in stalemate after just one saved move.
+  // Confirm that a Black-to-move terminal board announces the *draw*, not
+  // checkmate or an unavailable engine, using the actual source-attested PGN.
+  const stalemateInitialFen='7k/4Q3/6K1/8/8/8/8/8 w - - 0 1';
+  const stalemateGame=new Chess(stalemateInitialFen);
+  stalemateGame.setHeader('SetUp','1');stalemateGame.setHeader('FEN',stalemateInitialFen);
+  stalemateGame.setHeader('Result','1/2-1/2');
+  const stalemateBefore=stalemateGame.fen();
+  const stalemateMove=stalemateGame.move('Qf7');
+  assert.ok(stalemateMove && stalemateGame.isStalemate());
+  const stalemateId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-terminal-stalemate',?,'Draw White','Draw Black','1/2-1/2','600',datetime('now'),'white')`)
+    .run(user.id,stalemateGame.pgn()).lastInsertRowid);
+  const stalemateSource=loadAnalysisGameSource(db,stalemateId);
+  assert.ok(stalemateSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,80,80,?,?,?,1)`)
+    .run(stalemateId,JSON.stringify([{
+      ply:1,san:stalemateMove.san,uci:stalemateMove.from+stalemateMove.to,
+      fen_before:stalemateBefore,fen_after:stalemateGame.fen(),
+      eval_before_cp:0,eval_after_cp:0,best_move_uci:'e7f7',best_move_san:'Qf7',
+      best_pv:[],centipawn_loss:0,classification:'best',
+    }]),SCORING_VERSION,analysisSourceHash(stalemateSource),stalemateSource.source_revision);
+  const stalemateContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await stalemateContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await stalemateContext.newPage();
+    let requests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      assert.equal(route.request().postDataJSON().fen,stalemateGame.fen());
+      requests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:stalemateGame.fen(),depth:0,lines:[],
+      })});
+    });
+    await page.goto(`${base}/review/${stalemateId}?ply=1`,{waitUntil:'domcontentloaded'});
+    const response=page.waitForResponse(result=>result.url().endsWith('/api/analyze/position') && result.status()===200);
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await response;
+    await page.getByText('Stalemate. No legal moves remain; the game is drawn.',{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.equal(requests,1);
+    assert.equal(await page.getByRole('button',{name:'Retry',exact:true}).count(),0,
+      'A stalemate position must not offer an engine Retry for nonexistent legal moves');
+    assert.equal(await page.getByText('Checkmate. No legal moves remain.',{exact:true}).count(),0);
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-terminal-stalemate-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(stalemateId).pgn,stalemateGame.pgn());
+  }finally{await stalemateContext.close();}
   const emptyNonterminalContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
   try{
     await emptyNonterminalContext.addCookies([{name:account.cookie.split('=')[0],
