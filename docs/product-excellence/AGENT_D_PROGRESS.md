@@ -714,3 +714,12 @@
 - The unmodified integrated code failed `npm run typecheck` with `TS2554` at `web/src/pages/Review.library.test.tsx:1045`: Library agent test invokes `screen.findByRole('button',{name:'Remove bookmark'},undefined,{timeout:5000})` with four arguments instead of the supported three. This is *not* in Agent D's source or tests; do not change the Library agent's active branch from here.
 - In a **throwaway clone only**, moving `{timeout:5000}` to the third `findByRole` argument resolved that error; **combined `npm run typecheck` and `npm run build` both passed**. This proves the observed static compatibility blocker is local to that test call under the tested heads, not that all end-to-end product behavior has been certified. The real Library/integration owner must commit the fix and rerun the full merged tests/browser flows.
 - Final state: **Agent D implementation done, verified and ready for integration; unmodified four-branch integration not yet fully merge-certified.** Detailed handoff: `docs/product-excellence/AGENT_D_MERGE_HANDOFF.md`. Nothing was merged or deployed.
+
+
+## Final closure / refreshed integration QA — 2026-11-13 02:36 Dubai time
+
+- Recovered the clean Agent D branch at `fdba868` and refreshed latest remote heads of Design/Shell (`4e0d417`), Library (`6cc59c4`), and Review/Coach (`7c6658b`).
+- The Library branch now contains the corrected three-argument `findByRole` call; the prior external `TS2554` blocker is **resolved**. The earlier issue and dry-run findings are retained above as historical audit entries, not current blockers.
+- Created an ephemeral synthetic four-branch merge in an isolated clone (not in main, an agent worktree or a remote ref). The merge completed with **zero textual conflicts**, and the **unmodified** combined tree passed `npm run typecheck`, `npm run build`, and full `npx vitest run --maxWorkers=1`: **1,465 passing, 12 skipped, zero failing** tests across 151 test files (149 passed, 2 skipped).
+- The temporary clone was removed. Agent D's source changes remain as already verified; the only new Agent D change for this closure is to update its durable handoff/audit documentation. No branch was merged, deployed, or overwritten. All four tested revisions and the production/browser acceptance caveat are recorded in `AGENT_D_MERGE_HANDOFF.md`.
+- **Final classification: Agent D DONE and MERGE-READY. All-four composite code is merge-ready at the pinned revisions; release/browser acceptance remains for the actual integration owner.**
