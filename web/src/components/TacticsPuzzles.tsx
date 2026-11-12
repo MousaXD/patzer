@@ -47,6 +47,18 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
   const [theme, setTheme] = useState<string | null>(null);
   const [run, setRun] = useState(0);
   const [attemptBusy, setAttemptBusy] = useState(false);
+  // Only exclude a puzzle if the user explicitly leaves a failed save. These
+  // IDs live in memory, are scoped to the current account, and never alter
+  // ratings, daily streaks, or the authoritative first attempt.
+  const [skipState, setSkipState] = useState<{ userId: number | null; ids: string[] }>({ userId: null, ids: [] });
+  const skipped = skipState.userId === user?.id ? skipState.ids : [];
+  const skipParam = skipped.join(',');
+  function skipUnsaved(id: string) {
+    setSkipState((prev) => {
+      const ids = prev.userId === user?.id ? prev.ids : [];
+      return { userId: user?.id ?? null, ids: [...new Set([...ids, id])].slice(-100) };
+    });
+  }
   useEffect(() => { setAttemptBusy(false); }, [user?.id, daily, theme, run]);
   const todayKey = localDay();
   const { data: stats } = useQuery({
@@ -63,8 +75,13 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
     refetchOnWindowFocus: false,
   });
   const { data: next, isLoading, isError, refetch: retryNext } = useQuery({
-    queryKey: ['tactics-next', user?.id, theme, run],
-    queryFn: () => api.get<{ puzzle: TacticsPuzzle | null }>(`/api/tactics/next${theme ? `?theme=${theme}` : ''}`),
+    queryKey: ['tactics-next', user?.id, theme, run, skipParam],
+    queryFn: () => {
+      const search = new URLSearchParams();
+      if (theme) search.set('theme', theme);
+      if (skipParam) search.set('skip', skipParam);
+      return api.get<{ puzzle: TacticsPuzzle | null }>(`/api/tactics/next${search.size ? `?${search}` : ''}`);
+    },
     enabled: !daily && user?.id != null,
     staleTime: Infinity,
     gcTime: 0,
@@ -98,7 +115,9 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
           </div>
         )}
         {today.puzzle && (
-          <Puzzle key={`${user?.id}:${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day} onNext={() => onLeaveDaily?.()} onBusyChange={setAttemptBusy} />
+          <Puzzle key={`${user?.id}:${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day}
+            onNext={() => onLeaveDaily?.()} onLeaveUnsaved={() => { skipUnsaved(today.puzzle!.id); onLeaveDaily?.(); }}
+            onBusyChange={setAttemptBusy} />
         )}
       </div>
     );
@@ -122,13 +141,33 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
       )}
       {data && !data.puzzle && (
         <div className="card flex flex-col items-center gap-2 p-10 text-center">
-          <Trophy className="h-8 w-8 text-gold-500" />
-          <div className="text-base font-semibold">{t('train.puzzles.allDone')}</div>
+          {skipped.length > 0
+            ? <RotateCcw className="h-8 w-8 text-chesscom-500" aria-hidden="true" />
+            : <Trophy className="h-8 w-8 text-gold-500" aria-hidden="true" />}
+          <div className="text-base font-semibold">{skipped.length > 0
+            ? t('train.mine.sessionSkippedTitle', { defaultValue: 'No more unskipped puzzles in this session' })
+            : t('train.puzzles.allDone')}</div>
+          {skipped.length > 0 && (
+            <>
+              <p className="max-w-md text-center text-sm text-chesscom-600 dark:text-chesscom-300">
+                {t('train.mine.sessionSkippedDesc', { count: skipped.length,
+                  defaultValue: 'You chose to continue without recording {{count}} attempts. They are still available when you retry or return later.' })}
+              </p>
+              <button type="button" className="btn-primary mt-1 min-h-10 text-sm"
+                onClick={() => { setSkipState({ userId: user?.id ?? null, ids: [] }); setRun((r) => r + 1); }}>
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {t('train.mine.retrySkipped', { defaultValue: 'Retry skipped puzzles' })}
+              </button>
+            </>
+          )}
           {theme && <button onClick={() => setTheme(null)} className="btn-secondary mt-2 text-sm">{t('train.puzzles.themes.all')}</button>}
         </div>
       )}
       {data?.puzzle && (
-        <Puzzle key={`${user?.id}:${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null} onNext={() => setRun((r) => r + 1)} onBusyChange={setAttemptBusy} />
+        <Puzzle key={`${user?.id}:${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null}
+          onNext={() => setRun((r) => r + 1)}
+          onLeaveUnsaved={() => { skipUnsaved(data.puzzle!.id); setRun((r) => r + 1); }}
+          onBusyChange={setAttemptBusy} />
       )}
     </div>
   );
@@ -150,7 +189,10 @@ function ThemeChip({ active, onClick, label, disabled = false }: { active: boole
   );
 }
 
-function Puzzle({ puzzle, stats, daily, onNext, onBusyChange }: { puzzle: TacticsPuzzle; stats: Stats | null; daily?: string; onNext: () => void; onBusyChange: (busy: boolean) => void }) {
+function Puzzle({ puzzle, stats, daily, onNext, onLeaveUnsaved, onBusyChange }: {
+  puzzle: TacticsPuzzle; stats: Stats | null; daily?: string;
+  onNext: () => void; onLeaveUnsaved: () => void; onBusyChange: (busy: boolean) => void;
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -224,7 +266,7 @@ function Puzzle({ puzzle, stats, daily, onNext, onBusyChange }: { puzzle: Tactic
   function continueUnsaved() {
     leavingExplicitlyRef.current = true;
     onBusyChange(false);
-    onNext();
+    onLeaveUnsaved();
   }
   function lose() {
     if (!clean) return;

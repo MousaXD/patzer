@@ -52,6 +52,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Lichess tactic puzzle attempt persistence', () => {
+  it('continues after an unsaved regular puzzle without recording a rating or replaying the same puzzle', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/tactics/stats') return Promise.resolve(stats);
+      if (url.startsWith('/api/tactics/next')) return Promise.resolve({ puzzle: url.includes('skip=l2IPm') ? null : puzzle });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ day: '2026-11-12', puzzle, done: null, streak: 0 });
+      throw new Error(`Unexpected API GET: ${url}`);
+    });
+    mocks.post.mockRejectedValue(new Error('offline'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'train.puzzles.solution' }));
+    await screen.findByRole('alert');
+    await screen.findByText('train.puzzles.shownDone');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue without saving (result may not count)' }));
+    expect(await screen.findByText('No more unskipped puzzles in this session')).toBeTruthy();
+    expect(screen.queryByText('train.puzzles.allDone')).toBeNull();
+    expect(mocks.get.mock.calls.some(([url]) => typeof url === 'string' && url.includes('skip=l2IPm'))).toBe(true);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry skipped puzzles' }));
+    expect(await screen.findByRole('button', { name: 'train.puzzles.solution' })).toBeTruthy();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
   it('retains the first failed attempt for retry and unlocks the theme picker only after acknowledgment', async () => {
     mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ rated: true, rating_before: 1200, rating_after: 1142 });
     mount();
@@ -100,6 +122,8 @@ describe('Lichess tactic puzzle attempt persistence', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue without saving (result may not count)' }));
     await waitFor(() => expect(router.state.location.search).toBe('?tab=puzzles'));
+    await waitFor(() => expect(mocks.get.mock.calls.some(([url]) =>
+      typeof url === 'string' && url.includes(`/api/tactics/next?skip=${puzzle.id}`))).toBe(true));
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 });
