@@ -221,11 +221,11 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
 function StatInline({ value, label, glow }: { value: string; label: string; glow?: boolean }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className={`font-mono text-xl font-semibold tabular-nums ${glow ? 'text-gold-300' : 'text-white'}`}>
+    <span data-home-stat className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-[6px] gap-y-0 sm:gap-x-1.5">
+      <span data-home-stat-value className={`max-w-full break-words font-mono text-xl font-semibold tabular-nums ${glow ? 'text-gold-300' : 'text-white'}`}>
         {value}
       </span>
-      <span className="text-xs uppercase tracking-wider text-white/55">{label}</span>
+      <span data-home-stat-label className="min-w-0 max-w-full break-words text-xs uppercase tracking-wider text-white/55">{label}</span>
     </span>
   );
 }

@@ -1781,3 +1781,34 @@
 ### Next audit
 
 - Check **Home stats/summary tiles and persistent mobile navigation** at 320/390px with 150%–200% font scaling, both themes and all five languages. Measure *visible* numbers, labels and action space inside each component; page-level overflow checks alone have repeatedly missed content clipped by local containers. Do not edit without Chromium evidence.
+
+## 2026-11-13: Keep high-volume Home statistics readable in the zoomed mobile hero
+
+### Chromium reproduction
+
+- Continued from clean pushed `e9bdf53` and audited **120 combinations** of Home hero statistics: four ordinary-game stats and realistic five-digit-game stats, light/dark themes, English/German/Spanish/Russian/Bulgarian, 320/390px, and root font sizes 16/24/32px.
+- **12/120 cases** had a complete number-and-label item extending beyond the visible hero card at **320px/200% text scaling**, with zero document-level overflow because the hero hides its children. The longest German experienced-player accuracy pair reached **x=353px** beyond the card's **x=296px** right edge (about **57px clipped**). Other affected items were five-digit game totals and localized accuracy labels.
+- Root cause: a statistic was an unbreakable `inline-flex items-baseline` pair with font-relative `gap-1.5`. Combined value plus localized label exceeded the space left inside the zoomed card. The text itself had not been truncated within the individual spans; the hero clipped the complete pair after layout.
+
+### Implementation
+
+1. Give the Home-only `StatInline` pair `min-w-0 max-w-full flex-wrap` and fixed physical 6px horizontal spacing below the `sm` breakpoint; retain its former desktop gap.
+2. Allow the number and localized label to fit within the card, with `max-w-full`, `break-words` and a shrink-safe label. Keep original values, game-count formatting, color semantics, font sizes and accessible text. The label moves beneath the number when there is not enough room to display both.
+3. Add explicit `data-home-stat`, `data-home-stat-value` and `data-home-stat-label` hooks and a Home unit test covering five-digit totals, average accuracy and winning streak while guarding the wrap styles.
+4. Add `web/src/components/navigation/capture-scaled-home-stats.mjs`, a local-only **120-case** Chromium regression with synthetic account data. It checks every value/label glyph, each pair's bounds against the visible hero, no horizontal overflow, all four stats and real keyboard Tab access to the primary Play button at 320px/200%.
+
+### Verification
+
+- Initial negative control: **12/120** cases with statistic pairs extending beyond the card; worst measured overhang about **57px**. No top-level horizontal overflow was present.
+- Post-fix `node web/src/components/navigation/capture-scaled-home-stats.mjs`: **120/120 passed**. No statistic value or translated label clips the hero in either tested theme.
+- Inspected `artifacts/agent-02/zoom-stats-verified-typical-light-320-font32.png` and `zoom-stats-verified-experienced-dark-320-font32.png`. Labels wrap under values cleanly, while the large numbers and Play/Review actions remain legible.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **22/22 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **475/475 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' worktrees, feature-owned pages, production data, main branch or deployment touched.
+
+### Next audit
+
+- Independently audit the **persistent mobile app header at 320/390px and up to 200% root text scaling** during long scrolling on Home, including the skip link, current-section title, search and menu controls. Existing fixture checks covered static geometry and keyboard focus, but not scroll-induced overlap of page content, sticky header stacking or whether the current section remains discoverable while scrolling. Change only a reproduced problem.

@@ -60,6 +60,37 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
+  it('keeps large Home statistics and localized labels together without overflowing a narrow hero', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({
+        total: 12345, wins: 7801, losses: 3210, draws: 1334,
+        avg_accuracy: 99.8, streak: { kind: 'win', count: 157 },
+      });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    await waitFor(() => expect(document.querySelectorAll('[data-home-stat]')).toHaveLength(4));
+    const statItems = Array.from(document.querySelectorAll<HTMLElement>('[data-home-stat]'));
+    for (const stat of statItems) {
+      expect(stat.className).toContain('max-w-full');
+      expect(stat.className).toContain('flex-wrap');
+      const value = stat.querySelector('[data-home-stat-value]');
+      const label = stat.querySelector('[data-home-stat-label]');
+      expect(value?.textContent?.trim()).toBeTruthy();
+      expect(label?.textContent?.trim()).toBeTruthy();
+      expect(value?.className).toContain('max-w-full');
+      expect(label?.className).toContain('break-words');
+      expect(label?.className).toContain('min-w-0');
+    }
+    expect(statItems[0]?.querySelector('[data-home-stat-value]')?.textContent?.replace(/\D/g, '')).toBe('12345');
+    expect(statItems[2]?.querySelector('[data-home-stat-value]')?.textContent).toBe('99.8%');
+    expect(statItems[3]?.querySelector('[data-home-stat-value]')?.textContent).toBe('157');
+  });
+
   it('keeps all four continuation destinations readable and touch-accessible on narrow screens', async () => {
     mocks.get.mockImplementation((url: string) => {
       if (url === '/api/stats/me') return Promise.resolve({ total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null });
