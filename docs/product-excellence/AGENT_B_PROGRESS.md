@@ -1684,3 +1684,35 @@
 ### Next audit
 
 - Review **Home Recent Games and first-use continuation tiles** at 320/390px with 200% text scaling, in particular whether opponent names, result badges and row links actually remain visible inside cards rather than only avoiding document-level horizontal overflow. Investigate actual Chromium clipping and keyboard reachability before making any change; prior Recent Games audits did not cover the full 200% zoom matrix.
+
+## 2026-11-13: Keep the first-use onboarding choices readable at 200% text zoom
+
+### Browser-confirmed defect
+
+- Continued from clean pushed `e990f0e` and ran the next Home card audit locally in Chromium with API fixtures, both themes, English/German/Russian, 320/390px widths, and 100%/150%/200% root text.
+- Onboarding at **320px/200%** rendered its action copy into a **12px-wide text column** due to the fixed icon/chevron, font-relative gaps and padding. For English, the Play title had **0/4 significant characters within its own box**; German and Russian were similarly squeezed. The worst card measured **2,119.875px tall** despite no document overflow. The action links themselves remained keyboard-reachable, but were visually difficult to understand.
+- The same broader audit exposed **20/36 Recent Games scenarios** with clipped row metadata and, at 200%, barely identifiable opponent names. This second issue is tracked separately to avoid widening the current first-use fix.
+
+### Scoped correction
+
+1. Limit the base onboarding card padding to **20 physical pixels** and its icon/text gap to **12px**, keeping the existing `sm` styles.
+2. Give the first-use decorative icon a compact **44×44px** presentation only in this card, using a scoped optional `compact` prop on the existing Home `Pill`; unrelated continuation cards keep their current styling.
+3. Use physical 20px top spacing, 12px action gap, and 12px action inner padding at narrow widths. Keep action icons and chevrons compact and shrink-safe without changing text size, routes or accessible labels. Make action title and description text deliberately wrap within a `min-w-0` flexible column.
+4. Add first-use assertions to `Home.stats.test.tsx` for readable Play/Review action structure, scoped padding, titles and existing destinations.
+5. Add reusable `web/src/components/navigation/capture-scaled-onboarding.mjs` with **36 actual Chromium combinations** and checks for complete action titles, fully contained descriptions, no card/document horizontal overflow, 44px+ action hit areas, bounded 320px/200% card height, and keyboard Tab navigation to Play.
+
+### Verification
+
+- Original worst 320px/200% onboarding card height: **2,119.875px**. Post-fix maximum: **1,581.4375px**, a decrease of about **538px** without shrinking text.
+- `node web/src/components/navigation/capture-scaled-onboarding.mjs`: **36/36 passed**, with all Play/Import title characters visually within their text boxes and no action overflow.
+- Inspected `artifacts/agent-02/home-cards-onboarding-after-onboarding-light-320-font32.png` and its dark-theme counterpart: action titles and descriptions are readable, with consistent spacing and accessible link focus.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **20/20 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **473/473 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' files, main branch, deployment or production data modified.
+
+### Next audit
+
+- Finish the separately reproduced **Recent Games at 200% zoom** issue on 320/390px: opponent names currently reveal only a handful of glyphs in long translations, and unreviewed/time-control metadata runs outside the row despite the enclosing card hiding overflow. Verify both player colors, both themes, languages and actual keyboard navigation; fix only the Home list layout while preserving the result badges and game links.

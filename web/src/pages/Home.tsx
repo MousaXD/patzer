@@ -544,9 +544,9 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
         aria-labelledby="home-first-game-heading"
         data-home-onboarding
       >
-        <div className="p-5 sm:p-6">
-          <div className="flex items-start gap-3">
-            <Pill tone="board" Icon={Sparkles} />
+        <div className="p-[20px] sm:p-6">
+          <div className="flex items-start gap-[12px] sm:gap-3">
+            <Pill tone="board" Icon={Sparkles} compact />
             <div className="min-w-0 flex-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-mutedText">
                 {t('home.gettingStarted', { defaultValue: 'Your starting point' })}
@@ -559,25 +559,25 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
               </p>
             </div>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+          <div className="mt-[20px] grid gap-[12px] sm:mt-5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-1 xl:grid-cols-2">
             {[
               { to: '/play', icon: Swords, title: t('home.playTitle'), description: t('home.playDesc') },
               { to: '/review', icon: BookOpen, title: t('home.importGames'), description: t('home.reviewDesc') },
             ].map(({ to, icon: Icon, title, description }) => (
-              <Link key={to} to={to}
-                className="group flex min-w-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-muted p-3.5 transition-colors hover:border-ui-strong hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus"
+              <Link key={to} to={to} data-home-onboarding-action
+                className="group flex min-w-0 items-start gap-[8px] rounded-xl border border-ui-border bg-ui-muted p-[12px] transition-colors hover:border-ui-strong hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus sm:gap-3 sm:p-3.5"
               >
-                <Icon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-ui-primary" />
+                <Icon aria-hidden="true" className="mt-0.5 h-[20px] w-[20px] shrink-0 text-ui-primary sm:h-5 sm:w-5" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-ui-foreground">{title}</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-ui-mutedText">{description}</span>
+                  <span data-home-onboarding-action-title className="block min-w-0 break-words text-sm font-semibold text-ui-foreground">{title}</span>
+                  <span className="mt-1 block min-w-0 break-words text-xs leading-relaxed text-ui-mutedText">{description}</span>
                 </span>
-                <ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-ui-mutedText transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" />
+                <ChevronRight aria-hidden="true" className="mt-1 h-[16px] w-[16px] shrink-0 text-ui-mutedText transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none sm:h-4 sm:w-4" />
               </Link>
             ))}
           </div>
         </div>
-        <p className="border-t border-ui-border bg-ui-muted px-5 py-3 text-xs text-ui-mutedText sm:px-6">
+        <p className="border-t border-ui-border bg-ui-muted px-[20px] py-[12px] text-xs text-ui-mutedText sm:px-6 sm:py-3">
           {t('home.firstRunFooter', { defaultValue: 'Your recent games will appear here after you play or import one.' })}
         </p>
       </motion.section>
@@ -716,7 +716,9 @@ function Sub({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' | 'mistake' | 'muted' }) {
+function Pill({ Icon, tone, compact = false }: {
+  Icon: React.ElementType; tone: 'gold' | 'board' | 'mistake' | 'muted'; compact?: boolean;
+}) {
   const toneCls: Record<typeof tone, string> = {
     gold: 'bg-gold-500/15 text-gold-600',
     board: 'bg-board-dark/15 text-board-dark',
@@ -728,8 +730,8 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
     ? 'bg-[#ffa459]/15 text-[#ffa459]'
     : toneCls[tone];
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${cls}`}>
-      <Icon className="h-4 w-4" />
+    <div className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-[44px] w-[44px]' : 'h-10 w-10'} ${cls}`}>
+      <Icon className={compact ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
     </div>
   );
 }

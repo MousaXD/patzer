@@ -87,7 +87,7 @@ describe('Home statistics failure', () => {
     expect(badge.className).toContain(colorClass);
   });
 
-  it('shows a recognizable first-run identity and touch-sized hero actions when profile fields are blank', () => {
+  it('shows a recognizable first-run identity and readable touch-sized onboarding actions', async () => {
     mocks.displayName = '   ';
     mocks.avatarEmoji = '';
     mocks.get.mockImplementation((url: string) => {
@@ -108,6 +108,17 @@ describe('Home statistics failure', () => {
     for (const path of ['/play', '/review']) {
       const action = hero?.querySelector<HTMLAnchorElement>(`a[href="${path}"]`);
       expect(action?.className).toContain('min-h-11');
+    }
+    const onboardingTitle = await screen.findByRole('heading', { name: 'Play your first game' });
+    const onboarding = onboardingTitle.closest('[data-home-onboarding]');
+    expect(onboarding).toBeTruthy();
+    expect(onboarding?.firstElementChild?.className).toContain('p-[20px]');
+    for (const path of ['/play', '/review']) {
+      const action = onboarding?.querySelector<HTMLAnchorElement>('a[data-home-onboarding-action][href="' + path + '"]');
+      expect(action).toBeTruthy();
+      expect(action?.className).toContain('p-[12px]');
+      expect(action?.className).toContain('gap-[8px]');
+      expect(action?.querySelector('[data-home-onboarding-action-title]')?.className).toContain('break-words');
     }
   });
 
