@@ -328,4 +328,25 @@ describe('/api/train', () => {
       puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
     });
   });
+
+  it('does not declare training complete when the first 60 newer analyzed games have no fresh puzzles', async () => {
+    const addGame = db.prepare(`INSERT INTO games
+      (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (?, 1, 'chesscom', '', 'Me', 'Opponent', 'win', '2026-11-11 10:00:00', 'white')`);
+    const addAnalysis = db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (?, 14, '[]', ?, 'scanned-without-mistakes', 0, 1)`);
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    for (let i = 0; i < 60; i++) {
+      const id = 100 + i;
+      addGame.run(id);
+      addAnalysis.run(id, SCORING_VERSION);
+    }
+    // A legitimate eligible blunder is in game 1, ranked 61st. A scan that
+    // imposes a global LIMIT 60 reports an empty queue incorrectly.
+    const next = await call<Next>(`/next?today=${today}`);
+    expect(next).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
+  });
 });

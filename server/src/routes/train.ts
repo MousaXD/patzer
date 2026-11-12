@@ -153,25 +153,34 @@ router.get('/next', (c) => {
     }
   }
 
-  // Pull recent analyzed games (up to 60) and walk their moves looking for
-  // the user's blunders/misses that have a usable best-move solution.
+  // Search the full analyzed-game library, not just its first 60 games.
+  // A lifelong learner can have hundreds of analyzed games: once the newest
+  // batch is exhausted, older, untried mistakes must still be discoverable.
+  // Keep each SQLite result page small rather than materializing all moves.
+  const PAGE_SIZE = 60;
   const where = filterGameId != null ? 'AND g.id = ?' : '';
   const params: unknown[] = [me.id, SCORING_VERSION];
   if (filterGameId != null) params.push(filterGameId);
-  const rows = db.prepare(`${GAME_SQL} ${where} ORDER BY g.end_time DESC, g.id DESC LIMIT 60`).all(...params) as PuzzleCandidate[];
+  const page = db.prepare(`${GAME_SQL} ${where} ORDER BY g.end_time DESC, g.id DESC LIMIT ? OFFSET ?`);
 
-  // Newest first so freshly analyzed games' lessons are the next puzzle.
-  for (const r of rows) {
-    const userColor = r.user_color;
-    const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
-    for (const m of moves) {
-      if (!isPuzzleMove(m, userColor)) continue;
-      const previous = tried.get(`${r.game_id}:${m.ply}`);
-      const before = previous && samePuzzle(previous, m) ? previous : null;
-      if (excludeSolved && before && !isDue(before, today)) continue;
-      const puzzle = toPuzzle(r, m, !!before && before.solved === 0);
-      if (puzzle) return c.json({ puzzle, due });
+  // Newest first, but advance until a usable mistake is found or the user's
+  // entire analyzed library has been scanned. LIMIT bounds memory per read.
+  let offset = 0;
+  while (true) {
+    const rows = page.all(...params, PAGE_SIZE, offset) as PuzzleCandidate[];
+    for (const r of rows) {
+      const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
+      for (const m of moves) {
+        if (!isPuzzleMove(m, r.user_color)) continue;
+        const previous = tried.get(`${r.game_id}:${m.ply}`);
+        const before = previous && samePuzzle(previous, m) ? previous : null;
+        if (excludeSolved && before && !isDue(before, today)) continue;
+        const puzzle = toPuzzle(r, m, !!before && before.solved === 0);
+        if (puzzle) return c.json({ puzzle, due });
+      }
     }
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
   return c.json({ puzzle: null, due });
 });
