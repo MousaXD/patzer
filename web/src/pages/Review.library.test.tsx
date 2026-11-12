@@ -780,6 +780,13 @@ describe('Review library with large histories', () => {
     expect(bookmark.className).toContain('md:opacity-0');
   });
 
+  it('labels the unanalyzed desktop card with a real Review action rather than a literal English badge', async () => {
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    expect(screen.getAllByText('Analyze',{exact:true}).length).toBeGreaterThan(0);
+    expect(screen.queryByText('review',{exact:true})).toBeNull();
+  });
+
   it('labels unfinished games instead of rendering a fake 1970 date or a draw', async () => {
     mocks.get.mockResolvedValue({
       games: [{ ...makeGame(1), result: '*', end_time: null }], total: 1,

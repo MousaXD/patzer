@@ -615,3 +615,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **localized Game Library card actions on desktop**: the unanalyzed-game card currently shows the literal English badge text `review` next to the book icon in every locale, even though the card itself navigates by a separate accessible link. Reproduce in a non-English desktop fixture, decide whether it should be a descriptive translated status or a translated action, and verify keyboard/screen-reader clarity without changing Game Review internals.
+
+## 2026-11-12 — Translate unanalyzed desktop Library card action
+
+- Resumed clean pushed `7ffd7a6` and reproduced the outstanding real defect: unanalyzed desktop Library cards displayed the literal English text **review** inside a small book-icon badge regardless of interface language. Wrote a failing Library component regression that requires the established **Analyze** action instead of the lower-case English literal, then replaced the badge text with the existing translated `review.analyze` key and marked the book icon decorative (`aria-hidden`). The badge remains inside the independent focusable game link; it does not create nested or redundant controls or change the analysis state.
+- Added an isolated 1440px dark-mode German-profile Chromium scenario verifying **Analysieren** appears inside the saved-game card. The full Library browser matrix passed, including existing 390px/320px layouts, German filters, source/URL state, import recovery, Unicode names, accessible bookmarks and paging. Visually inspected `qa-artifacts/agent-c-library/library-german-desktop-action-dark-1440.png`; the action is correctly translated and the card remains aligned.
+
+### Verification
+
+- Focused Library component suite: **46/46 passed**; `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed; full isolated Chromium: passed with zero browser JS exceptions or page overflow.
+- Initial full run (`--maxWorkers=3`) had **one** Settings persistence navigation wait failure unrelated to Library rendering; all Library tests passed. The exact Settings file then passed **9/9 in isolation**. A complete rerun with `--maxWorkers=2` passed **109 files, 2 skipped; 1,074 tests passed, 12 skipped**, zero failures. Logged the transient first run rather than concealing it; no unrelated Settings code changed.
+- No merges, deployments, production data, API provider imports, Game Review implementation or other agents' code/worktrees touched.
+
+### Next independent audit
+
+- Audit **imported and provider game dates on Library cards in non-English locales**. Desktop German currently displays US-style `11/9/2026` despite a German UI; browser locale and i18next profile language are not the same. Reproduce with the existing German fixture and a stable UTC date. Render game dates according to the selected UI locale without accidental timezone date shifts, preserving explicit `Date unavailable` for undated PGNs and keeping mobile card widths safe.

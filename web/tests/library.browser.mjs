@@ -361,6 +361,16 @@ try {
     console.log('PASS German Library filter accessibility labels and URL-backed source selection');
   } finally {await germanFilters.context.close();}
 
+  const germanDesktop=await newPage('dark',1440,900,{locale:'de'});
+  try {
+    const {page,pageErrors}=germanDesktop;
+    const card=page.locator('a[href="/review/1"]');
+    await card.locator('span.badge').getByText('Analysieren',{exact:true}).waitFor();
+    await page.screenshot({path:join(output,'library-german-desktop-action-dark-1440.png')});
+    assert.deepEqual(pageErrors,[],'German desktop Library caused a browser exception');
+    console.log('PASS German desktop game-card Review action is translated');
+  } finally {await germanDesktop.context.close();}
+
   const narrowGerman=await newPage('light',320,700,{locale:'de'});
   try {
     const {page,pageErrors}=narrowGerman;

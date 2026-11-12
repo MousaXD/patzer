@@ -895,7 +895,7 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
           </div>
         ) : (
           <span className="badge hidden shrink-0 gap-1 bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300 sm:inline-flex">
-            <BookOpen className="h-3 w-3" /> review
+            <BookOpen aria-hidden="true" className="h-3 w-3" /> {t('review.analyze', { defaultValue: 'Analyze' })}
           </span>
         )}
       </Link>
