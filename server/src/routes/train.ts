@@ -134,17 +134,52 @@ const CURRENT_ATTEMPT_SQL = `g.user_color IN ('white', 'black') AND (${CURRENT_A
       AND CASE WHEN p.ply % 2 = 1 THEN 'white' ELSE 'black' END = g.user_color
   )`;
 
-function dueCount(userId: number, today: string): number {
-  const r = db.prepare(`
-    SELECT COUNT(*) AS n FROM puzzle_attempts p
+type CurrentAttemptCandidate = AttemptRow & {
+  user_color: 'white' | 'black';
+  moves_json: string;
+};
+
+/** Count only historical attempts that could still be served as playable
+ * puzzles. SQL cheaply filters source provenance and position identity; the
+ * final Chess.js legality check matches the queue's authoritative rules.
+ * On /next, scan only due candidates rather than every solved history row. */
+function currentAttemptCoverage(userId: number, today: string, dueOnly = false) {
+  const dueClause = dueOnly ? `AND p.solved = 0
+    AND (p.due_on IS NULL OR p.due_on <= ?)
+    AND (p.last_day IS NULL OR p.last_day < ?)` : '';
+  const args = dueOnly ? [userId, today, today, SCORING_VERSION] : [userId, SCORING_VERSION];
+  const rows = db.prepare(`
+    SELECT p.game_id, p.ply, p.fen, p.solution_uci, p.solved,
+      p.due_on, p.last_day, g.user_color, a.moves_json
+    FROM puzzle_attempts p
     JOIN games g ON g.id = p.game_id AND g.user_id = p.user_id
     JOIN analyses a ON a.game_id = g.id
-    WHERE p.user_id = ? AND p.solved = 0
-      AND (p.due_on IS NULL OR p.due_on <= ?)
-      AND (p.last_day IS NULL OR p.last_day < ?)
+    WHERE p.user_id = ? ${dueClause}
       AND (${CURRENT_ATTEMPT_SQL})
-  `).get(userId, today, today, SCORING_VERSION) as { n: number };
-  return r.n;
+  `).all(...args) as CurrentAttemptCandidate[];
+
+  const movesByGame = new Map<number, Map<number, AnalyzedMove>>();
+  let total = 0;
+  let solved = 0;
+  let due = 0;
+  for (const row of rows) {
+    let moves = movesByGame.get(row.game_id);
+    if (!moves) {
+      moves = new Map(readAnalysisMoves(row.moves_json).map((m) => [m.ply, m]));
+      movesByGame.set(row.game_id, moves);
+    }
+    const move = moves.get(row.ply);
+    if (!move || !isPuzzleMove(move, row.user_color) || !samePuzzle(row, move)
+      || !safePuzzleLine(move)) continue;
+    total++;
+    if (row.solved === 1) solved++;
+    else if (isDue(row, today)) due++;
+  }
+  return { total, solved, due };
+}
+
+function dueCount(userId: number, today: string): number {
+  return currentAttemptCoverage(userId, today, true).due;
 }
 
 function awaitingAnalysisCount(userId: number): number {
@@ -398,14 +433,7 @@ router.get('/stats', (c) => {
       SUM(CASE WHEN solved = 0 THEN 1 ELSE 0 END) AS failed
     FROM puzzle_attempts WHERE user_id = ?
   `).get(me.id) as { total: number; solved: number; failed: number };
-  const current = db.prepare(`
-    SELECT COUNT(*) AS total,
-      SUM(CASE WHEN p.solved = 1 THEN 1 ELSE 0 END) AS solved
-    FROM puzzle_attempts p
-    JOIN games g ON g.id = p.game_id AND g.user_id = p.user_id
-    JOIN analyses a ON a.game_id = g.id
-    WHERE p.user_id = ? AND (${CURRENT_ATTEMPT_SQL})
-  `).get(me.id, SCORING_VERSION) as { total: number; solved: number | null };
+  const current = currentAttemptCoverage(me.id, today);
   // Recent attempt stream
   const recent = db.prepare(`
     SELECT game_id, ply, solved, attempted_uci, solution_uci, created_at
@@ -423,7 +451,7 @@ router.get('/stats', (c) => {
     current_solved: current.solved ?? 0,
     current_accuracy: current.total > 0 ? Math.round(((current.solved ?? 0) / current.total) * 100) : null,
     outdated_attempts: (stats.total ?? 0) - current.total,
-    due: dueCount(me.id, today),
+    due: current.due,
     recent,
   });
 });

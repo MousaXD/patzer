@@ -64,6 +64,23 @@ async function get<T>(path: string): Promise<T> {
 }
 
 describe('personal Training with damaged cached analyses', () => {
+  it('never counts a due attempt for a source-current but unplayable board position', async () => {
+    // SQL metadata matches game 102 exactly, yet the cached FEN is invalid.
+    // A user must not see a due task which Chess.js would refuse to serve.
+    db.prepare(`INSERT INTO puzzle_attempts
+      (user_id,game_id,ply,fen,solution_uci,solved,due_on,last_day)
+      VALUES (1,102,1,'not-a-fen','d2d8',0,'2026-11-11','2026-11-10')`).run();
+    try {
+      const next = await get<Next>('/next?today=2026-11-12');
+      expect(next).toMatchObject({ puzzle: { game_id: 103 }, due: 0 });
+      const stats = await get<Stats & { outdated_attempts: number }>('/stats?today=2026-11-12');
+      expect(stats).toMatchObject({ total: 3, current_total: 0, due: 0, outdated_attempts: 3 });
+      expect((db.prepare('SELECT COUNT(*) AS n FROM puzzle_attempts WHERE user_id=1').get() as { n:number }).n).toBe(3);
+    } finally {
+      db.prepare('DELETE FROM puzzle_attempts WHERE user_id=1 AND game_id=102').run();
+    }
+  });
+
   it('skips unreadable/newer and illegal positions, then finds a valid older personalized puzzle', async () => {
     const data = await get<Next>('/next?today=2026-11-12');
     expect(data).toMatchObject({
