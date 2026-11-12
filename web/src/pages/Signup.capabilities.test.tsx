@@ -58,7 +58,7 @@ describe('Signup capability checks', () => {
     render(<MemoryRouter initialEntries={['/signup?invite=ABCD-EFGH-JKLM']}><Signup /></MemoryRouter>);
     expect(await screen.findByRole('alert', { name: 'Sign-in options unavailable' })).toBeTruthy();
     expect(get).toHaveBeenCalledTimes(1);
-    expect(get).toHaveBeenCalledWith('/api/auth/config');
+    expect(get.mock.calls[0]?.[0]).toBe('/api/auth/config');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await screen.findByRole('textbox', { name: 'Username' });
     await waitFor(() => expect(get).toHaveBeenCalledWith('/api/auth/invite?code=ABCDEFGHJKLM'));

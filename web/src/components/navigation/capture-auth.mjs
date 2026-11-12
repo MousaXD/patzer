@@ -98,6 +98,13 @@ try {
   await page.route('**/api/**', async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/auth/config' && slowConfig) await sleep(350);
+    if (pathname === '/api/auth/config' && configProbe === 'hang') {
+      await sleep(20_000);
+      try {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      } catch { /* the client may abort the timed-out request first */ }
+      return;
+    }
     if (pathname === '/api/auth/config' && configProbe === 'error') {
       await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily_unavailable"}' });
       return;
@@ -228,6 +235,37 @@ try {
   await page.screenshot({ path: resolve(output, 'auth-config-error-dark-320-de.png'), fullPage: true });
   await page.getByRole('button', { name: 'English' }).click();
   await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor();
+
+  // A capability request that never resolves must eventually leave its
+  // loading skeleton and allow the user to retry. Once recovered, the real
+  // server's capabilities (including SSO-only) remain authoritative.
+  configProbe = 'hang';
+  ssoOnly = true;
+  slowConfig = false;
+  await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-auth-config-loading]').waitFor();
+  if (await page.locator('#login-password').count()) {
+    throw new Error('Password fields appeared before the stalled probe completed');
+  }
+  await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor({ timeout: 13_000 });
+  if (await page.locator('#login-password').count()) {
+    throw new Error('Timed-out sign-in capability probe exposed password inputs');
+  }
+  configProbe = 'ok';
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.getByRole('link', { name: 'Sign in with SSO' }).waitFor();
+
+  // Signup gets the same bounded recovery behavior and must not show an
+  // unconfirmed registration form while the request is pending.
+  configProbe = 'hang';
+  ssoOnly = false;
+  await page.goto(origin + '/signup', { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-auth-config-loading]').waitFor();
+  await page.getByRole('alert', { name: 'Sign-in options unavailable' }).waitFor({ timeout: 13_000 });
+  if (await page.locator('#signup-username').count()) throw new Error('Timed-out signup probe exposed registration');
+  configProbe = 'ok';
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.getByRole('textbox', { name: 'Username' }).waitFor();
 
   // A remembered preference should survive sign-out, independent of OS mode.
   ssoOnly = false;

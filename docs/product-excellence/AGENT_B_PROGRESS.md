@@ -226,3 +226,28 @@
 ### Next audit
 
 - Verify how the public sign-in shell behaves when a capability-probe request **never resolves** rather than returning an HTTP error; investigate a bounded, abortable request with explicit retry instead of potentially infinite loading. Preserve server-driven SSO/signup rules.
+
+## 2026-11-12: Bounded authentication capability requests
+
+### Reproduction
+
+- Recovered the clean Agent B branch at `820f016` and completed the exact pending indefinite-request investigation; no completed earlier work was repeated.
+- Extended `capture-auth.mjs` with a simulated `/api/auth/config` response delayed for 20 seconds. **Before the fix, Chromium failed after 13 seconds:** the login page still showed a loading skeleton, with no way to recover. Signup had the same unbounded wait.
+
+### Implementation
+
+1. Added an **8-second maximum** for the public capability probe. Expiration aborts the outgoing fetch and switches to the already localized, accessible in-place retry UI; password and SSO controls remain hidden until authoritative server capabilities arrive.
+2. Extended the shared `api.get` signature with an optional `RequestInit`, preserving the existing default request headers and behavior for all existing callers. Only this public capability probe currently passes an `AbortSignal`; no feature pages were edited.
+3. Ignored late responses from expired/unmounted requests so a stale response cannot revive an obsolete sign-in form or overwrite a newer retry.
+4. Added unit tests for stalled requests, timeout-driven abort, retry, and stale responses; expanded real Chromium tests to verify the stalled-sign-in and stalled-signup recovery journeys on an SSO-only/open-signup fixture.
+
+### Validation
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **389/389 passed across 65 files**.
+- `node web/src/components/navigation/capture-auth.mjs`: **passed** including two real eight-second timeouts and recovery. No actual accounts or external APIs used.
+- `git diff --check`: **passed**.
+
+### Next audit
+
+- Apply the same evidence-driven standard to **initial app bootstrap**. A hanging `/api/setup/status` or `/api/auth/me` request may hold the global `Starting Patzer…` splash indefinitely even though ordinary HTTP errors now have a useful recovery screen. Investigate in isolation before changes.

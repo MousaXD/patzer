@@ -13,6 +13,7 @@ export interface AuthConfig {
 }
 
 type ConfigStatus = 'loading' | 'ready' | 'error';
+const CAPABILITY_TIMEOUT_MS = 8_000;
 
 const FALLBACK_CONFIG: AuthConfig = {
   signup_enabled: false,
@@ -49,19 +50,30 @@ export function useAuthConfig(): {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
+    let expired = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      expired = true;
+      controller.abort();
+      if (alive) setStatus('error');
+    }, CAPABILITY_TIMEOUT_MS);
     setStatus('loading');
-    api.get<unknown>('/api/auth/config')
+    api.get<unknown>('/api/auth/config', { signal: controller.signal })
       .then((response) => {
+        if (!alive || expired) return;
         if (!isAuthConfig(response)) throw new Error('Invalid auth capabilities');
-        if (alive) {
-          setConfig(response);
-          setStatus('ready');
-        }
+        setConfig(response);
+        setStatus('ready');
       })
       .catch(() => {
-        if (alive) setStatus('error');
-      });
-    return () => { alive = false; };
+        if (alive && !expired) setStatus('error');
+      })
+      .finally(() => window.clearTimeout(timeoutId));
+    return () => {
+      alive = false;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [attempt]);
   return {
     config,
