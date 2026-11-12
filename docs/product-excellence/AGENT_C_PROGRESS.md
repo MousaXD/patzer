@@ -392,3 +392,13 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Verify the direct game-card-to-Game-Review transition from a filtered Library including user-uploaded PGNs, and document any cross-lane back-navigation issue for the Game Review agent rather than modifying their internals. A return link must not silently discard a deliberate filter or paginated-history context. Audit with the real browser first.
+
+### Cross-lane handoff — Game Review back navigation loses filtered Library context
+
+- A source audit confirmed that Library game cards currently link directly to `/review/:id` or `/review/:id?practice=1` without carrying source/filter/return state (`web/src/pages/Review.tsx`). The Game Review main and practice-picker Back links in `web/src/pages/GameAnalyzer.tsx` and unavailable-state recovery in `web/src/components/review/ReviewUnavailable.tsx` point unconditionally to `/review`. The in-app Back action therefore discards deliberate opening, opponent, bookmark, search and date URL filters rather than returning to the same exploration context. The browser's own Back button remains a separate path that may restore the previous URL.
+- **Ownership handoff to Review/UX agent:** implement a safe, account-local return-context contract between Library cards and Game Review: supply the validated Library URL via router state or a carefully scoped same-origin return parameter, consume it in Game Review's Back actions, and fall back to `/review` for direct links, stale sessions or invalid values. Verify provider-qualified opponent and opening deep links, bookmarked-only filters, keyboard navigation, and both full Review and practice-picker entries in Chromium. Never accept an arbitrary external return URL.
+- This was verified by inspecting the exact route links and absence of a Library return-state consumer in GameAnalyzer. It was **not** represented as a completed browser-certified fix because editing Game Review internals is explicitly outside Agent C's lane. Agent C's current branch remains independently clean and does not modify that domain.
+
+### Next work owned by Agent C
+
+- Continue auditing user-owned PGN import and large-history cards, especially whether custom headers with playable standard moves are surfaced with an actionable explanation instead of silently dropped. Avoid modifying Review analysis internals or making claims of historical account import completeness.
