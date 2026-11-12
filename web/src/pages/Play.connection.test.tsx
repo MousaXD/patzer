@@ -129,6 +129,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it.each(['Infinity', 'abc', '-1', '1.5', '0', '9999999999999999999999'])(
+    'rejects malformed direct PvP game ID %s without creating a reconnecting socket', async (value) => {
+      render(<MemoryRouter initialEntries={[`/play?game=${value}`]}>
+        <Play /><CurrentRoute />
+      </MemoryRouter>);
+      await waitFor(() => expect(screen.getByTestId('current-route').textContent).toBe('/play'));
+      expect(socketHarness.current).toBeNull();
+      expect(screen.getByRole('alert').textContent).toContain('This game is no longer available');
+      expect(screen.getByRole('button', { name: 'play.start' })).toBeTruthy();
+    },
+  );
+
+  it('recovers when an older server rejects a PvP route with its invalid-game-id response', () => {
+    render(<MemoryRouter initialEntries={['/play?game=101']}><Play /><CurrentRoute /></MemoryRouter>);
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive({ type: 'error', message: 'invalid game id' }); });
+    expect(ws.disconnectCalls).toBe(1);
+    expect(screen.getByTestId('current-route').textContent).toBe('/play');
+    expect(screen.getByRole('alert').textContent).toContain('This game is no longer available');
+  });
+
   it('routes a confirmed incoming friend challenge to its PvP URL and preserves the actual PvP controls', async () => {
     lobbyHarness.incoming = [{
       id: 53, color: 'white', time_control: 'rapid', status: 'pending', game_id: null,

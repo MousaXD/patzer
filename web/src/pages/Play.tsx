@@ -42,6 +42,12 @@ interface Position { fen: string; lastFrom?: string; lastTo?: string }
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+function parsePvpGameId(value: string | null): number | null {
+  if (value === null || !/^[0-9]+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 /** A move the player has queued up while the opponent is still thinking. */
 interface Premove { uci: string; from: string; to: string; san: string }
 
@@ -166,7 +172,8 @@ export default function Play() {
   const setActivePlaySession = useLobby((state) => state.setActivePlaySession);
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const pvpGameId = Number(params.get('game') ?? 0) || null;
+  const rawPvpGameId = params.get('game');
+  const pvpGameId = parsePvpGameId(rawPvpGameId);
   const fromPos = useMemo(() => parseFromPosition(params.get('fen'), params.get('moves'), params.get('color')), [params]);
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'over'>('setup');
@@ -420,6 +427,23 @@ export default function Play() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvpGameId]);
+
+  // A malformed ?game= route must not become a fake bot session or repeatedly
+  // attempt an impossible PvP connection. The server expects an integer row
+  // ID, but Number('Infinity'), a fraction, or unsafe integers previously
+  // bypassed client checks and could strand the player in a reconnect loop.
+  useEffect(() => {
+    if (rawPvpGameId === null || pvpGameId !== null) return;
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
+    connectedRef.current = false;
+    setConnected(false);
+    resetGameState();
+    setPhase('setup');
+    setPvpUnavailable(true);
+    nav('/play', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawPvpGameId, pvpGameId, nav]);
 
   // Refresh users + challenges when entering friend tab
   useEffect(() => {
@@ -824,7 +848,7 @@ export default function Play() {
         setLive((l) => l ? { ...l, bot: null } : l);
         break;
       case 'error':
-        if (msg.message === 'game_not_found' && pvpGameId) {
+        if ((msg.message === 'game_not_found' || msg.message === 'invalid game id') && pvpGameId) {
           // The server has definitively rejected this user's game ID and
           // closes the socket. Retrying that same URL can never recover it.
           // Return to a usable setup page instead of a permanent reconnect
