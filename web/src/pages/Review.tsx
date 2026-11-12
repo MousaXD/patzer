@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
 import { api } from '../api';
@@ -92,12 +92,19 @@ export default function Review() {
   accountIdRef.current = user?.id;
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigationType = useNavigationType();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
   const [dateAdjustment, setDateAdjustment] = useState<'start' | 'end' | null>(null);
+  useEffect(() => {
+    // Browser Back/Forward restores URL-owned filters rather than performing
+    // another date edit. Never announce an adjustment from a later entry.
+    if (navigationType === 'POP') setDateAdjustment(null);
+  }, [navigationType, location.key]);
   const [pgnFile, setPgnFile] = useState<File | null>(null);
   const pgnInputRef = useRef<HTMLInputElement | null>(null);
   const importMessageTimer = useRef<number | null>(null);
@@ -853,7 +860,7 @@ export default function Review() {
               onChange={(e) => updateDateFilter('to_date', e.target.value)}
               className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
-          {dateAdjustment && <p role="status" className="col-span-2 text-xs leading-relaxed text-chesscom-600 dark:text-chesscom-300 sm:max-w-64">
+          {dateAdjustment && navigationType !== 'POP' && <p role="status" className="col-span-2 text-xs leading-relaxed text-chesscom-600 dark:text-chesscom-300 sm:max-w-64">
             {dateAdjustment === 'end'
               ? t('review.libraryEndDateCleared', {defaultValue:'End date cleared because it is before the new start date.'})
               : t('review.libraryStartDateCleared', {defaultValue:'Start date cleared because it is after the new end date.'})}

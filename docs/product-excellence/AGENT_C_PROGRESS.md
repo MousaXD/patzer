@@ -963,3 +963,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **stale date-adjustment announcements during browser Back/Forward navigation**. The new contextual message is local component state, but the URL is the authority for active filters; after browser navigation, the previous adjustment message might remain even when the date range returns to its earlier values. Reproduce in a real Chromium session and add a narrowly scoped guard if confirmed; do not interfere with normal onChange announcements or query-state rehydration.
+
+## 2026-11-13 — Prevent stale date correction announcements after browser navigation
+
+- Recovered pushed `0caa2e6` and added a real browser regression that edits both boundaries across their existing dates, then uses **Back** and **Forward**. Chromium reproduced the issue: after Back restored a previous date range, the date group still showed the explanation from a later user edit (`role=status` remained present). The URL-owned filters were correct, but the announcement was stale.
+- Added `useNavigationType` and `useLocation` to the Library view. On a React Router **POP** (history Back/Forward), immediately suppress the old announcement in the render and clear its local state in a location-keyed effect. A normal date-picker **PUSH** still announces its own automatic correction. This avoids stale announcements without changing date comparison, URL boundaries, server queries, date labels or translations.
+- Extended the isolated Chromium test to verify both directions of date crossing, then Back and Forward restore exactly the expected URL and visible fields **without** reviving old status messages. The complete browser suite and the focused React tests passed after the fix; no JS exceptions or horizontal overflow.
+
+### Verification
+
+- Focused Library React tests: **57/57 passed**. Full repository suite: **109 passed files, 2 skipped; 1,130 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full Chromium 1440px desktop, 390/320px light/dark, German date notice, import/PGN keyboard flows, search, bookmarks, stale pagination, filters and recovery: passed. No provider, production data, shared styles, other agent worktrees, merge or deployment touched.
+
+### Next independent audit
+
+- Investigate **debounced Library search when players change filters before the 300ms debounce settles**. The typed draft is local state while `q` and other filters live in URL params; a stale debounce could overwrite a new source/result/date filter or restore a query after it was cleared. Reproduce with an isolated Chromium fixture that types and quickly changes filter state; preserve intentional typing and shareable URLs, and fix only confirmed races.

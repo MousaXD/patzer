@@ -708,6 +708,18 @@ try {
       !new URL(href).searchParams.has('from_date'));
     assert.equal(await start.inputValue(),'');
     await rangeStatus.getByText('Start date cleared because it is after the new end date.').waitFor();
+    await page.goBack();
+    await page.waitForURL(href=>new URL(href).searchParams.get('from_date')==='2026-11-09' &&
+      !new URL(href).searchParams.has('to_date'));
+    assert.equal(await start.inputValue(),'2026-11-09');
+    assert.equal(await end.inputValue(),'');
+    assert.equal(await rangeStatus.count(),0,
+      'Browser Back must not announce an outdated date correction from the next history entry');
+    await page.goForward();
+    await page.waitForURL(href=>new URL(href).searchParams.get('to_date')==='2026-11-07' &&
+      !new URL(href).searchParams.has('from_date'));
+    assert.equal(await rangeStatus.count(),0,
+      'Browser Forward must not revive a date correction from an old user edit');
     assert.deepEqual(pageErrors,[],'Editing cross-boundary date filters caused a browser error');
     console.log('PASS both native date controls can cross an old boundary and clear the incompatible URL filter');
   } finally {await editableDates.context.close();}
