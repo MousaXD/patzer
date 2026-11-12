@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   post: vi.fn(), del: vi.fn(), account: 1,
-  refreshChallenges: vi.fn(),
+  refreshChallenges: vi.fn(), refreshUsers: vi.fn(),
   lobby: {
     online: new Set<number>([2]),
+    usersStatus: 'ready' as 'ready' | 'loading' | 'error',
+    challengesStatus: 'ready' as 'ready' | 'loading' | 'error',
     users: [
       { id: 2, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: true },
     ],
@@ -15,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../api', () => ({ api: { post: mocks.post, del: mocks.del } }));
-vi.mock('../state/lobby', () => ({ useLobby: () => ({ ...mocks.lobby, refreshChallenges: mocks.refreshChallenges }) }));
+vi.mock('../state/lobby', () => ({ useLobby: () => ({ ...mocks.lobby, refreshChallenges: mocks.refreshChallenges, refreshUsers: mocks.refreshUsers }) }));
 vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: mocks.account } }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
@@ -25,15 +27,42 @@ import { FriendTab } from './Play';
 
 beforeEach(() => {
   mocks.account = 1;
+  mocks.lobby.usersStatus = 'ready';
+  mocks.lobby.challengesStatus = 'ready';
+  mocks.lobby.users = [{ id: 2, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: true }];
   mocks.post.mockReset();
   mocks.del.mockReset();
   mocks.refreshChallenges.mockReset().mockResolvedValue(undefined);
+  mocks.refreshUsers.mockReset().mockResolvedValue(undefined);
   mocks.lobby.incoming = [];
   mocks.lobby.outgoing = [];
 });
 afterEach(() => { cleanup(); });
 
 describe('Play friend challenges request recovery', () => {
+  it('shows a player-fetch failure and retry instead of claiming nobody can be challenged', () => {
+    mocks.lobby.usersStatus = 'error';
+    mocks.lobby.users = [];
+    render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.getByRole('alert').textContent).toContain('Could not load players');
+    expect(screen.queryByText('challenge.noPlayers')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading players' }));
+    expect(mocks.refreshUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a challenge-list failure and a direct retry without hiding existing invitations', () => {
+    mocks.lobby.challengesStatus = 'error';
+    mocks.lobby.incoming = [{
+      id: 12, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    }];
+    render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(screen.getByRole('alert').textContent).toContain('Could not refresh challenges');
+    expect(screen.getByRole('button', { name: 'challenge.accept' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading challenges' }));
+    expect(mocks.refreshChallenges).toHaveBeenCalledTimes(1);
+  });
+
   it('does not open the old player\'s accepted game after a shared-browser account switch', async () => {
     let confirm!: (value: unknown) => void;
     mocks.lobby.incoming = [{

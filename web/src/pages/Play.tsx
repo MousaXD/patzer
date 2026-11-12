@@ -1827,6 +1827,18 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
 
   return (
     <div className="space-y-4">
+      {lobby.challengesStatus === 'error' && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+          <span>{t('challenge.loadError', {
+            defaultValue: 'Could not refresh challenges. Any available invitations remain visible.',
+          })}</span>
+          <button type="button" className="btn-secondary min-h-11 shrink-0 text-xs"
+            onClick={() => { void lobby.refreshChallenges(); }}>
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+            {t('challenge.retryChallenges', { defaultValue: 'Retry loading challenges' })}
+          </button>
+        </div>
+      )}
       {notice && (
         <div role={notice.kind === 'error' ? 'alert' : 'status'}
           className={`rounded-md border px-3 py-2 text-sm ${notice.kind === 'error'
@@ -1911,11 +1923,29 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
               </select>
             </div>
           </div>
-          {users.length === 0 ? (
+          {lobby.usersStatus === 'error' && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+              <span>{users.length > 0
+                ? t('challenge.playersError', { defaultValue: 'Could not load players. Showing the last loaded list.' })
+                : t('challenge.playersErrorEmpty', { defaultValue: 'Could not load players. Check your connection and try again.' })}
+              </span>
+              <button type="button" className="btn-secondary min-h-11 shrink-0 text-xs"
+                onClick={() => { void lobby.refreshUsers(); }}>
+                <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                {t('challenge.retryPlayers', { defaultValue: 'Retry loading players' })}
+              </button>
+            </div>
+          )}
+          {users.length === 0 && lobby.usersStatus === 'loading' ? (
+            <div role="status" className="flex items-center justify-center gap-2 rounded-xl bg-ink-100 p-4 text-center text-sm text-ink-500 dark:bg-ink-800">
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              {t('challenge.loadingPlayers', { defaultValue: 'Loading players…' })}
+            </div>
+          ) : users.length === 0 && lobby.usersStatus === 'ready' ? (
             <div className="rounded-xl bg-ink-100 p-4 text-center text-sm text-ink-500 dark:bg-ink-800">
               {t('challenge.noPlayers')}
             </div>
-          ) : (
+          ) : users.length > 0 ? (
             <div className="max-h-72 space-y-1 overflow-auto">
               {users.map((u) => (
                 <button key={u.id} type="button" disabled={busy !== null} aria-pressed={target === u.id}
@@ -1931,7 +1961,7 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
           <button type="button" onClick={sendChallenge} disabled={!target || busy !== null} className="btn-primary min-h-11 w-full">
             {busy === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
             {t('challenge.send')}

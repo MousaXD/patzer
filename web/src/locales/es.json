@@ -437,6 +437,12 @@
     "players": "Jugadores",
     "playersDesc": "Elige a alguien, selecciona las piezas y el tiempo, y envíale un reto.",
     "noPlayers": "Aún no hay otros jugadores. Pide a un administrador que cree más cuentas.",
+    "loadingPlayers": "Cargando jugadores…",
+    "playersError": "No se pudieron cargar los jugadores. Se muestra la última lista cargada.",
+    "playersErrorEmpty": "No se pudieron cargar los jugadores. Comprueba la conexión e inténtalo de nuevo.",
+    "retryPlayers": "Volver a cargar jugadores",
+    "loadError": "No se pudieron actualizar los retos. Las invitaciones disponibles siguen visibles.",
+    "retryChallenges": "Volver a cargar retos",
     "send": "Enviar reto",
     "accept": "Aceptar",
     "decline": "Rechazar"

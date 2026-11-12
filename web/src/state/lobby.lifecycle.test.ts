@@ -41,6 +41,50 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('ignores an older player refresh finishing after a newer successful list', async () => {
+    let finishOld!: (value: { users: { id: number; username: string; display_name: string; avatar_emoji: string; online: boolean }[] }) => void;
+    let requests = 0;
+    mocks.get.mockImplementation((url: string) => {
+      if (url !== '/api/lobby/users') return Promise.resolve({ challenges: [] });
+      if (++requests === 1) return new Promise((resolve) => { finishOld = resolve; });
+      return Promise.resolve({ users: [{ id: 7, username: 'current', display_name: 'Current', avatar_emoji: 'pawn', online: true }] });
+    });
+    useLobby.getState().connect(1);
+    const older = useLobby.getState().refreshUsers();
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().users.map((user) => user.id)).toEqual([7]);
+    expect(useLobby.getState().usersStatus).toBe('ready');
+    finishOld({ users: [{ id: 8, username: 'obsolete', display_name: 'Obsolete', avatar_emoji: 'pawn', online: false }] });
+    await older;
+    expect(useLobby.getState().users.map((user) => user.id)).toEqual([7]);
+    expect(useLobby.getState().usersStatus).toBe('ready');
+  });
+
+  it('surfaces failed player-list loads and recovers after a successful retry', async () => {
+    mocks.get.mockRejectedValueOnce(new Error('offline'));
+    useLobby.getState().connect(1);
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().usersStatus).toBe('error');
+    mocks.get.mockResolvedValueOnce({ users: [{ id: 3, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: true }] });
+    await useLobby.getState().refreshUsers();
+    expect(useLobby.getState().usersStatus).toBe('ready');
+    expect(useLobby.getState().users).toHaveLength(1);
+  });
+
+  it('keeps a successful invitation direction when the other endpoint fails', async () => {
+    mocks.get.mockImplementation((url: string) => url.endsWith('/incoming')
+      ? Promise.reject(new Error('incoming offline'))
+      : Promise.resolve({ challenges: [invitation(83)] }));
+    useLobby.getState().connect(1);
+    await useLobby.getState().refreshChallenges();
+    expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([83]);
+    expect(useLobby.getState().challengesStatus).toBe('error');
+    mocks.get.mockResolvedValue({ challenges: [], users: [] });
+    await useLobby.getState().refreshChallenges();
+    expect(useLobby.getState().challengesStatus).toBe('ready');
+    expect(useLobby.getState().outgoing).toEqual([]);
+  });
+
   it('keeps the newest same-account challenge snapshot when requests finish out of order', async () => {
     let resolveOld!: (value: { challenges: Challenge[] }) => void;
     let requests = 0;

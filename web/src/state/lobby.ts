@@ -21,13 +21,16 @@ export interface Challenge {
 }
 
 type AcceptedNav = { challenge_id: number; game_id: number; your_color: 'white' | 'black'; time_control: string };
+type ListStatus = 'loading' | 'ready' | 'error';
 
 interface LobbyState {
   ws: WebSocket | null;
   online: Set<number>;
   users: LobbyUser[];
+  usersStatus: ListStatus;
   incoming: Challenge[];
   outgoing: Challenge[];
+  challengesStatus: ListStatus;
   pendingAcceptedNav: AcceptedNav | null;
   consumeAcceptedNav: () => AcceptedNav | null;
 
@@ -45,13 +48,16 @@ export const useLobby = create<LobbyState>((set, get) => {
   let generation = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let challengesRequestId = 0;
+  let usersRequestId = 0;
 
   return {
   ws: null,
   online: new Set(),
   users: [],
+  usersStatus: 'loading',
   incoming: [],
   outgoing: [],
+  challengesStatus: 'loading',
   pendingAcceptedNav: null,
   consumeAcceptedNav: () => {
     const v = get().pendingAcceptedNav;
@@ -117,20 +123,33 @@ export const useLobby = create<LobbyState>((set, get) => {
     currentUserId = null;
     generation++;
     challengesRequestId++;
+    usersRequestId++;
     if (reconnectTimer !== null) clearTimeout(reconnectTimer);
     reconnectTimer = null;
     const ws = get().ws;
-    set({ ws: null, online: new Set(), users: [], incoming: [], outgoing: [], pendingAcceptedNav: null });
+    set({
+      ws: null, online: new Set(), users: [], incoming: [], outgoing: [],
+      usersStatus: 'loading', challengesStatus: 'loading', pendingAcceptedNav: null,
+    });
     if (ws) try { ws.close(); } catch { /* ignore */ }
   },
 
   refreshUsers: async () => {
     const userId = currentUserId;
     const epoch = generation;
+    const requestId = ++usersRequestId;
+    if (userId === null) return;
+    set({ usersStatus: 'loading' });
+    const current = () => currentUserId === userId && generation === epoch && usersRequestId === requestId;
     try {
       const r = await api.get<{ users: LobbyUser[] }>('/api/lobby/users');
-      if (userId !== null && currentUserId === userId && epoch === generation) set({ users: r.users });
-    } catch { /* ignore */ }
+      if (!r || !Array.isArray(r.users)) throw new Error('invalid player list');
+      if (current()) set({ users: r.users, usersStatus: 'ready' });
+    } catch {
+      // A network failure is not evidence that nobody can be challenged.
+      // Retain the last successful list and expose a retryable error.
+      if (current()) set({ usersStatus: 'error' });
+    }
   },
 
   refreshChallenges: async () => {
@@ -139,16 +158,22 @@ export const useLobby = create<LobbyState>((set, get) => {
     // Within one account, concurrent requests also finish out of order.
     // Only the latest started read can replace the challenge snapshot.
     const requestId = ++challengesRequestId;
-    try {
-      const [inc, out] = await Promise.all([
-        api.get<{ challenges: Challenge[] }>('/api/challenges/incoming'),
-        api.get<{ challenges: Challenge[] }>('/api/challenges/outgoing'),
-      ]);
-      if (userId !== null && currentUserId === userId && epoch === generation
-        && requestId === challengesRequestId) {
-        set({ incoming: inc.challenges, outgoing: out.challenges });
-      }
-    } catch { /* ignore */ }
+    if (userId === null) return;
+    set({ challengesStatus: 'loading' });
+    const [inc, out] = await Promise.allSettled([
+      api.get<{ challenges: Challenge[] }>('/api/challenges/incoming'),
+      api.get<{ challenges: Challenge[] }>('/api/challenges/outgoing'),
+    ]);
+    if (currentUserId !== userId || epoch !== generation || requestId !== challengesRequestId) return;
+    // Each direction is independent: an incoming-list outage must never
+    // discard a healthy outgoing response (or overwrite the last good list).
+    const incoming = inc.status === 'fulfilled' && Array.isArray(inc.value?.challenges);
+    const outgoing = out.status === 'fulfilled' && Array.isArray(out.value?.challenges);
+    set({
+      ...(incoming ? { incoming: inc.value.challenges } : {}),
+      ...(outgoing ? { outgoing: out.value.challenges } : {}),
+      challengesStatus: incoming && outgoing ? 'ready' : 'error',
+    });
   },
 };
 });
