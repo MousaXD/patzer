@@ -13,6 +13,7 @@ export interface GameListQuery {
   sort: 'newest' | 'oldest';
   fromDate: string | null;
   toDate: string | null;
+  opening: string | null;
 }
 
 const SOURCES = new Set(['chesscom', 'lichess', 'played', 'imported', 'pvp']);
@@ -43,7 +44,7 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
   // Duplicated recognized parameters are ambiguous to caches and clients:
   // reject them instead of silently using the first value.
   for (const key of ['limit', 'offset', 'q', 'bookmarked', 'source',
-    'time_class', 'result', 'analyzed', 'sort', 'from_date', 'to_date']) {
+    'time_class', 'result', 'analyzed', 'sort', 'from_date', 'to_date', 'opening']) {
     if (params.getAll(key).length > 1) return null;
   }
   const limit = integerParam(params.get('limit'), 50, 200, true);
@@ -57,6 +58,7 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
   const sort = params.get('sort') ?? 'newest';
   const fromDate = dateParam(params.get('from_date'));
   const toDate = dateParam(params.get('to_date'));
+  const opening = params.get('opening');
   if (limit === null || offset === null || q.length > 120 ||
       (bookmarked !== '0' && bookmarked !== '1') ||
       (source !== null && !SOURCES.has(source)) ||
@@ -64,13 +66,14 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
       (result !== null && !RESULTS.has(result)) ||
       (analyzed !== null && analyzed !== '0' && analyzed !== '1') ||
       (sort !== 'newest' && sort !== 'oldest') ||
+      (opening !== null && (!opening.trim() || opening.length > 200)) ||
       fromDate === false || toDate === false ||
       (fromDate !== null && toDate !== null && fromDate > toDate)) return null;
 
   return {
     limit, offset, q, bookmarked: bookmarked === '1',
     source, timeClass, result, analyzed: analyzed === null ? null : analyzed === '1', sort,
-    fromDate, toDate,
+    fromDate, toDate, opening,
   };
 }
 

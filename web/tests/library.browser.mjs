@@ -48,6 +48,7 @@ function list(params) {
     (!params.get('source') || g.source === params.get('source')) &&
     (!params.get('result') || g.result === params.get('result')) &&
     (!params.get('time_class') || g.time_class === params.get('time_class')) &&
+    (!params.get('opening') || g.opening_name === params.get('opening')) &&
     (!params.has('analyzed') || g.analyzed === Number(params.get('analyzed'))) &&
     (!params.get('from_date') || g.end_time.slice(0,10) >= params.get('from_date')) &&
     (!params.get('to_date') || g.end_time.slice(0,10) <= params.get('to_date')) &&
@@ -84,6 +85,10 @@ async function newPage(theme, width, height) {
     else if (path === '/api/auth/me') json = {user: {
       id: 7, username: 'fixture', role: 'user', created_at: '2026-11-10', profile: {...profile, site_theme: theme},
     }};
+    else if (path === '/api/games/openings') json = {
+      total: 620, classified: 620, unclassified: 0,
+      openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
+    };
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
       json = list(parsed.searchParams);
@@ -99,6 +104,7 @@ async function newPage(theme, width, height) {
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
+  await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
   await page.getByText('40 of 620 games').waitFor();
   return {page,context,pageErrors};
 }
@@ -178,6 +184,15 @@ try {
     assert.ok(queries.some(p => p.includes('source=lichess') && p.includes('result=win')
       && p.includes('sort=oldest') && p.includes('analyzed=1')),
     `Filter changes did not reach the paginated API: url=${page.url()} recent=${JSON.stringify(queries.slice(-6))}`);
+    await page.getByRole('button', {name:'Clear filters'}).click();
+    await page.getByText('40 of 620 games').waitFor();
+    await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).click();
+    await page.getByText('40 of 310 games').waitFor();
+    const exactOpening = new URL(page.url()).searchParams;
+    assert.equal(exactOpening.get('opening'), 'Italian Game');
+    assert.equal(exactOpening.has('result'), false);
+    assert.ok(queries.some(q => new URLSearchParams(q).get('opening') === 'Italian Game'),
+      'Exact opening selection did not reach the server');
     await page.getByRole('button', {name:'Clear filters'}).click();
     await page.getByText('40 of 620 games').waitFor();
     // Opening discovery should search all saved games, not only visible cards.

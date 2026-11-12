@@ -107,7 +107,9 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
       'from_date=2026-01-02&to_date=2026-01-01',
       'to_date=2026-01-01&to_date=2026-01-02',
       'from_date=2026-01-01&from_date=2026-01-03',
-      'from_date=9999-12-31', 'to_date=garbage']) {
+      'from_date=9999-12-31', 'to_date=garbage',
+      'opening=', 'opening=%20%20', `opening=${'A'.repeat(201)}`,
+      'opening=Italian&opening=French']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
@@ -158,6 +160,45 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
       expect((await (await search('from_date=2026-01-03')).json() as {total:number}).total).toBe(0);
     } finally {
       const remove = db.prepare('DELETE FROM games WHERE id = ? AND user_id = 3');
+      for (const id of ids) remove.run(id);
+    }
+  });
+
+  it('discovers only saved named openings and navigates to their exact matching games', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const asUser = (id: number) => `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(id))}`;
+    const insert = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, opening_name)
+      VALUES (?, 'imported', ?, '1. e4 e5 *', 'Fixture', 'Opponent', 'win', ?)`);
+    const ids: number[] = [];
+    try {
+      for (const [i,name] of [
+        'Italian Game', 'Italian Game', 'French Defense', null, '  ', 'Queen\'s Gambit',
+      ].entries()) ids.push(Number(insert.run(3, `agentc-explorer-${i}`, name).lastInsertRowid));
+      // Another user's game cannot affect opening counts or search results.
+      ids.push(Number(insert.run(2, 'agentc-explorer-foreign', 'Italian Game').lastInsertRowid));
+      const response = await gamesRoute.request('/openings', {headers:{Cookie: asUser(3)}});
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        total: 6, classified: 4, unclassified: 2,
+        openings: [
+          {name:'Italian Game', games:2},
+          {name:'French Defense', games:1},
+          {name:"Queen's Gambit", games:1},
+        ],
+      });
+      const matching = await gamesRoute.request('/?opening=Italian%20Game&limit=40',
+        {headers:{Cookie:asUser(3)}});
+      expect(matching.status).toBe(200);
+      const data = await matching.json() as {total:number;games:{opening_name:string;id:number}[]};
+      expect(data.total).toBe(2);
+      expect(data.games.map(row => row.opening_name)).toEqual(['Italian Game','Italian Game']);
+      expect(data.games.every(row => ids.slice(0,2).includes(row.id))).toBe(true);
+      const similar = await gamesRoute.request('/?opening=Italian', {headers:{Cookie:asUser(3)}});
+      expect((await similar.json() as {total:number}).total).toBe(0);
+      expect((await gamesRoute.request('/openings')).status).toBe(401);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ?');
       for (const id of ids) remove.run(id);
     }
   });

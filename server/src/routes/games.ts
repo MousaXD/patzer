@@ -33,6 +33,11 @@ router.get('/', (c) => {
   if (query.source !== null) { filters.push('g.source = ?'); params.push(query.source); }
   if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
   if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
+  if (query.opening !== null) {
+    // Exact opening selection; a text query could accidentally find a player
+    // or note with the same name. Always restrict to this user's saved games.
+    filters.push('g.opening_name = ?'); params.push(query.opening);
+  }
   // end_time is a UTC ISO-like string. Comparing against a calendar-day
   // boundary preserves its index and includes the entire selected final day.
   if (query.fromDate !== null) { filters.push('g.end_time >= ?'); params.push(query.fromDate); }
@@ -83,6 +88,33 @@ router.get('/', (c) => {
     games: rows, total: total.n,
     limit: query.limit, offset: query.offset,
     has_more: query.offset + rows.length < total.n,
+  });
+});
+
+// Compact, account-scoped opening discovery for the Game Library. Query only
+// stored classifications, never infer an opening or a result from a PGN here.
+// This is intentionally independent of the user's current filters: counts
+// describe the full saved library, including older unseen pages.
+router.get('/openings', (c) => {
+  const user = c.get('user');
+  const coverage = db.prepare(`
+    SELECT COUNT(*) AS total,
+      COUNT(CASE WHEN opening_name IS NOT NULL AND TRIM(opening_name) <> ''
+        AND LENGTH(opening_name) <= 200 THEN 1 END) AS classified
+    FROM games WHERE user_id = ?
+  `).get(user.id) as {total: number; classified: number};
+  const openings = db.prepare(`
+    SELECT opening_name AS name, COUNT(*) AS games
+    FROM games
+    WHERE user_id = ? AND opening_name IS NOT NULL AND TRIM(opening_name) <> ''
+      AND LENGTH(opening_name) <= 200
+    GROUP BY opening_name
+    ORDER BY games DESC, opening_name COLLATE NOCASE ASC
+    LIMIT 5
+  `).all(user.id) as {name: string; games: number}[];
+  return c.json({
+    total: coverage.total, classified: coverage.classified,
+    unclassified: coverage.total - coverage.classified, openings,
   });
 });
 

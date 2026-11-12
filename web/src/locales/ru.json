@@ -257,6 +257,13 @@
   },
   "review": {
     "title": "Разбор партии",
+    "libraryTopOpenings": "Исследуйте свои дебюты",
+    "libraryOpeningCoverage": "Дебют определён в {{classified}} из {{total}} сохранённых партий",
+    "libraryUnclassified": "{{count}} ещё без классификации",
+    "libraryOpeningGames": "{{count}} партий",
+    "libraryOpenOpening": "Показать {{count}} партий с дебютом {{name}}",
+    "libraryOpeningEmpty": "Дебюты появятся после их определения при импорте или разборе партий.",
+    "libraryFilteredOpening": "Показаны партии с дебютом {{name}}",
     "dateRange": "Период партий",
     "fromDate": "С даты",
     "gamesFromDate": "Партии с даты",

@@ -248,6 +248,13 @@
   },
   "review": {
     "title": "Análisis de partida",
+    "libraryTopOpenings": "Explora tus aperturas",
+    "libraryOpeningCoverage": "{{classified}} de {{total}} partidas guardadas tienen una apertura identificada",
+    "libraryUnclassified": "{{count}} sin clasificar",
+    "libraryOpeningGames": "{{count}} partidas",
+    "libraryOpenOpening": "Mostrar {{count}} partidas con {{name}}",
+    "libraryOpeningEmpty": "Las aperturas aparecerán al reconocerlas durante la importación o el análisis.",
+    "libraryFilteredOpening": "Mostrando partidas de {{name}}",
     "dateRange": "Intervalo de fechas de las partidas",
     "fromDate": "Desde",
     "gamesFromDate": "Partidas desde la fecha",

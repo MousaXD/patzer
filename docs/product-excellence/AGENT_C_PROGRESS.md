@@ -169,3 +169,23 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 1. Evaluate performance and SQLite query plans for 10k+ historical games using disposable fixtures. Avoid premature indexes.
 2. Explore useful library-based opening and opponent discovery from *actual stored game data*, clearly distinguishing recognized from unclassified openings. No synthetic history or claimed complete backfill.
 3. Design explicit, durable opt-in historical metadata enrichment if the operator wants to classify earlier archived games that cannot appear in the 200-game recent fetch.
+
+## 2026-11-12 — Opening exploration from real saved games
+
+- Recovered clean `9ddc63f` and implemented a scoped browsing journey across older saved games, **not** merely the 40 cards currently visible.
+- Added authenticated `GET /api/games/openings` using only persisted `opening_name` classifications. Returns total games, classified/unclassified coverage, and the five most played named openings with exact persisted counts. Rejects names longer than the supported filter. Never guesses unrecognized openings, evaluates PGNs on request, or queries another user's history.
+- Added strictly validated and account-scoped `opening` filter to the paginated games endpoint. Matches an opening exactly, avoiding false positives when an opponent or note contains the same word. Existing date/search/source/status filters remain independently supported.
+- Added a compact, accessible Games Library discovery section with account-specific top-opening choices and explicit classification coverage. Choosing an opening clears unrelated filters and navigates to a shareable exact-opening URL; clearing filters restores the complete history. Labels have translations in the five supported languages.
+- Hono/SQLite tests confirm ownership, exact matching, unclassified records, ordering, invalid/duplicated input and no-auth rejection. React tests confirm deep links, chip selection and recovery. Browser fixtures verify navigation and capture light/dark views at 1440, 390 and 320 px.
+
+### Validation and performance
+
+- Focused backend and UI tests: **59 passed**. Full suite: **108 test files passed, 2 skipped; 1,012 tests passed, 12 skipped**; zero failures.
+- TypeScript, web build, server build, `git diff --check` and isolated Chromium browser verification: **passed**.
+- Disposable, in-memory SQLite benchmark: 30,000 games belonging to one user and 2,500 belonging to another. Opening summary + exact count, measured together over 20 runs, had **~21 ms median, ~25 ms maximum** on this machine. Query plan used the existing owner-scoped index; no migration/index was needed.
+- Inspected desktop light-mode and mobile dark-mode screenshots: opening cards readable and unclipped. No production service, actual provider data, live SQLite, deployment, merge or other agent's worktree used.
+
+### Next candidate
+
+- Audit first-use and partial-failure behavior of the new opening summary. Investigate whether silently hiding the section when the summary request fails is confusing and whether the library should offer a retry without disrupting the working game list.
+- Consider **opponent discovery** and navigable past encounters, strictly from stored identities and results. Verify ownership and name normalization before adding UI.

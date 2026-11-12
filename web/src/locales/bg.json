@@ -248,6 +248,13 @@
   },
   "review": {
     "title": "Анализ на партия",
+    "libraryTopOpenings": "Разгледай дебютите си",
+    "libraryOpeningCoverage": "Разпознат дебют в {{classified}} от {{total}} запазени партии",
+    "libraryUnclassified": "{{count}} без класификация",
+    "libraryOpeningGames": "{{count}} партии",
+    "libraryOpenOpening": "Покажи {{count}} партии с дебют {{name}}",
+    "libraryOpeningEmpty": "Дебютите ще се появят тук, когато бъдат разпознати при импорт или анализ.",
+    "libraryFilteredOpening": "Показани са партии с дебют {{name}}",
     "dateRange": "Период на партиите",
     "fromDate": "От дата",
     "gamesFromDate": "Партии от дата",

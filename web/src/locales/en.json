@@ -257,6 +257,13 @@
   },
   "review": {
     "title": "Game Review",
+    "libraryTopOpenings": "Explore your openings",
+    "libraryOpeningCoverage": "{{classified}} of {{total}} saved games have a recognized opening",
+    "libraryUnclassified": "{{count}} not classified yet",
+    "libraryOpeningGames": "{{count}} games",
+    "libraryOpenOpening": "Show {{count}} saved games in {{name}}",
+    "libraryOpeningEmpty": "Opening details will appear here as games are recognized during import or review.",
+    "libraryFilteredOpening": "Showing games in {{name}}",
     "dateRange": "Game date range",
     "fromDate": "From date",
     "gamesFromDate": "Games from date",

@@ -257,6 +257,13 @@
   },
   "review": {
     "title": "Partieanalyse",
+    "libraryTopOpenings": "Deine Eröffnungen entdecken",
+    "libraryOpeningCoverage": "{{classified}} von {{total}} gespeicherten Partien haben eine erkannte Eröffnung",
+    "libraryUnclassified": "{{count}} noch nicht klassifiziert",
+    "libraryOpeningGames": "{{count}} Partien",
+    "libraryOpenOpening": "{{count}} Partien mit {{name}} anzeigen",
+    "libraryOpeningEmpty": "Eröffnungen erscheinen hier, sobald sie beim Import oder in der Analyse erkannt werden.",
+    "libraryFilteredOpening": "Partien mit {{name}} werden angezeigt",
     "dateRange": "Datumsbereich für Partien",
     "fromDate": "Von",
     "gamesFromDate": "Partien ab Datum",

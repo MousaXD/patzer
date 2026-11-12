@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -37,6 +37,12 @@ function validCalendarDate(value: string | null): string {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : '';
 }
 type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
+type OpeningSummary = {
+  total: number;
+  classified: number;
+  unclassified: number;
+  openings: { name: string; games: number }[];
+};
 type PageRequest = { offset: number; limit: number };
 
 function isOwnGameQuery(queryKey: readonly unknown[], accountId: number | undefined): boolean {
@@ -49,6 +55,7 @@ function isOwnGameQuery(queryKey: readonly unknown[], accountId: number | undefi
 function isOwnHistoryQuery(queryKey: readonly unknown[], accountId: number | undefined): boolean {
   if (accountId == null) return false;
   return isOwnGameQuery(queryKey, accountId) ||
+    (queryKey[0] === 'games' && queryKey[1] === 'openings' && queryKey[2] === accountId) ||
     (queryKey[0] === 'stats' && queryKey[1] === 'me' && queryKey[2] === accountId) ||
     (queryKey[0] === 'insights-v2' && queryKey[1] === accountId) ||
     ((queryKey[0] === 'achievements' || queryKey[0] === 'achievements-home' ||
@@ -110,10 +117,12 @@ export default function Review() {
     sort: validFilter('sort', searchParams.get('sort')),
   };
   const fromDate = validCalendarDate(searchParams.get('from_date'));
+  const rawOpening = searchParams.get('opening') ?? '';
+  const selectedOpening = rawOpening.trim() && rawOpening.length <= 200 ? rawOpening : '';
   const requestedToDate = validCalendarDate(searchParams.get('to_date'));
   const toDate = fromDate && requestedToDate && fromDate > requestedToDate ? '' : requestedToDate;
-  const filterSignature = [...Object.values(filters), fromDate, toDate].join('|');
-  const activeFilters = !!fromDate || !!toDate ||
+  const filterSignature = [...Object.values(filters), fromDate, toDate, selectedOpening].join('|');
+  const activeFilters = !!fromDate || !!toDate || !!selectedOpening ||
     Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
 
   function updateFilter(key: FilterName, value: string) {
@@ -136,7 +145,16 @@ export default function Review() {
   }
   function clearLibraryFilters() {
     const next = new URLSearchParams(searchParams);
-    for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q', 'from_date', 'to_date']) next.delete(key);
+    for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q', 'from_date', 'to_date', 'opening']) next.delete(key);
+    setSearchDraft('');
+    setSearchParams(next);
+  }
+  function browseOpening(name: string) {
+    // The opening pill promises *all* games of that opening, not just games
+    // matching stale date/search/source filters from a previous exploration.
+    const next = new URLSearchParams();
+    next.set('opening', name);
+    if (filters.sort !== 'newest') next.set('sort', filters.sort);
     setSearchDraft('');
     setSearchParams(next);
   }
@@ -172,6 +190,7 @@ export default function Review() {
       }
       if (fromDate) params.set('from_date', fromDate);
       if (toDate) params.set('to_date', toDate);
+      if (selectedOpening) params.set('opening', selectedOpening);
       return api.get<GamePage>(`/api/games?${params.toString()}`);
     },
     getNextPageParam: (lastPage, _pages, lastRequest): PageRequest | undefined => {
@@ -188,6 +207,14 @@ export default function Review() {
           lastPage.games.length >= lastPage.total) return undefined;
       return { offset: 0, limit: Math.min(LEGACY_MAX_VISIBLE, lastRequest.limit + PAGE_SIZE) };
     },
+  });
+
+  const { data: openingSummary } = useQuery({
+    queryKey: ['games', 'openings', user?.id],
+    queryFn: () => api.get<OpeningSummary>('/api/games/openings'),
+    enabled: user?.id != null,
+    staleTime: 60_000,
+    retry: false,
   });
 
   const importMut = useMutation({
@@ -275,6 +302,55 @@ export default function Review() {
         </div>
       )}
 
+      {openingSummary && Array.isArray(openingSummary.openings) && openingSummary.total > 0 && (
+        <section className="card space-y-3 p-3 sm:p-4" aria-labelledby="library-opening-title">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 id="library-opening-title" className="flex items-center gap-2 text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+                <BookOpen className="h-4 w-4 text-chesscom-500" aria-hidden="true" />
+                {t('review.libraryTopOpenings', {defaultValue: 'Explore your openings'})}
+              </h2>
+              <p className="mt-1 text-xs text-chesscom-500 dark:text-chesscom-300">
+                {t('review.libraryOpeningCoverage', {
+                  classified: openingSummary.classified, total: openingSummary.total,
+                  defaultValue: `${openingSummary.classified.toLocaleString()} of ${openingSummary.total.toLocaleString()} saved games have a recognized opening`,
+                })}
+              </p>
+            </div>
+            {openingSummary.unclassified > 0 && (
+              <span className="text-xs text-chesscom-500 dark:text-chesscom-300">
+                {t('review.libraryUnclassified', {
+                  count: openingSummary.unclassified,
+                  defaultValue: `${openingSummary.unclassified.toLocaleString()} not classified yet`,
+                })}
+              </span>
+            )}
+          </div>
+          {openingSummary.openings.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {openingSummary.openings.map(({name, games: count}) => (
+                <button key={name} type="button" onClick={() => browseOpening(name)}
+                  aria-pressed={selectedOpening === name}
+                  aria-label={t('review.libraryOpenOpening', {name, count, defaultValue: `Show ${count} saved games in ${name}`})}
+                  className={cn('min-w-0 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
+                    selectedOpening === name
+                      ? 'border-gold-500 bg-gold-500/10 text-chesscom-900 dark:text-chesscom-100'
+                      : 'border-chesscom-200 bg-white hover:border-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:border-gold-500')}>
+                  <span className="block truncate text-xs font-semibold" title={name}>{name}</span>
+                  <span className="mt-1 block text-xs text-chesscom-500 dark:text-chesscom-300">
+                    {t('review.libraryOpeningGames', {count, defaultValue: `${count.toLocaleString()} games`})}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-chesscom-500 dark:text-chesscom-300">
+              {t('review.libraryOpeningEmpty', {defaultValue: 'Opening details will appear here as games are recognized during import or review.'})}
+            </p>
+          )}
+        </section>
+      )}
+
       {/* Filter bar — search + starred-only toggle. */}
       <div className="flex flex-wrap items-center gap-2" role="search" aria-label={t('review.searchPlaceholder', { defaultValue: 'Search saved games' })}>
         <div className="relative min-w-[12rem] flex-1">
@@ -349,6 +425,12 @@ export default function Review() {
         {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>Clear filters</button>}
       </div>
+
+      {selectedOpening && (
+        <p className="text-xs text-chesscom-500 dark:text-chesscom-300" role="status">
+          {t('review.libraryFilteredOpening', {name: selectedOpening, defaultValue: `Showing games in ${selectedOpening}`})}
+        </p>
+      )}
 
       {initialError && (
         <div role="alert" className="card flex flex-wrap items-center justify-between gap-3 border-bad/30 p-4">

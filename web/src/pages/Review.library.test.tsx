@@ -66,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.user = { id: 7, profile: { chesscom_username: null, lichess_username: null } };
   mocks.get.mockImplementation(async (url: string) => {
+    if (url === '/api/games/openings') return {total: 0, classified: 0, unclassified: 0, openings: []};
     const query = new URLSearchParams(url.split('?')[1] ?? '');
     const limit = Number(query.get('limit') ?? 50);
     return { games: Array.from({ length: Math.min(limit, 1000) }, (_, i) => makeGame(i + 1)), total: 1000 };
@@ -96,7 +97,8 @@ describe('Review library with large histories', () => {
     }
     expect(screen.queryByRole('button', { name: 'Load more games' })).toBeNull();
     expect(screen.getByText(/Search by player, opening, or notes to find older games/)).toBeTruthy();
-    expect(mocks.get.mock.calls.every(([url]) => Number(new URLSearchParams(String(url).split('?')[1]).get('limit')) <= 200)).toBe(true);
+    expect(mocks.get.mock.calls.filter(([url]) => String(url).startsWith('/api/games?'))
+      .every(([url]) => Number(new URLSearchParams(String(url).split('?')[1]).get('limit')) <= 200)).toBe(true);
   });
 
   it('walks past game 200 without repeats when the platform API supports offset pagination', async () => {
@@ -116,7 +118,8 @@ describe('Review library with large histories', () => {
     expect(document.querySelectorAll('a[href^="/review/"]')).toHaveLength(240);
     expect(document.querySelectorAll('a[href="/review/240"]')).toHaveLength(1);
     expect(screen.queryByText(/Search by player, opening, or notes to find older games/)).toBeNull();
-    const requests = mocks.get.mock.calls.map(([url]) => new URLSearchParams(String(url).split('?')[1] ?? ''));
+    const requests = mocks.get.mock.calls.filter(([url]) => String(url).startsWith('/api/games?'))
+      .map(([url]) => new URLSearchParams(String(url).split('?')[1] ?? ''));
     expect(requests.map((params) => Number(params.get('offset') ?? 0))).toEqual([0, 40, 80, 120, 160, 200]);
     expect(requests.every((params) => Number(params.get('limit')) === 40)).toBe(true);
   });
@@ -150,6 +153,55 @@ describe('Review library with large histories', () => {
     await waitFor(() => {
       expect(mocks.get.mock.calls.some(([url]) => String(url).includes('q=Alekhine'))).toBe(true);
     }, { timeout: 3000 });
+  });
+
+  it('shows real opening coverage and opens an exact, shareable list without stale filters', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') return {
+        total: 1000, classified: 180, unclassified: 820,
+        openings: [{name:'Italian Game', games:130}, {name:'French Defense', games:50}],
+      };
+      const params = new URLSearchParams(url.split('?')[1] ?? '');
+      const total = params.get('opening') === 'Italian Game' ? 130 : 1000;
+      return {games:Array.from({length:40}, (_,i) => makeGame(i+1)), total, offset:0, has_more:true};
+    });
+    mount('/review?q=old-search&source=lichess&bookmarked=1&from_date=2026-01-01');
+    expect(await screen.findByText('180 of 1,000 saved games have a recognized opening')).toBeTruthy();
+    expect(screen.getByText('820 not classified yet')).toBeTruthy();
+    const italian = screen.getByRole('button', {name:'Show 130 saved games in Italian Game'});
+    expect(italian.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(italian);
+    await screen.findByText('40 of 130 games');
+    expect(italian.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('Showing games in Italian Game');
+    const matching = mocks.get.mock.calls.filter(([url]) => String(url).startsWith('/api/games?'))
+      .map(([url]) => new URLSearchParams(String(url).split('?')[1]));
+    expect(matching.some(p => p.get('opening') === 'Italian Game' && !p.has('q') && !p.has('source')
+      && !p.has('bookmarked') && !p.has('from_date'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', {name:'Clear filters'}));
+    await screen.findByText('40 of 1,000 games');
+    expect(italian.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('handles no recognized openings without pretending empty history', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') return {
+        total: 250, classified: 0, unclassified: 250, openings: [],
+      };
+      return {games:[makeGame(1)], total:250, has_more:true};
+    });
+    mount();
+    expect(await screen.findByText('250 not classified yet')).toBeTruthy();
+    expect(screen.getByText(/Opening details will appear here/)).toBeTruthy();
+    expect(screen.queryByRole('button', {name:/Show \d+ saved games in/})).toBeNull();
+  });
+
+  it('accepts exact-opening deep links and bounds malicious or oversized parameters', async () => {
+    mount('/review?opening=Italian%20Game');
+    await screen.findByText(/40 of 1,000 games/);
+    expect(mocks.get.mock.calls.some(([url]) => String(url).startsWith('/api/games?') &&
+      new URLSearchParams(String(url).split('?')[1]).get('opening') === 'Italian Game')).toBe(true);
+    expect(screen.getByText('Showing games in Italian Game')).toBeTruthy();
   });
 
   it('exposes server-side history filters and date sorting in a shareable URL', async () => {
