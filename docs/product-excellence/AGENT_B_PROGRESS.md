@@ -308,3 +308,32 @@
 ### Next audit
 
 - Inspect the shared first-run setup/onboarding experience at narrow widths, both themes, and keyboard-only navigation. Specifically verify language controls, responsive overflow, accessible labels and reduced motion before editing.
+
+## 2026-11-12: First-use setup, responsive language selection and accessible forms
+
+### Recovery and browser evidence
+
+- Recovered the exact clean Agent B branch at `a44521d` and completed the pending first-use wizard audit without revisiting earlier investigations.
+- Reproduced the narrow-mobile failure in real Chromium before editing: the five language buttons had measured right edges at about 115px, 229px, 323px, 420px and 518px on a **320px screen**, making multiple choices unreachable. Each button was only **38px** tall. Setup also lacked programmatically associated field labels and selected-language semantics, and its initial motion did not opt out when reduced motion was requested.
+- Baseline screenshots captured under ignored `artifacts/agent-02/`; follow-up captures inspected for 320px dark and 1440px light themes.
+
+### Improvements
+
+1. Rebuilt first-run language selection as a responsive two-column mobile / five-column desktop grid with all five supported languages visible. Accessible grouped buttons have a unique `aria-pressed` selection and **44px minimum touch targets**, including the final language spanning the full final mobile row.
+2. Correctly associated labels and inputs for admin username, display name, password, Ollama address and model. Password guidance now uses `aria-describedby`; the two-step progress list identifies the current step.
+3. Improved first-run responsive layout with readable dark/light semantic colors, accessible button sizing, vertically scrollable narrow-screen content, and restrained motion that honors `prefers-reduced-motion`.
+4. Kept the account/AI setup sequence and backend submission intact. The optional Ollama connection-test button now uses the existing translated text; connection errors are announced using `role=alert`, while successful results use `role=status`.
+5. Added `web/src/components/navigation/capture-setup.mjs`, an isolated Chromium test using only mocked setup and Ollama endpoints. It validates 1440x900, 1024x768, 390x844 and 320x700 in light/dark themes, visible 44px language controls, field labeling, step progression, optional-connection errors, returning without losing form values, and German/Russian language changes at 320px.
+6. Added three `Setup.accessibility.test.tsx` cases checking field and selection semantics, step navigation and preserved values, and localized selected-language state.
+
+### Verification
+
+- `npm run build -w web`: **passed**, TypeScript and Vite production build.
+- `npx vitest run web/src --maxWorkers=2`: **398/398 passed across 68 test files**.
+- `node web/src/components/navigation/capture-setup.mjs`: **passed** full Chromium responsive, theme, step-flow and locale matrix.
+- `git diff --check`: **passed**.
+- Used frontend-only fixtures; did not create an admin account, submit setup, contact a real AI server, touch production, merge any branch or edit any other agent's feature pages.
+
+### Next high-impact shared-shell audit
+
+- Investigate global keyboard focus and page-navigation resilience when returning from emergency errors or first-run setup; verify actual problems before implementing any further shared changes. Continue to leave Games Library, Game Review, Imports, Play and Insights internals to their dedicated agents.
