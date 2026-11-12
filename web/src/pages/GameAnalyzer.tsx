@@ -374,6 +374,9 @@ function GameAnalyzerView() {
     }
   };
   const isVariation = variations.activeVariationId !== null;
+  const activeBranch = isVariation
+    ? variations.variations.find((branch) => branch.id === variations.activeVariationId)
+    : null;
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
@@ -394,7 +397,6 @@ function GameAnalyzerView() {
   };
   const variationQuality = qualityKey && qualityMatchesVariationMove(qualityCache[qualityKey], branchMove)
     ? qualityCache[qualityKey] : null;
-  const displayedPly = isVariation ? variations.basePly + variations.playedVariationMoves.length : ply;
   // A branch is an ephemeral sequence, not part of the saved game's PGN.
   // Share the exact displayed board in Lab, not a misleading original-game URL.
   const shareCurrentPosition = () => isVariation
@@ -905,14 +907,18 @@ function GameAnalyzerView() {
               </button>
             </div>
           )}
-          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label={t('review.moveNavigation')}>
+          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport
+            aria-label={t(isVariation ? 'review.variationMoveNavigation' : 'review.moveNavigation')}>
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
-            <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
-              {isVariation ? `${displayedPly} · var` : ply} / {positions.length - 1}
+            <div data-review-move-progress role="status"
+              className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
+              {isVariation
+                ? t('review.variationProgress', { current: variations.variationCursor, total: activeBranch?.moves.length ?? 0 })
+                : `${ply} / ${positions.length - 1}`}
             </div>
-            <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
-            <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
+            <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (activeBranch?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
+            <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (activeBranch?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
           {analysis && !isVariation && (
             <button type="button" data-review-jump-to-details

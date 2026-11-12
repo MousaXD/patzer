@@ -292,6 +292,8 @@
     "variationMove": "Variation {{san}}",
     "variationOption": "Variation {{number}} · {{moves}} moves",
     "variationOptionTitle": "Variation {{number}}, {{moves}} moves, from game ply {{ply}}",
+    "variationProgress": "Var {{current}} / {{total}}",
+    "variationMoveNavigation": "Variation move navigation",
     "variationBranchPoint": "Branch point",
     "variationTimelineHint": "Original game timeline · select a move to return to the saved line.",
     "variationRetryScoring": "Retry scoring",

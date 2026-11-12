@@ -118,6 +118,14 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
       }
     });
+    it('describes variation-local progress instead of the saved PGN move count', () => {
+      expect(placeholders(locale.review.variationProgress), lang).toEqual(['{{current}}', '{{total}}']);
+      expect(locale.review.variationMoveNavigation?.trim().length, lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.variationProgress).not.toEqual(en.review.variationProgress);
+        expect(locale.review.variationMoveNavigation).not.toEqual(en.review.variationMoveNavigation);
+      }
+    });
     it('localizes Engine Lines recovery and safe move-action names', () => {
       for (const key of ['linesBusy', 'linesUnavailable', 'linesRetry', 'linesFollowMove', 'linesTryMove'] as const) {
         expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);

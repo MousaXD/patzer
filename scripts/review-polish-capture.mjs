@@ -660,7 +660,8 @@ try {
     assert.equal(receivedScoringRequests[0]?.move_uci,'d2d4');
     const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
     await page.getByText(locale.review.variationMove.replace('{{san}}','d4'),{exact:true}).waitFor({state:'visible'});
-    await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.includes('var'));
+    await page.getByText(locale.review.variationProgress.replace('{{current}}','1').replace('{{total}}','1'),{exact:true})
+      .waitFor({state:'visible'});
     const mismatchNotice=page.getByText(locale.review.variationSourceMismatch,{exact:true});
     await mismatchNotice.waitFor({state:'visible',timeout:3000});
     await mismatchNotice.scrollIntoViewIfNeeded();
@@ -849,6 +850,10 @@ try {
     const failure=page.getByText(locale.review.variationEngineUnavailable,{exact:true});
     await drag(3); // d2-d4, deliberate Stockfish outage
     await failure.waitFor({state:'visible'});
+    const variationCounter=page.locator('[data-move-transport] > div');
+    assert.equal((await variationCounter.innerText()).trim(),'Var 1 / 1',
+      'An unsaved one-move branch must not display the saved game length as its own total');
+    assert.equal(await page.locator('[data-move-transport]').getAttribute('aria-label'),locale.review.variationMoveNavigation);
     const feedback=page.locator('[data-review-variation-scoring-feedback]');
     await feedback.waitFor({state:'visible'});
     const feedbackRect=await feedback.boundingBox();
@@ -874,6 +879,12 @@ try {
     assert.equal(await failure.count(),0,
       'An unscored d4 error must not be shown alongside the cached, source-matched c4 score');
     assert.equal(await feedback.count(),0,'A cached, validated move must not display another branch scoring error');
+    await page.getByRole('button',{name:locale.review.first}).click();
+    assert.equal((await variationCounter.innerText()).trim(),'Var 0 / 1',
+      'Navigating to the branch point must not display a mainline PGN ply');
+    await page.getByRole('button',{name:locale.review.last}).click();
+    assert.equal((await variationCounter.innerText()).trim(),'Var 1 / 1',
+      'Navigating to the final branch move must use the active branch total');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await branchErrorContext.close();}
   // Selecting a classification from the report should move the keyboard
@@ -1096,8 +1107,8 @@ try {
     await page.mouse.move(to.x,to.y,{steps:12});
     await page.mouse.up();
     await page.getByText('Variation c5',{exact:true}).waitFor({state:'visible',timeout:5000});
-    assert.ok((await page.locator('[data-move-transport]').innerText()).includes('var'),
-      'Trying the better move must create an ephemeral branch, not overwrite e5');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'Var 1 / 1',
+      'Trying the better move must navigate its one-move branch, not the saved PGN');
     await page.screenshot({path:join(output,'black-first-best-alternative-variation.png')});
     await page.getByRole('button',{name:'Return to game'}).click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('0 /'));
@@ -1458,6 +1469,12 @@ try {
               await page.mouse.click(to.x,to.y);
             }
             await title.waitFor({state:'visible',timeout:4000});
+            assert.equal(await page.locator('[data-review-move-progress]').innerText(),
+              locale.review.variationProgress.replace('{{current}}','1').replace('{{total}}','1'),
+              `A ${lang} one-move branch must not display the saved-game length`);
+            assert.equal(await page.locator('[data-move-transport]').getAttribute('aria-label'),
+              locale.review.variationMoveNavigation,
+              `Active branch navigation must be labeled in ${lang}`);
             const shareBranch=page.getByRole('button',{name:locale.review.shareBranch,exact:true});
             assert.equal(await shareBranch.getAttribute('title'),locale.review.shareBranchTitle,
               `Variation sharing must be localized in ${lang}`);
@@ -1521,8 +1538,9 @@ try {
             await restore.click();
             await page.waitForFunction(()=>{
               const transport=document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim();
-              return transport?.startsWith('0 /') && !transport.includes('var');
+              return transport?.startsWith('0 /');
             });
+            assert.equal(await page.locator('[data-move-transport]').getAttribute('aria-label'),locale.review.moveNavigation);
             assert.equal(await restore.isDisabled(),true,
               `Return to game must be unavailable when already on the saved line (${lang})`);
             const savedBranch=page.getByRole('button',{name:locale.review.variationOption.replace('{{number}}','1').replace('{{moves}}','1')});

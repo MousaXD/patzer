@@ -283,6 +283,8 @@
     "variationMove": "Вариант {{san}}",
     "variationOption": "Вариант {{number}} · {{moves}} хода",
     "variationOptionTitle": "Вариант {{number}}, {{moves}} хода, от полуход {{ply}} на партията",
+    "variationProgress": "Вар. {{current}} / {{total}}",
+    "variationMoveNavigation": "Навигация по ходовете на варианта",
     "variationBranchPoint": "Точка на разклонение",
     "variationTimelineHint": "Ходове от оригиналната партия · избери ход, за да се върнеш към запазената линия.",
     "variationRetryScoring": "Опитай оценката отново",

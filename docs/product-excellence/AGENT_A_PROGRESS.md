@@ -157,3 +157,29 @@
 ### Next priority
 
 - Inspect the actual mobile variation transport. Existing screenshots show `1 · var / 24`: the denominator is the saved mainline's length even when the transport buttons are navigating a short unsaved branch. Reproduce whether this counter miscommunicates the active branch length and whether it remains untranslated in the five supported locales before deciding a focused fix.
+
+## 2026-11-12: truthful variation-local move progress and accessible navigation
+
+### Baseline reproduction
+
+- Resumed exactly from clean pushed commit `75d96fb` and the unfinished branch-counter Chromium regression.
+- A one-move exploratory branch showed **`1 · var / 24`**: an ephemeral branch cursor was being compared with the **saved PGN's 24 half-moves**, even though the branch transport had only one move. The new disposable authenticated Chromium assertion intentionally **failed** with `actual '1 · var / 24'` vs `expected 'Var 1 / 1'`.
+- `analysisVariations` owns the active branch's cursor and `moves.length` and supports nested variations; these are the correct local navigation limits. No new branch/PGN state is needed.
+
+### Small scope-limited fix
+
+- Game Review transport now renders the active variation cursor against that **active branch's own number of moves** (`Var 1 / 1`, `Var 0 / 1` at its branch point). Saved game transport remains `ply / last PGN ply`. Next/Last disabled states reuse the same active branch instead of separately looking it up.
+- Added short translated progress labels and a distinct variation-navigation accessible name across English, German, Spanish, Russian and Bulgarian; the progress counter announces changes through its existing status surface, and the original-game navigation label is restored on Return to game.
+- Browser assertions cover starting branch, First/Last round trip, switching between scored and unscored branches, German/Spanish localized progress, Return to game, and unchanged saved PGN.
+
+### Validation
+
+- Focused locale and variation controller suite: **64 passed**.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full authenticated, disposable Chromium matrix: **PASS (exit 0)**, including existing mobile/desktop, localization, source-integrity, stale-request cancellation, keyboard focus and PGN checks. Opened/inspected real captures `qa-artifacts/agent-a/variation-counter-after-20261112/{variation-cross-branch-error-390,review-variation-active-de-390,review-variation-active-es-390}.png`: branch-local progress is readable with no horizontal overflow.
+- Concurrent full suite initially had one intermittent `Settings.persistence` navigation timeout outside Agent A's code; reran that file in isolation **9/9 passed**, then reran the **entire suite alone: 975 passed / 12 skipped**, 107 passing files. Did not change Settings or other agent-owned files for the transient failure.
+- Browser scores remain injected synthetic UI fixtures, not Stockfish accuracy certification. No merge, deployment or production SQLite change.
+
+### Next target
+
+- Audit Game Review's branch navigation and source-authority feedback when an engine result arrives for an obsolete branch after rapid switching or navigation. Existing browser tests cover stale classification and cache isolation, so inspect uncovered user-visible behavior (loading feedback, focus and remote denial) rather than repeating completed investigations.

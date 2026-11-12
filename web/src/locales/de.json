@@ -292,6 +292,8 @@
     "variationMove": "Variante {{san}}",
     "variationOption": "Variante {{number}} · {{moves}} Züge",
     "variationOptionTitle": "Variante {{number}}, {{moves}} Züge, ab Halbzug {{ply}} der Partie",
+    "variationProgress": "Var. {{current}} / {{total}}",
+    "variationMoveNavigation": "Zugnavigation in Varianten",
     "variationBranchPoint": "Verzweigungspunkt",
     "variationTimelineHint": "Verlauf der Originalpartie · Wähle einen Zug, um zur gespeicherten Variante zurückzukehren.",
     "variationRetryScoring": "Bewertung erneut versuchen",

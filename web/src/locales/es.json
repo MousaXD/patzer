@@ -285,6 +285,8 @@
     "variationMove": "Variante {{san}}",
     "variationOption": "Variante {{number}} · {{moves}} jugadas",
     "variationOptionTitle": "Variante {{number}}, {{moves}} jugadas, desde el medio movimiento {{ply}} de la partida",
+    "variationProgress": "Var. {{current}} / {{total}}",
+    "variationMoveNavigation": "Navegación de jugadas de variante",
     "variationBranchPoint": "Punto de bifurcación",
     "variationTimelineHint": "Secuencia de la partida original · selecciona una jugada para volver a la línea guardada.",
     "variationRetryScoring": "Reintentar evaluación",

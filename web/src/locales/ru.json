@@ -292,6 +292,8 @@
     "variationMove": "Вариант {{san}}",
     "variationOption": "Вариант {{number}} · ходов: {{moves}}",
     "variationOptionTitle": "Вариант {{number}}, ходов: {{moves}}, от полухода {{ply}} партии",
+    "variationProgress": "Вар. {{current}} / {{total}}",
+    "variationMoveNavigation": "Навигация по ходам варианта",
     "variationBranchPoint": "Точка разветвления",
     "variationTimelineHint": "Ходы исходной партии · выберите ход, чтобы вернуться к сохранённой линии.",
     "variationRetryScoring": "Повторить оценку",
