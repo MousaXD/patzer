@@ -419,3 +419,29 @@
 ### Next audit
 
 - Verify closing the keyboard-shortcuts dialog *after opening it from a mobile navigation drawer* restores an obvious and usable focus target. The source drawer unmounts, so the shared dialog hook's normal return-to-opener behavior may leave keyboard focus on the document body. Investigate in Chromium before changing shared focus behavior.
+
+## 2026-11-12: Short-viewport command palette and mobile focus verification
+
+### Recovered and reproduced
+
+- Continued from clean pushed `85ffdfe`; first checked the documented potential mobile shortcuts focus issue. **Negative control passed:** closing the shortcuts dialog after opening it from the mobile navigation drawer already returns focus to **Open menu**. No unnecessary focus hook changes were introduced.
+- Expanded real Chromium testing to short landscape screens at **844x390 and 568x320**, in light and dark themes. Before changes, the palette at 568x320 ended below the viewport (`y=38.39px`, `height=287.94px`), partially hiding its footer.
+
+### Changes
+
+1. Updated the shared command-palette dialog to use a responsive vertical layout with a viewport-height maximum. On screens shorter than 500px, reduced its top offset and reserved bottom space.
+2. The search/Close header and keyboard-hint footer remain visible, while results become the independently scrollable area. Restored the existing **60dvh / 32rem** results-height limit for normal desktop screens after the first attempted layout exposed an over-tall desktop palette in screenshots.
+3. Added viewport-bound checks at the normal 1440/390/320 widths **and** the two landscape resolutions. Screenshots were inspected for 1440px desktop and 568px landscape in dark/light themes.
+4. Confirmed the shortcuts dialog fits the tested landscape viewports, and added a permanent browser assertion for mobile-drawer shortcuts focus restoration.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **400/400 passed across 68 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, all focus, contrast, dismissal and short-viewport bounds checks.
+- `git diff --check`: **passed**.
+- No changes to other agents' feature pages or branches, real user data, deployment or production systems.
+
+### Next audit
+
+- Inspect shell-level keyboard interaction discoverability and the consistency of shared empty/error states at narrow widths, prioritizing real usability defects over speculative visual changes.

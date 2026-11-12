@@ -132,11 +132,11 @@ export default function CommandPalette({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center px-3 pt-[min(12vh,5rem)] sm:px-4" data-global-palette>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center px-3 pt-[min(12vh,5rem)] sm:px-4 [@media(max-height:500px)]:pb-3 [@media(max-height:500px)]:pt-3" data-global-palette>
       <button type="button" tabIndex={-1} aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('palette.search', { defaultValue: 'Search' })} tabIndex={-1}
-        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-ui-foreground shadow-lift motion-safe:animate-fade-in">
-        <div className="flex items-center gap-2 border-b border-ui-border px-3 py-2">
+        className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-xl min-h-0 flex-col overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-ui-foreground shadow-lift motion-safe:animate-fade-in">
+        <div className="flex shrink-0 items-center gap-2 border-b border-ui-border px-3 py-2">
           <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-ui-mutedText" />
           <input
             ref={inputRef}
@@ -159,7 +159,7 @@ export default function CommandPalette({ open, onClose }: Props) {
           </button>
         </div>
         <div id="patzer-palette-results" role="listbox" aria-label={t('palette.navGroup', { defaultValue: 'Navigate' })}
-          ref={listRef} className="max-h-[min(60dvh,32rem)] overflow-y-auto py-1">
+          ref={listRef} className="min-h-0 max-h-[min(60dvh,32rem)] flex-1 overflow-y-auto py-1">
           {filtered.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-ui-mutedText">
               {t('palette.empty', { defaultValue: 'No matches.' })}
@@ -168,7 +168,7 @@ export default function CommandPalette({ open, onClose }: Props) {
             <PaletteSection items={filtered} active={active} setActive={setActive} />
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-ui-border bg-ui-muted px-3 py-2 text-[11px] text-ui-mutedText">
+        <div className="flex shrink-0 items-center justify-between border-t border-ui-border bg-ui-muted px-3 py-2 text-[11px] text-ui-mutedText">
           <div className="flex items-center gap-3">
             <span><kbd className="rounded border border-ui-border px-1">↑</kbd> <kbd className="rounded border border-ui-border px-1">↓</kbd> {t('palette.navigate', { defaultValue: 'navigate' })}</span>
             <span><kbd className="rounded border border-ui-border px-1">↵</kbd> {t('palette.select', { defaultValue: 'select' })}</span>

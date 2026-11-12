@@ -114,6 +114,10 @@ try {
       await assertInside(page, palette, 'initial palette focus');
       await assertNoOverflow(page, 'palette ' + color + ' ' + size.width);
       await assertContrast(page, palette, 'palette ' + color + ' ' + size.width);
+      const standardRect = await palette.boundingBox();
+      if (!standardRect || standardRect.y < -1 || standardRect.y + standardRect.height > size.height - 2) {
+        throw new Error(`Standard palette extends outside ${color} ${size.width}x${size.height}: ${JSON.stringify(standardRect)}`);
+      }
       await page.screenshot({ path: resolve(output, 'palette-' + color + '-' + size.width + '.png') });
       if (size.width <= 390) {
         const closeButton = palette.getByRole('button', { name: 'Close' });
@@ -212,6 +216,51 @@ try {
     await page.screenshot({ path: resolve(output, 'shortcuts-' + color + '-320.png') });
     await close.click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
+    const menuOpener = page.getByRole('button', { name: 'Open menu' });
+    if (!(await menuOpener.evaluate((element) => element === document.activeElement))) {
+      const focus = await page.evaluate(() => ({
+        tag: document.activeElement?.tagName,
+        label: document.activeElement?.getAttribute('aria-label'),
+      }));
+      throw new Error('Mobile shortcuts close left keyboard focus outside the shell controls: ' + JSON.stringify(focus));
+    }
+  }
+  // Landscape phones have enough width for the palette but very little height.
+  // Dialog controls and the footer must remain inside the visual viewport.
+  for (const color of ['light', 'dark']) {
+    theme = color;
+    for (const size of [{ width: 844, height: 390 }, { width: 568, height: 320 }]) {
+      await visit(page, size.width, size.height);
+      await page.waitForFunction((dark) => document.documentElement.classList.contains('dark') === dark, color === 'dark');
+      await page.getByRole('button', { name: /Command palette/ }).click();
+      const palette = page.getByRole('dialog', { name: 'Search' });
+      await palette.waitFor();
+      const rect = await palette.boundingBox();
+      if (!rect || rect.y < -1 || rect.y + rect.height > size.height - 2) {
+        throw new Error(`Landscape palette clips outside viewport ${color} ${size.width}x${size.height}: ${JSON.stringify(rect)}`);
+      }
+      await assertNoOverflow(page, `landscape palette ${color} ${size.width}`);
+      await page.screenshot({ path: resolve(output, `palette-landscape-${color}-${size.width}.png`) });
+      await page.getByRole('button', { name: 'Close' }).click();
+      await palette.waitFor({ state: 'detached' });
+
+      if (size.width >= 640) {
+        await page.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+      } else {
+        await page.getByRole('button', { name: 'Open menu' }).click();
+        await page.getByRole('dialog', { name: 'Mobile navigation' })
+          .getByRole('button', { name: 'Keyboard shortcuts' }).click();
+      }
+      const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+      await shortcuts.waitFor();
+      const shortcutRect = await shortcuts.boundingBox();
+      if (!shortcutRect || shortcutRect.y < -1 || shortcutRect.y + shortcutRect.height > size.height - 2) {
+        throw new Error(`Landscape shortcuts clip outside viewport ${color} ${size.width}x${size.height}: ${JSON.stringify(shortcutRect)}`);
+      }
+      await page.screenshot({ path: resolve(output, `shortcuts-landscape-${color}-${size.width}.png`) });
+      await shortcuts.getByRole('button', { name: 'Close' }).click();
+      await shortcuts.waitFor({ state: 'detached' });
+    }
   }
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {
