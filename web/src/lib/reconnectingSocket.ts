@@ -67,6 +67,10 @@ export class ReconnectingSocket {
    * opening a bot game means "new game" but coming back to one means "resume".
    */
   connect(url: string, firstMessage: Msg | null, reopenMessage: Msg | null = firstMessage): void {
+    // A new game/session replaces the previous one, even if its WebSocket is
+    // still CONNECTING. Without this close, a bot restart or rematch left a
+    // second live socket on the server until the old tab went away.
+    this.disconnect();
     this.url = url;
     this.firstMessage = firstMessage;
     this.reopenMessage = reopenMessage;
