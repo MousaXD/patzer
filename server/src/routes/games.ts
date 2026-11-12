@@ -32,6 +32,10 @@ router.get('/', (c) => {
   if (query.source !== null) { filters.push('g.source = ?'); params.push(query.source); }
   if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
   if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
+  // end_time is a UTC ISO-like string. Comparing against a calendar-day
+  // boundary preserves its index and includes the entire selected final day.
+  if (query.fromDate !== null) { filters.push('g.end_time >= ?'); params.push(query.fromDate); }
+  if (query.toDate !== null) { filters.push("g.end_time < date(?, '+1 day')"); params.push(query.toDate); }
   if (query.analyzed !== null) {
     // Keep the positive predicates visible to SQLite's join planner. Wrapping
     // both cases in COALESCE forces a full games-side LEFT JOIN for the count.

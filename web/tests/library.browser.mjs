@@ -49,6 +49,8 @@ function list(params) {
     (!params.get('result') || g.result === params.get('result')) &&
     (!params.get('time_class') || g.time_class === params.get('time_class')) &&
     (!params.has('analyzed') || g.analyzed === Number(params.get('analyzed'))) &&
+    (!params.get('from_date') || g.end_time.slice(0,10) >= params.get('from_date')) &&
+    (!params.get('to_date') || g.end_time.slice(0,10) <= params.get('to_date')) &&
     (params.get('bookmarked') !== '1' || g.bookmarked === 1));
   if (params.get('sort') === 'oldest') filtered = [...filtered].reverse();
   const offset = Number(params.get('offset') || 0);
@@ -109,6 +111,10 @@ function metrics(page) {
       const p=el.parentElement.getBoundingClientRect();
       return {aria: el.getAttribute('aria-label') || el.id, x:b.x, right:b.right, width:b.width,parentWidth:p.width};
     }),
+    dateSizes: [...document.querySelectorAll('input[type="date"]')].map(el => {
+      const b=el.getBoundingClientRect();
+      return {aria:el.getAttribute('aria-label'),x:b.x,right:b.right,width:b.width};
+    }),
     theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   }));
 }
@@ -119,7 +125,7 @@ async function verifyViewport(theme, width, height) {
     assert.equal(m.theme,theme);
     assert.ok(m.overflow <= 2, `Horizontal overflow on ${width}px ${theme}: ${m.overflow}px`);
     if(width<=390) console.log('Mobile geometry',width,JSON.stringify(m));
-    for (const item of m.selectSizes) {
+    for (const item of [...m.selectSizes, ...m.dateSizes]) {
       assert.ok(item.right <= width + 2 && item.x >= -2,
         `Clipped select ${item.aria} on ${width}px ${theme}: ${JSON.stringify(item)}`);
     }
@@ -172,6 +178,15 @@ try {
     assert.ok(queries.some(p => p.includes('source=lichess') && p.includes('result=win')
       && p.includes('sort=oldest') && p.includes('analyzed=1')),
     `Filter changes did not reach the paginated API: url=${page.url()} recent=${JSON.stringify(queries.slice(-6))}`);
+    await page.getByRole('button', {name:'Clear filters'}).click();
+    await page.getByText('40 of 620 games').waitFor();
+    // Calendar-day filtering must search the server-side full history and
+    // include the entire selected ending day, not just midnight.
+    await page.getByLabel('Games from date').fill('2026-10-01');
+    await page.getByLabel('Games through date').fill('2026-10-05');
+    await page.getByText('5 of 5 games').waitFor();
+    assert.ok(queries.some(p => p.includes('from_date=2026-10-01') && p.includes('to_date=2026-10-05')),
+      'Date boundaries were not forwarded to the server-side API');
     await page.getByRole('button', {name:'Clear filters'}).click();
     await page.getByText('40 of 620 games').waitFor();
     // Walk beyond the historical 200-card cutoff without duplicated rows.

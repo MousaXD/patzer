@@ -257,6 +257,11 @@
   },
   "review": {
     "title": "Разбор партии",
+    "dateRange": "Период партий",
+    "fromDate": "С даты",
+    "gamesFromDate": "Партии с даты",
+    "throughDate": "По дату",
+    "gamesThroughDate": "Партии по дату",
     "unavailableHeading": "Разбор партии недоступен",
     "unavailableReason": {
       "invalid": "Ссылка на партию недействительна.",

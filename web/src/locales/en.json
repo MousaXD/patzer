@@ -257,6 +257,11 @@
   },
   "review": {
     "title": "Game Review",
+    "dateRange": "Game date range",
+    "fromDate": "From date",
+    "gamesFromDate": "Games from date",
+    "throughDate": "Through date",
+    "gamesThroughDate": "Games through date",
     "unavailableHeading": "Game review unavailable",
     "unavailableReason": {
       "invalid": "This game link is invalid.",

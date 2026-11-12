@@ -102,7 +102,12 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',
       'source=other', 'limit=Infinity', 'limit=1&limit=2',
-      'sort=newest&sort=oldest', 'bookmarked=1&bookmarked=0']) {
+      'sort=newest&sort=oldest', 'bookmarked=1&bookmarked=0',
+      'from_date=2026-02-30', 'to_date=2026-13-01', 'from_date=2026-1-01',
+      'from_date=2026-01-02&to_date=2026-01-01',
+      'to_date=2026-01-01&to_date=2026-01-02',
+      'from_date=2026-01-01&from_date=2026-01-03',
+      'from_date=9999-12-31', 'to_date=garbage']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
@@ -122,6 +127,39 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect(parseGameId('0')).toBeNull();
     expect(parseGameId('99999999999999999')).toBeNull();
     expect(parseGameListQuery(new URLSearchParams('limit=NaN'))).toBeNull();
+  });
+
+  it('filters by inclusive UTC calendar dates without leaking other users or dropping end-of-day games', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const add = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, end_time, user_color)
+      VALUES (3, 'imported', ?, '1. e4 e5 *', 'empty', 'opponent', 'win', ?, 'white')`);
+    const ids: number[] = [];
+    const dates = [
+      '2025-12-31T23:59:59.999Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T23:59:59.999Z',
+      '2026-01-02T00:00:00.000Z',
+      null,
+    ];
+    try {
+      for (const [i, ended] of dates.entries()) {
+        ids.push(Number(add.run(`date-range-fixture-${i}`, ended).lastInsertRowid));
+      }
+      const search = (params: string) => gamesRoute.request(`/?${params}`, { headers: { Cookie: ownCookie } });
+      const selected = await search('from_date=2026-01-01&to_date=2026-01-01&sort=oldest');
+      expect(selected.status).toBe(200);
+      const selectedData = await selected.json() as { total: number; games: {id:number}[] };
+      expect(selectedData.total).toBe(2);
+      expect(selectedData.games.map(game => game.id)).toEqual(ids.slice(1,3));
+      expect((await (await search('from_date=2026-01-02')).json() as {total:number}).total).toBe(1);
+      expect((await (await search('to_date=2025-12-31')).json() as {total:number}).total).toBe(1);
+      expect((await (await search('from_date=2026-01-03')).json() as {total:number}).total).toBe(0);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ? AND user_id = 3');
+      for (const id of ids) remove.run(id);
+    }
   });
 
   it('never reveals or edits games from another user', async () => {

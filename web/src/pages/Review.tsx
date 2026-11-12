@@ -29,6 +29,13 @@ function validFilter<K extends FilterName>(key: K, value: string | null): string
   return FILTER_OPTIONS[key].some(([candidate]) => candidate === value)
     ? value! : FILTER_OPTIONS[key][0][0];
 }
+function validCalendarDate(value: string | null): string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+  const year = Number(value.slice(0, 4));
+  if (year < 1000 || year > 9998) return '';
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value ? value : '';
+}
 type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
 type PageRequest = { offset: number; limit: number };
 
@@ -102,8 +109,12 @@ export default function Review() {
     analyzed: validFilter('analyzed', searchParams.get('analyzed')),
     sort: validFilter('sort', searchParams.get('sort')),
   };
-  const filterSignature = Object.values(filters).join('|');
-  const activeFilters = Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
+  const fromDate = validCalendarDate(searchParams.get('from_date'));
+  const requestedToDate = validCalendarDate(searchParams.get('to_date'));
+  const toDate = fromDate && requestedToDate && fromDate > requestedToDate ? '' : requestedToDate;
+  const filterSignature = [...Object.values(filters), fromDate, toDate].join('|');
+  const activeFilters = !!fromDate || !!toDate ||
+    Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
 
   function updateFilter(key: FilterName, value: string) {
     const next = new URLSearchParams(searchParams);
@@ -111,9 +122,21 @@ export default function Review() {
     else next.set(key, value);
     setSearchParams(next);
   }
+  function updateDateFilter(key: 'from_date' | 'to_date', input: string) {
+    const value = validCalendarDate(input);
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value); else next.delete(key);
+    // Editing one boundary beyond the other clears the incompatible older
+    // boundary rather than sending an invalid range to the server.
+    const other = key === 'from_date' ? 'to_date' : 'from_date';
+    const otherValue = validCalendarDate(next.get(other));
+    if (value && otherValue &&
+        (key === 'from_date' ? value > otherValue : value < otherValue)) next.delete(other);
+    setSearchParams(next);
+  }
   function clearLibraryFilters() {
     const next = new URLSearchParams(searchParams);
-    for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q']) next.delete(key);
+    for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q', 'from_date', 'to_date']) next.delete(key);
     setSearchDraft('');
     setSearchParams(next);
   }
@@ -147,6 +170,8 @@ export default function Review() {
       for (const [key, value] of Object.entries(filters)) {
         if (value && !(key === 'sort' && value === 'newest')) params.set(key, value);
       }
+      if (fromDate) params.set('from_date', fromDate);
+      if (toDate) params.set('to_date', toDate);
       return api.get<GamePage>(`/api/games?${params.toString()}`);
     },
     getNextPageParam: (lastPage, _pages, lastRequest): PageRequest | undefined => {
@@ -306,6 +331,20 @@ export default function Review() {
             </select>
           </label>
         ))}
+        <div role="group" aria-label={t('review.dateRange', {defaultValue: 'Game date range'})} className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+          <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
+            <span className="mb-1 block">{t('review.fromDate', {defaultValue: 'From date'})}</span>
+            <input aria-label={t('review.gamesFromDate', {defaultValue: 'Games from date'})} type="date" value={fromDate}
+              max={toDate || undefined} onChange={(e) => updateDateFilter('from_date', e.target.value)}
+              className="input w-full min-w-0 text-xs sm:w-40" />
+          </label>
+          <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
+            <span className="mb-1 block">{t('review.throughDate', {defaultValue: 'Through date'})}</span>
+            <input aria-label={t('review.gamesThroughDate', {defaultValue: 'Games through date'})} type="date" value={toDate}
+              min={fromDate || undefined} onChange={(e) => updateDateFilter('to_date', e.target.value)}
+              className="input w-full min-w-0 text-xs sm:w-40" />
+          </label>
+        </div>
         {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>Clear filters</button>}
       </div>

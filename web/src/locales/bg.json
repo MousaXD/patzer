@@ -248,6 +248,11 @@
   },
   "review": {
     "title": "Анализ на партия",
+    "dateRange": "Период на партиите",
+    "fromDate": "От дата",
+    "gamesFromDate": "Партии от дата",
+    "throughDate": "До дата",
+    "gamesThroughDate": "Партии до дата",
     "unavailableHeading": "Анализът на партията не е достъпен",
     "unavailableReason": {
       "invalid": "Връзката към партията е невалидна.",

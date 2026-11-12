@@ -166,6 +166,42 @@ describe('Review library with large histories', () => {
       new URLSearchParams(String(url).split('?')[1]).get('result') === 'loss')).toBe(true));
   });
 
+  it('supports inclusive date-range deep links, prevents inverted ranges, and clears date filters', async () => {
+    mount('/review?from_date=2026-01-01&to_date=2026-11-08');
+    await screen.findByText(/40 of 1,000 games/);
+    expect(mocks.get.mock.calls.some(([url]) => {
+      const p = new URLSearchParams(String(url).split('?')[1]);
+      return p.get('from_date') === '2026-01-01' && p.get('to_date') === '2026-11-08';
+    })).toBe(true);
+    const start = screen.getByLabelText('Games from date') as HTMLInputElement;
+    const end = screen.getByLabelText('Games through date') as HTMLInputElement;
+    expect(start.value).toBe('2026-01-01');
+    expect(end.value).toBe('2026-11-08');
+    fireEvent.change(start, {target:{value:'2026-11-09'}});
+    await waitFor(() => {
+      expect(start.value).toBe('2026-11-09');
+      expect(end.value).toBe('');
+    });
+    expect(mocks.get.mock.calls.some(([url]) => {
+      const p = new URLSearchParams(String(url).split('?')[1]);
+      return p.get('from_date') === '2026-11-09' && !p.has('to_date');
+    })).toBe(true);
+    fireEvent.click(screen.getByRole('button', {name:'Clear filters'}));
+    expect(start.value).toBe('');
+    expect(end.value).toBe('');
+  });
+
+  it('ignores invalid date-range deep links instead of sending them to the API', async () => {
+    mount('/review?from_date=2026-02-30&to_date=2026-13-01');
+    await screen.findByText(/40 of 1,000 games/);
+    expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Games through date') as HTMLInputElement).value).toBe('');
+    expect(mocks.get.mock.calls.every(([url]) => {
+      const p = new URLSearchParams(String(url).split('?')[1]);
+      return !p.has('from_date') && !p.has('to_date');
+    })).toBe(true);
+  });
+
   it('offers filter recovery instead of account onboarding for empty filtered results', async () => {
     mocks.get.mockImplementation(async (url: string) => {
       const params = new URLSearchParams(url.split('?')[1]);

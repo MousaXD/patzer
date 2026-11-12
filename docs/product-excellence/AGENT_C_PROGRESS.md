@@ -108,3 +108,25 @@ Recovered `0330b63` and finished the previously uncommitted Chess.com import err
 - Isolated Chromium smoke (`web/tests/library.browser.mjs`): **passed** at 1440/390/320 widths, light/dark, including interactive filters, pagination and import error alerts. No production service started or modified.
 
 **Next investigations:** test performance with large synthetic game histories, examine library search/navigation learnability, and determine what additional safety contract an in-app full-history controller would need before exposing the existing CLI functionality to end users. Do not change global design, Game Review internals, or other agent lanes.
+
+## 2026-11-12 — Game Library calendar date exploration
+
+Recovered `750ddab` and the six unfinished modified files; finished the date-range work without repeating earlier filter/import investigations.
+
+- Added optional validated `from_date` and `to_date` query parameters to authenticated `GET /api/games`, with inclusive UTC-day semantics, rejection of nonexistent calendar dates and backwards/duplicate ranges, and ownership-restricted SQL filters. Retains offset pagination, server-side sorting, search, analysis-status filters, and bounded request sizes.
+- Added URL-persistent Game Library date pickers (`From date`, `Through date`) with clear-filter recovery. Invalid deep links are not sent to the API; editing the start/end of an incompatible range clears the other boundary. Cache keys include both dates.
+- Added accessible date labels and translations across English, Spanish, German, Bulgarian, and Russian; date inputs use bounded two-column mobile layout instead of overflowing the viewport.
+- Added live authenticated Hono/SQLite tests for inclusive start/end day, ownership, zero-result, and invalid date handling; component tests for deep links and inverted ranges; and Chromium checks for mobile date inputs, URL request parameters, and narrowed list results.
+
+### Verification
+
+- Targeted backend/frontend tests: **48/48 passed** after translation-only edits.
+- Entire repository `npm test -- --maxWorkers=3`: **107 files passed, 2 skipped; 998 tests passed, 12 skipped**. No failures.
+- `npm run typecheck`, `npm run build -w web`: **passed**. Isolated browser fixture passed **again after translation edits** at **1440×900, 390×844 and 320×700** in light/dark, including date boundary filtering and no horizontal overflow. Inspected the 320px dark-mode capture.
+- The standalone date-range component, Hono/SQLite data semantics, full test suite, and generated web build are all verified. Ready to commit and push on Agent C's own branch only.
+
+### Next highest-impact checks
+
+1. Benchmark date/search/sort SQL on a large synthetic SQLite library. Measure before optimizing; use disposable fixtures only.
+2. Audit how users move between opening, opponent, and bookmarked games to identify real discoverability gaps in the Library screen without adding fake metadata.
+3. Keep full-history UI workflow out of scope until its durable checkpoints, cancellation, and progress contract are designed and validated.

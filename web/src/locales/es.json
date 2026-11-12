@@ -248,6 +248,11 @@
   },
   "review": {
     "title": "Análisis de partida",
+    "dateRange": "Intervalo de fechas de las partidas",
+    "fromDate": "Desde",
+    "gamesFromDate": "Partidas desde la fecha",
+    "throughDate": "Hasta",
+    "gamesThroughDate": "Partidas hasta la fecha",
     "unavailableHeading": "Análisis de partida no disponible",
     "unavailableReason": {
       "invalid": "Este enlace a la partida no es válido.",

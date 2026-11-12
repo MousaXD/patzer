@@ -257,6 +257,11 @@
   },
   "review": {
     "title": "Partieanalyse",
+    "dateRange": "Datumsbereich für Partien",
+    "fromDate": "Von",
+    "gamesFromDate": "Partien ab Datum",
+    "throughDate": "Bis",
+    "gamesThroughDate": "Partien bis Datum",
     "unavailableHeading": "Partieanalyse nicht verfügbar",
     "unavailableReason": {
       "invalid": "Dieser Partielink ist ungültig.",
