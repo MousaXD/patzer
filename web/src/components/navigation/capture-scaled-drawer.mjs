@@ -18,11 +18,11 @@ try {
   await page.waitForFunction(l=>document.documentElement.lang===l,lang);
   await page.addStyleTag({content:`html { font-size:${font}px!important; }`});await page.evaluate(()=>document.fonts.ready);
   await page.locator('button[aria-controls="patzer-mobile-drawer"]').click();const drawer=page.locator('#patzer-mobile-drawer');await drawer.waitFor();
-  const result=await drawer.evaluate(el=>{const d=el.getBoundingClientRect();const header=el.firstElementChild;const logo=header.firstElementChild.getBoundingClientRect(),close=header.querySelector('[data-close-menu]').getBoundingClientRect();const nav=[...el.querySelectorAll('nav a[href]')].map(a=>({text:a.textContent.trim().slice(0,40),w:a.getBoundingClientRect().width,h:a.getBoundingClientRect().height,r:a.getBoundingClientRect().right}));const bottom=[...el.querySelectorAll('button,select')].filter(x=>x.offsetWidth).map(b=>({text:b.textContent.trim().slice(0,38),w:b.getBoundingClientRect().width,h:b.getBoundingClientRect().height}));return{drawer:{width:d.width,left:d.left,right:d.right,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,scrollHeight:el.scrollHeight,clientHeight:el.clientHeight},header:{logo:{left:logo.left,right:logo.right,width:logo.width},close:{left:close.left,right:close.right,width:close.width},overlap:logo.right>close.left+1,closeBeyond:close.right>d.right+1},navLinks:nav.length,smallLinks:nav.filter(x=>x.w<44||x.h<44),smallControls:bottom.filter(x=>x.w<44||x.h<44),globalOverflow:document.documentElement.scrollWidth-window.innerWidth,focused:document.activeElement?.getAttribute('data-close-menu')!==null,bodyLocked:document.body.style.overflow==='hidden'};});
+  const result=await drawer.evaluate(el=>{const d=el.getBoundingClientRect();const header=el.firstElementChild;const logo=header.firstElementChild.getBoundingClientRect(),close=header.querySelector('[data-close-menu]').getBoundingClientRect();const nav=[...el.querySelectorAll('nav a[href]')].map(a=>({text:a.textContent.trim().slice(0,40),w:a.getBoundingClientRect().width,h:a.getBoundingClientRect().height,r:a.getBoundingClientRect().right}));const bottom=[...el.querySelectorAll('button,select')].filter(x=>x.offsetWidth).map(b=>({text:b.textContent.trim().slice(0,38),w:b.getBoundingClientRect().width,h:b.getBoundingClientRect().height}));return{drawer:{width:d.width,left:d.left,right:d.right,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,scrollHeight:el.scrollHeight,clientHeight:el.clientHeight},header:{logo:{left:logo.left,right:logo.right,width:logo.width},close:{left:close.left,right:close.right,width:close.width},overlap:logo.right>close.left+1,closeBeyond:close.right>d.right+1},navLinks:nav.length,smallLinks:nav.filter(x=>x.w<44||x.h<44),smallControls:bottom.filter(x=>x.w<44||x.h<44),globalOverflow:document.documentElement.scrollWidth-window.innerWidth,focused:document.activeElement?.getAttribute('data-close-menu')!==null,rootLocked:document.documentElement.style.overflow==='hidden'};});
   if(result.header.overlap||result.header.closeBeyond||
      result.drawer.scrollWidth>result.drawer.clientWidth+1||
      result.smallLinks.length||result.smallControls.length||result.globalOverflow>1||
-     !result.focused||!result.bodyLocked||result.navLinks<14){
+     !result.focused||!result.rootLocked||result.navLinks<14){
     throw Error(`Scaled mobile drawer ${theme}/${lang}/${width}px/font${font}: ${JSON.stringify(result)}`);
   }
   if(lang==='de'&&width===320&&[16,24,32].includes(font))await page.screenshot({path:resolve(root,`artifacts/agent-02/drawer-scaled-verified-${theme}-${lang}-${width}-font${font}.png`)});
@@ -31,9 +31,9 @@ try {
     await drawer.waitFor({state:'detached'});
     const restored=await page.evaluate(()=>({
       focus:document.activeElement?.getAttribute('aria-controls')==='patzer-mobile-drawer',
-      bodyUnlocked:document.body.style.overflow!=='hidden',
+      rootUnlocked:document.documentElement.style.overflow!=='hidden',
     }));
-    if(!restored.focus||!restored.bodyUnlocked)throw Error(`Scaled drawer did not restore focus/scroll: ${theme}/${lang}/${width}px: ${JSON.stringify(restored)}`);
+    if(!restored.focus||!restored.rootUnlocked)throw Error(`Scaled drawer did not restore focus/scroll: ${theme}/${lang}/${width}px: ${JSON.stringify(restored)}`);
   }
   checked++;
  }

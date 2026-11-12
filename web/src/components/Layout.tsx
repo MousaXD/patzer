@@ -218,11 +218,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
   }, []);
 
   // Prevent background scrolling while the mobile navigation is modal.
+  // Lock the root scrollport: locking body collapses document scroll height
+  // to the viewport in Chromium and throws scrolled users back to the top.
   useEffect(() => {
     if (!drawerOpen) return;
-    const oldOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = oldOverflow; };
+    const root = document.documentElement;
+    const oldOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => { root.style.overflow = oldOverflow; };
   }, [drawerOpen]);
 
   // The mobile drawer behaves as a modal: Escape closes, Tab stays inside,
@@ -454,7 +457,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
         {/* No global max-width on the analysis route. This is Agent 03's
             predictable full-width, min-w-0 flex workspace contract. */}
         <main ref={mainRef} id="patzer-main" tabIndex={-1} aria-label={nestedTitle ?? pageTitle}
-          className="flex min-h-0 min-w-0 w-full flex-1 flex-col" data-shell-main>
+          className="flex min-h-0 min-w-0 w-full flex-1 flex-col scroll-mt-[56px] sm:scroll-mt-14 md:scroll-mt-[56px] xl:scroll-mt-14" data-shell-main>
           <div className={cn(
             'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',

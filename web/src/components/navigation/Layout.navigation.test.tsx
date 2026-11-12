@@ -180,6 +180,19 @@ describe('Patzer navigation rail', () => {
     expect(screen.queryByText('old-avatar-value')).toBeNull();
   });
 
+  it('keeps keyboard skip navigation clear of the sticky header at every responsive breakpoint', () => {
+    mount();
+    const skip = screen.getByRole('link', { name: 'Skip to main content' });
+    const main = document.getElementById('patzer-main');
+    expect(skip.getAttribute('href')).toBe('#patzer-main');
+    expect(main?.getAttribute('tabindex')).toBe('-1');
+    expect(main?.className).toContain('scroll-mt-[56px]');
+    expect(main?.className).toContain('sm:scroll-mt-14');
+    expect(main?.className).toContain('md:scroll-mt-[56px]');
+    expect(main?.className).toContain('xl:scroll-mt-14');
+    expect(skip.className).toContain('focus:z-[70]');
+  });
+
   it('keeps tablet utility controls compact and the selected language discoverable', () => {
     mount();
     const rail = document.querySelector('[data-navigation-rail]');
@@ -287,7 +300,7 @@ describe('Patzer navigation rail', () => {
     view.rerender(<Fixture overlayOpen />);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull());
     expect(document.activeElement).toBe(trigger);
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('releases mobile focus containment when resized to the desktop breakpoint', () => {
@@ -420,12 +433,12 @@ describe('Patzer navigation rail', () => {
   it('identifies Settings in the workspace header and locks scroll behind the mobile menu', () => {
     mount('/settings');
     expect(document.querySelector('[data-current-section]')?.textContent).toBe('Settings');
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Mobile navigation' }))
       .getByRole('button', { name: 'Close menu' }));
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
 });

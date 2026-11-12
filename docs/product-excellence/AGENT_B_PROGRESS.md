@@ -1812,3 +1812,36 @@
 ### Next audit
 
 - Independently audit the **persistent mobile app header at 320/390px and up to 200% root text scaling** during long scrolling on Home, including the skip link, current-section title, search and menu controls. Existing fixture checks covered static geometry and keyboard focus, but not scroll-induced overlap of page content, sticky header stacking or whether the current section remains discoverable while scrolling. Change only a reproduced problem.
+
+## 2026-11-13: Preserve scroll position and accessible skip navigation around the sticky shell header
+
+### Two independent Chromium defects
+
+- Continued from clean pushed `af26339`; tested actual keyboard Skip to main content and header behavior on a long first-use Home at **320px/200% text** in German. Before the fix, Enter moved focus to `#patzer-main` and scrolled the document **56px**, placing `main.top=0` beneath the 56px sticky header. The Home hero began at **y=32px** and its first **24px were obscured by the header**. The existing skip link was keyboard accessible and correctly identified the landmark, but did not account for the sticky header while scrolling.
+- An independent long-scroll check exposed a more disruptive menu bug. With Home at **scrollY=500**, opening Search and pressing Escape correctly preserved the position, but opening the mobile Menu immediately jumped to **scrollY=0**. Chromium confirmed that locking `document.body.style.overflow='hidden'` collapses the root document scroll height from **1,302px to 700px** (the viewport) and forces the scroll reset. Closing the drawer restores document height, but not the user's position.
+- Chromium compared both scroll-lock strategies directly: `document.documentElement.style.overflow='hidden'` preserved `scrollY=500` and full document height, while wheel scrolling remained blocked; the old body lock reset to the top.
+
+### Scoped implementation
+
+1. Add responsive scroll margins to the shared named `#patzer-main` target: physical **56px** below `sm`, the actual font-relative `h-14` header height at `sm`, physical **56px** at `md`, and the existing `h-14` value again at `xl`. Preserve `tabIndex=-1`, the skip-link href, and the focusable main landmark's accessible name.
+2. Lock the root `document.documentElement` scrollport rather than `body` while the modal mobile drawer is open. Restore its previous inline overflow value on close. Preserve drawer focus containment, keyboard Escape behavior, sticky header controls and modal semantics.
+3. Update existing navigation unit and zoomed drawer assertions to check the root lock and restored state, and add explicit skip-link/scroll-margin tests.
+4. Add local `web/src/components/navigation/capture-mobile-scroll-skip.mjs` with **60 Chromium combinations** (two themes, five languages, 320/390px, 100%/150%/200% root text). For each: Tab to the skip link, press Enter, verify focus and visible main content below the header; scroll a long Home page; check sticky header/section/search/menu bounds; open/close Search and Menu; verify focus returns to the correct trigger and the scroll position does not change.
+
+### Verification
+
+- Pre-fix Skip: `main.top=0` while sticky `header.bottom=56`. After: `main.top=56`, no scroll jump and hero begins at **y=88px**.
+- Pre-fix Menu: open at `scrollY=500` jumped to **0** with document height collapsing. After: root lock preserves document position and prevents user wheel scrolling while modal.
+- `node web/src/components/navigation/capture-mobile-scroll-skip.mjs`: **60/60 passed**, including long-scroll header controls, keyboard skip, two overlays, focus restoration and both themes.
+- `node web/src/components/navigation/capture-scaled-drawer.mjs`: **60/60 passed** with correct enlarged-text drawer layout, focus trap, Escape and the new scroll-lock assertion.
+- Inspected `artifacts/agent-02/mobile-sticky-scroll-verified-light-320-font32.png` and dark equivalent: sticky title, search, and menu remain fully visible on scrolled pages, including the focused Menu button.
+- `npx vitest run web/src/components/navigation/Layout.navigation.test.tsx --maxWorkers=2`: **23/23 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **476/476 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No changes to other agents' worktrees, feature-owned pages, production data, main or deployment.
+
+### Next audit
+
+- Check the **640–767px in-between navigation breakpoint** at 150%–200% root font scaling. The shared header uses font-relative `sm` control sizes there, unlike its fixed-geometry phone and `md` variants. Verify whether the current-page title, Search/Shortcuts and language access remain visible, and whether the responsive skip-link offset matches the *actual* header height. Reproduce in Chromium before changing anything.
