@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Chess } from 'chess.js';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from './storedReview';
 
 const move = {
@@ -71,12 +72,43 @@ describe('cached review analysis decoder', () => {
   });
 
   it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
-    const expected = [{}, { uci: 'e2e4' }, { uci: 'e7e5' }];
+    const expected = [{ fen: 'before' },
+      { uci: 'e2e4', san: 'e4', fen: 'after' },
+      { uci: 'e7e5', san: 'e5', fen: 'later' }];
     expect(decodeStoredReviewJson(valid, expected)?.moves).toEqual([move]);
-    const mismatch = [{}, { uci: 'd2d4' }];
+    const mismatch = [{ fen: 'before' }, { uci: 'd2d4', san: 'd4', fen: 'after' }];
     expect(decodeStoredReviewJson(valid, mismatch)).toBeNull();
     expect(decodeStoredReviewJson(valid, [{}])).toBeNull();
     expect(needsFreshReviewAnalysis(valid, decodeStoredReviewJson(valid, mismatch))).toBe(true);
+  });
+
+  it('rejects a false Brilliant for the same UCI move from a different legal board position', () => {
+    const mainline = new Chess();
+    const expectedBefore = mainline.fen();
+    mainline.move('e4');
+    const expectedAfter = mainline.fen();
+    const positions = [
+      { fen: expectedBefore },
+      { fen: expectedAfter, uci: 'e2e4', san: 'e4' },
+    ];
+    const legal = { ...move, fen_before: expectedBefore, fen_after: expectedAfter };
+    const analysisFor = (m: typeof legal) => ({ ...valid, moves_json: JSON.stringify([m]) });
+    expect(decodeStoredReviewJson(analysisFor(legal), positions)?.moves).toEqual([legal]);
+
+    // This unrelated position still has a legal e2e4, but Black already has
+    // a pawn on d5. The move can receive a different evaluation and label.
+    const unrelated = new Chess();
+    unrelated.move('Nf3');
+    unrelated.move('d5');
+    const unrelatedBefore = unrelated.fen();
+    unrelated.move('e4');
+    const unrelatedAfter = unrelated.fen();
+    const falseBrilliant = { ...legal, fen_before: unrelatedBefore, fen_after: unrelatedAfter,
+      classification: 'brilliant', eval_after_cp: 700 };
+    expect(decodeStoredReviewJson(analysisFor(falseBrilliant), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, fen_before: unrelatedBefore }), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, fen_after: unrelatedAfter }), positions)).toBeNull();
+    expect(decodeStoredReviewJson(analysisFor({ ...legal, san: 'd4' }), positions)).toBeNull();
   });
 
   it('handles cached records without optional moment/phase data', () => {

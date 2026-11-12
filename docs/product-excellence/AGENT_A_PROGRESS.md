@@ -183,3 +183,28 @@
 ### Next target
 
 - Audit Game Review's branch navigation and source-authority feedback when an engine result arrives for an obsolete branch after rapid switching or navigation. Existing browser tests cover stale classification and cache isolation, so inspect uncovered user-visible behavior (loading feedback, focus and remote denial) rather than repeating completed investigations.
+
+## 2026-11-12: stored engine classification bound to exact PGN FEN/SAN
+
+### Reproduction and impact
+
+- Continued from clean commit `9034eca` and independently audited the cached Game Review move evidence boundary. `decodeStoredReviewJson` previously compared cached move UCI against replay UCI but **not** cached `fen_before`, `fen_after`, or SAN. Identical UCI can occur from unrelated legal positions with very different centipawn evaluations; a cached classification for one position could be shown as a false Brilliant in the saved game.
+- Reproduced using real `chess.js` positions: initial `e4` versus `Nf3 d5 e4`, both legal `e2e4` but different FENs. A new unit assertion intentionally **failed** because the mismatched cached Brilliant/700cp was accepted.
+- Added an authenticated, disposable Chromium test that intercepts the genuine `/api/games/:id` response and changes only the cached first move's starting/ending FEN and evaluation to that different position. Before fix, the UI **failed** to show expected stale/unreadable analysis recovery, confirming the misbound score could reach Game Review.
+
+### Correction
+
+- When saved-game replay positions are supplied, cached analysis must match **every analyzed ply's exact UCI, canonical SAN, FEN before and FEN after**. The decoder continues to permit valid prefix-only partial analyses, null evaluations and historical standalone decoding where no replay source is available.
+- On mismatch, Game Review keeps the immutable PGN board playable, suppresses the falsely classified move and unsupported evaluation, and exposes the existing reanalysis recovery message. This is presentation source verification, not a change to server scoring semantics or provenance revision/generation rules.
+- Existing decoder fixtures now provide complete replay positions; regression tests check both FEN mismatch directions, SAN mismatch and valid source-matched move acceptance.
+
+### Validation
+
+- Focused `storedReview` and `reviewSource` tests: **17 passed**; red test recorded prior to correction.
+- `npm run typecheck`: PASS. `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000`: **976 passed / 12 skipped**, 107 passing files, 2 skipped.
+- Full authenticated Chromium matrix: **PASS (exit 0)** after source check, including negative contaminated cached payload, variation identity, keyboard/locale/mobile, and persisted PGN invariance. Inspected actual 390px dark screenshot `qa-artifacts/agent-a/stored-fen-after-20261112/stored-fen-mismatch-rejected-390.png`: normal board and `W: e4` remain, score reads `—`, and clear recovery message is visible below the board. No production database changes or real-Stockfish accuracy claim (negative engine scores were simulated UI fixtures).
+
+### Next high-impact source-integrity audit
+
+- Key Moments summaries have their own cached `san`, `fen_before`, `classification`, `best_san`, and prose and are currently structurally checked but not bound to the corresponding analyzed ply. Confirm whether a mismatched cached moment can display a false Brilliant/mistake for another move; reproduce first, then fail closed if verified. Do not change AI prose generation contracts or server semantics without need.

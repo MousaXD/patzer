@@ -89,11 +89,13 @@ function validPhases(value: unknown): boolean {
   });
 }
 
-/** Optional replay positions bind cached move UCI data to the current saved
- * PGN, so a stale cache cannot show classifications for another game. */
+/** Optional replay positions bind *each* cached score to its exact saved
+ * board state. Identical UCI/SAN can occur from unrelated positions with
+ * different evaluations; accepting only UCI can show a false Brilliant or
+ * engine score even though the current PGN has a different source FEN. */
 export function decodeStoredReviewJson(
   data: StoredReviewJson,
-  replayPositions?: readonly { uci?: string }[],
+  replayPositions?: readonly { fen?: string; uci?: string; san?: string }[],
 ): DecodedReviewJson | null {
   try {
     const moves: unknown = JSON.parse(data.moves_json);
@@ -101,10 +103,16 @@ export function decodeStoredReviewJson(
     const phases: unknown = data.phase_split_json ? JSON.parse(data.phase_split_json) : null;
     if (!Array.isArray(moves) || !Array.isArray(moments)) return null;
     if (!moves.every(validMove)) return null;
-    // Allow valid partial analyses of very long games but never show cached
-    // evaluations beside moves from a different saved PGN.
+    // Allow valid partial analyses of very long games, but never show a cached
+    // evaluation alongside a move whose source, destination or notation does
+    // not match the exact saved PGN replay. The engine's own source_hash and
+    // revision are checked separately when accepting stored AI prose.
     if (replayPositions && (moves.length > replayPositions.length - 1
-      || moves.some((move: AnalyzedMove, index: number) => move.uci !== replayPositions[index + 1]?.uci))) return null;
+      || moves.some((move: AnalyzedMove, index: number) =>
+        move.uci !== replayPositions[index + 1]?.uci
+        || move.san !== replayPositions[index + 1]?.san
+        || move.fen_before !== replayPositions[index]?.fen
+        || move.fen_after !== replayPositions[index + 1]?.fen))) return null;
     if (!moments.every((m: unknown) => validMoment(m, moves.length))) return null;
     if (!validPhases(phases)) return null;
 

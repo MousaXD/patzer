@@ -687,6 +687,46 @@ try {
     await page.screenshot({path:join(output,'matched-variation-score-after-retry-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await mismatchedContext.close();}
+  // A cached engine report with the same UCI sequence but FENs from another
+  // real chess position can still describe a different evaluation. The
+  // Game Review must not show its fabricated Brilliant or score for the PGN.
+  const storedFenContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await storedFenContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await storedFenContext.newPage();
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let intercepted=false;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      assert.ok(details.analysis?.moves_json);
+      const recorded=JSON.parse(details.analysis.moves_json);
+      assert.equal(recorded[0].uci,'e2e4');
+      // Nf3 d5 e4 is a legal alternate game with the *same* e2e4 UCI, but
+      // drastically different position/evaluation evidence from initial e4.
+      const alternate=new Chess();
+      alternate.move('Nf3');alternate.move('d5');
+      recorded[0].fen_before=alternate.fen();
+      alternate.move('e4');
+      recorded[0].fen_after=alternate.fen();
+      recorded[0].classification='brilliant';
+      recorded[0].eval_after_cp=700;
+      details.analysis.moves_json=JSON.stringify(recorded);
+      intercepted=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByText(locale.review.storedAnalysisUnreadable,{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.ok(intercepted,'The test must intercept and contaminate the cached review payload');
+    assert.equal(await page.locator('[data-review-move-explanation]').count(),0,
+      'Source-inconsistent cached analysis must not drive the coaching card');
+    assert.equal(await page.getByText(locale.classification.brilliant,{exact:true}).count(),0,
+      'A Brilliant claim from another position must never be displayed for the saved game');
+    await page.screenshot({path:join(output,'stored-fen-mismatch-rejected-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await storedFenContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.
