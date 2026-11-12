@@ -614,3 +614,30 @@
 ### Next audit
 
 - Evaluate the shared command palette's accessibility semantics for searching, moving through results and invoking commands by keyboard, especially the relationship between `aria-activedescendant`, displayed result IDs, and grouped results. Reproduce with actual keyboard and accessibility-tree browser checks before altering the shared palette.
+
+## 2026-11-12: Keep keyboard selection valid as global search results change
+
+### Reproduction
+
+- Continued directly from clean, pushed Agent B `b7baf10` and followed the next documented palette accessibility audit; no earlier review, homepage or feature investigations were repeated.
+- Real Chromium initially rendered three recently played account-specific games, selected the third via ArrowDown, and then changed the signed-in account within the running SPA. With only one new result, the search combobox **still referenced `patzer-palette-option-2`** although only option zero existed. This broke screen-reader active-descendant semantics and could make Enter activate nothing.
+
+### Implementation
+
+1. Derived a **bounded current selection index** from the actual filtered result count. The same index now drives `aria-activedescendant`, `aria-selected`, Enter invocation, ArrowUp/Down and scroll-into-view, preventing stale or negative indices when results shrink or briefly become empty.
+2. Reset selection to the first item when account-specific games or the signed-in account change, without altering feature-owned keyboard interactions or global routing.
+3. Extended the Chromium fixture to simulate three games in account 1 and one game in account 2, select the third, switch accounts without closing the palette and verify the active ARIA element exists. This check failed before the fix and passes afterward.
+4. Added a unit test that changes available results without editing the search query and verifies the remaining option is selected and Enter opens its correct review URL.
+5. Relaxed the browser harness's initial navigation timeout for cold Vite starts under concurrent build/test CPU load; the first concurrent attempt timed out during initial navigation, while the isolated final run passed.
+
+### Validation
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **414/414 passed across 70 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the previously failing account-switch active-descendant check, across all existing palette viewport and theme scenarios.
+- `git diff --check`: **passed**.
+- No feature-owned pages, production data, other agent worktrees, deployments or main merges were involved.
+
+### Next audit
+
+- Check the global palette's result options for efficient keyboard focus and screen-reader navigation when Tab traverses the dialog. It currently combines an `aria-activedescendant` combobox with focusable option buttons; validate whether Tab visits every result instead of the few actual dialog controls. Change only on verified user-facing friction.

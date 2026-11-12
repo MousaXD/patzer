@@ -143,6 +143,11 @@ export default function CommandPalette({ open, onClose }: Props) {
   }, [actions, q]);
 
   useEffect(() => { setActive(0); }, [q]);
+  useEffect(() => { setActive(0); }, [gamesData, user?.id]);
+  // Results can change while the palette stays open (background refetch or
+  // account switch). Keep aria-activedescendant, highlight and Enter aligned
+  // with an option that actually exists, even before effects have flushed.
+  const activeIndex = Math.min(Math.max(0, active), Math.max(0, filtered.length - 1));
 
   async function executeAction(action?: Action) {
     if (!action || actionRunningRef.current) return;
@@ -163,21 +168,21 @@ export default function CommandPalette({ open, onClose }: Props) {
   function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((i) => Math.min(filtered.length - 1, i + 1));
+      setActive(filtered.length > 0 ? Math.min(filtered.length - 1, activeIndex + 1) : 0);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
+      setActive(Math.max(0, activeIndex - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      void executeAction(filtered[active]);
+      void executeAction(filtered[activeIndex]);
     }
   }
 
   // Keep the active item in view
   useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`);
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-i="${activeIndex}"]`);
     el?.scrollIntoView({ block: 'nearest' });
-  }, [active]);
+  }, [activeIndex, filtered]);
 
   if (!open) return null;
 
@@ -199,7 +204,7 @@ export default function CommandPalette({ open, onClose }: Props) {
             aria-controls="patzer-palette-results"
             aria-expanded="true"
             aria-autocomplete="list"
-            aria-activedescendant={filtered.length > 0 ? `patzer-palette-option-${active}` : undefined}
+            aria-activedescendant={filtered.length > 0 ? `patzer-palette-option-${activeIndex}` : undefined}
             className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-ui-foreground outline-none placeholder:text-ui-mutedText"
           />
           <kbd className="hidden rounded border border-ui-border px-1.5 py-0.5 text-[11px] text-ui-mutedText sm:inline">{t('palette.esc')}</kbd>
@@ -215,7 +220,7 @@ export default function CommandPalette({ open, onClose }: Props) {
               {t('palette.empty', { defaultValue: 'No matches.' })}
             </div>
           ) : (
-            <PaletteSection items={filtered} active={active} setActive={setActive}
+            <PaletteSection items={filtered} active={activeIndex} setActive={setActive}
               busy={pendingAction !== null} onExecute={(action) => { void executeAction(action); }} />
           )}
         </div>

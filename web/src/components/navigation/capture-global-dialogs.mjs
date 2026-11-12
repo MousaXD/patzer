@@ -31,7 +31,7 @@ const profile = {
 
 async function visit(page, width, height) {
   await page.setViewportSize({ width, height });
-  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 15_000 });
   await page.locator('[data-app-shell]').waitFor();
   await page.getByRole('button', { name: /Command palette/ }).waitFor();
 }
@@ -92,7 +92,7 @@ try {
   if (!ready) throw new Error('Vite did not start');
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-  page.setDefaultTimeout(5000);
+  page.setDefaultTimeout(8000);
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/logout' && route.request().method() === 'POST') {
@@ -111,13 +111,14 @@ try {
       return;
     }
     if (path === '/api/games' && recentGamesMode === 'accounts') {
-      const opponent = activeUserId === 1 ? 'FirstAccountOpponent' : 'SecondAccountOpponent';
+      const games = (activeUserId === 1 ? [1, 2, 3] : [4]).map((id) => ({
+        id, white: 'sample-player',
+        black: activeUserId === 1 ? `FirstAccountOpponent${id}` : 'SecondAccountOpponent',
+        user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
+        result: 'win', time_control: '600', opening_name: 'Italian Game',
+      }));
       await route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ games: [{
-          id: activeUserId, white: 'sample-player', black: opponent,
-          user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
-          result: 'win', time_control: '600', opening_name: 'Italian Game',
-        }] }) });
+        body: JSON.stringify({ games }) });
       return;
     }
     if (path === '/api/settings/profile' && route.request().method() === 'PATCH') {
@@ -415,7 +416,7 @@ try {
   await visit(page, 390, 844);
   await page.getByRole('button', { name: /Command palette/ }).click();
   const accountPalette = page.getByRole('dialog', { name: 'Search' });
-  await accountPalette.getByRole('option', { name: /FirstAccountOpponent/ }).waitFor();
+  await accountPalette.getByRole('option', { name: /FirstAccountOpponent/ }).first().waitFor();
   activeUserId = 2;
   await page.evaluate(async () => {
     const { useAuth } = await import('/src/state/auth.ts');
@@ -431,6 +432,33 @@ try {
     throw new Error('Recent games from the previous account leaked into the new session');
   }
   await accountPalette.getByRole('option', { name: /SecondAccountOpponent/ }).waitFor();
+  // Changing accounts while the keyboard is highlighting the last of three
+  // games must not leave aria-activedescendant pointing at a removed option.
+  activeUserId = 1;
+  await page.evaluate(async () => {
+    const { useAuth } = await import('/src/state/auth.ts');
+    const previous = useAuth.getState().user;
+    useAuth.getState().setUser({ ...previous, id: 1, profile: { ...previous.profile, user_id: 1 } });
+  });
+  const switchQuery = accountPalette.getByRole('combobox', { name: 'Search' });
+  await switchQuery.fill('AccountOpponent');
+  await accountPalette.getByRole('option', { name: /FirstAccountOpponent3/ }).waitFor();
+  await switchQuery.press('ArrowDown');
+  await switchQuery.press('ArrowDown');
+  if (!(await accountPalette.getByRole('option', { name: /FirstAccountOpponent3/ }).getAttribute('aria-selected'))?.includes('true')) {
+    throw new Error('Third account game was not selected by keyboard navigation');
+  }
+  activeUserId = 2;
+  await page.evaluate(async () => {
+    const { useAuth } = await import('/src/state/auth.ts');
+    const previous = useAuth.getState().user;
+    useAuth.getState().setUser({ ...previous, id: 2, profile: { ...previous.profile, user_id: 2 } });
+  });
+  await accountPalette.getByRole('option', { name: /SecondAccountOpponent/ }).waitFor();
+  const activeId = await switchQuery.getAttribute('aria-activedescendant');
+  if (!activeId || !(await accountPalette.locator('[id="' + activeId + '"]').count())) {
+    throw new Error('Keyboard selection points to a removed option after account results shrink: ' + activeId);
+  }
 
   // Logout is a security-sensitive action. A rejected server request must
   // keep the dialog and the session intact with actionable error feedback.

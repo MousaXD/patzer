@@ -54,6 +54,37 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe('global command palette async actions', () => {
+  it('retargets the active descendant when async results shrink without editing the query', async () => {
+    const fakeGame = (id: number, black: string) => ({
+      id, white: 'sample-player', black, user_color: 'white',
+      result: 'win', time_control: '600', end_time: '2026-11-12T12:00:00Z',
+      opening_name: 'Italian Game',
+    });
+    recentGamesQuery.data = {
+      games: [
+        fakeGame(41, 'OpponentOne'),
+        fakeGame(42, 'OpponentTwo'),
+        fakeGame(43, 'OpponentThree'),
+      ],
+    };
+    const onClose = vi.fn();
+    const view = render(<CommandPalette open onClose={onClose} />);
+    const input = screen.getByRole('combobox', { name: 'Search' });
+    fireEvent.change(input, { target: { value: 'Opponent' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe('patzer-palette-option-2');
+
+    recentGamesQuery.data = { games: [fakeGame(99, 'OpponentNew')] };
+    view.rerender(<CommandPalette open onClose={onClose} />);
+    await waitFor(() => expect(input.getAttribute('aria-activedescendant')).toBe('patzer-palette-option-0'));
+    const selected = document.getElementById(input.getAttribute('aria-activedescendant')!);
+    expect(selected?.getAttribute('aria-selected')).toBe('true');
+    expect(selected?.textContent).toContain('OpponentNew');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/review/99'));
+  });
+
   it('keeps a failed sign-out visible and retryable, without claiming success', async () => {
     logout.mockRejectedValueOnce(new Error('HTTP 503 private session details'))
       .mockResolvedValueOnce(false);
