@@ -852,3 +852,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **German 320px file-picker selected-name discoverability and visual hierarchy**: the selected filename is currently truncated beside a long localized chooser label. Check whether a compact two-row arrangement on especially narrow screens can expose more of the filename without pushing critical search, import or first-use content out of reach. Favor meaningful change only if real screenshot + geometry verify an improvement; preserve the native keyboard file chooser and all five language strings.
+
+## 2026-11-13 — Expose full file-selection hint on narrow phones
+
+- Recovered clean pushed `b0bbd5e` and audited the file-input presentation at **320px**. The existing German two-column arrangement provided just **99px** of filename space for the 135px-long text **Keine Datei ausgewählt**, and a selected PGN was truncated after the first few characters. Added a failing real Chromium regression requiring at least 200px of filename width and no clipping of the default selection hint.
+- For viewports **350px wide or narrower only**, changed the Library-local file picker to a two-row flex arrangement with the native file chooser label above the full-width selected-file hint. The transparent, focusable `type=file` overlay continues covering the entire control and retains native keyboard Enter activation, 44px minimum touch size, file validation and first-use CTA behavior. Desktop and 390px panel styles remain unchanged; no shared CSS was edited.
+- Rebuilt and repeated real Chromium for light and dark German 320px, including actual keyboard filechooser, Unicode filename, first-use import, progress, filtering, pagination and saved-game recovery. The full **Keine Datei ausgewählt** text is now visible with substantially more room for long file names. Inspected `qa-artifacts/agent-c-library/library-german-pgn-picker-light-320.png` and `library-german-pgn-selected-dark-320.png` for no clipped controls or horizontal overflow.
+
+### Verification
+
+- Focused Library tests: **51/51 passed**. Full repository suite: **109 passed files, 2 skipped; 1,114 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full synthetic Chromium 1440px desktop, 390/320px light/dark mobile and German file-selection journeys: passed, no browser errors or unexpected horizontal scrolling.
+- Only Agent C Library presentation, synthetic browser fixture and progress report changed; no provider API, database, other worktree, merge or deployment.
+
+### Next independent audit
+
+- Investigate **provider import result integrity** in the Library UI. PGN imports already validate response counts strictly; linked Chess.com/Lichess imports currently announce `imported`, `total`, `duplicates`, `skipped`, `enriched` directly from HTTP 200 without checking their types or arithmetic. Review actual server result semantics and write synthetic negative-response regression cases before deciding whether a client-side guard is needed. Keep the audit focused on correct user feedback, never modify provider scraping or authentication.

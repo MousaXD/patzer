@@ -496,11 +496,11 @@ export default function Review() {
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex min-h-11 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-chesscom-200 bg-ui-surface px-2 focus-within:ring-2 focus-within:ring-ui-focus dark:border-chesscom-700 sm:w-56">
+          <div className="relative flex min-h-11 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-chesscom-200 bg-ui-surface px-2 focus-within:ring-2 focus-within:ring-ui-focus dark:border-chesscom-700 max-[350px]:flex-col max-[350px]:items-start max-[350px]:gap-1.5 max-[350px]:py-2 sm:w-56">
             <span aria-hidden="true" className="shrink-0 rounded border border-chesscom-200 bg-chesscom-100 px-2 py-1.5 text-xs font-medium text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-700 dark:text-chesscom-100">
               {t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
             </span>
-            <span id="library-pgn-filename" aria-live="polite" className="min-w-0 flex-1 truncate text-xs text-chesscom-500 dark:text-chesscom-300" title={pgnFile?.name || undefined}>
+            <span id="library-pgn-filename" aria-live="polite" className="min-w-0 flex-1 truncate text-xs text-chesscom-500 dark:text-chesscom-300 max-[350px]:w-full max-[350px]:flex-none" title={pgnFile?.name || undefined}>
               {pgnFile?.name || t('review.pgnNoFileSelected', {defaultValue:'No file selected'})}
             </span>
             {/* Keep a full-size native file input for mouse, touch, keyboard and file choosers.

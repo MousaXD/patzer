@@ -461,6 +461,9 @@ try {
         `Native file chooser should keep an accessible 44px area at 320px: ${JSON.stringify(chooserRect)}`);
       await page.getByText('Keine Datei ausgewählt',{exact:true}).waitFor();
       const noFile=page.locator('#library-pgn-filename');
+      const filenameBefore=await noFile.evaluate(el=>({visible:el.clientWidth,full:el.scrollWidth}));
+      assert.ok(filenameBefore.visible>=200 && filenameBefore.full<=filenameBefore.visible+1,
+        `German 320px file selection hint should fit without clipping: ${JSON.stringify(filenameBefore)}`);
       await noFile.scrollIntoViewIfNeeded();
       await page.screenshot({path:join(output,`library-german-pgn-picker-${theme}-320.png`)});
       const chooser=page.waitForEvent('filechooser',{timeout:10000});
@@ -473,6 +476,9 @@ try {
       await fileDialog.setFiles({name:filename,mimeType:'text/plain',
         buffer:Buffer.from('[Event "Training"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *')});
       await page.getByText(filename,{exact:true}).waitFor();
+      const selectedName=await noFile.boundingBox();
+      assert.ok(selectedName && selectedName.width>=200,
+        `Selected filename should have substantial visible width at 320px: ${JSON.stringify(selectedName)}`);
       assert.equal(await fileInput.getAttribute('aria-describedby'),
         'library-pgn-help library-pgn-filename');
       assert.ok((await metrics(page)).overflow<=2,
