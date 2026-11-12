@@ -971,3 +971,30 @@
 ### Next highest-impact audit
 
 - Check the **320px localized homepage first-run/error paths** in German and Spanish, especially long retry messages and whether the two main CTAs stay discoverable and fully within the hero. Then audit the shared homepage fallback when a profile lacks a username, ensuring no regressions from the new first-use identity logic.
+
+## 2026-11-12: Complete shared Home localization across loading, first-use and outages
+
+### Recovered state and reproduced problem
+
+- Recovered clean pushed Agent B `660f4b3`; followed the recorded German/Spanish 320px Home audit without reopening completed navigation, import, coach or play work.
+- Static locale inspection found that **all five languages lacked** `home.continue`, Home loading/error strings and `common.retry`; Spanish and Bulgarian additionally lacked the time-of-day greeting and some Home learning/recent-game labels. This exposed English fallback strings inside otherwise translated layouts.
+- In real Chromium, the German first-use homepage initially failed the new assertion requiring the localized **Continue improving** heading. The initial greeting assertion was corrected for CSS uppercase presentation before the genuine fallback was confirmed.
+
+### Changes and coverage
+
+1. Completed shared Home loading, outage and continuation messages and `common.retry` across English, German, Spanish, Russian and Bulgarian. Added missing Spanish/Bulgarian greetings, chess streak labels, recent-game status and Home learning-tile navigation strings. Kept feature-owned Learn lesson content unchanged.
+2. Extended `capture-shell.mjs` with real **320x700px** German and Spanish first-use and HTTP 503 outage flows. Checked native localized greetings, section headings, recovery messages, Retry labels, Play/Review target dimensions, horizontal overflow and screenshots. Both localized flows now pass; screenshots remain readable and actions fit within the hero.
+3. Added `Home.locales.test.ts` to require the shared homepage's essential greeting/recovery/learning navigation keys and localized Retry actions in all five supported languages.
+4. Confirmed in Chromium that a first-use account with no display name **and no username** already renders the existing Patzer fallback visibly; no speculative identity rewrite was needed.
+
+### Verification
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** the full existing responsive/theme matrix, localized first-use/outage screens and missing-username fallback.
+- `npx vitest run web/src --maxWorkers=2`: **434/434 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- All changes limited to shared locale dictionaries and Agent B browser/unit tests; no production data, deployment, merge or interference with other agents' worktrees.
+
+### Next audit
+
+- Audit the **returning-player Home recent-game result glyphs** under a screen reader and keyboard. The list currently renders W/L/D letters without explanatory accessible names; verify actual link names with Chromium and fix only if they fail to communicate win/loss/draw outcomes.

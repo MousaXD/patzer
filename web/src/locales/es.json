@@ -64,6 +64,7 @@
     "create": "Crear",
     "edit": "Editar",
     "back": "Atrás",
+    "retry": "Reintentar",
     "loading": "Cargando…",
     "yes": "Sí",
     "no": "No",
@@ -866,7 +867,28 @@
     "achievementsRecent": "Desbloqueados recientemente",
     "achievementsEmpty": "Consigue tu primera insignia jugando una partida",
     "achievementsEmptyDesc": "0 de {{n}} desbloqueados",
-    "whatsNew": "Novedades: planes, logros y panel con las 3 mejores variantes en Análisis."
+    "whatsNew": "Novedades: planes, logros y panel con las 3 mejores variantes en Análisis.",
+    "loadingStats": "Cargando tus estadísticas",
+    "statsUnavailable": "No se pudieron cargar tus estadísticas.",
+    "continue": "Sigue mejorando",
+    "tileLoading": "Cargando tu progreso…",
+    "tileUnavailable": "Progreso no disponible temporalmente",
+    "loadingGames": "Cargando partidas recientes…",
+    "gamesUnavailable": "No se pudieron cargar tus partidas recientes.",
+    "greet": {
+      "morning": "Buenos días",
+      "afternoon": "Buenas tardes",
+      "evening": "Buenas noches"
+    },
+    "streak": {
+      "win": "racha de victorias",
+      "loss": "racha de derrotas",
+      "draw": "racha de tablas"
+    },
+    "unreviewed": "sin analizar",
+    "learnNext": "Tu próxima lección",
+    "learnResume": "Continúa donde lo dejaste",
+    "learnDesc": "Lecciones interactivas con estrellas y niveles."
   },
   "auth": {
     "passwordHint": "Mínimo 10 caracteres.",

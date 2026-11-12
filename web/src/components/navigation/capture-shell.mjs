@@ -19,6 +19,7 @@ let logoutMode = 'success';
 let signedIn = true;
 let homeGamesMode = 'empty';
 let homeFailureMode = false;
+let fixtureUsername = 'sample-player';
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -32,7 +33,7 @@ const profile = {
 const fixtures = (pathname) => {
   if (pathname === '/api/setup/status') return { setup_required: false };
   if (pathname === '/api/auth/me') return {
-    user: signedIn ? { id: 1, username: 'sample-player', role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } } : null,
+    user: signedIn ? { id: 1, username: fixtureUsername, role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } } : null,
   };
   if (pathname === '/api/meta') return { version: '7.19.0' };
   if (pathname === '/api/meta/update') return { enabled: false, updateAvailable: false, current: '7.19.0', latest: null };
@@ -311,6 +312,74 @@ try {
   await checkNoHorizontalOverflow(page, 'home outage at 320px');
   await page.screenshot({ path: resolve(output, 'home-error-recovery-mobile-320.png') });
   homeFailureMode = false;
+
+  // A first-use player should not fall back to English for essential greeting,
+  // recovery and continuation controls after selecting another app language.
+  // Check actual 320px layouts and both healthy and outage journeys.
+  for (const locale of [
+    {
+      code: 'de', firstGame: 'Spiel deine erste Partie', play: 'Spielen',
+      review: 'Partieanalyse', greeting: ['Guten Morgen', 'Guten Tag', 'Guten Abend'],
+      statsFailure: 'Deine Statistiken konnten nicht geladen werden.',
+      recentFailure: 'Deine letzten Partien konnten nicht geladen werden.',
+      retry: 'Erneut versuchen', continue: 'Weiter trainieren',
+    },
+    {
+      code: 'es', firstGame: 'Juega tu primera partida', play: 'Jugar',
+      review: 'Análisis de partida', greeting: ['Buenos días', 'Buenas tardes', 'Buenas noches'],
+      statsFailure: 'No se pudieron cargar tus estadísticas.',
+      recentFailure: 'No se pudieron cargar tus partidas recientes.',
+      retry: 'Reintentar', continue: 'Sigue mejorando',
+    },
+  ]) {
+    profile.language = locale.code;
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('heading', { name: locale.firstGame }).waitFor();
+    const hero = page.locator('main section').first();
+    const text = await hero.innerText();
+    if (!locale.greeting.some((greeting) =>
+      text.toLocaleLowerCase(locale.code).includes(greeting.toLocaleLowerCase(locale.code)))) {
+      throw new Error(locale.code + ' home greeting fell back to English: ' + text.slice(0, 150));
+    }
+    const heroRect = await hero.boundingBox();
+    for (const [label, target] of [
+      ['Play', hero.locator('a[href="/play"]')],
+      ['Game Review', hero.locator('a[href="/review"]')],
+    ]) {
+      const bounds = await target.boundingBox();
+      if (!bounds || bounds.width < 44 || bounds.height < 44 ||
+        bounds.x < heroRect.x - 1 || bounds.x + bounds.width > heroRect.x + heroRect.width + 1) {
+        throw new Error(locale.code + ' ' + label + ' CTA clipped or too small at 320px: ' + JSON.stringify(bounds));
+      }
+    }
+    await page.getByRole('heading', { name: locale.continue }).waitFor();
+    await checkNoHorizontalOverflow(page, locale.code + ' first-use home 320px');
+    await page.screenshot({ path: resolve(output, 'home-first-use-' + locale.code + '-320.png') });
+
+    homeFailureMode = true;
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await page.getByText(locale.statsFailure).waitFor();
+    await page.getByText(locale.recentFailure).waitFor();
+    const retryButtons = page.getByRole('button', { name: locale.retry, exact: true });
+    if (await retryButtons.count() < 2) {
+      throw new Error(locale.code + ' outage uses untranslated retry actions');
+    }
+    await checkNoHorizontalOverflow(page, locale.code + ' failure home 320px');
+    await page.screenshot({ path: resolve(output, 'home-error-' + locale.code + '-320.png') });
+    homeFailureMode = false;
+  }
+  profile.language = 'en';
+
+  // The existing first-use fallback must remain visible if a newly
+  // provisioned profile has neither a display name nor a username.
+  fixtureUsername = '';
+  profile.display_name = '  ';
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('heading', { level: 1, name: 'Patzer' }).waitFor();
+  await checkNoHorizontalOverflow(page, 'new account without username at 320px');
+  fixtureUsername = 'sample-player';
+  profile.display_name = 'Sample Player';
 
   theme = 'dark';
   await openWithFixture(page, { width: 1440, height: 900 });
