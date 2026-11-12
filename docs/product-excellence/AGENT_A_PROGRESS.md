@@ -1213,3 +1213,14 @@
 ### Next Game Review audit candidate
 
 - Verify the opening and variation move evaluation score/header remain legible in **320px landscape and reduced-motion mode** when live variation scoring transitions from pending to ready. Check real browser focus and saved-PGN isolation, and avoid changing the UI without reproducing an issue.
+
+## 2026-11-12: certify variation score transition in narrow landscape
+
+- Resumed from clean pushed `33bcdd3` with only this unfinished audit. Reused the existing authenticated, disposable Chromium rapid-variation scenario; no product code changes. The actual drag-played `d4` starts an isolated pending evaluation while a deliberately delayed old response is held. At **568×320 landscape / reduced motion**, the move header displayed `Analyzing…` with accessible pending score, no horizontal overflow and no overlap with the move label. After legal `d5` and its source-verified `+0.24` score, the status and accessible name changed correctly; the previous `d4` response could not relabel the active move.
+- Browser geometry at 568×320: pending header x12–556, pending status x444–544, move label right 105; scored status x494–544 and move label right 138; document width exactly 568. Both states remained legible without truncation or score/label overlap. Reviewed `qa-artifacts/agent-a/variation-landscape-20261112/variation-scoring-landscape-pending-568x320.png` and `variation-scoring-landscape-ready-568x320.png`; playable controls and Return to game stay visible after scrolling to the move header.
+- Complete real Chromium responsive/locale/keyboard/variation/source/PGN matrix: **PASS (exit 0)** on isolated port 8961. Saved PGN unchanged. `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. Prior application build and 1006-test suite remain valid because this is **test-only** coverage.
+- No merge, deployment, active database/service changes, or other agent worktree edits.
+
+### Next independent visual audit
+
+- The EvalBar now suppresses wide numeric chips, but ordinary **four-character** `+0.8` and `−0.4` values still appear beside the 320px board. Measure their real rendered bounding boxes to ensure they do not steal chess-square space or clip outside the viewport; adjust only on demonstrated overlap and preserve the redundant full score below the board.

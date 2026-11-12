@@ -1648,6 +1648,35 @@ try {
     await page.getByText(locale.review.variationAnalyzing,{exact:true}).waitFor({state:'visible'});
     assert.equal(await evalStatus.getAttribute('aria-label'),locale.review.variationAnalyzing,
       'A pending engine score must not be announced as an unavailable evaluation');
+    const landscapeSummary=async expectedScore=>{
+      await page.setViewportSize({width:568,height:320});
+      const header=page.locator('[data-review-move-summary]');
+      await header.scrollIntoViewIfNeeded();
+      const geometry=await header.evaluate(element=>{
+        const move=element.firstElementChild;
+        const value=element.querySelector('.font-mono.text-base');
+        if(!move||!value)return null;
+        const labelRect=move.getBoundingClientRect();
+        const scoreRect=value.getBoundingClientRect();
+        const headerRect=element.getBoundingClientRect();
+        return {width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth,
+          headerLeft:headerRect.left,headerRight:headerRect.right,
+          labelRight:labelRect.right,scoreLeft:scoreRect.left,
+          scoreRight:scoreRect.right,scoreWidth:scoreRect.width,
+          scoreText:value.textContent?.trim()};
+      });
+      console.log('Landscape variation score geometry:',JSON.stringify(geometry));
+      assert.ok(geometry && geometry.scoreText===expectedScore
+        && geometry.documentWidth<=geometry.width+2 && geometry.headerLeft>=0
+        && geometry.headerRight<=geometry.width+1 && geometry.labelRight<=geometry.scoreLeft+1
+        && geometry.scoreRight<=geometry.width+1 && geometry.scoreWidth>=20,
+      `The pending/ready variation score must stay legible without overlapping its move name at 568x320: ${JSON.stringify(geometry)}`);
+      return geometry;
+    };
+    await landscapeSummary(locale.review.variationAnalyzing);
+    await page.screenshot({path:join(output,'variation-scoring-landscape-pending-568x320.png')});
+    await page.setViewportSize({width:390,height:844});
+    await page.locator('cg-board').scrollIntoViewIfNeeded();
     const secondResponse=page.waitForResponse(r=>r.url().endsWith('/api/analyze/variation-move')
       && r.status()===200);
     await drag('d7','d5');
@@ -1662,6 +1691,9 @@ try {
     assert.equal(await page.locator('[data-review-move-summary]').getByText('Brilliant',{exact:true}).count(),0,
       'A delayed older score must not relabel the latest exploratory move');
     assert.equal(await page.locator('[data-review-move-summary]').getByText(/d5/).count(),1);
+    await landscapeSummary('+0.24');
+    await page.screenshot({path:join(output,'variation-scoring-landscape-ready-568x320.png')});
+    await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:join(output,'rapid-variation-scoring-status-390.png')});
     assert.deepEqual(requests,['d2d4','d7d5']);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
