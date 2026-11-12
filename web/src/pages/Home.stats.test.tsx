@@ -123,6 +123,14 @@ describe('Home statistics failure', () => {
     expect(heading.className).toContain('col-span-2');
     expect(heading.parentElement?.className).toContain('grid-cols-[auto_minmax(0,1fr)]');
     expect(heading.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent).toBe('♟');
+    const hero = heading.closest('section');
+    const columns = hero?.querySelector('div.relative.grid');
+    expect(columns?.className).toContain('lg:grid-cols-[minmax(0,1fr)_auto]');
+    expect(columns?.className).not.toContain('md:grid-cols-');
+    const primary = hero?.querySelector<HTMLAnchorElement>('a[href="/play"]');
+    const actions = primary?.parentElement;
+    expect(actions?.className).toContain('lg:flex-col');
+    expect(actions?.className).not.toContain('md:flex-col');
     const continuation = screen.getByRole('region', { name: 'Continue improving' });
     expect(continuation.querySelector('.grid')?.className).toContain('grid-cols-1');
   });

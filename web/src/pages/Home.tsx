@@ -153,7 +153,9 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
         }}
       />
 
-      <div className="relative grid gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] md:items-end">
+      {/* At 768px a two-column hero gives the name <60px at 200% text
+          scaling. Keep identity above actions until there is actual room. */}
+      <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
           <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
             <div data-home-hero-avatar className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur sm:row-span-2">
@@ -195,7 +197,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 md:flex-col md:items-end">
+        <div className="flex flex-wrap gap-2 lg:flex-col lg:items-end">
           <Link
             to="/play"
             className="group inline-flex min-h-11 items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none"

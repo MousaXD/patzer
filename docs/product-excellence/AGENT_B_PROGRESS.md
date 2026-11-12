@@ -1620,3 +1620,34 @@
 ### Next audit
 
 - The 768px/200%-text Home screenshot revealed **poor first-use hero name readability** after the navigation recovered its space. Reproduce the actual heading and action geometry in light/dark and multiple languages at 768/1024px with large text; investigate whether the two-column hero squeezes the user name into only a few visible glyphs. Only change the homepage-owned layout if the defect is supported by measured browser evidence.
+
+## 2026-11-13: Keep the first-use Home identity readable on enlarged-text tablets
+
+### Reproduction and cause
+
+- Resumed from clean pushed `8c3d09b` and audited the Home hero using real Chromium at **768/1024px**, 100%/150%/200% root text, English/German/Russian, both themes, and realistic short/medium account display names.
+- At **768px and 200%**, all **12 configurations** showed the player's name badly clipped even after the global header fix. The H1 had just **37–56px available width**; e.g. **2/12 significant characters** of `Sample Player` and **2/21** of `International Long Name` were visible in German, instead of an identifiable name.
+- The cause was the hero's `md:grid-cols-[1fr_auto]` two-column layout combined with root-relative padding, avatar spacing and wide Play/Review links. At 1024px the same layout had enough room; all tested 1024px names retained at least 81% visible characters. No action hit-area or document overflow failures were found.
+
+### Scoped implementation
+
+1. Change only the **Home hero breakpoint** from `md:grid-cols-[1fr_auto] md:items-end` to `lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end`. Tablet layouts now show the player's identity above, rather than beside, the two actions. Retain the original two-column desktop layout at 1024px and larger.
+2. Align the action group with the same breakpoint by replacing `md:flex-col md:items-end` with `lg:flex-col lg:items-end`. Preserve existing primary/secondary labels, link URLs, focus indicators, and touch sizes.
+3. Extend Home statistics unit coverage to protect the tablet stack and large-screen return to the two-column layout.
+4. Add `web/src/components/navigation/capture-scaled-home-hero.mjs`, a local-only **72-case** Chromium fixture measuring real text-node character visibility, heading geometry, Play/Review hit rectangles, tablet action placement, document overflow, locale and visible keyboard focus. Tablet names must be fully readable; the established desktop two-line clamp may abbreviate unusually long names without losing basic recognition.
+
+### Verified outcome
+
+- Negative control: **12/72** tablet configurations badly hid the name, without horizontal overflow.
+- Post-fix `node web/src/components/navigation/capture-scaled-home-hero.mjs`: **72/72 passed**. Both tested display names are **100% visible** at 768px for all tested root sizes, themes and languages, with safe touch-target dimensions and no overflow.
+- Inspected `artifacts/agent-02/home-hero-verified-light-short-768-font32.png` and `home-hero-verified-dark-long-768-font32.png`: name, greeting, supporting copy and Play/Review actions now appear as a deliberate vertical hierarchy, with stable light/dark styling.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **20/20 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **473/473 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No changes to Game Review, Games Library, Play, Learning, Insights, production data, main or other agents' worktrees.
+
+### Next audit
+
+- Independently check the **Home first-use hero and call-to-action visibility at 320/390px with 200% root text scaling**. Earlier mobile checks used 100%/150% text, so an unseen severe zoom issue may still exist. Verify real heading visibility, no horizontal overflow, keyboard access and whether the primary action becomes obscured below the small-screen viewport before changing anything.
