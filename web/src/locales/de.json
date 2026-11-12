@@ -377,6 +377,13 @@
     "star": "Markieren",
     "bookmarkGame": "Partie merken",
     "removeBookmark": "Markierung entfernen",
+    "libraryFilterLabel": {
+      "source": "Partiequelle",
+      "time_class": "Partiegeschwindigkeit",
+      "result": "Partieergebnis",
+      "analyzed": "Analysestatus",
+      "sort": "Partien sortieren"
+    },
     "bookmarkSaveFailed": "Die Markierung konnte nicht geändert werden. Der vorherige Zustand wurde wiederhergestellt; versuche es erneut.",
     "bookmarkRetry": "Markierung erneut versuchen",
     "flip": "Drehen",

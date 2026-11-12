@@ -703,16 +703,20 @@ export default function Review() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center" aria-label="Filter and sort games">
-        {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => (
-          <label key={key} className="block min-w-0 text-xs text-chesscom-500 sm:w-auto">
-            <span className="sr-only">{key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}</span>
-            <select aria-label={key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}
+        {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => {
+          const filterLabel = t(`review.libraryFilterLabel.${key}`, { defaultValue: {
+            source: 'Game source', time_class: 'Game speed', result: 'Game result',
+            analyzed: 'Review status', sort: 'Sort games',
+          }[key] });
+          return <label key={key} className="block min-w-0 text-xs text-chesscom-500 sm:w-auto">
+            <span className="sr-only">{filterLabel}</span>
+            <select aria-label={filterLabel}
               className="input w-full min-w-0 text-xs sm:w-auto" value={filters[key]}
               onChange={(e) => updateFilter(key, e.target.value)}>
               {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-          </label>
-        ))}
+          </label>;
+        })}
         <div role="group" aria-label={t('review.dateRange', {defaultValue: 'Game date range'})} className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
           <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
             <span className="mb-1 block">{t('review.fromDate', {defaultValue: 'From date'})}</span>

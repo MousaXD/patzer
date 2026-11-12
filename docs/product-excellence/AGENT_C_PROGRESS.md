@@ -569,3 +569,17 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **Library source and filter controls' accessible names and state synchronization** in languages other than English on narrow screens. The Library currently carries English-only filter `<select>` labels and fixture-specific hard-coded English locators; first reproduce any real a11y gap in a non-English browser fixture before implementing a localized, testable fix. Keep any changes Library-local and avoid shared navigation/localization infrastructure.
+
+## 2026-11-12 — Localize Library filter accessible labels without changing filter state
+
+- Resumed clean pushed `ada7e3f` and the outstanding five-select accessibility audit. Confirmed the source, speed, result, analyzed and sort controls were hard-coded with English `aria-label` strings regardless of the active language. Used `review.libraryFilterLabel.*` with translations in English, German, Spanish, Russian and Bulgarian, preserving the exact English names and a `defaultValue` for the existing component translation stub. No shared navigation or Game Review UI changed.
+- Added locale coverage for all five filters across all five languages and real isolated Chromium with a **German-profile 390px dark-mode session**. Initially the new German scenario's fixture waited for an English discovery label, so it timed out despite correctly translated controls; corrected the test to await its synthetic history and opening independently of localized wording. The browser now verifies the five German accessible names, successful Lichess source selection through the actual `<select>`, preserved `source=lichess` query state, no JS errors and no horizontal overflow.
+
+### Verification
+
+- Focused Library+locales suite: **91 tests passed**. Full repository suite: **109 files passed, 2 skipped; 1,063 tests passed, 12 skipped**, zero failures. `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium passed the preexisting 1440px/390px/320px light/dark matrix and the added German 390px dark-mode filter scenario, along with existing import, practice, Unicode, cursor, starred-only and keyboard tests.
+- Inspected `qa-artifacts/agent-c-library/library-german-filters-dark-390.png`. Existing **dropdown option text remains English** even when the filter accessible names are German. This is a separate, reproducible localization gap; the label-only change intentionally preserves option rendering and filter values.
+
+### Next independent audit
+
+- Fix the Library's **untranslated filter option choices** (e.g. "All sources", "Newest first") across all five languages, keeping enum values unchanged. Reproduce in German Chromium, provide localized option names, and verify a selection still updates the exact URL and backend query. Also inspect `Clear filters` and the Library's accessible filter-group label, which are currently English literals; keep all work within the Library lane.

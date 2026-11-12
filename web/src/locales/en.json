@@ -377,6 +377,13 @@
     "star": "Star",
     "bookmarkGame": "Bookmark game",
     "removeBookmark": "Remove bookmark",
+    "libraryFilterLabel": {
+      "source": "Game source",
+      "time_class": "Game speed",
+      "result": "Game result",
+      "analyzed": "Review status",
+      "sort": "Sort games"
+    },
     "bookmarkSaveFailed": "Could not update the bookmark. The previous state is restored; you can retry.",
     "bookmarkRetry": "Retry bookmark",
     "flip": "Flip",

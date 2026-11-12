@@ -372,6 +372,13 @@
     "star": "Destacar",
     "bookmarkGame": "Guardar partida en favoritos",
     "removeBookmark": "Quitar de favoritos",
+    "libraryFilterLabel": {
+      "source": "Origen de la partida",
+      "time_class": "Ritmo de juego",
+      "result": "Resultado de la partida",
+      "analyzed": "Estado del análisis",
+      "sort": "Ordenar partidas"
+    },
     "bookmarkSaveFailed": "No se pudo actualizar el marcador. Se restauró el estado anterior; puedes reintentarlo.",
     "bookmarkRetry": "Reintentar marcador",
     "flip": "Girar",

@@ -68,6 +68,13 @@ describe('de locale', () => {
 // the midst of an otherwise translated analysis workspace.
 describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as const)(
   '%s Game Review board guidance', (lang, locale) => {
+    it('gives all five Library filters a meaningful translated screen-reader label', () => {
+      for (const filter of ['source','time_class','result','analyzed','sort'] as const) {
+        const localized = locale.review.libraryFilterLabel[filter];
+        expect(localized.trim().length, `${lang}: ${filter}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(localized).not.toEqual(en.review.libraryFilterLabel[filter]);
+      }
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);

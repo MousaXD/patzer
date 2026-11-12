@@ -109,7 +109,8 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
-    unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false} = {}) {
+    unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false,
+    locale = 'en'} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
@@ -128,7 +129,8 @@ async function newPage(theme, width, height,
     if (path === '/api/setup/status') json = {setup_required: false};
     else if (path === '/api/auth/me') json = {user: {
       id: 7, username: 'fixture', role: 'user', created_at: '2026-11-10', profile: {...profile,
-        site_theme: theme, ...(noLinked ? {chesscom_username:null,lichess_username:null} : {})},
+        site_theme: theme, language: locale,
+        ...(noLinked ? {chesscom_username:null,lichess_username:null} : {})},
     }};
     else if (path === '/api/games/openings') {
       if (openingFailuresRemaining > 0) {
@@ -212,7 +214,7 @@ async function newPage(theme, width, height,
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
-  await page.getByRole('combobox', {name:'Game source'}).waitFor();
+  await page.getByRole('combobox', {name:locale === 'de' ? 'Partiequelle' : 'Game source'}).waitFor();
   if (longPlayerNames) {
     await page.getByText('1 of 1 games').waitFor();
   } else if (unicodeLibrary) {
@@ -223,9 +225,16 @@ async function newPage(theme, width, height,
     await page.getByText('Your game history starts here').waitFor();
     await page.getByText('0 of 0 games').waitFor();
   } else {
-    if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
-    else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
-    await page.getByText('40 of 620 games').waitFor();
+    if (locale !== 'en') {
+      // German translates both its discovery actions and game counts; wait
+      // for real history and discovery results without guessing their text.
+      await page.locator('a[href="/review/1"]').waitFor();
+      await page.getByRole('button', {name:/Italian Game/}).waitFor();
+    } else {
+      if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
+      else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
+      await page.getByText('40 of 620 games').waitFor();
+    }
   }
   return {page,context,pageErrors,seenPgnFiles};
 }
@@ -324,6 +333,24 @@ try {
       console.log(`PASS ${theme} ${w}x${h} overflow=${m.overflow}`);
     }
   }
+
+  const germanFilters=await newPage('dark',390,844,{locale:'de'});
+  try {
+    const {page,pageErrors}=germanFilters;
+    for (const label of ['Partiequelle','Partiegeschwindigkeit','Partieergebnis',
+      'Analysestatus','Partien sortieren']) {
+      assert.equal(await page.getByRole('combobox',{name:label,exact:true}).count(),1,
+        `German screen-reader filter label missing: ${label}`);
+    }
+    await page.getByRole('combobox',{name:'Partiequelle'}).selectOption('lichess');
+    await page.waitForURL(/source=lichess/);
+    assert.equal(new URL(page.url()).searchParams.get('source'),'lichess');
+    const geometry=await metrics(page);
+    assert.ok(geometry.overflow<=2,`Localized Library causes mobile overflow: ${geometry.overflow}px`);
+    await page.screenshot({path:join(output,'library-german-filters-dark-390.png'),fullPage:true});
+    assert.deepEqual(pageErrors,[],'Localized Library filters caused a browser exception');
+    console.log('PASS German Library filter accessibility labels and URL-backed source selection');
+  } finally {await germanFilters.context.close();}
 
   const errorFixture = await newPage('light', 390, 844, {failOpeningsOnce:true});
   try {
