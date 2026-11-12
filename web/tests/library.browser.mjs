@@ -110,7 +110,7 @@ async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
     unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false,
-    locale = 'en', timeZone = 'UTC', dateBoundary = false} = {}) {
+    locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -183,7 +183,9 @@ async function newPage(theme, width, height,
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
-      } else json = starredOnlyScenario
+      } else json = noStarredGames
+        ? list(parsed.searchParams, games.map(g=>({...g, bookmarked:0})))
+        : starredOnlyScenario
         ? list(parsed.searchParams, games.map(g=>removedStars.has(g.id) ? {...g,bookmarked:0} : g))
         : list(parsed.searchParams);
     } else if (longPlayerNames && path === '/api/games/9003/bookmark' && request.method() === 'PATCH') {
@@ -416,6 +418,38 @@ try {
     assert.deepEqual(pageErrors,[],'German 320px Library produced a browser error');
     console.log('PASS German 320px filter layout, visible search and zero overflow');
   } finally {await narrowGerman.context.close();}
+
+  const emptyGerman=await newPage('light',390,844,{locale:'de'});
+  try {
+    const {page,pageErrors}=emptyGerman;
+    await page.getByRole('searchbox').fill('a-player-who-does-not-exist');
+    const message=page.getByRole('status').getByText('Keine passenden Partien gefunden');
+    await message.waitFor();
+    await page.screenshot({path:join(output,'library-german-no-matches-light-390.png')});
+    const recover=message.locator('..').getByRole('button',{name:'Filter zurücksetzen'});
+    assert.equal(await recover.count(),1,'Empty-state recovery should be clear in German');
+    await recover.click();
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('q'));
+    await page.locator('a[href="/review/1"]').waitFor();
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
+    assert.deepEqual(pageErrors,[], 'German empty-state filter reset caused a JS error');
+    console.log('PASS German no-match recovery restores the saved Library and URL');
+  } finally {await emptyGerman.context.close();}
+
+  const noStarsGerman=await newPage('dark',390,844,{locale:'de',noStarredGames:true});
+  try {
+    const {page,pageErrors}=noStarsGerman;
+    await page.getByRole('button',{name:'Alle Partien',exact:true}).click();
+    await page.waitForURL(/bookmarked=1/);
+    const message=page.getByRole('status').getByText('Noch keine markierten Partien');
+    await message.waitFor();
+    const showAll=message.locator('..').getByRole('button',{name:'Alle Partien anzeigen'});
+    await showAll.click();
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('bookmarked'));
+    await page.locator('a[href="/review/1"]').waitFor();
+    assert.deepEqual(pageErrors,[], 'German empty-Starred-only recovery caused a JS error');
+    console.log('PASS German empty Starred-only recovery returns to saved games');
+  } finally {await noStarsGerman.context.close();}
 
   const errorFixture = await newPage('light', 390, 844, {failOpeningsOnce:true});
   try {

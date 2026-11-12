@@ -646,3 +646,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **Library "No results" and "Starred only" empty states in internationalized interfaces**: ensure the Library's empty-result recovery is understandable and that clearing a stale filter really reveals games. Use a German mobile fixture with a specific unmatched search and verify the user's action without inventing a missing-data state. Prioritize functional recovery and accessibility over cosmetic changes.
+
+## 2026-11-12 — Translate empty filtered Library recovery and announce no matches
+
+- Recovered clean pushed `b3104ac` and inspected empty Library states. Confirmed a real localization gap: `review.noMatches` was absent from all five locale files, so empty filtered results always fell back to an English sentence, and the **Clear filters** button inside the no-results card was an untranslated English literal even after its identical header action was localized. The no-match explanation did not expose itself as an accessible status message.
+- Wrote failing locale tests in all five languages and a failing React empty-filter regression requiring a status role. Added translated `review.noMatches` strings in English, German, Spanish, Russian and Bulgarian; reused the existing translated `review.clearLibraryFilters` action in the empty card, and made the explanation itself a polite `role=status` announcement. Preserved the distinction between **no matching games**, **no starred games**, **first-use with no history**, and **history fetch error** without introducing a second onboarding workflow.
+- Added genuine isolated 390px German mobile browser journeys: search for a guaranteed unmatched player, see **Keine passenden Partien gefunden**, click the empty card's own **Filter zurücksetzen**, confirm the `q` URL parameter is cleared and 40 saved games return; then in a separate fixture with 620 unstarred games choose **Alle Partien** to show **Noch keine markierten Partien**, click **Alle Partien anzeigen**, and confirm the `bookmarked` URL parameter is removed and history returns. Both flows passed without JS errors. Screenshot `qa-artifacts/agent-c-library/library-german-no-matches-light-390.png` visually inspected.
+
+### Verification
+
+- Initial red tests: five missing-locale tests and the missing-status regression failed as expected; after implementation, focused Library+locales: **107/107 passed**. Full repository suite: **109 passed files, 2 skipped; 1,079 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`).
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed; isolated Chromium desktop 1440px and mobile 390/320px light/dark plus German variants, near-midnight dates, imports, source switching, cursor, Unicode, bookmarks and both empty-state paths passed with zero horizontal overflow.
+- No production data, remote provider imports, Game Review internals, other agent worktrees, merges or deployments touched.
+
+### Next independent audit
+
+- Audit **mobile empty-result discoverability**: in a 390px screenshot the no-results explanation card starts below the initial viewport because discovery and filter controls consume vertical space. Check whether a returning player with no matches can understand and recover without extensive scrolling; avoid hiding or removing necessary filter controls and test any compact improvement against import/search accessibility.

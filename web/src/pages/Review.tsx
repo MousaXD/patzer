@@ -783,12 +783,12 @@ export default function Review() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-chesscom-100 text-chesscom-400 dark:bg-chesscom-800">
             <Inbox className="h-6 w-6" />
           </div>
-          <div className="text-base font-semibold">
+          <div role="status" className="text-base font-semibold">
             {q || activeFilters ? t('review.noMatches', { defaultValue: 'No games match your search' }) : t('review.noStarred', { defaultValue: 'No starred games yet' })}
           </div>
           {q || activeFilters ? (
             <button type="button" onClick={clearLibraryFilters} className="btn-secondary text-sm">
-              Clear filters
+              {t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}
             </button>
           ) : (
             <button onClick={toggleBookmarkedOnly} className="btn-secondary text-sm">{t('review.showAll', { defaultValue: 'Show all games' })}</button>

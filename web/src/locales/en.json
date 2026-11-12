@@ -372,6 +372,7 @@
     "starredFilterOff": "All games",
     "games": "games",
     "noStarred": "No starred games yet",
+    "noMatches": "No games match your search",
     "showAll": "Show all games",
     "starred": "Starred",
     "star": "Star",

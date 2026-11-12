@@ -112,6 +112,10 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review.libraryUpdating).not.toBe(en.review.libraryUpdating);
       }
     });
+    it('provides a translated no-match explanation for filter recovery', () => {
+      expect(locale.review.noMatches?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.noMatches).not.toEqual(en.review.noMatches);
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
