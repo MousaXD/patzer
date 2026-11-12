@@ -18,6 +18,7 @@ let role = 'user';
 let logoutMode = 'success';
 let signedIn = true;
 let homeGamesMode = 'empty';
+let homeFailureMode = false;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -149,6 +150,12 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
+    if (homeFailureMode && [
+      '/api/stats/me', '/api/games', '/api/plan', '/api/achievements',
+    ].includes(url.pathname)) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
+      return;
+    }
     if (url.pathname === '/api/auth/logout' && route.request().method() === 'POST') {
       if (logoutMode === 'error') {
         await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
@@ -281,6 +288,29 @@ try {
   await checkNoHorizontalOverflow(page, 'recent games at 320px');
   await page.screenshot({ path: resolve(output, 'home-recent-games-mobile-320.png') });
   homeGamesMode = 'empty';
+
+  // Broken API dependencies must not strand a touch user with microscopic
+  // retry targets. Exercise the real failure paths in the homepage only.
+  homeFailureMode = true;
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.getByText('Your statistics could not be loaded.').waitFor();
+  await page.getByText('Recent games could not be loaded.').waitFor();
+  await page.getByRole('button', { name: 'Retry Achievements' }).waitFor();
+  const retrySizes = await page.locator('main button').evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { label: button.getAttribute('aria-label') || button.textContent?.trim(),
+        width: rect.width, height: rect.height };
+    }));
+  if (retrySizes.length < 4) throw new Error('Homepage outage fixture did not render its recovery actions');
+  const smallRetries = retrySizes.filter(({ width, height }) => width < 44 || height < 44);
+  if (smallRetries.length) {
+    throw new Error('Homepage retry actions fail 44px touch targets: ' + JSON.stringify(smallRetries));
+  }
+  await checkNoHorizontalOverflow(page, 'home outage at 320px');
+  await page.screenshot({ path: resolve(output, 'home-error-recovery-mobile-320.png') });
+  homeFailureMode = false;
 
   theme = 'dark';
   await openWithFixture(page, { width: 1440, height: 900 });

@@ -120,6 +120,7 @@ describe('Home statistics failure', () => {
     mount();
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('Your statistics could not be loaded.');
+    expect(alert.querySelector('button')?.className).toContain('min-h-11');
     expect(screen.queryByText('app.tagline')).toBeNull();
 
     offline = false;
@@ -141,6 +142,9 @@ describe('Home statistics failure', () => {
 
     mount();
     await waitFor(() => expect(screen.getAllByText('Progress temporarily unavailable')).toHaveLength(3));
+    for (const label of ["Retry This week's plan", 'Retry Achievements', 'Retry home.todayPuzzle']) {
+      expect(screen.getByRole('button', { name: label }).className).toContain('min-h-11');
+    }
     expect(screen.queryByText('Build your first improvement plan')).toBeNull();
     expect(screen.queryByText('Earn your first badge')).toBeNull();
 
@@ -155,6 +159,27 @@ describe('Home statistics failure', () => {
     offline.puzzle = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry home.todayPuzzle' }));
     await waitFor(() => expect(screen.queryByText('Progress temporarily unavailable')).toBeNull());
+  });
+
+  it('provides a touch-sized recovery action for failed recent games', async () => {
+    let unavailable = true;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return unavailable
+        ? Promise.reject(new Error('offline'))
+        : Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    const errorText = await screen.findByText('Recent games could not be loaded.');
+    const retry = errorText.closest('section')?.querySelector<HTMLButtonElement>('button');
+    expect(retry?.className).toContain('min-h-11');
+    unavailable = false;
+    fireEvent.click(retry!);
+    expect(await screen.findByText('Play your first game')).toBeTruthy();
   });
 
   it('shows the learning-progress outage and retries without resetting the level to zero', async () => {

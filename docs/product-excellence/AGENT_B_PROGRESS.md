@@ -945,3 +945,29 @@
 ### Next audit
 
 - Inspect first-run and returning-player Home controls in **German and Spanish at 320px** for long translated strings that may shrink effective touch targets or clip adjacent actions. Verify the actual rendered localized paths and light/dark focus behavior before changing shared layout or translations.
+
+## 2026-11-12: Reliable touch-sized homepage recovery after API outages
+
+### Actual-browser reproduction
+
+- Resumed from clean pushed `211ecea` and extended the existing Home interaction audit to real API failure states rather than repeating completed healthy-data or recent-games tests.
+- With local-only HTTP **503** fixtures for stats, recent games, plan and achievements at **320×700px**, Chromium measured the four visible homepage Retry controls as **64×34px**, **70×38px**, **50×24px** and **50×24px**. All were too short for a reliable touch target; the tiny plan/achievement links were especially hard to recover with.
+
+### Scoped fix
+
+1. Applied consistent **44px minimum height/width** to the stats error Retry, recent-games Retry, and reusable Home activity-status Retry controls. The latter covers plan, achievements, learn progress and daily puzzle, without changing global CSS or other agents' feature-owned buttons.
+2. Kept each action's original localized text, accessible label, retry callback and error-state distinction. Added an understated hover treatment to the small activity retry controls; existing accessible focus indicators remain active.
+3. Extended Chromium's existing Home fixture with the four actual 503 responses, awaited recoverable error states, checked all visible `main button` bounding rectangles and no overflow at 320px, and captured `home-error-recovery-mobile-320.png` for visual inspection. The test failed before the fix and passed afterward.
+4. Strengthened Home unit tests to check the hero and activity error recovery targets and added a new recent-games error/retry test validating the click still recovers to the empty-account guidance after the endpoint succeeds.
+
+### Verification
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** the failure-recovery fixture and all existing responsive, localized navigation, dark/light and first-use cases.
+- `npx vitest run web/src --maxWorkers=2`: **429/429 passed across 73 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Changes limited to Home, Agent B's browser/unit tests and this progress report. No merge, deployment, production data, Game Review/Library or other agent worktree changes.
+
+### Next highest-impact audit
+
+- Check the **320px localized homepage first-run/error paths** in German and Spanish, especially long retry messages and whether the two main CTAs stay discoverable and fully within the hero. Then audit the shared homepage fallback when a profile lacks a username, ensuring no regressions from the new first-use identity logic.

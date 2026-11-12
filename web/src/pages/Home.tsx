@@ -173,7 +173,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
             <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 text-sm text-white/85">
               <span>{t('home.statsUnavailable', { defaultValue: 'Your statistics could not be loaded.' })}</span>
               <button type="button" onClick={retry}
-                className="rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 {t('common.retry', { defaultValue: 'Retry' })}
               </button>
             </div>
@@ -329,7 +329,7 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
         {!loading && (
           <button type="button" onClick={retry}
             aria-label={`${t('common.retry', { defaultValue: 'Retry' })} ${label}`}
-            className="mt-2 rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
+            className="mt-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:bg-ui-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
             {t('common.retry', { defaultValue: 'Retry' })}
           </button>
         )}
@@ -532,7 +532,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
   if (error) return (
     <section className="card flex flex-wrap items-center justify-between gap-3 p-5" role="alert">
       <p className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('home.gamesUnavailable', { defaultValue: 'Recent games could not be loaded.' })}</p>
-      <button type="button" onClick={retry} className="btn-secondary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+      <button type="button" onClick={retry} className="btn-secondary min-h-11 min-w-11 text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
     </section>
   );
   if (games.length === 0) {
