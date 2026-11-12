@@ -776,7 +776,16 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
 
   const myColor: 'white' | 'black' = row.user_color;
   const me: PvpPlayer = myColor === 'white' ? session.white : session.black;
+  // One player may have several browser tabs open, but only the newest socket
+  // may control this side. Previously the new tab silently replaced me.ws:
+  // the old board still accepted clicks, and its WebSocket handler could even
+  // mutate the live game although only the new tab received results.
+  const previous = me.ws;
   me.ws = ws;
+  if (previous && previous !== ws) {
+    send(previous, 'session_replaced');
+    try { previous.close(4000, 'session_replaced'); } catch { /* already closed */ }
+  }
   const opp: PvpPlayer = myColor === 'white' ? session.black : session.white;
 
   send(ws, 'pvp_hello', {
@@ -801,6 +810,9 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
     const type = msg.type as string;
 
     if (!session) return;
+    // A stale tab must not play moves, offer draws or resign on behalf of a
+    // player after the newer tab takes ownership, even if close races a send.
+    if (me.ws !== ws) return;
 
     try {
       if (type === 'move') {
@@ -970,7 +982,9 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
 
   ws.on('close', () => {
     if (!session) return;
-    if (me.ws === ws) me.ws = null;
+    // Closing an obsolete tab does not mean the player went offline.
+    if (me.ws !== ws) return;
+    me.ws = null;
     if (opp.ws) send(opp.ws, 'opponent_status', { online: false });
     // If neither side connected and game not saved, keep session for reconnect (ephemeral)
     // GC: drop after a while if both gone — left simple for v1.

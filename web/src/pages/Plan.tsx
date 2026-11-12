@@ -31,6 +31,7 @@ interface PlanGoal {
 }
 
 import { api } from '../api';
+import { useAuth } from '../state/auth';
 
 const CTA_HREF: Record<GoalKind, { href: string; label: string }> = {
   puzzles_solve: { href: '/train', label: 'Train' },
@@ -42,17 +43,19 @@ const CTA_HREF: Record<GoalKind, { href: string; label: string }> = {
 
 export default function Plan() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [expiredOpen, setExpiredOpen] = useState(false);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['plan'],
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['plan', user?.id],
+    enabled: user?.id != null,
     queryFn: () => api.get<{ goals: PlanGoal[] }>('/api/plan'),
   });
 
   const regen = useMutation({
     mutationFn: () => api.post<{ goals: PlanGoal[] }>('/api/plan/regenerate'),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['plan'] }); },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['plan', user?.id] }); },
   });
 
   const groups = useMemo(() => {
@@ -65,7 +68,15 @@ export default function Plan() {
     return { active, completed, expired };
   }, [data]);
 
-  if (isLoading) return <Skeleton />;
+  if (isLoading || user?.id == null) return <Skeleton />;
+
+  if (isError || !data) return (
+    <div role="alert" className="card mx-auto flex max-w-xl flex-col items-center gap-3 p-8 text-center">
+      <h1 className="text-base font-semibold">{t('plan.loadFailed', { defaultValue: 'Your improvement plan is unavailable' })}</h1>
+      <p className="text-sm text-chesscom-500">{t('plan.loadFailedDesc', { defaultValue: 'This does not mean your goals are gone. Please retry loading them.' })}</p>
+      <button type="button" onClick={() => void refetch()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </div>
+  );
 
   const total = (data?.goals?.length ?? 0);
 
@@ -92,6 +103,13 @@ export default function Plan() {
             : t('plan.regenerate', { defaultValue: 'Regenerate' })}
         </button>
       </header>
+
+      {regen.isError && (
+        <div role="alert" className="card flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+          <span>{t('plan.regenerateFailed', { defaultValue: 'The plan could not be regenerated. Your existing goals are unchanged.' })}</span>
+          <button type="button" onClick={() => regen.reset()} className="btn-secondary text-xs">{t('common.dismiss', { defaultValue: 'Dismiss' })}</button>
+        </div>
+      )}
 
       {total === 0 ? (
         <div className="card flex flex-col items-center gap-3 p-10 text-center">
@@ -124,7 +142,7 @@ export default function Plan() {
           {groups.completed.length > 0 && (
             <section className="space-y-3">
               <SectionHeader
-                label={t('plan.completedGroup', { defaultValue: 'Completed this week' })}
+                label={t('plan.completedGroup', { defaultValue: 'Completed goals' })}
                 count={groups.completed.length}
                 tone="board-dark"
               />
@@ -195,29 +213,24 @@ function GoalCard({ goal }: { goal: PlanGoal }) {
 
   return (
     <div className={`card relative overflow-hidden p-4 ${borderTone}`}>
-      {completed && (
-        <div className="pointer-events-none absolute -right-6 -top-6 text-gold-500/15">
-          <Sparkles className="h-24 w-24" />
-        </div>
-      )}
       <div className="flex items-start gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accentBg}`}>
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+            <h3 className="break-words text-sm font-semibold leading-snug text-chesscom-900 dark:text-chesscom-100">
               {text.title}
             </h3>
             {completed && <Check className="h-4 w-4 shrink-0 text-gold-600" />}
           </div>
-          <p className="mt-0.5 text-xs text-chesscom-500">{text.description}</p>
+          <p className="mt-0.5 text-xs text-chesscom-600 dark:text-chesscom-300">{text.description}</p>
         </div>
       </div>
 
       <div className="mt-3 space-y-1.5">
         <div className="flex items-baseline justify-between text-xs">
-          <span className="text-chesscom-500">
+          <span className="text-chesscom-600 dark:text-chesscom-300">
             {t('plan.progress', { defaultValue: 'Progress' })}
           </span>
           <span className="font-mono tabular-nums text-chesscom-700 dark:text-chesscom-200">

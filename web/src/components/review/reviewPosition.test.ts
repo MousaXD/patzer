@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
-import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey } from './reviewPosition';
+import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedBestAlternative } from './reviewPosition';
 
 const savedMoves = [
   { best_move_uci: 'e2e4' },
@@ -9,6 +9,16 @@ const savedMoves = [
 ];
 
 describe('review position-safe suggestions', () => {
+  it('only permits a legal, correctly named alternative from the same analyzed pre-move FEN', () => {
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 12';
+    const scored = { uci: 'e7e5', fen_before: fen, best_move_uci: 'c7c5', best_move_san: 'c5' };
+    expect(verifiedBestAlternative(scored, fen)).toEqual({ uci: 'c7c5', san: 'c5' });
+    expect(verifiedBestAlternative(scored, new Chess().fen())).toBeNull();
+    expect(verifiedBestAlternative({ ...scored, best_move_san: 'd5' }, fen)).toBeNull();
+    expect(verifiedBestAlternative({ ...scored, best_move_uci: 'c2c4' }, fen)).toBeNull();
+    expect(verifiedBestAlternative({ ...scored, best_move_uci: 'e7e5', best_move_san: 'e5' }, fen)).toBeNull();
+    expect(verifiedBestAlternative({ ...scored, best_move_uci: null }, fen)).toBeNull();
+  });
   it('uses the next move, never a hint evaluated before the displayed move', () => {
     expect(bestMoveForDisplayedBoard({
       ply: 1, isVariation: false, mainline: savedMoves, liveReady: false,

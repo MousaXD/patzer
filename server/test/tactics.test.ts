@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,6 +66,31 @@ describe('the puzzle set', () => {
 });
 
 describe('picking and rating', () => {
+  it('excludes an unrecorded puzzle from only the requested next pick', async () => {
+    db.prepare(`INSERT OR IGNORE INTO profiles (user_id, display_name) VALUES (2, 'Other')`).run();
+    const router = (await import('../src/routes/tactics.js')).default;
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const headers = { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(2))}` };
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const original = await router.request('/next', { headers });
+      expect(original.status).toBe(200);
+      const first = (await original.json() as { puzzle: { id: string } }).puzzle;
+      expect(first).toHaveProperty('id');
+      const withoutFirst = await router.request(`/next?skip=${first.id}`, { headers });
+      expect(withoutFirst.status).toBe(200);
+      expect((await withoutFirst.json() as { puzzle: { id: string } }).puzzle.id).not.toBe(first.id);
+      expect((db.prepare('SELECT COUNT(*) AS n FROM tactics_attempts WHERE user_id = 2').get() as { n: number }).n).toBe(0);
+      const originalAgain = await router.request('/next', { headers });
+      expect((await originalAgain.json() as { puzzle: { id: string } }).puzzle.id).toBe(first.id);
+      const malformed = await router.request('/next?skip=..%2F..', { headers });
+      expect(malformed.status).toBe(400);
+      expect((db.prepare('SELECT COUNT(*) AS n FROM tactics_attempts WHERE user_id = 2').get() as { n: number }).n).toBe(0);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   it('starts you at 1200 and picks a puzzle close to it', () => {
     expect(tactics.statsOf(1)).toMatchObject({ rating: 1200, provisional: true, played: 0, solved: 0 });
     const p = tactics.nextPuzzle(1, null, () => 0)!;

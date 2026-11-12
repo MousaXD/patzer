@@ -12,6 +12,8 @@ import { api } from '../api';
 import { useAuth } from '../state/auth';
 import type { Classification } from '../types';
 import ClassificationIcon from '../components/ClassificationIcon';
+import { buildActivityGrid } from '../lib/insightsActivity';
+import { condenseRatingHistory, ratingHistorySeries } from '../lib/ratingHistory';
 
 type Achievement = {
   id: string;
@@ -30,9 +32,10 @@ interface OpeningRow { eco: string; name: string; color: Color; played: number; 
 interface InsightsV2 {
   games_total: number;
   games_analyzed: number;
+  personal_puzzle_positions?: boolean;
   activity_heatmap: { day: string; games: number; wins: number }[];
   rating_trajectory: Record<string, { t: string; r: number }[]>;
-  time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }>;
+  time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; analyzed_games?: number; accuracy_games?: number; avg_accuracy: number | null }>;
   opening_repertoire: OpeningRow[];
   mistake_taxonomy: {
     hung_pieces: number; back_rank: number; missed_mate: number;
@@ -40,6 +43,7 @@ interface InsightsV2 {
     one_move_blunders: number; promising_to_losing: number;
   };
   phase_accuracy: { opening: number; middlegame: number; endgame: number };
+  phase_samples?: { opening: number; middlegame: number; endgame: number };
   accuracy_trend: { t: string; acc: number; result: string | null }[];
   move_quality?: {
     counts: Record<string, number>;
@@ -90,8 +94,11 @@ export default function Insights() {
       <div className="card flex flex-col items-center gap-2 p-10 text-center">
         <BarChart3 className="h-8 w-8 text-chesscom-400" />
         <div className="text-base font-semibold">{t('insights.empty', { defaultValue: 'No insights yet' })}</div>
-        <div className="text-sm text-chesscom-500">{t('insights.emptyDesc', { defaultValue: 'Analyze a few games and your weak spots will show up here.' })}</div>
-        <Link to="/review" className="btn-primary mt-2 text-sm">{t('review.title')}</Link>
+        <div className="max-w-md text-sm text-chesscom-500">{t('insights.emptyDesc', { defaultValue: 'Play a game or import your history to see your results here. Analyze saved games to explore move quality and mistakes.' })}</div>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Link to="/play" className="btn-primary text-sm">{t('home.playTitle', { defaultValue: 'Play a game' })}</Link>
+          <Link to="/review" className="btn-secondary text-sm">{t('review.title', { defaultValue: 'Game Library' })}</Link>
+        </div>
       </div>
     );
   }
@@ -111,13 +118,16 @@ export default function Insights() {
         </p>
       </header>
 
+      {/* Facts from current-version analyses, translated into a next action. */}
+      <NextStepCard data={data} />
+
       {/* Achievements */}
       <AchievementsSection sectionRef={achievementsRef} achievements={achievementsData?.achievements ?? null}
         loading={achievementsPending} error={achievementsError} retry={() => void refetchAchievements()} />
 
       {/* Phase accuracy + Time-class breakdown side-by-side */}
       <div className="grid gap-4 md:grid-cols-2">
-        {data.games_analyzed ? <PhaseAccuracyCard data={data.phase_accuracy} /> : (
+        {data.games_analyzed ? <PhaseAccuracyCard data={data.phase_accuracy} samples={data.phase_samples} /> : (
           <div className="card flex flex-col justify-center gap-2 p-4">
             <h2 className="text-sm font-semibold">Accuracy requires game analysis</h2>
             <p className="text-xs text-chesscom-500">Your results are already counted below. Analyze a game to unlock move-level accuracy and mistakes.</p>
@@ -144,6 +154,70 @@ export default function Insights() {
         <OpeningRepertoireCard data={data.opening_repertoire} />
       </div>
     </div>
+  );
+}
+
+/** The categories are counted from analyzed moves; one move can match more than one. */
+function NextStepCard({ data }: { data: InsightsV2 }) {
+  const { t } = useTranslation();
+  const patterns: { key: keyof InsightsV2['mistake_taxonomy']; label: string }[] = [
+    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'High-cost mistakes' }) },
+    { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }) },
+    { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }) },
+    { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }) },
+    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening mistakes' }) },
+    { key: 'endgame_drift', label: t('insights.tax.endgameDrift', { defaultValue: 'Endgame drift' }) },
+    { key: 'promising_to_losing', label: t('insights.tax.promisingLosing', { defaultValue: 'Squandered advantages' }) },
+  ];
+  const leading = patterns.reduce<(typeof patterns)[number] | null>((best, row) => {
+    const count = data.mistake_taxonomy[row.key] ?? 0;
+    return count > 0 && (!best || count > (data.mistake_taxonomy[best.key] ?? 0)) ? row : best;
+  }, null);
+  const count = leading ? data.mistake_taxonomy[leading.key] : 0;
+
+  return (
+    <section className="card border-board-dark/25 p-4 sm:p-5" aria-labelledby="insights-next-step">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-board-dark">
+            <Target className="h-4 w-4" aria-hidden="true" />
+            <h2 id="insights-next-step">{t('insights.nextStep', { defaultValue: 'Your next chess step' })}</h2>
+          </div>
+          {leading ? (
+            <>
+              <p className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">{leading.label}</p>
+              <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+                {t('insights.nextPattern', {
+                  defaultValue: '{{count}} tagged moves across your analyzed games. This is the most frequent listed pattern to investigate.',
+                  count,
+                })}
+              </p>
+              <p className="text-xs text-chesscom-500">{t('insights.nextPatternCaveat', { defaultValue: 'Categories are based on move analysis and can overlap; this does not automatically mean a recurring habit.' })}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">
+                {data.games_analyzed === 0
+                  ? t('insights.nextAnalyzeTitle', { defaultValue: 'Review a game to find useful practice positions' })
+                  : t('insights.nextNoPatternTitle', { defaultValue: 'No major mistake category recorded yet' })}
+              </p>
+              <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+                {data.games_analyzed === 0
+                  ? t('insights.nextAnalyzeDesc', { defaultValue: 'Your results are available now. Analyze a saved game to unlock personal mistake patterns and practice positions.' })
+                  : t('insights.nextNoPatternDesc', { defaultValue: 'Keep analyzing games and use practice to build confidence. A missing pattern here is not a performance score.' })}
+              </p>
+            </>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:max-w-[14rem] sm:justify-end">
+          {data.games_analyzed > 0 && (data.personal_puzzle_positions
+            ? <Link to="/train" className="btn-primary text-sm">{t('insights.explorePositions', { defaultValue: 'Explore my positions' })}</Link>
+            : <Link to="/train?tab=puzzles" className="btn-primary text-sm">{t('insights.tryTactics', { defaultValue: 'Try tactical puzzles' })}</Link>)}
+          <Link to="/review" className={data.games_analyzed > 0 ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>{t('review.title', { defaultValue: 'Review games' })}</Link>
+          <Link to="/learn" className="btn-ghost text-sm">{t('learn.title', { defaultValue: 'Explore lessons' })} <ChevronRight className="h-4 w-4" aria-hidden="true" /></Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -227,7 +301,9 @@ function MoveQualityCard({ data }: { data: NonNullable<InsightsV2['move_quality'
 }
 
 /* ───── Phase accuracy ─────────────────────────────────────────────────── */
-function PhaseAccuracyCard({ data }: { data: InsightsV2['phase_accuracy'] }) {
+function PhaseAccuracyCard({ data, samples }: {
+  data: InsightsV2['phase_accuracy']; samples?: InsightsV2['phase_samples'];
+}) {
   const { t } = useTranslation();
   return (
     <section className="card p-4">
@@ -236,20 +312,28 @@ function PhaseAccuracyCard({ data }: { data: InsightsV2['phase_accuracy'] }) {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.phaseAccuracy', { defaultValue: 'Phase accuracy' })}</h2>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <PhaseStat label={t('review.opening', { defaultValue: 'Opening' })} value={data.opening} />
-        <PhaseStat label={t('review.middlegame', { defaultValue: 'Middlegame' })} value={data.middlegame} />
-        <PhaseStat label={t('review.endgame', { defaultValue: 'Endgame' })} value={data.endgame} />
+        <PhaseStat label={t('review.opening', { defaultValue: 'Opening' })} value={data.opening} samples={samples?.opening ?? 0} />
+        <PhaseStat label={t('review.middlegame', { defaultValue: 'Middlegame' })} value={data.middlegame} samples={samples?.middlegame ?? 0} />
+        <PhaseStat label={t('review.endgame', { defaultValue: 'Endgame' })} value={data.endgame} samples={samples?.endgame ?? 0} />
       </div>
+      <p className="mt-3 text-xs text-chesscom-500">{t('insights.phaseCoverage', { defaultValue: 'Each score averages analyzed games with moves in that phase. A dash means there are no measured games for that phase.' })}</p>
     </section>
   );
 }
 
-function PhaseStat({ label, value }: { label: string; value: number }) {
-  const tone = value >= 80 ? 'text-board-dark' : value >= 60 ? 'text-gold-600' : 'text-mistake';
+function PhaseStat({ label, value, samples }: { label: string; value: number; samples: number }) {
+  const { t } = useTranslation();
+  const measured = samples > 0 && Number.isFinite(value);
+  const tone = !measured ? 'text-chesscom-400' : value >= 80 ? 'text-board-dark' : value >= 60 ? 'text-gold-600' : 'text-mistake';
   return (
     <div className="rounded-md bg-chesscom-50/70 px-3 py-3 text-center dark:bg-chesscom-900/40">
       <div className="text-[11px] uppercase tracking-wide text-chesscom-500">{label}</div>
-      <div className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${tone}`}>{value.toFixed(1)}<span className="text-xs opacity-70">%</span></div>
+      <div className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${tone}`}>{measured ? <>{value.toFixed(1)}<span className="text-xs opacity-70">%</span></> : '—'}</div>
+      <div className="mt-0.5 text-[11px] text-chesscom-500">
+        {measured
+          ? t('insights.phaseGames', { defaultValue: '{{count}} analyzed games', count: samples })
+          : t('insights.phaseUnavailable', { defaultValue: 'Not measured' })}
+      </div>
     </div>
   );
 }
@@ -257,12 +341,21 @@ function PhaseStat({ label, value }: { label: string; value: number }) {
 /* ───── Time-class stats ───────────────────────────────────────────────── */
 function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
   const { t } = useTranslation();
-  const order: { key: string; label: string }[] = [
+  const standard: { key: string; label: string }[] = [
     { key: 'bullet', label: t('players.tc.bullet') },
     { key: 'blitz', label: t('players.tc.blitz') },
     { key: 'rapid', label: t('players.tc.rapid') },
     { key: 'daily', label: t('players.tc.daily') },
   ];
+  // Imported games may have unrecognized or missing time classes. Never hide
+  // their real results simply because they are not one of Patzer's four modes.
+  const otherClasses = Object.keys(data)
+    .filter((key) => !standard.some((item) => item.key === key))
+    .sort()
+    .map((key) => ({ key, label: key === 'other'
+      ? t('insights.tcOtherClass', { defaultValue: 'Other / unspecified' })
+      : key }));
+  const order = [...standard, ...otherClasses];
   return (
     <section className="card p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -279,24 +372,50 @@ function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
           );
           const wp = (s.wins / s.games) * 100;
           const dp = (s.draws / s.games) * 100;
+          const lp = (s.losses / s.games) * 100;
+          const otherResults = Math.max(0, s.games - s.wins - s.draws - s.losses);
           return (
             <div key={key}>
-              <div className="mb-1 flex items-baseline justify-between text-xs">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
                 <span className="font-medium text-chesscom-700 dark:text-chesscom-200">{label}</span>
                 <span className="font-mono tabular-nums text-chesscom-500">
                   {t('insights.tcLine', { games: s.games, wins: s.wins, draws: s.draws, losses: s.losses })}
-                  {s.avg_accuracy != null && <> · {s.avg_accuracy.toFixed(1)}%</>}
                 </span>
               </div>
-              <div className="flex h-2 w-full overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
+              <div role="img" aria-label={t('insights.tcBarLabel', {
+                defaultValue: '{{games}} results: {{wins}} wins, {{draws}} draws, {{losses}} losses, {{other}} other results',
+                games: s.games, wins: s.wins, draws: s.draws, losses: s.losses, other: otherResults,
+              })} className="flex h-2 w-full overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
                 <div className="h-full bg-board-dark" style={{ width: `${wp}%` }} />
                 <div className="h-full bg-chesscom-300 dark:bg-chesscom-600" style={{ width: `${dp}%` }} />
-                <div className="h-full bg-mistake/80" style={{ width: `${100 - wp - dp}%` }} />
+                <div className="h-full bg-mistake/80" style={{ width: `${lp}%` }} />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-chesscom-500">
+                {s.avg_accuracy != null ? (
+                  <span>{s.accuracy_games != null
+                    ? t('insights.tcMeasuredAccuracy', {
+                      defaultValue: s.accuracy_games === 1
+                        ? 'Accuracy {{accuracy}}% · {{count}} measured game'
+                        : 'Accuracy {{accuracy}}% · {{count}} measured games',
+                      accuracy: s.avg_accuracy.toFixed(1), count: s.accuracy_games,
+                    })
+                    : t('insights.tcAccuracyLimited', {
+                      defaultValue: 'Accuracy {{accuracy}}% · analyzed games only',
+                      accuracy: s.avg_accuracy.toFixed(1),
+                    })}</span>
+                ) : <span>{t('insights.tcNoAccuracy', { defaultValue: 'Accuracy not measured' })}</span>}
+                {otherResults > 0 && <span>{t('insights.tcOtherResults', {
+                  defaultValue: otherResults === 1 ? '{{count}} other result' : '{{count}} other results',
+                  count: otherResults,
+                })}</span>}
               </div>
             </div>
           );
         })}
       </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-chesscom-500">
+        {t('insights.tcCoverage', { defaultValue: 'Results count saved games with a recorded outcome. Accuracy is averaged only over games with measured player-side analysis; other outcomes are not losses.' })}
+      </p>
     </section>
   );
 }
@@ -304,30 +423,7 @@ function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
 /* ───── Activity heatmap ───────────────────────────────────────────────── */
 function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
   const { t } = useTranslation();
-  // Build a 53-week × 7-day grid ending today.
-  const grid = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const end = new Date(today);
-    // Fill back exactly 52 weeks + today's column.
-    const totalDays = 53 * 7;
-    const start = new Date(today);
-    start.setDate(start.getDate() - (totalDays - 1));
-    const dayMap = new Map<string, { games: number; wins: number }>();
-    for (const r of data) dayMap.set(r.day, { games: r.games, wins: r.wins });
-
-    const cells: { date: string; day: number; games: number; wins: number }[] = [];
-    let max = 0;
-    for (let i = 0; i < totalDays; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const iso = d.toISOString().slice(0, 10);
-      const v = dayMap.get(iso) ?? { games: 0, wins: 0 };
-      max = Math.max(max, v.games);
-      cells.push({ date: iso, day: d.getDay(), games: v.games, wins: v.wins });
-    }
-    return { cells, max, end };
-  }, [data]);
+  const grid = useMemo(() => buildActivityGrid(data), [data]);
 
   function tone(games: number, max: number): string {
     if (games === 0) return 'fill-chesscom-100 dark:fill-chesscom-900';
@@ -341,7 +437,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
   const totalGames = data.reduce((a, b) => a + b.games, 0);
   const totalWins = data.reduce((a, b) => a + b.wins, 0);
 
-  // 53 cols × 7 rows. Cell 12px, gap 2px. Width ≈ 53*14 = 742, fits 760 board col.
+  // 53 complete Sunday–Saturday columns, with out-of-range dates left blank.
   const cellSize = 11;
   const cellGap = 2;
   const cols = 53;
@@ -362,7 +458,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
       </div>
       <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t('insights.activity', { defaultValue: 'Activity chart' })}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img"
-          aria-label={t('insights.activityChart', { defaultValue: 'Daily games played during the past year; details for each day appear on hover.' })}>
+          aria-label={t('insights.activityChart', { defaultValue: 'Games played by UTC date during the last 365 days; hover over a day for details.' })}>
           {grid.cells.map((c, i) => {
             const col = Math.floor(i / 7);
             const row = i % 7;
@@ -376,14 +472,15 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
                 width={cellSize}
                 height={cellSize}
                 rx={2}
-                className={tone(c.games, grid.max)}
+                className={c.inRange ? tone(c.games, grid.max) : 'fill-transparent'}
               >
-                <title>{t('insights.dayGames', { date: c.date, count: c.games }) + (c.games > 0 ? t('insights.dayWins', { wins: c.wins }) : '')}</title>
+                {c.inRange && <title>{t('insights.dayGames', { date: c.date, count: c.games }) + (c.games > 0 ? t('insights.dayWins', { wins: c.wins }) : '')}</title>}
               </rect>
             );
           })}
         </svg>
       </div>
+      <p className="mt-2 text-[11px] text-chesscom-500">{t('insights.activityUtcNote', { defaultValue: 'Dates use UTC to match saved game timestamps. Blank edges are outside the 365-day period.' })}</p>
       <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-chesscom-400">
         <span>{t('insights.less', { defaultValue: 'Less' })}</span>
         <span className="h-2.5 w-2.5 rounded-sm bg-chesscom-100 dark:bg-chesscom-900" />
@@ -399,10 +496,8 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
 
 /* ───── Rating trajectory ─────────────────────────────────────────────── */
 function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] }) {
-  const { t } = useTranslation();
-  const series = (['rapid', 'blitz', 'bullet', 'daily'] as const)
-    .map((k) => ({ key: k, points: data[k] ?? [] }))
-    .filter((s) => s.points.length > 0);
+  const { t, i18n } = useTranslation();
+  const series = ratingHistorySeries(data);
 
   if (series.length === 0) {
     return (
@@ -416,13 +511,27 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
     );
   }
 
-  // Combined Y axis across all series
-  const all = series.flatMap((s) => s.points.map((p) => p.r));
-  let min = Math.min(...all);
-  let max = Math.max(...all);
+  // Use all authoritative records for the axes and summaries. Avoid spreading
+  // a very long history into Math.min/Math.max (which can exceed JS argument
+  // limits) and bound only the plotted SVG nodes below.
+  let min = Infinity;
+  let max = -Infinity;
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  for (const s of series) {
+    for (const point of s.points) {
+      min = Math.min(min, point.r);
+      max = Math.max(max, point.r);
+      const when = Date.parse(point.t);
+      tMin = Math.min(tMin, when);
+      tMax = Math.max(tMax, when);
+    }
+  }
   if (min === max) { min -= 50; max += 50; }
   const pad = Math.max(20, Math.round((max - min) * 0.08));
   min -= pad; max += pad;
+  const plotted = series.map((s) => ({ ...s, plotPoints: condenseRatingHistory(s.points) }));
+  const condensed = plotted.some((s) => s.plotPoints.length < s.points.length);
 
   const W = 480, H = 140, padX = 28, padY = 14;
   const colors: Record<string, string> = {
@@ -431,25 +540,18 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
     bullet: '#c63b3a',
     daily: '#6c7a89',
   };
-  const xs = series.flatMap((s) => s.points.map((p) => new Date(p.t).getTime()));
-  const tMin = Math.min(...xs), tMax = Math.max(...xs);
-  const xScale = (t: number) => padX + ((t - tMin) / Math.max(1, tMax - tMin)) * (W - 2 * padX);
+  // One recorded rating is a data point, not a rising/falling trend. Center
+  // it rather than leaving a tiny dot glued to the chart's left edge.
+  const xScale = (t: number) => tMin === tMax ? W / 2 : padX + ((t - tMin) / (tMax - tMin)) * (W - 2 * padX);
   const yScale = (r: number) => H - padY - ((r - min) / (max - min)) * (H - 2 * padY);
+  const date = (t: string | number) => new Date(t).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <section className="card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-board-dark" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.ratingTrend', { defaultValue: 'Rating trajectory' })}</h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-chesscom-500">
-          {series.map((s) => (
-            <span key={s.key} className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[s.key] }} />
-              <span>{t(`players.tc.${s.key}`)}</span>
-            </span>
-          ))}
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
@@ -461,13 +563,13 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
             <text x={padX - 4} y={yScale(v) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">{Math.round(v)}</text>
           </g>
         ))}
-        {series.map((s) => {
-          const path = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(new Date(p.t).getTime()).toFixed(1)},${yScale(p.r).toFixed(1)}`).join(' ');
+        {plotted.map((s) => {
+          const path = s.plotPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(new Date(p.t).getTime()).toFixed(1)},${yScale(p.r).toFixed(1)}`).join(' ');
           return (
             <g key={s.key}>
               <path d={path} fill="none" stroke={colors[s.key]} strokeWidth={1.5} />
-              {s.points.map((p, i) => (
-                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={1.6} fill={colors[s.key]}>
+              {s.plotPoints.map((p, i) => (
+                <circle key={i} cx={xScale(new Date(p.t).getTime())} cy={yScale(p.r)} r={s.plotPoints.length === 1 ? 3.6 : 2.5} fill={colors[s.key]}>
                   <title>{`${t(`players.tc.${s.key}`)} ${p.r} · ${new Date(p.t).toLocaleDateString()}`}</title>
                 </circle>
               ))}
@@ -475,13 +577,53 @@ function RatingTrajectoryCard({ data }: { data: InsightsV2['rating_trajectory'] 
           );
         })}
       </svg>
+      <div className={`mt-1 flex text-[11px] text-chesscom-500 ${tMin === tMax ? 'justify-center' : 'justify-between'}`}>
+        <span>{date(tMin)}</span>
+        {tMin !== tMax && <span>{date(tMax)}</span>}
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-chesscom-500">
+        {t('insights.ratingExplanation', { defaultValue: 'Only recorded rating updates appear here. Changes compare the first and last recorded value in each time class.' })}
+      </p>
+      {condensed && (
+        <p className="mt-1 text-xs leading-relaxed text-chesscom-500">
+          {t('insights.ratingCondensed', { defaultValue: 'Long histories are condensed on the chart, keeping recorded endpoints and high/low values. The summaries use every rating entry.' })}
+        </p>
+      )}
+      <div role="list" className="mt-3 grid gap-2 sm:grid-cols-2">
+        {series.map((s) => (
+          <div key={s.key} role="listitem" className="min-w-0 rounded-lg bg-chesscom-50/70 p-3 dark:bg-chesscom-900/40">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-chesscom-700 dark:text-chesscom-200">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: colors[s.key] }} aria-hidden="true" />
+                {t(`players.tc.${s.key}`)}
+              </span>
+              <span className="font-mono text-lg font-semibold tabular-nums text-chesscom-900 dark:text-chesscom-100">{s.last.r}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-chesscom-600 dark:text-chesscom-300">
+              {s.change === null
+                ? t('insights.ratingSingle', { defaultValue: 'One rating recorded — no trend to compare' })
+                : t('insights.ratingChange', {
+                  defaultValue: '{{change}} since first recorded rating',
+                  change: `${s.change > 0 ? '+' : ''}${s.change}`,
+                })}
+            </p>
+            <p className="mt-1 text-[11px] text-chesscom-500">
+              {t('insights.ratingEntries', {
+                defaultValue: s.points.length === 1 ? '{{count}} recorded rating' : '{{count}} recorded ratings',
+                count: s.points.length,
+              })}
+              {s.points.length > 1 && ` · ${date(s.first.t)} – ${date(s.last.t)}`}
+            </p>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
 
 /* ───── Accuracy trend ─────────────────────────────────────────────────── */
 function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (data.length === 0) {
     return (
       <section className="card p-4">
@@ -494,13 +636,14 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
     );
   }
   const W = 480, H = 140, padX = 28, padY = 14;
-  const xs = data.map((_, i) => i);
-  const xMin = 0, xMax = Math.max(1, xs[xs.length - 1] ?? 1);
   const yMin = 0, yMax = 100;
-  const xScale = (i: number) => padX + ((i - xMin) / Math.max(1, xMax - xMin)) * (W - 2 * padX);
+  // These are the latest analyzed games, chronologically ordered by the
+  // server; one game is a point, not a trend line.
+  const xScale = (i: number) => data.length === 1 ? W / 2 : padX + (i / (data.length - 1)) * (W - 2 * padX);
   const yScale = (v: number) => H - padY - ((v - yMin) / (yMax - yMin)) * (H - 2 * padY);
   const path = data.map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(i).toFixed(1)},${yScale(p.acc).toFixed(1)}`).join(' ');
   const avg = data.reduce((a, b) => a + b.acc, 0) / data.length;
+  const date = (timestamp: string) => new Date(timestamp).toLocaleDateString(i18n.language, { month: 'short', day: 'numeric', year: 'numeric' });
   return (
     <section className="card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -508,7 +651,7 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <Target className="h-4 w-4 text-gold-500" />
           <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.accuracyTrend', { defaultValue: 'Accuracy trend' })}</h2>
         </div>
-        <span className="font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
+        <span className="shrink-0 font-mono text-xs tabular-nums text-chesscom-500">{t('insights.avg', { defaultValue: 'avg' })} {avg.toFixed(1)}%</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
         aria-label={t('insights.accuracyTrend', { defaultValue: 'Accuracy trend across analyzed games' })}>
@@ -516,10 +659,10 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
           <line key={v} x1={padX} x2={W - padX} y1={yScale(v)} y2={yScale(v)} className="stroke-chesscom-200 dark:stroke-chesscom-700" strokeWidth={0.5} strokeDasharray="2 3" />
         ))}
         {/* avg line */}
-        <line x1={padX} x2={W - padX} y1={yScale(avg)} y2={yScale(avg)} stroke="#e0a02b" strokeWidth={0.7} strokeDasharray="3 3" opacity={0.7} />
-        <path d={path} fill="none" stroke="#769656" strokeWidth={1.5} />
+        {data.length > 1 && <line x1={padX} x2={W - padX} y1={yScale(avg)} y2={yScale(avg)} stroke="#e0a02b" strokeWidth={0.7} strokeDasharray="3 3" opacity={0.7} />}
+        {data.length > 1 && <path d={path} fill="none" stroke="#769656" strokeWidth={1.5} />}
         {data.map((p, i) => (
-          <circle key={i} cx={xScale(i)} cy={yScale(p.acc)} r={1.8} fill={p.result === 'win' ? '#769656' : p.result === 'loss' ? '#c63b3a' : '#6c7a89'}>
+          <circle key={i} cx={xScale(i)} cy={yScale(p.acc)} r={data.length === 1 ? 3.5 : 2.4} fill={p.result === 'win' ? '#769656' : p.result === 'loss' ? '#c63b3a' : '#6c7a89'}>
             <title>{`${p.acc.toFixed(1)}% · ${p.result ? t(`insights.result.${p.result}`) : '—'} · ${new Date(p.t).toLocaleDateString()}`}</title>
           </circle>
         ))}
@@ -527,6 +670,32 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
         <text x={padX - 4} y={yScale(50) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">50</text>
         <text x={padX - 4} y={yScale(100) + 3} textAnchor="end" fontSize={9} className="fill-chesscom-400">100</text>
       </svg>
+      <div className={`mt-1 flex text-[11px] text-chesscom-500 ${data.length === 1 ? 'justify-center' : 'justify-between'}`}>
+        <span>{date(data[0]!.t)}</span>
+        {data.length > 1 && <span>{date(data[data.length - 1]!.t)}</span>}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-chesscom-500">
+        <span>{t('insights.accuracySampleCount', {
+          defaultValue: data.length === 1 ? '{{count}} analyzed game' : '{{count}} analyzed games',
+          count: data.length,
+        })}</span>
+        <span className="inline-flex items-center gap-2">
+          {([
+            ['#769656', t('insights.result.win', { defaultValue: 'Win' })],
+            ['#c63b3a', t('insights.result.loss', { defaultValue: 'Loss' })],
+            ['#6c7a89', t('insights.accuracyDrawOther', { defaultValue: 'Draw / unknown' })],
+          ] as const).map(([color, label]) => (
+            <span key={color} className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />{label}
+            </span>
+          ))}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-chesscom-500">
+        {data.length === 1
+          ? t('insights.accuracySingle', { defaultValue: 'One analyzed game is not enough to show an accuracy trend.' })
+          : t('insights.accuracyExplanation', { defaultValue: 'Each point is one of your latest analyzed games. The average covers only the games shown; changes between individual games do not automatically mean you are improving or declining.' })}
+      </p>
     </section>
   );
 }
@@ -535,11 +704,11 @@ function AccuracyTrendCard({ data }: { data: InsightsV2['accuracy_trend'] }) {
 function MistakeTaxonomyCard({ data }: { data: InsightsV2['mistake_taxonomy'] }) {
   const { t } = useTranslation();
   const buckets: { key: keyof InsightsV2['mistake_taxonomy']; label: string; desc: string }[] = [
-    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'Hung pieces' }), desc: t('insights.tax.hungDesc', { defaultValue: '≥2 pawns of material lost' }) },
+    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'High-cost mistakes' }), desc: t('insights.tax.hungDesc', { defaultValue: 'Moves losing ≥2 pawns of engine evaluation, not necessarily material.' }) },
     { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }), desc: t('insights.tax.oneMoveDesc', { defaultValue: 'Sudden cliff edges' }) },
     { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }), desc: t('insights.tax.backRankDesc', { defaultValue: 'King exposed on home rank' }) },
     { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }), desc: t('insights.tax.missedMateDesc', { defaultValue: 'You had it — and walked away' }) },
-    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening pitfalls' }), desc: t('insights.tax.openingTrapDesc', { defaultValue: 'Mistakes before move 15' }) },
+    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening mistakes' }), desc: t('insights.tax.openingTrapDesc', { defaultValue: 'Mistakes in positions classified as the opening phase.' }) },
     { key: 'endgame_drift', label: t('insights.tax.endgameDrift', { defaultValue: 'Endgame drift' }), desc: t('insights.tax.endgameDriftDesc', { defaultValue: 'Errors in technical positions' }) },
     { key: 'promising_to_losing', label: t('insights.tax.promisingLosing', { defaultValue: 'Squandered advantages' }), desc: t('insights.tax.promisingLosingDesc', { defaultValue: '+1.5 → flat in one move' }) },
   ];
@@ -567,7 +736,7 @@ function MistakeTaxonomyCard({ data }: { data: InsightsV2['mistake_taxonomy'] })
                 <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
                   <div className="h-full bg-mistake/70" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="mt-0.5 truncate text-[11px] text-chesscom-400">{b.desc}</div>
+                <div className="mt-0.5 break-words text-[11px] leading-relaxed text-chesscom-600 dark:text-chesscom-300">{b.desc}</div>
               </div>
             </div>
           );

@@ -6,8 +6,9 @@
 // With ?daily=1 (the Home card) it shows the puzzle of the day instead: the
 // same puzzle all day, and a streak of the days in a row you did it.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBlocker, type BlockerFunction } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, Eye, Flame, Lightbulb, RotateCcw, Trophy, TrendingDown, TrendingUp, X, Zap } from 'lucide-react';
 import ChessBoard from './ChessBoard';
@@ -37,30 +38,64 @@ const DAILY_KEY = ['tactics-daily'];
 // 'play': your move; 'wrong': a wrong try, the board went back; 'solved': the
 // line is done; 'shown': "show me" played the rest for you.
 type Status = 'play' | 'wrong' | 'solved' | 'shown';
+type AttemptSaveState = 'idle' | 'pending' | 'saved' | 'error';
+interface AttemptBody { id: string; solved: boolean; daily?: string }
 
 export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?: boolean; onLeaveDaily?: () => void }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [theme, setTheme] = useState<string | null>(null);
   const [run, setRun] = useState(0);
-  const { data: stats } = useQuery({ queryKey: STATS_KEY, queryFn: () => api.get<Stats>('/api/tactics/stats') });
-  const { data: today } = useQuery({
-    queryKey: ['tactics-daily-play', run],
-    queryFn: () => api.get<Daily>(`/api/tactics/daily?today=${localDay()}`),
-    enabled: daily,
+  const [attemptBusy, setAttemptBusy] = useState(false);
+  // Only exclude a puzzle if the user explicitly leaves a failed save. These
+  // IDs live in memory, are scoped to the current account, and never alter
+  // ratings, daily streaks, or the authoritative first attempt.
+  const [skipState, setSkipState] = useState<{ userId: number | null; ids: string[] }>({ userId: null, ids: [] });
+  const skipped = skipState.userId === user?.id ? skipState.ids : [];
+  const skipParam = skipped.join(',');
+  function skipUnsaved(id: string) {
+    setSkipState((prev) => {
+      const ids = prev.userId === user?.id ? prev.ids : [];
+      return { userId: user?.id ?? null, ids: [...new Set([...ids, id])].slice(-100) };
+    });
+  }
+  useEffect(() => { setAttemptBusy(false); }, [user?.id, daily, theme, run]);
+  const todayKey = localDay();
+  const { data: stats } = useQuery({
+    queryKey: [...STATS_KEY, user?.id],
+    enabled: user?.id != null,
+    queryFn: () => api.get<Stats>('/api/tactics/stats'),
+  });
+  const { data: today, isLoading: dailyLoading, isError: dailyError, refetch: retryDaily } = useQuery({
+    queryKey: ['tactics-daily-play', user?.id, todayKey, run],
+    queryFn: () => api.get<Daily>(`/api/tactics/daily?today=${todayKey}`),
+    enabled: daily && user?.id != null,
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
-  const { data: next, isLoading, isError } = useQuery({
-    queryKey: ['tactics-next', theme, run],
-    queryFn: () => api.get<{ puzzle: TacticsPuzzle | null }>(`/api/tactics/next${theme ? `?theme=${theme}` : ''}`),
-    enabled: !daily,
+  const { data: next, isLoading, isError, refetch: retryNext } = useQuery({
+    queryKey: ['tactics-next', user?.id, theme, run, skipParam],
+    queryFn: () => {
+      const search = new URLSearchParams();
+      if (theme) search.set('theme', theme);
+      if (skipParam) search.set('skip', skipParam);
+      return api.get<{ puzzle: TacticsPuzzle | null }>(`/api/tactics/next${search.size ? `?${search}` : ''}`);
+    },
+    enabled: !daily && user?.id != null,
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
   const data = daily ? today : next;
-  const loading = daily ? !today : isLoading;
+  const loading = user?.id == null || (daily ? dailyLoading : isLoading);
+
+  if (daily && dailyError) return (
+    <div role="alert" className="card flex flex-col items-center gap-3 p-8 text-center">
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-200">{t('train.puzzles.loadError')}</p>
+      <button type="button" onClick={() => void retryDaily()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </div>
+  );
 
   if (daily && today) {
     return (
@@ -80,7 +115,9 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
           </div>
         )}
         {today.puzzle && (
-          <Puzzle key={`${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day} onNext={() => onLeaveDaily?.()} />
+          <Puzzle key={`${user?.id}:${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day}
+            onNext={() => onLeaveDaily?.()} onLeaveUnsaved={() => { skipUnsaved(today.puzzle!.id); onLeaveDaily?.(); }}
+            onBusyChange={setAttemptBusy} />
         )}
       </div>
     );
@@ -89,33 +126,59 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        <ThemeChip active={theme === null} onClick={() => { setTheme(null); setRun((r) => r + 1); }} label={t('train.puzzles.themes.all')} />
+        <ThemeChip active={theme === null} disabled={attemptBusy} onClick={() => { setTheme(null); setRun((r) => r + 1); }} label={t('train.puzzles.themes.all')} />
         {THEMES.map((th) => (
-          <ThemeChip key={th} active={theme === th} onClick={() => { setTheme(th); setRun((r) => r + 1); }} label={t(`train.puzzles.themes.${th}`)} />
+          <ThemeChip key={th} active={theme === th} disabled={attemptBusy} onClick={() => { setTheme(th); setRun((r) => r + 1); }} label={t(`train.puzzles.themes.${th}`)} />
         ))}
       </div>
 
-      {loading && <div className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>}
-      {!daily && isError && <div className="card p-10 text-center text-sm text-move-mistake">{t('train.puzzles.loadError')}</div>}
+      {loading && <div role="status" className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>}
+      {!daily && isError && (
+        <div role="alert" className="card flex flex-col items-center gap-3 p-8 text-center">
+          <p className="text-sm text-chesscom-600 dark:text-chesscom-200">{t('train.puzzles.loadError')}</p>
+          <button type="button" onClick={() => void retryNext()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+        </div>
+      )}
       {data && !data.puzzle && (
         <div className="card flex flex-col items-center gap-2 p-10 text-center">
-          <Trophy className="h-8 w-8 text-gold-500" />
-          <div className="text-base font-semibold">{t('train.puzzles.allDone')}</div>
+          {skipped.length > 0
+            ? <RotateCcw className="h-8 w-8 text-chesscom-500" aria-hidden="true" />
+            : <Trophy className="h-8 w-8 text-gold-500" aria-hidden="true" />}
+          <div className="text-base font-semibold">{skipped.length > 0
+            ? t('train.mine.sessionSkippedTitle', { defaultValue: 'No more unskipped puzzles in this session' })
+            : t('train.puzzles.allDone')}</div>
+          {skipped.length > 0 && (
+            <>
+              <p className="max-w-md text-center text-sm text-chesscom-600 dark:text-chesscom-300">
+                {t('train.mine.sessionSkippedDesc', { count: skipped.length,
+                  defaultValue: 'You chose to continue without recording {{count}} attempts. They are still available when you retry or return later.' })}
+              </p>
+              <button type="button" className="btn-primary mt-1 min-h-10 text-sm"
+                onClick={() => { setSkipState({ userId: user?.id ?? null, ids: [] }); setRun((r) => r + 1); }}>
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {t('train.mine.retrySkipped', { defaultValue: 'Retry skipped puzzles' })}
+              </button>
+            </>
+          )}
           {theme && <button onClick={() => setTheme(null)} className="btn-secondary mt-2 text-sm">{t('train.puzzles.themes.all')}</button>}
         </div>
       )}
       {data?.puzzle && (
-        <Puzzle key={`${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null} onNext={() => setRun((r) => r + 1)} />
+        <Puzzle key={`${user?.id}:${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null}
+          onNext={() => setRun((r) => r + 1)}
+          onLeaveUnsaved={() => { skipUnsaved(data.puzzle!.id); setRun((r) => r + 1); }}
+          onBusyChange={setAttemptBusy} />
       )}
     </div>
   );
 }
 
-function ThemeChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function ThemeChip({ active, onClick, label, disabled = false }: { active: boolean; onClick: () => void; label: string; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+      disabled={disabled}
+      className={`rounded-full border px-3 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
         active
           ? 'border-board-dark bg-board-dark/10 font-semibold text-chesscom-900 dark:text-chesscom-100'
           : 'border-chesscom-200 text-chesscom-600 hover:bg-chesscom-100 dark:border-chesscom-700 dark:text-chesscom-300 dark:hover:bg-chesscom-700/40'
@@ -126,7 +189,10 @@ function ThemeChip({ active, onClick, label }: { active: boolean; onClick: () =>
   );
 }
 
-function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats: Stats | null; daily?: string; onNext: () => void }) {
+function Puzzle({ puzzle, stats, daily, onNext, onLeaveUnsaved, onBusyChange }: {
+  puzzle: TacticsPuzzle; stats: Stats | null; daily?: string;
+  onNext: () => void; onLeaveUnsaved: () => void; onBusyChange: (busy: boolean) => void;
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -140,19 +206,67 @@ function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats
   const [hint, setHint] = useState<'none' | 'piece' | 'move'>('none');
   const [result, setResult] = useState<Attempt | null>(null);
   const [boardKey, setBoardKey] = useState(0);
+  const [saveState, setSaveState] = useState<AttemptSaveState>('idle');
+  const attemptRef = useRef<AttemptBody | null>(null);
+  const leavingExplicitlyRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; onBusyChange(false); };
+  }, [onBusyChange]);
+
+  const unsaved = saveState === 'pending' || saveState === 'error';
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    if (!unsaved || leavingExplicitlyRef.current || user?.id == null) return false;
+    if (['/login', '/setup', '/signup', '/forgot-password', '/reset-password', '/verify-email'].includes(nextLocation.pathname)) return false;
+    return currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search;
+  }, [unsaved, user?.id]);
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (saveState === 'saved' && blocker.state === 'blocked') blocker.proceed();
+  }, [saveState, blocker]);
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
 
   const pos = useMemo(() => positionAt(puzzle, n), [puzzle, n]);
   const done = n >= puzzle.moves.length;
   const yourTurn = !done && n % 2 === 1 && (status === 'play' || status === 'wrong');
 
-  function send(solved: boolean) {
-    api.post<Attempt>('/api/tactics/attempt', { id: puzzle.id, solved, ...(daily ? { daily } : {}) })
+  function persist(body: AttemptBody) {
+    setSaveState('pending');
+    onBusyChange(true);
+    void api.post<Attempt>('/api/tactics/attempt', body)
       .then((r) => {
+        if (!mountedRef.current) return;
         setResult(r);
+        setSaveState('saved');
+        onBusyChange(false);
         void qc.invalidateQueries({ queryKey: STATS_KEY });
         if (daily) void qc.invalidateQueries({ queryKey: DAILY_KEY });
       })
-      .catch(() => { /* the puzzle goes on; the rating just didn't change */ });
+      .catch(() => { if (mountedRef.current) setSaveState('error'); });
+  }
+  function send(solved: boolean) {
+    // The first try is the only rated one. Retry must resend that *same*
+    // result, even if the player found the full line after a failed request.
+    if (attemptRef.current) return;
+    const body: AttemptBody = { id: puzzle.id, solved, ...(daily ? { daily } : {}) };
+    attemptRef.current = body;
+    persist(body);
+  }
+  function retrySave() {
+    if (saveState === 'error' && attemptRef.current) persist(attemptRef.current);
+  }
+  function continueUnsaved() {
+    leavingExplicitlyRef.current = true;
+    onBusyChange(false);
+    onLeaveUnsaved();
   }
   function lose() {
     if (!clean) return;
@@ -270,7 +384,7 @@ function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats
           )}
           {finished && status === 'solved' && (
             <div className="flex items-start gap-2 text-sm font-semibold">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-board-dark" /> {clean ? t('train.puzzles.solved') : t('train.puzzles.solvedLate')}
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-board-dark" /> {clean || saveState !== 'saved' ? t('train.puzzles.solved') : t('train.puzzles.solvedLate')}
             </div>
           )}
           {status === 'shown' && (
@@ -278,10 +392,27 @@ function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats
               <Eye className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" /> {done ? t('train.puzzles.shownDone') : t('train.puzzles.showing')}
             </div>
           )}
-          {!clean && !finished && status !== 'shown' && <div className="mt-1 text-xs text-chesscom-500">{t('train.puzzles.notRated')}</div>}
+          {!clean && saveState === 'saved' && !finished && status !== 'shown' && <div className="mt-1 text-xs text-chesscom-500">{t('train.puzzles.notRated')}</div>}
           {daily && finished && result?.streak !== undefined && result.streak > 0 && (
             <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-gold-700 dark:text-gold-400">
               <Flame className="h-3.5 w-3.5" /> {t('home.dailyStreak', { count: result.streak })}
+            </div>
+          )}
+
+          {saveState === 'pending' && (
+            <div role="status" className="mt-3 flex items-center gap-2 text-xs text-chesscom-500">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-chesscom-300 border-t-board-dark motion-reduce:animate-none" aria-hidden="true" />
+              {t('train.puzzles.savingAttempt', { defaultValue: 'Saving your puzzle result…' })}
+            </div>
+          )}
+          {saveState === 'error' && (
+            <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-move-mistake/40 bg-move-mistake/5 p-3 text-xs">
+              <span className="text-chesscom-700 dark:text-chesscom-200">
+                {t('train.puzzles.saveFailed', { defaultValue: 'Your first puzzle attempt was not confirmed. Retry to record your rating and daily progress.' })}
+              </span>
+              <button type="button" onClick={retrySave} className="btn-secondary min-h-10 text-xs">
+                {t('train.puzzles.retrySave', { defaultValue: 'Retry saving' })}
+              </button>
             </div>
           )}
 
@@ -302,10 +433,15 @@ function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats
                   <RotateCcw className="h-4 w-4" /> {t('train.puzzles.tryIt')}
                 </button>
               )}
-              <button onClick={onNext} disabled={!done} className="btn-primary flex-1 text-sm">
+              <button onClick={onNext} disabled={!done || unsaved} className="btn-primary flex-1 text-sm">
                 {daily ? t('train.puzzles.daily.more') : t('train.puzzles.next')} <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+          )}
+          {finished && saveState === 'error' && (
+            <button type="button" onClick={continueUnsaved} className="mt-2 min-h-10 w-full text-xs text-chesscom-600 underline underline-offset-2 dark:text-chesscom-300">
+              {t('train.puzzles.continueUnsaved', { defaultValue: 'Continue without saving (result may not count)' })}
+            </button>
           )}
         </div>
 
@@ -319,6 +455,41 @@ function Puzzle({ puzzle, stats, daily, onNext }: { puzzle: TacticsPuzzle; stats
         </div>
         {!finished && status !== 'shown' && <div className="px-1 text-[11px] leading-relaxed text-chesscom-400">{t('train.puzzles.rules')}</div>}
       </aside>
+      {blocker.state === 'blocked' && (
+        <div role="presentation" className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4" onClick={() => blocker.reset()}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="tactics-unsaved-title" aria-describedby="tactics-unsaved-description"
+            className="card w-full max-w-md space-y-3 p-5 shadow-lift"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); blocker.reset(); }
+              if (event.key === 'Tab') {
+                const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                const first = buttons[0], last = buttons[buttons.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+              }
+              event.stopPropagation();
+            }}>
+            <h2 id="tactics-unsaved-title" className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">
+              {t('train.puzzles.unsavedTitle', { defaultValue: 'Your puzzle attempt is not saved yet' })}
+            </h2>
+            <p id="tactics-unsaved-description" className="text-sm text-chesscom-600 dark:text-chesscom-300">
+              {t('train.puzzles.unsavedDesc', { defaultValue: 'You can wait, retry saving, or leave before the result is confirmed.' })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" autoFocus onClick={() => blocker.reset()} className="btn-primary min-h-11 flex-1 text-sm">
+                {t('train.puzzles.stay', { defaultValue: 'Stay here' })}
+              </button>
+              {saveState === 'error' && <button type="button" onClick={retrySave} className="btn-secondary min-h-11 flex-1 text-sm">
+                {t('train.puzzles.retrySave', { defaultValue: 'Retry saving' })}
+              </button>}
+              <button type="button" onClick={() => blocker.proceed()} className="btn-secondary min-h-11 flex-1 text-sm">
+                {t('train.puzzles.leaveUnsaved', { defaultValue: 'Leave without confirmation' })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

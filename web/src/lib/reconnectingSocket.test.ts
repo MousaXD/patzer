@@ -61,6 +61,36 @@ describe('backoffMs', () => {
 });
 
 describe('ReconnectingSocket', () => {
+  it('closes an existing game connection before starting another session', () => {
+    const { rs, messages, statuses } = build();
+    rs.connect('ws://x/play', { type: 'new_game' }, { type: 'resume' });
+    const bot = latest();
+    bot.accept();
+    rs.connect('ws://x/play?game=57', null);
+    expect(bot.readyState).toBe(3);
+    const pvp = latest();
+    expect(pvp).not.toBe(bot);
+    bot.deliver({ type: 'stale_game_over' });
+    expect(messages).toEqual([]);
+    pvp.accept();
+    expect(statuses).toEqual([true, true]);
+    expect(rs.connected).toBe(true);
+    vi.advanceTimersByTime(30_000);
+    expect(FakeSocket.all).toHaveLength(2);
+  });
+
+  it('closes a previous still-connecting attempt before starting a replacement', () => {
+    const { rs, statuses } = build();
+    rs.connect('ws://x/play', { type: 'new_game' });
+    const abandoned = latest();
+    rs.connect('ws://x/play?game=58', null);
+    expect(abandoned.readyState).toBe(3);
+    abandoned.accept();
+    expect(abandoned.payloads).toEqual([]);
+    latest().accept();
+    expect(statuses).toEqual([true]);
+  });
+
   it('sends the opening message once connected', () => {
     const { rs, statuses } = build();
     rs.connect('ws://x/play', { type: 'new_game' }, { type: 'resume' });

@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUp, Sparkles, Settings as SettingsIcon, Copy, Download, Check, ListOrdered, FileText, X, Star, Share2, FlipVertical2, NotebookPen, Search, Loader2 } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -14,13 +14,15 @@ import { parseReviewGamePositions } from '../components/review/reviewGamePositio
 import { buildSavedReviewTimeline } from '../components/review/reviewTimeline';
 import { practiceCandidates } from '../components/review/practiceCandidates';
 import { reconcileReviewNotesDraft } from '../components/review/reviewNotes';
-import { reviewAnalysisErrorMessage } from '../components/review/reviewAnalysisErrors';
+import { reviewAnalysisErrorKind } from '../components/review/reviewAnalysisErrors';
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
+import ReviewUnavailable, { reviewUnavailableReason } from '../components/review/ReviewUnavailable';
+import ReviewDisclosureHeader from '../components/ReviewDisclosureHeader';
 import MistakePractice from '../components/review/MistakePractice';
 import GameReportPanel, { type GameReviewProse } from '../components/GameReportPanel';
 import KeyMomentsList from '../components/KeyMomentsList';
@@ -109,7 +111,7 @@ function GameAnalyzerView() {
   const queryClient = useQueryClient();
   const gameId = Number(id);
 
-  const { data, refetch, isLoading, isError, error: loadError } = useQuery({
+  const { data, refetch, isLoading, isFetching, isError, error: loadError } = useQuery({
     queryKey: ['game', gameId],
     queryFn: () => api.get<GameDetail>(`/api/games/${gameId}`),
     enabled: Number.isSafeInteger(gameId) && gameId > 0,
@@ -141,9 +143,12 @@ function GameAnalyzerView() {
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
+  const boardFocusRef = useRef<HTMLDivElement | null>(null);
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [shareCopyFailed, setShareCopyFailed] = useState(false);
+  useEffect(() => { setShareCopyFailed(false); }, [gameId]);
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
   const routeAttempt = searchParams.get('practicePly');
@@ -271,7 +276,7 @@ function GameAnalyzerView() {
         // A failed cached JSON decode must not crash the whole Game Review.
         // Keep the saved PGN and let the user explicitly rerun analysis.
         setAnalysis(null);
-        setAnalysisError('Stored engine analysis could not be read. Run engine analysis again to restore this report.');
+        setAnalysisError('review.storedAnalysisUnreadable');
       }
     } else {
       setAnalysis(null);
@@ -381,6 +386,20 @@ function GameAnalyzerView() {
   const shareCurrentPosition = () => isVariation
     ? `${window.location.origin}/lab#${encodeURI(variations.currentFen)}`
     : window.location.href;
+  // Both the toolbar button and the S keyboard shortcut must share the same
+  // copy success/error feedback. A denied clipboard still offers a manual URL.
+  const copySharePosition = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable');
+      await navigator.clipboard.writeText(shareCurrentPosition());
+      setShareCopyFailed(false);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1400);
+    } catch {
+      setLinkCopied(false);
+      setShareCopyFailed(true);
+    }
+  };
   const displayedLastMove = variations.lastMove;
 
   // Each exploratory move is classified by the existing authenticated engine
@@ -401,7 +420,7 @@ function GameAnalyzerView() {
           if (qualityMatchesPosition(result.quality, branchMove.fenAfter)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
           } else {
-            setQualityError('The engine response did not match this position. Retry scoring.');
+            setQualityError('source_mismatch');
           }
         }
       } catch (e) {
@@ -410,7 +429,7 @@ function GameAnalyzerView() {
         if (status === 429 && attempt === 0) {
           retry = window.setTimeout(() => void evaluate(1), 1100);
         } else {
-          setQualityError('Move not scored — the Stockfish engine is unavailable or busy.');
+          setQualityError('engine_unavailable');
         }
       }
     };
@@ -457,8 +476,8 @@ function GameAnalyzerView() {
   // Attach the keyboard listener once. Moving a ply rerenders the review,
   // so closures captured in the listener must read the latest controller
   // rather than tearing down/re-attaching between rapid key events.
-  const shortcutActions = useRef({ backward, forward, first, last, shareCurrentPosition });
-  shortcutActions.current = { backward, forward, first, last, shareCurrentPosition };
+  const shortcutActions = useRef({ backward, forward, first, last, copySharePosition });
+  shortcutActions.current = { backward, forward, first, last, copySharePosition };
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -481,10 +500,7 @@ function GameAnalyzerView() {
         setFlipped((f) => !f);
       } else if (!e.repeat && (key === 's' || key === 'S')) {
         e.preventDefault();
-        void navigator.clipboard?.writeText(shortcutActions.current.shareCurrentPosition()).then(() => {
-          setLinkCopied(true);
-          setTimeout(() => setLinkCopied(false), 1400);
-        }).catch(() => undefined);
+        void shortcutActions.current.copySharePosition();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -505,7 +521,7 @@ function GameAnalyzerView() {
       setAnalysis(r.analysis);
       await refetch();
     } catch (error) {
-      if (!controller.signal.aborted) setAnalysisError(reviewAnalysisErrorMessage(error));
+      if (!controller.signal.aborted) setAnalysisError(`review.analysisError.${reviewAnalysisErrorKind(error)}`);
     } finally {
       if (analysisRequestRef.current === controller) analysisRequestRef.current = null;
       if (!controller.signal.aborted) setAnalyzing(false);
@@ -558,21 +574,13 @@ function GameAnalyzerView() {
 
   if (isLoading) return <AnalyzerSkeleton />;
   if (!Number.isSafeInteger(gameId) || gameId <= 0 || isError || !data || positions.length === 0) {
-    return (
-      <div role="alert" className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-white p-6 text-chesscom-900 shadow-soft dark:bg-chesscom-800 dark:text-chesscom-100">
-        <h1 className="text-lg font-semibold">Game Review unavailable</h1>
-        <p className="mt-2 text-sm text-chesscom-500">
-          {!Number.isSafeInteger(gameId) || gameId <= 0
-            ? 'The game link is invalid.'
-            : data && positions.length === 0 ? 'This game has an invalid or unreadable saved PGN.'
-            : loadError instanceof Error ? loadError.message : 'This game could not be loaded.'}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {Number.isSafeInteger(gameId) && gameId > 0 && <button type="button" className="btn-primary" onClick={() => void refetch()}>Retry loading</button>}
-          <Link to="/review" className="btn-secondary">Back to games</Link>
-        </div>
-      </div>
-    );
+    const validId = Number.isSafeInteger(gameId) && gameId > 0;
+    const status = (loadError as (Error & { status?: number }) | null)?.status;
+    const reason = reviewUnavailableReason({
+      gameId, hasGame: !!data, positionsLength: positions.length, status,
+    });
+    return <ReviewUnavailable reason={reason} retrying={isFetching}
+      onRetry={reason === 'loadFailed' && validId ? () => { void refetch(); } : undefined} />;
   }
 
   // The PGN may contain more moves than a partial/legacy engine result.
@@ -676,10 +684,42 @@ function GameAnalyzerView() {
       if (rail.scrollHeight > rail.clientHeight && getComputedStyle(rail).overflowY !== 'visible') {
         rail.scrollBy({ top: offset, behavior });
       } else {
-        // Normal page scrolling is now the sole desktop scroll surface.
-        tabEl.scrollIntoView({ behavior, block: 'nearest' });
+        // 'nearest' may leave a focused tab hidden beneath the fixed app
+        // header at laptop widths. The card already has scroll-mt-16 to
+        // expose the tablist without obscuring it under the header.
+        tabEl.scrollIntoView({ behavior, block: 'start' });
       }
+      // The clicked summary button can end up far below the filtered move
+      // results after scrolling. Give keyboard/screen-reader users a stable
+      // destination instead of leaving focus in the offscreen report card.
+      document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
     });
+  };
+
+  // On narrow screens the board and its explanation cannot fit together.
+  // Make the journey two-way without duplicating game state or introducing a
+  // fixed overlay over the chessboard. Focusing the destination also helps
+  // keyboard/screen-reader users understand where the jump landed.
+  const jumpToReviewSection = () => {
+    setTab('moves');
+    requestAnimationFrame(() => {
+      tabsRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
+    });
+  };
+  const jumpToBoard = () => {
+    boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    boardFocusRef.current?.focus({ preventScroll: true });
+  };
+  // In the stacked/mobile layout the board is above the analysis rail.
+  // Merely updating the ply after selecting a Key Moment leaves the actual
+  // position off-screen. Move focus and scroll to the board on narrow screens;
+  // preserve desktop's fast, stationary side-by-side review workflow.
+  const selectMoment = (selectedPly: number) => {
+    setPly(selectedPly);
+    if (window.matchMedia('(max-width: 959px)').matches) {
+      requestAnimationFrame(jumpToBoard);
+    }
   };
 
   // Keep every engine hint, graph, move list and AI explanation UNMOUNTED during
@@ -780,7 +820,11 @@ function GameAnalyzerView() {
           <div className="relative my-2 flex items-stretch justify-center gap-2">
             <EvalBar cp={currentEvalCp} orientation={orientation} />
             <div
-              className={`review-board-square relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'green'}`}
+              ref={boardFocusRef}
+              role="group"
+              tabIndex={-1}
+              aria-label={t('review.boardLabel', { defaultValue: 'Chessboard' })}
+              className={`review-board-square relative aspect-square w-full min-w-0 scroll-mt-16 board-theme-${user?.profile.board_theme ?? 'green'}`}
             >
               <ChessBoard
                 fen={currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}
@@ -799,8 +843,8 @@ function GameAnalyzerView() {
             </div>
           </div>
           {bestUci && (
-            <p className="mb-1 text-[11px] text-chesscom-500" role="note">
-              Blue arrow: best continuation from the displayed board position.
+            <p className="mb-1 text-[11px] text-chesscom-500 dark:text-chesscom-300" role="note" data-review-best-arrow-note>
+              {t('review.bestArrowNote')}
             </p>
           )}
           <PlayerHeader
@@ -815,7 +859,7 @@ function GameAnalyzerView() {
           <div className="mt-2 flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-soft dark:bg-chesscom-800">
             <div className="min-w-0 truncate text-chesscom-500">
               {isVariation ? (
-                <><span className="font-medium text-amber-600">Variation {branchMove?.san ?? 'starting position'}</span>
+                <><span className="font-medium text-amber-600">{t('review.variationMove', { san: branchMove?.san ?? t('review.startingPosition') })}</span>
                   {variationQuality && <span className="ml-2 text-xs text-chesscom-500">{t(`classification.${variationQuality.classification}`)}</span>}
                 </>
               ) : ply > 0 && pos?.san ? (
@@ -827,11 +871,11 @@ function GameAnalyzerView() {
                 </>
               ) : <span className="italic">{t('review.startingPosition')}</span>}
             </div>
-            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? 'Position evaluation unavailable' : `Evaluation ${fmtCp(currentEvalCp)}`}>
-              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? 'Analyzing…' : '—') : fmtCp(currentEvalCp)}
+            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? t('review.variationEvalUnavailable') : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) })}>
+              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
             </div>
           </div>
-          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label="Game move navigation">
+          <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label={t('review.moveNavigation')}>
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
             <div className="flex h-10 min-w-[5rem] items-center justify-center rounded-xl bg-chesscom-100 px-3 text-sm font-mono tabular-nums dark:bg-chesscom-800 sm:h-12 sm:min-w-[5.5rem]">
@@ -840,8 +884,17 @@ function GameAnalyzerView() {
             <button type="button" onClick={forward} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.next')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.next')}><ChevronRight className="h-5 w-5" /></button>
             <button type="button" onClick={last} disabled={isVariation ? variations.variationCursor >= (variations.variations.find((v) => v.id === variations.activeVariationId)?.moves.length ?? 0) : ply >= positions.length - 1} aria-label={t('review.last')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.last')}><ChevronsRight className="h-5 w-5" /></button>
           </div>
-          <p className="mt-1 text-center text-[11px] text-chesscom-500">
-            Left / Right: step through moves · Home / End: jump to start / end · F: flip board
+          {analysis && !isVariation && (
+            <button type="button" data-review-jump-to-details
+              className="review-mobile-jump btn-secondary mt-2 min-h-11 w-full justify-center text-sm"
+              onClick={jumpToReviewSection}>
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              {t('review.jumpToMoveDetails')}
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          <p className="review-desktop-shortcuts mt-1 text-center text-[11px] text-chesscom-500 dark:text-chesscom-300" data-review-keyboard-shortcuts>
+            {t('review.keyboardShortcuts')}
           </p>
 
         </div>
@@ -849,36 +902,44 @@ function GameAnalyzerView() {
         {/* RIGHT RAIL — one natural document scroll rather than a separate
             clipped scroll island; analysis cards remain reachable at any size. */}
         <div className="review-side-rail min-w-0 space-y-3" data-review-side-rail>
-          <section className="card p-3" aria-label="Analysis variations">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-[190px] flex-1">
-                <div className="text-sm font-semibold">Interactive analysis</div>
-                <p className="text-xs text-chesscom-500">Move any piece to explore legal moves. Your saved game is never changed.</p>
+          <section className="card px-3 py-2.5" aria-label={t('review.variationTitle')}>
+            {isVariation || variations.variations.length > 0 ? (
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-[190px] flex-1">
+                  <div className="text-sm font-semibold">{t('review.variationTitle')}</div>
+                  <p className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationHelp')}</p>
+                </div>
+                <button type="button" className="btn-secondary min-h-11 shrink-0 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
+                  onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                  {t('review.variationReturn')}
+                </button>
               </div>
-              <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
-                Return to game
-              </button>
-            </div>
+            ) : (
+              <p className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300" data-review-explore-hint>
+                <span className="font-semibold text-chesscom-700 dark:text-chesscom-200">{t('review.exploreLabel')} </span>
+                {t('review.exploreHint')}
+              </p>
+            )}
             {variations.variations.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
-                  className={`rounded-md px-2 py-1.5 text-xs font-medium ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
-                  onClick={() => variations.selectVariation(branch.id)} title={`Variation ${index + 1}, ${branch.moves.length} moves, from game ply ${branch.basePly}`}>
-                  Variation {index + 1} · {branch.moves.length} moves
+                  className={`inline-flex min-h-11 items-center rounded-md px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
+                  onClick={() => variations.selectVariation(branch.id)} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
+                  {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
                 </button>
               ))}
             </div>}
             {isVariation && <div role="status" className="mt-2 text-sm">
-              <span className="font-mono text-xs text-chesscom-500">{variations.playedVariationMoves.map((m) => m.san).join(' ') || 'Branch point'}</span>
+              <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
               {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
-                <span>{qualityError}</span>
-                <button type="button" className="rounded border border-amber-500/40 px-2 py-1 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
-                  onClick={() => setQualityRetry((previous) => previous + 1)}>Retry scoring</button>
+                <span>{t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}</span>
+                <button type="button" className="min-h-11 rounded border border-amber-500/40 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                  onClick={() => setQualityRetry((previous) => previous + 1)}>{t('review.variationRetryScoring')}</button>
               </div>}
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>
-          {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{analysisError}</div>}
+          {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{t(analysisError)}</div>}
           {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
           {!analysis && (
             <button onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
@@ -896,7 +957,7 @@ function GameAnalyzerView() {
               {/* During exploratory play this is still the original game timeline,
                   not a fabricated analysis of the unscored hypothetical branch. */}
               <div className="card p-2">
-                {isVariation && <p className="mb-2 text-xs text-chesscom-500">Original game timeline · select a move to return to the saved line.</p>}
+                {isVariation && <p className="mb-2 text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationTimelineHint')}</p>}
                 <EvalGraph
                   evals={timeline.evals}
                   current={isVariation ? undefined : ply}
@@ -910,7 +971,14 @@ function GameAnalyzerView() {
               {/* Tabbed workspace — Moves / AI report / Key moments / Engine / Coach.
                   This is the ONLY tabbed surface on the page: engine lines moved in
                   here (previously a peer card) so there is one mental model, not three. */}
-              <div ref={tabsRef} className="card overflow-hidden scroll-mt-2">
+              <div ref={tabsRef} className="card overflow-hidden scroll-mt-16">
+                <div className="review-mobile-jump flex items-center justify-between gap-2 border-b border-chesscom-100 px-3 py-1.5 text-xs text-chesscom-500 dark:border-chesscom-700">
+                  <span className="font-semibold text-chesscom-700 dark:text-chesscom-200">{t('review.jumpToMoveDetails')}</span>
+                  <button type="button" data-review-jump-to-board onClick={jumpToBoard}
+                    className="btn-ghost min-h-9 px-2 py-1 text-xs">
+                    <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> {t('review.returnToBoard')}
+                  </button>
+                </div>
                 <div role="tablist" aria-label="Review detail sections" onKeyDown={(event) => {
                   if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab') return;
                   const tabs: Tab[] = ['moves', 'report', 'moments'];
@@ -928,21 +996,27 @@ function GameAnalyzerView() {
                   <TabBtn id="review-tab-moves" active={tab === 'moves'} onClick={() => setTab('moves')} icon={ListOrdered} label={t('review.moves', { defaultValue: 'Moves' })} />
                   <TabBtn id="review-tab-report" active={tab === 'report'} onClick={() => setTab('report')} icon={FileText} label={t('review.gameReport', { defaultValue: 'AI report' })} />
                   <TabBtn id="review-tab-moments" active={tab === 'moments'} onClick={() => setTab('moments')} icon={Sparkles} label={t('review.keyMoments', { defaultValue: 'Key moments' })} />
-                  <button onClick={() => setShowDepthControl((s) => !s)} aria-label={t('review.depth', { defaultValue: 'Engine depth settings' })} aria-expanded={showDepthControl} className="btn-ghost ml-auto p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500" title={t('review.depth')}>
+                  <button onClick={() => setShowDepthControl((s) => !s)} aria-label={t('review.depth', { defaultValue: 'Engine depth settings' })} aria-expanded={showDepthControl} className="btn-ghost ml-auto flex min-h-11 min-w-9 shrink-0 items-center justify-center p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500" title={t('review.depth')}>
                     <SettingsIcon className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <div id="review-tabpanel" role="tabpanel" aria-labelledby={`review-tab-${tab}`} className="p-3">
                   {tab === 'moves' && pick && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-gold-500/40 bg-gold-50/60 px-2 py-1.5 text-xs dark:bg-gold-700/10">
+                    <div className="mb-2 flex min-w-0 items-center gap-1 rounded-lg border border-gold-500/40 bg-gold-50/60 px-1.5 py-1 text-xs dark:bg-gold-700/10 sm:gap-1.5 sm:px-2">
                       <span className="min-w-0 flex-1 truncate">
                         <span className="font-semibold">{t(`classification.${pick.classification}`)}</span>
                         <span className="text-chesscom-500"> · {pick.side === 'both' ? t('review.pickBoth', { defaultValue: 'both sides' }) : t(`review.${pick.side}`)}</span>
                       </span>
-                      <span className="font-mono tabular-nums text-chesscom-500">{pickIndex >= 0 ? pickIndex + 1 : '–'}/{pickedPlies.length}</span>
-                      <button onClick={() => stepPick(-1)} className="btn-ghost p-1" title={t('review.prev')}><ChevronLeft className="h-4 w-4" /></button>
-                      <button onClick={() => stepPick(1)} className="btn-ghost p-1" title={t('review.next')}><ChevronRight className="h-4 w-4" /></button>
-                      <button onClick={() => setPick(null)} className="btn-ghost p-1" title={t('common.close', { defaultValue: 'Close' })}><X className="h-4 w-4" /></button>
+                      <span className="shrink-0 font-mono tabular-nums text-chesscom-500">{pickIndex >= 0 ? pickIndex + 1 : '–'}/{pickedPlies.length}</span>
+                      <button type="button" onClick={() => stepPick(-1)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('review.prev')}
+                        aria-label={t('review.filterPrev')}><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>
+                      <button type="button" onClick={() => stepPick(1)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('review.next')}
+                        aria-label={t('review.filterNext')}><ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
+                      <button type="button" onClick={() => setPick(null)}
+                        className="btn-ghost h-11 w-11 shrink-0 p-0" title={t('common.close', { defaultValue: 'Close' })}
+                        aria-label={t('review.filterClear')}><X className="h-4 w-4" aria-hidden="true" /></button>
                     </div>
                   )}
                   {tab === 'moves' && move && eligiblePractice.some((candidate) => candidate.ply === ply) && (
@@ -955,10 +1029,23 @@ function GameAnalyzerView() {
                   {tab === 'moves' && move && (
                     <MoveExplanation
                       move={move}
+                      startFen={startFen}
                       userColor={data.game.user_color}
                       coachConfigured={coachConfigured}
                       coachRequest={coachReq}
                       playFrom={playOn ?? undefined}
+                      onShowBestMove={!isVariation && verifiedBestAlternative(move, positions[ply - 1]?.fen)
+                        ? () => {
+                            setPly(move.ply - 1);
+                            requestAnimationFrame(() => {
+                              if (window.matchMedia('(max-width: 959px)').matches) jumpToBoard();
+                              else {
+                                boardFocusRef.current?.scrollIntoView({ block: 'nearest' });
+                                boardFocusRef.current?.focus({ preventScroll: true });
+                              }
+                            });
+                          }
+                        : undefined}
                     />
                   )}
                   {tab === 'moves' && ply > 0 && !isVariation && !move && (
@@ -985,7 +1072,7 @@ function GameAnalyzerView() {
                       initial={reviewProse}
                       sourceReady={!!sourceKey && !data.analysis_stale && !cachedAnalysisInvalid}
                       sourceChanged={sourceNotice}
-                      onMomentJump={setPly}
+                      onMomentJump={selectMoment}
                       onGenerated={(prose) => {
                         if (sourceKey && currentSourceRef.current === sourceKey) {
                           setStoredProse({ source: sourceKey, prose });
@@ -1000,9 +1087,10 @@ function GameAnalyzerView() {
                     <KeyMomentsList
                       items={analysis.key_moments.map((m) => {
                         const proseHit = reviewProse?.key_moments.find((p) => p.ply === m.ply);
+                        const measuredMove = analysis.moves.find((source) => source.ply === m.ply);
                         return {
                           ply: m.ply,
-                          side: m.side,
+                          side: moveSideForPly(m.ply, startFen),
                           san: m.san,
                           classification: m.classification,
                           cp_loss: m.cp_loss,
@@ -1010,11 +1098,14 @@ function GameAnalyzerView() {
                           best_san: m.best_san,
                           title: proseHit?.title,
                           prose: proseHit?.prose,
-                          mine: data.game.user_color ? m.side === data.game.user_color : undefined,
+                          mine: data.game.user_color ? moveSideForPly(m.ply, startFen) === data.game.user_color : undefined,
+                          hasWinChanceEvidence: measuredMove?.eval_before_cp != null && measuredMove.eval_after_cp != null
+                            && Number.isFinite(measuredMove.eval_before_cp) && Number.isFinite(measuredMove.eval_after_cp),
                         };
                       })}
                       current={ply}
-                      onSelect={setPly}
+                      onSelect={selectMoment}
+                      startFen={startFen}
                     />
                   )}
                 </div>
@@ -1089,14 +1180,10 @@ function GameAnalyzerView() {
                 notes={data.game.notes ?? ''}
                 onFlip={() => setFlipped((f) => !f)}
                 linkCopied={linkCopied}
+                shareCopyFailed={shareCopyFailed}
                 sharingVariation={isVariation}
-                onShare={() => {
-                  const url = shareCurrentPosition();
-                  navigator.clipboard?.writeText(url).then(() => {
-                    setLinkCopied(true);
-                    setTimeout(() => setLinkCopied(false), 1400);
-                  }).catch(() => undefined);
-                }}
+                shareUrl={shareCurrentPosition()}
+                onShare={copySharePosition}
               />
 
               <ExportRow
@@ -1112,13 +1199,14 @@ function GameAnalyzerView() {
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopied, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => void; linkCopied: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
   const confirmedNotesRef = useRef(notes);
   useEffect(() => {
     setDraft((current) => reconcileReviewNotesDraft(current, confirmedNotesRef.current, notes));
@@ -1127,7 +1215,13 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
 
   const star = useMutation({
     mutationFn: (next: boolean) => api.patch(`/api/games/${gameId}/bookmark`, { bookmarked: next }),
-    onError: () => setStarred(bookmarked),
+    onMutate: (next: boolean) => { setBookmarkRetryTarget(null); setStarred(next); },
+    onError: (_error, attempted) => {
+      setStarred(bookmarked);
+      // Retry the original intent; toggling again could target the wrong state.
+      setBookmarkRetryTarget(attempted);
+    },
+    onSuccess: () => setBookmarkRetryTarget(null),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
@@ -1147,30 +1241,36 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
       void queryClient.invalidateQueries({ queryKey: ['games'] });
       void queryClient.invalidateQueries({ queryKey: ['game', gameId] });
     },
-    onError: () => setSaveError('Could not save your notes. Your draft is still here; try again.'),
+    onError: () => setSaveError('review.notesSaveFailed'),
   });
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-hidden" data-review-meta-toolbar>
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
-          onClick={() => { const next = !isStarred; setStarred(next); star.mutate(next); }}
-          className={`btn-ghost px-2 py-1 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
+          type="button"
+          aria-pressed={isStarred}
+          disabled={star.isPending}
+          onClick={() => star.mutate(!isStarred)}
+          className={`btn-ghost min-h-11 px-2 py-2 text-xs ${isStarred ? 'text-gold-600 dark:text-gold-400' : ''}`}
           title={t('shortcuts.bookmark', { defaultValue: 'Toggle bookmark' })}
         >
           <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-gold-500' : ''}`} />
           {isStarred ? t('review.starred', { defaultValue: 'Starred' }) : t('review.star', { defaultValue: 'Star' })}
         </button>
-        <button onClick={onFlip} className="btn-ghost px-2 py-1 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
+        <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
-        <button onClick={onShare} className="btn-ghost px-2 py-1 text-xs" title={sharingVariation ? 'Share this variation position in Lab' : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
+        <button type="button" onClick={() => { void onShare(); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
           {linkCopied ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Share2 className="h-3.5 w-3.5" />}
-          {linkCopied ? t('common.copied') : (sharingVariation ? 'Share branch FEN' : t('review.share', { defaultValue: 'Share position' }))}
+          {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
         <button
+          type="button"
           onClick={() => setShowNotes((s) => !s)}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${showNotes ? 'text-chesscom-900 dark:text-chesscom-100' : ''}`}
+          aria-expanded={showNotes}
+          aria-controls={`review-notes-${gameId}`}
+          className={`btn-ghost ml-auto min-h-11 px-2 py-2 text-xs ${showNotes ? 'text-chesscom-900 dark:text-chesscom-100' : ''}`}
           title={t('review.notes', { defaultValue: 'Notes' })}
         >
           <NotebookPen className="h-3.5 w-3.5" />
@@ -1178,8 +1278,19 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
           {notes && !showNotes && <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-gold-500" />}
         </button>
       </div>
+      {bookmarkRetryTarget !== null && <div data-review-bookmark-error role="alert"
+        className="flex flex-wrap items-center justify-between gap-2 border-t border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200">
+        <span>{t('review.bookmarkSaveFailed')}</span>
+        <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs"
+          disabled={star.isPending}
+          onClick={() => star.mutate(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
+      </div>}
+      {shareCopyFailed && <ClipboardManualFallback
+        label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}
+        value={shareUrl}
+      />}
       {showNotes && (
-        <div className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
+        <div id={`review-notes-${gameId}`} className="border-t border-chesscom-200 p-2 dark:border-chesscom-700">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -1188,9 +1299,10 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, linkCopie
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
           />
-          {saveError && <div role="alert" className="mt-2 flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
-                <span>{saveError}</span>
-                <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => saveNotes.mutate(draft)}>Retry</button>
+          {saveError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
+                <span>{t(saveError)}</span>
+                <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
+                  onClick={() => saveNotes.mutate(draft)}>{t('review.notesRetrySave')}</button>
               </div>}
               <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
                 <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
@@ -1234,10 +1346,12 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`relative flex items-center gap-1 px-2 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-3 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:hover:text-chesscom-100'}`}
+      className={`relative flex min-h-11 min-w-0 items-center gap-1 whitespace-nowrap px-1.5 py-2 text-xs font-medium transition-colors sm:gap-1.5 sm:px-2 ${active ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:text-chesscom-100'}`}
     >
-      <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-      <span className="hidden sm:inline">{label}</span>
+      {/* Narrow cockpit rails need full text destinations, not clipped titles.
+          Use icons only when the wider desktop rail has room for both. */}
+      <Icon className="hidden h-3.5 w-3.5 shrink-0 xl:block" aria-hidden="true" />
+      <span className="min-w-0 truncate">{label}</span>
       {active && <span className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-gold-500 sm:inset-x-2" />}
     </button>
   );
@@ -1246,14 +1360,18 @@ function TabBtn({ id, active, onClick, icon: Icon, label }: { id: string; active
 function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState<'fen' | 'pgn' | null>(null);
+  const [manualCopy, setManualCopy] = useState<'fen' | 'pgn' | null>(null);
 
   async function copy(kind: 'fen' | 'pgn', text: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(kind);
+      setManualCopy(null);
       setTimeout(() => setCopied(null), 1400);
     } catch {
-      // Clipboard API may be denied; silently no-op.
+      // Clipboard can be unavailable on self-hosted HTTP or denied by the
+      // browser. Show the exact source text without altering the saved game.
+      setManualCopy(kind);
     }
   }
 
@@ -1266,19 +1384,49 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   }
 
   return (
-    <div className="card flex flex-wrap items-center gap-2 p-2 text-xs">
-      <button onClick={() => copy('fen', fen)} className="btn-ghost px-2 py-1 text-xs" title={t('review.copyFenTitle')}>
-        {copied === 'fen' ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied === 'fen' ? t('common.copied') : `${t('common.copy')} FEN`}
+    <div className="card grid grid-cols-3 gap-1 p-2 text-xs" data-review-export-row>
+      <button type="button" onClick={() => copy('fen', fen)} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.copyFenTitle')}>
+        {copied === 'fen' ? <Check className="h-3.5 w-3.5 shrink-0 text-board-dark" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+        <span className="min-w-0 truncate">{copied === 'fen' ? t('common.copied') : `${t('common.copy')} FEN`}</span>
       </button>
-      <button onClick={() => copy('pgn', pgn)} className="btn-ghost px-2 py-1 text-xs" title={t('review.copyPgnTitle')}>
-        {copied === 'pgn' ? <Check className="h-3.5 w-3.5 text-board-dark" /> : <Copy className="h-3.5 w-3.5" />}
-        {copied === 'pgn' ? t('common.copied') : `${t('common.copy')} PGN`}
+      <button type="button" onClick={() => copy('pgn', pgn)} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.copyPgnTitle')}>
+        {copied === 'pgn' ? <Check className="h-3.5 w-3.5 shrink-0 text-board-dark" /> : <Copy className="h-3.5 w-3.5 shrink-0" />}
+        <span className="min-w-0 truncate">{copied === 'pgn' ? t('common.copied') : `${t('common.copy')} PGN`}</span>
       </button>
-      <button onClick={downloadPgn} className="btn-ghost px-2 py-1 text-xs" title={t('review.downloadPgnTitle')}>
-        <Download className="h-3.5 w-3.5" />
-        {t('common.download')}
+      <button type="button" onClick={downloadPgn} className="btn-ghost min-h-11 min-w-0 gap-1 px-1 py-2 text-xs" title={t('review.downloadPgnTitle')}>
+        <Download className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 truncate">{t('common.download')}</span>
       </button>
+      {manualCopy && <div className="col-span-3 min-w-0">
+        <ClipboardManualFallback label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
+          value={manualCopy === 'fen' ? fen : pgn} />
+      </div>}
+    </div>
+  );
+}
+
+/** Browser clipboard permissions may be denied on a self-hosted origin.
+ * A native read-only field keeps the user in control of the exact data. */
+function ClipboardManualFallback({ label, value }: { label: string; value: string }) {
+  const { t } = useTranslation();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    // The S keyboard shortcut can be used from the board, far above this
+    // footer. Bring the recovery field into view and select it immediately.
+    // Avoid smooth scrolling while the user is trying to copy the value.
+    const field = inputRef.current;
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    field.select();
+    field.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, []);
+  return (
+    <div data-review-clipboard-fallback role="alert"
+      className="min-w-0 border-t border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
+      <p>{t('review.clipboardUnavailable')}</p>
+      <textarea ref={inputRef} aria-label={label} readOnly value={value} rows={value.length > 180 ? 3 : 1}
+        onFocus={(event) => event.currentTarget.select()}
+        className="input mt-2 min-h-11 w-full min-w-0 resize-y font-mono text-xs" />
     </div>
   );
 }
@@ -1298,22 +1446,12 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
   const { t } = useTranslation();
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center gap-1 border-b border-chesscom-100 bg-chesscom-50/40 px-3 py-2 dark:border-chesscom-700 dark:bg-chesscom-900/40">
-        <Search className="h-3.5 w-3.5 text-chesscom-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
-          {t('review.lines', { defaultValue: 'Engine lines' })}
-        </span>
-        <button
-          onClick={onToggle}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${enabled ? 'text-board-dark' : ''}`}
-        >
-          {enabled
-            ? t('review.linesHide', { defaultValue: 'Hide' })
-            : t('review.linesShow', { defaultValue: 'Show top engine lines' })}
-        </button>
-      </div>
-      {enabled && (
-        <div className="space-y-1 p-2">
+      <ReviewDisclosureHeader icon={Search} label={t('review.lines', { defaultValue: 'Engine lines' })}
+        expanded={enabled} onToggle={onToggle} controlsId="review-engine-lines-content"
+        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })} />
+      <div id="review-engine-lines-content" hidden={!enabled} className="space-y-1 p-2">
+        {enabled && (
+          <>
           {loading && lines.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
@@ -1363,8 +1501,9 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
               <Loader2 className="h-3 w-3 animate-spin" /> {t('review.linesRefreshing', { defaultValue: 'refreshing…' })}
             </div>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

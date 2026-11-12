@@ -3,7 +3,7 @@
 // with its lessons (?course=…), or a lesson being played (?lesson=…).
 // Progress is one server-side row per lesson (see server/src/learnProgress.ts).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -32,26 +32,49 @@ export interface LessonProgress {
 export const fetchLearnProgress = () => api.get<{ lessons: LessonProgress[] }>('/api/learn');
 
 /** Curriculum + lesson texts in the current language, loaded on demand. */
-export function useLearnContent(): { cur: Curriculum | null; failed: boolean } {
+export function useLearnContent(): { cur: Curriculum | null; failed: boolean; retry: () => void } {
   const { i18n } = useTranslation();
   const lang = normalizeLanguage(i18n.language);
   const [cur, setCur] = useState<Curriculum | null>(null);
   const [textsFor, setTextsFor] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { loadCurriculum().then(setCur).catch(() => setFailed(true)); }, []);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setFailed(false);
+    setAttempt((n) => n + 1);
+  }, []);
   useEffect(() => {
     let live = true;
-    loadLearnTexts(lang).then(() => { if (live) setTextsFor(lang); }).catch(() => setFailed(true));
+    loadCurriculum()
+      .then((loaded) => { if (live) setCur(loaded); })
+      .catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [lang]);
-  return { cur: cur && textsFor === lang ? cur : null, failed };
+  }, [attempt]);
+  useEffect(() => {
+    let live = true;
+    loadLearnTexts(lang)
+      .then(() => { if (live) setTextsFor(lang); })
+      .catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [lang, attempt]);
+  return { cur: cur && textsFor === lang ? cur : null, failed, retry };
 }
 
-/** The lesson to suggest: one you're in the middle of, else the first one
- *  you haven't finished yet. */
+/** A saved step is only resumable if it belongs to this version of a lesson.
+ * A completed lesson can be replayed, but its replay should never outrank an
+ * unfinished lesson in the recommended next action. */
+export function canResumeLesson(ref: LessonRef, row: LessonProgress | undefined): row is LessonProgress {
+  return !!row && row.step > 0 && row.step < ref.lesson.steps.length;
+}
+
+/** Prefer a genuine unfinished run; otherwise suggest the first unfinished
+ * lesson in curriculum order. */
 export function suggestedLesson(cur: Curriculum, progress: Map<string, LessonProgress>): LessonRef | null {
   const started = [...progress.values()]
-    .filter((p) => p.step > 0 && cur.byId.has(p.lesson_id))
+    .filter((p) => {
+      const ref = cur.byId.get(p.lesson_id);
+      return !!ref && !p.completed_at && canResumeLesson(ref, p);
+    })
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
   if (started) return cur.byId.get(started.lesson_id)!;
   return cur.lessons.find((r) => !progress.get(r.lesson.id)?.completed_at) ?? null;
@@ -63,11 +86,11 @@ export default function Learn() {
   const [params, setParams] = useSearchParams();
   const lessonId = params.get('lesson');
   const courseId = params.get('course');
-  const { cur, failed } = useLearnContent();
+  const { cur, failed, retry: retryContent } = useLearnContent();
   // Match Home's per-account lesson cache. A second player who signs in on
   // this browser must never inherit the previous player's earned stars or
   // lesson resume point while /api/learn is still loading.
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: [...LEARN_QUERY_KEY, user?.id],
     enabled: user?.id != null,
     queryFn: fetchLearnProgress,
@@ -82,8 +105,20 @@ export default function Learn() {
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [lessonId, courseId]);
 
-  if (failed || isError) return <div className="card p-10 text-center text-sm text-move-mistake">{t('learn.loadError')}</div>;
-  if (!cur || isLoading) return <div className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
+  if (failed || isError) return (
+    <div role="alert" className="card mx-auto flex w-full max-w-lg flex-col items-center gap-3 p-8 text-center">
+      <p className="text-sm text-move-mistake">{t('learn.loadError')}</p>
+      <p className="text-xs text-chesscom-500">{t('learn.retryExplanation', { defaultValue: 'Check your connection and try again.' })}</p>
+      <button type="button" className="btn-primary min-h-11 text-sm" disabled={isFetching}
+        onClick={() => {
+          retryContent();
+          if (isError) void refetch();
+        }}>
+        {t('common.retry', { defaultValue: 'Retry' })}
+      </button>
+    </div>
+  );
+  if (!cur || isLoading) return <div role="status" className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
 
   const openLesson = (id: string) => setParams({ lesson: id });
   const openCourse = (id: string) => setParams({ course: id });
@@ -91,7 +126,7 @@ export default function Learn() {
   const ref = lessonId ? cur.byId.get(lessonId) : undefined;
   if (ref) {
     const row = progress.get(ref.lesson.id);
-    const resume = row && row.step > 0 && row.step < ref.lesson.steps.length
+    const resume = canResumeLesson(ref, row)
       ? { step: row.step, flawed: row.flawed }
       : { step: 0, flawed: 0 };
     return (
@@ -171,7 +206,7 @@ function Overview({ cur, progress, totalStars, onOpenLesson, onOpenCourse }: {
                 className="group mt-5 inline-flex items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift"
               >
                 <Play className="h-4 w-4 fill-current" />
-                {nextRow && nextRow.step > 0 ? t('learn.resumeLesson') : done ? t('learn.nextUp') : t('learn.startHere')}: {tl(`${next.lesson.id}.title`)}
+                {canResumeLesson(next, nextRow) ? t('learn.resumeLesson') : done ? t('learn.nextUp') : t('learn.startHere')}: {tl(`${next.lesson.id}.title`)}
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </button>
             )}
@@ -339,7 +374,7 @@ function CourseView({ course, level, cur, progress, onOpen, onBack }: {
         {course.lessons.map((lesson, i) => {
           const row = progress.get(lesson.id);
           const complete = !!row?.completed_at;
-          const inProgress = !!row && row.step > 0;
+          const inProgress = canResumeLesson(cur.byId.get(lesson.id)!, row);
           const isNext = lesson.id === nextId;
           const tasks = lesson.steps.filter((st) => st.type !== 'info').length;
           return (

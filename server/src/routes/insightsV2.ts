@@ -19,6 +19,7 @@ import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { readAnalysisMoves, readPhaseSplit } from './analysisData.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
+import { isPuzzleMove, puzzleLine } from '../chess/gamePuzzles.js';
 import type { Classification, GamePhase, Color } from '../types.js';
 import { phaseFor, hasBackRankSignature } from '../chess/phases.js';
 
@@ -92,29 +93,35 @@ router.get('/', (c) => {
   // Per-time-class W/D/L + average accuracy from analyses (player's side).
   interface TcRow {
     time_class: string | null;
-    wins: number; draws: number; losses: number; total: number; analyzed_games: number;
+    wins: number; draws: number; losses: number; total: number; analyzed_games: number; accuracy_games: number;
     avg_acc: number | null;
   }
   const tcRows = db.prepare(`
-    SELECT g.time_class,
+    SELECT COALESCE(NULLIF(g.time_class, ''), 'other') AS time_class,
            SUM(CASE WHEN g.result='win' THEN 1 ELSE 0 END) AS wins,
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
            COUNT(*) AS total,
            SUM(CASE WHEN (${usableAnalysisSql}) THEN 1 ELSE 0 END) AS analyzed_games,
+           COUNT(CASE WHEN g.user_color='white' AND (${usableAnalysisSql}) AND a.accuracy_white IS NOT NULL THEN 1
+                      WHEN g.user_color='black' AND (${usableAnalysisSql}) AND a.accuracy_black IS NOT NULL THEN 1
+                      ELSE NULL END) AS accuracy_games,
            AVG(CASE WHEN g.user_color='white' AND (${usableAnalysisSql}) THEN a.accuracy_white
                     WHEN g.user_color='black' AND (${usableAnalysisSql}) THEN a.accuracy_black
                     ELSE NULL END) AS avg_acc
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.user_id = ? AND g.result IS NOT NULL AND g.start_fen IS NULL
-    GROUP BY g.time_class
-  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
-  const time_class_stats: Record<string, { games: number; analyzed_games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
+    GROUP BY COALESCE(NULLIF(g.time_class, ''), 'other')
+  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
+  const time_class_stats: Record<string, { games: number; analyzed_games: number; accuracy_games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
   for (const r of tcRows) {
     const k = r.time_class ?? 'other';
     time_class_stats[k] = {
       games: r.total,
       analyzed_games: r.analyzed_games,
+      // Denominator of AVG above; an analyzed game without a trustworthy
+      // user-side accuracy cannot be counted as a measured accuracy sample.
+      accuracy_games: r.accuracy_games,
       wins: r.wins,
       draws: r.draws,
       losses: r.losses,
@@ -135,6 +142,10 @@ router.get('/', (c) => {
     ORDER BY g.end_time DESC, g.id DESC
   `).iterate(me.id, SCORING_VERSION) as IterableIterator<AnalysisRow>;
   let analyzedCount = 0;
+  // An analyzed game does not imply a playable *personal* puzzle. A next-step
+  // link to personal practice needs an attributable mistake with an actual
+  // legal first solution, not merely a nonzero count of engine reports.
+  let personalPuzzlePositions = false;
 
   // Taxonomy buckets — every bucket counts user-side moves only.
   const tax = {
@@ -215,14 +226,29 @@ router.get('/', (c) => {
     for (const m of moves) {
       const side: Color = m.ply % 2 === 1 ? 'white' : 'black';
       if (side !== userColor) continue;
+      if (!personalPuzzlePositions && isPuzzleMove(m, userColor) && typeof m.fen_before === 'string') {
+        try {
+          // Validate only until one position is playable. Chess.js may throw
+          // for an old corrupt FEN; that must never break the Insights page.
+          personalPuzzlePositions = puzzleLine(
+            m.fen_before, m.best_move_uci!, Array.isArray(m.best_pv) ? m.best_pv : [],
+          ).uci.length > 0;
+        } catch { /* malformed legacy position is not a playable puzzle */ }
+      }
       if (m.classification in quality) quality[m.classification]++;
       if (m.classification === 'brilliant' && brilliant.length < BRILLIANT_LIST) {
         brilliant.push({ game_id: r.game_id, ply: m.ply, san: m.san, end_time: r.end_time, opponent: userColor === 'white' ? r.black : r.white });
       }
       const phase = phaseFor(m.ply, split);
       if (m.classification === 'blunder' || m.classification === 'mistake') {
+        // Legacy response key `hung_pieces` is a >=200cp engine-evaluation
+        // loss, NOT a verified hanging piece or loss of physical material.
+        // Keep the API key stable; the UI labels the measured event precisely.
         if (m.centipawn_loss >= 200) tax.hung_pieces++;
         if (m.classification === 'blunder' && hasBackRankSignature(m.fen_after, userColor)) tax.back_rank++;
+        // Legacy `opening_pitfalls` covers all mistakes in the opening phase,
+        // not only opening traps or a fixed "before move 15" range. `phaseFor`
+        // respects stored phase boundaries and falls back when unavailable.
         if (phase === 'opening') tax.opening_pitfalls++;
         if (phase === 'endgame') tax.endgame_drift++;
         if (m.classification === 'blunder') {
@@ -260,6 +286,7 @@ router.get('/', (c) => {
     games_total: gamesTotal.total,
     games_eligible: gamesTotal.eligible,
     games_analyzed: analyzedCount,
+    personal_puzzle_positions: personalPuzzlePositions,
     activity_heatmap: heatmap,
     rating_trajectory: trajectory,
     time_class_stats,
@@ -269,6 +296,13 @@ router.get('/', (c) => {
       opening: phaseAcc.opening.n ? Math.round((phaseAcc.opening.sum / phaseAcc.opening.n) * 10) / 10 : 0,
       middlegame: phaseAcc.middlegame.n ? Math.round((phaseAcc.middlegame.sum / phaseAcc.middlegame.n) * 10) / 10 : 0,
       endgame: phaseAcc.endgame.n ? Math.round((phaseAcc.endgame.sum / phaseAcc.endgame.n) * 10) / 10 : 0,
+    },
+    // An absent phase must not be presented as a genuine 0% accuracy.
+    // Each count is analyzed games with a measured player-side phase.
+    phase_samples: {
+      opening: phaseAcc.opening.n,
+      middlegame: phaseAcc.middlegame.n,
+      endgame: phaseAcc.endgame.n,
     },
     accuracy_trend: accTrend.slice(0, 50).reverse(),
     move_quality: { counts: quality, brilliant },

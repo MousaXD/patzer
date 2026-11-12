@@ -22,7 +22,19 @@ router.get('/next', (c) => {
   const me = c.get('user');
   const theme = c.req.query('theme') || null;
   if (theme && !(theme in THEME_FILTERS)) return c.json({ error: 'invalid_theme' }, 400);
-  return c.json({ puzzle: nextPuzzle(me.id, theme), themes: Object.keys(THEME_FILTERS) });
+  // Session-only exclusions from an explicitly unsaved attempt. Never record
+  // a rating or a permanent attempt just to move to another puzzle.
+  const rawSkip = c.req.query('skip') ?? '';
+  if (rawSkip.length > 2048) return c.json({ error: 'invalid_input' }, 400);
+  const skip = new Set<string>();
+  if (rawSkip) {
+    for (const id of rawSkip.split(',')) {
+      if (!/^[a-zA-Z0-9]{1,10}$/.test(id) || skip.size >= 100)
+        return c.json({ error: 'invalid_input' }, 400);
+      skip.add(id);
+    }
+  }
+  return c.json({ puzzle: nextPuzzle(me.id, theme, Math.random, skip), themes: Object.keys(THEME_FILTERS) });
 });
 
 const attemptSchema = z.object({

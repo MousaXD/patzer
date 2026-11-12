@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Loader2 } from 'lucide-react';
 import { api } from '../api';
+import ReviewDisclosureHeader from './ReviewDisclosureHeader';
 
 // Master-game statistics for the current position (Lichess Opening Explorer,
 // proxied and cached by GET /api/openings/explorer). Shown next to — never
@@ -70,20 +71,13 @@ export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPrevi
 
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center gap-1 border-b border-chesscom-100 bg-chesscom-50/40 px-3 py-2 dark:border-chesscom-700 dark:bg-chesscom-900/40">
-        <BookOpen className="h-3.5 w-3.5 text-chesscom-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-chesscom-500 dark:text-chesscom-300">
-          {t('explorer.title', { defaultValue: 'Master games' })}
-        </span>
-        <button
-          onClick={() => { onPreview?.(null); setEnabled((s) => !s); }}
-          className={`btn-ghost ml-auto px-2 py-1 text-xs ${enabled ? 'text-board-dark' : ''}`}
-        >
-          {enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('explorer.show', { defaultValue: 'Show master stats' })}
-        </button>
-      </div>
-      {enabled && (
-        <div className="space-y-2 px-3 py-2 text-xs">
+      <ReviewDisclosureHeader icon={BookOpen} label={t('explorer.title', { defaultValue: 'Master games' })}
+        expanded={enabled} onToggle={() => { onPreview?.(null); setEnabled((s) => !s); }}
+        controlsId="review-master-games-content"
+        title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('explorer.show', { defaultValue: 'Show master stats' })} />
+      <div id="review-master-games-content" hidden={!enabled} className="space-y-2 px-3 py-2 text-xs">
+        {enabled && (
+          <>
           {loading && !data && (
             <div className="flex items-center gap-2 py-1 text-chesscom-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
@@ -141,8 +135,9 @@ export default function ExplorerPanel({ fen, onPreview }: { fen: string; onPrevi
               )}
             </>
           )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

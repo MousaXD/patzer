@@ -64,6 +64,63 @@ describe('de locale', () => {
   });
 });
 
+// The mobile Game Review board must not fall back to English instructions in
+// the midst of an otherwise translated analysis workspace.
+describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as const)(
+  '%s Game Review board guidance', (lang, locale) => {
+    it('translates board, navigation and keyboard guidance', () => {
+      expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.moveNavigation?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.keyboardShortcuts?.trim().length, lang).toBeGreaterThan(0);
+      expect(placeholders(locale.review.why.showBestOnBoard), lang).toEqual(['{{san}}']);
+      if (lang !== 'en') {
+        expect(locale.review.startingPosition).not.toEqual(en.review.startingPosition);
+        expect(locale.review.bestArrowNote).not.toEqual(en.review.bestArrowNote);
+        expect(locale.review.moveNavigation).not.toEqual(en.review.moveNavigation);
+        expect(locale.review.keyboardShortcuts).not.toEqual(en.review.keyboardShortcuts);
+        expect(locale.review.why.showBestOnBoard).not.toEqual(en.review.why.showBestOnBoard);
+      }
+    });
+    it('provides distinct, translated review recovery and retry messages', () => {
+      for (const reason of ['invalid', 'unreadable', 'notFound', 'loadFailed'] as const) {
+        expect(locale.review.unavailableReason[reason]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') {
+          expect(locale.review.unavailableReason[reason]).not.toBe(en.review.unavailableReason[reason]);
+        }
+      }
+      for (const key of ['unavailableHeading', 'retryLoading', 'retryingLoading', 'backToGames'] as const) {
+        expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+      for (const key of ['filterPrev', 'filterNext', 'filterClear'] as const) {
+        expect(locale.review[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+      expect(placeholders(locale.review.pickCountLabel), lang).toEqual([
+        '{{classification}}', '{{count}}', '{{side}}',
+      ]);
+      if (lang !== 'en') expect(locale.review.pickCountLabel).not.toEqual(en.review.pickCountLabel);
+      for (const key of ['tooLarge', 'invalidPgn', 'busy', 'unavailable'] as const) {
+        expect(locale.review.analysisError[key]?.trim().length).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review.analysisError[key]).not.toBe(en.review.analysisError[key]);
+      }
+      expect(locale.review.storedAnalysisUnreadable?.trim().length).toBeGreaterThan(0);
+      expect(locale.review.runEngine?.trim().length).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.storedAnalysisUnreadable).not.toBe(en.review.storedAnalysisUnreadable);
+        expect(locale.review.runEngine).not.toBe(en.review.runEngine);
+      }
+    });
+    it('localizes notes-save recovery and exploratory branch sharing', () => {
+      for (const key of ['notesSaveFailed', 'notesRetrySave', 'shareBranch', 'shareBranchTitle', 'clipboardUnavailable', 'bookmarkSaveFailed', 'bookmarkRetry'] as const) {
+        expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+    });
+  },
+);
+
 // Lesson texts have their own namespace; missing keys must not silently put
 // English sentences into a translated lesson.
 describe.each([['de', learnDe], ['ru', learnRu]] as const)('%s lesson texts', (lang, texts) => {

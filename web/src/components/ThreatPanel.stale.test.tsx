@@ -31,7 +31,7 @@ describe('Game Review threat response ownership', () => {
       .mockImplementation(() => new Promise(() => {}));
 
     const view = render(<ThreatPanel fen={previousFen} currentCpWhite={20} />);
-    fireEvent.click(screen.getByText('Show threat'));
+    fireEvent.click(screen.getByRole('button', { name: "What's the threat?" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(420); });
     expect(screen.getByText('d4')).toBeTruthy();
 
@@ -54,7 +54,7 @@ describe('Game Review threat response ownership', () => {
     chess.move('e4');
     vi.mocked(api.post).mockRejectedValue(new Error('engine temporarily unavailable'));
     const view = render(<ThreatPanel fen={chess.fen()} currentCpWhite={20} />);
-    fireEvent.click(screen.getByText('Show threat'));
+    fireEvent.click(screen.getByRole('button', { name: "What's the threat?" }));
     await act(async () => { await vi.advanceTimersByTimeAsync(420); });
     expect(screen.getByRole('status').textContent).toContain('could not evaluate this threat');
     fireEvent.click(screen.getByText('Retry'));

@@ -89,10 +89,22 @@ describe('/api/train', () => {
     db.prepare(`UPDATE puzzle_attempts SET last_day = date(last_day, '-1 day'), due_on = date(due_on, '-1 day')`).run();
   }
 
+  function stamp(gameId = 1): { source_revision: number; analysis_generation: number } {
+    return db.prepare(`SELECT source_revision, analysis_generation FROM analyses WHERE game_id = ?`).get(gameId) as {
+      source_revision: number; analysis_generation: number;
+    };
+  }
+
   async function call<T>(path: string, body?: unknown): Promise<T> {
+    // All first-party clients send the authoritative analysis snapshot that
+    // was attached to the served puzzle; a stale-tab test uses raw requests
+    // below to send a deliberately obsolete snapshot instead.
+    const payload = body && (path === '/attempt' || path === '/check')
+      ? { ...stamp(), ...body as object }
+      : body;
     const res = await router.request(path, body === undefined
       ? { headers: { Cookie: cookie } }
-      : { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      : { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return res.json() as Promise<T>;
   }
 
@@ -115,7 +127,26 @@ describe('/api/train', () => {
       best_move_uci: 'd2d8', best_move_san: 'Qxd8+', best_pv: ['Qxd8+', 'Qxd8', 'Rxd8#'],
       centipawn_loss: 900, classification: 'miss',
     };
-    db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version) VALUES (1, 14, ?, ?)`).run(JSON.stringify([blunder]), SCORING_VERSION);
+    db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (1, 14, ?, ?, 'current-fixture-source', 0, 1)`)
+      .run(JSON.stringify([blunder]), SCORING_VERSION);
+
+    // Even a current and complete analysis is not a *personal* puzzle if the
+    // import lacks a trustworthy side attribution. Never assume White.
+    db.prepare(`INSERT INTO games (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (2, 1, 'chesscom', '', 'Unknown', 'Opponent', 'loss', '2026-09-02 10:00:00', NULL)`).run();
+    db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (2, 14, ?, ?, 'current-fixture-source', 0, 1)`)
+      .run(JSON.stringify([blunder]), SCORING_VERSION);
+
+    // Legacy analysis with no provenance is never allowed to create new
+    // tactical positions even if it reports a recent classifier version.
+    db.prepare(`INSERT INTO games (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (3, 1, 'chesscom', '', 'Me', 'Opponent', 'loss', '2026-09-03 10:00:00', 'white')`).run();
+    db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version)
+      VALUES (3, 14, ?, ?)`).run(JSON.stringify([blunder]), SCORING_VERSION);
   });
 
   afterAll(() => {
@@ -126,6 +157,7 @@ describe('/api/train', () => {
   it('serves the whole line', async () => {
     const next = await call<Next>(`/next?today=${today}`);
     expect(next.puzzle).toMatchObject({ game_id: 1, ply: 1, line: ['d2d8', 'f6d8', 'd1d8'], line_san: ['Qxd8+', 'Qxd8', 'Rxd8#'], review: false });
+    expect(next.puzzle).toMatchObject(stamp());
     expect(next.due).toBe(0);
   });
 
@@ -164,8 +196,169 @@ describe('/api/train', () => {
   it('says not_found for a move that is no puzzle', async () => {
     const res = await router.request('/attempt', {
       method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_id: 1, ply: 2, solved: true }),
+      body: JSON.stringify({ game_id: 1, ply: 2, solved: true, ...stamp() }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it('never invents a player color or uses a legacy unproven analysis', async () => {
+    for (const id of [2, 3]) {
+      const next = await call<Next>(`/next?game_id=${id}&today=${today}`);
+      expect(next.puzzle).toBeNull();
+      const res = await router.request('/attempt', {
+        method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_id: id, ply: 1, solved: true, today, ...stamp() }),
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('rejects stale training puzzles and excludes them from the review-due count after a source edit', async () => {
+    // Mark the existing practice attempt as due to check the Review counter.
+    db.prepare(`UPDATE puzzle_attempts SET solved = 0, due_on = '2000-01-01', last_day = '2000-01-01'
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).run();
+    expect((await call<Next>(`/next?today=${today}`)).puzzle).toMatchObject({ game_id: 1, ply: 1, review: true });
+
+    // Same scoring version, but a new authoritative PGN revision. Old engine
+    // moves must be invisible on every Training read/check/write path.
+    db.prepare(`UPDATE games SET pgn = '1. e4 e5 2. Nf3 Nc6 1-0' WHERE id = 1`).run();
+    const next = await call<Next>(`/next?today=${today}`);
+    expect(next).toMatchObject({ puzzle: null, due: 0 });
+    const attempt = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, today, ...stamp() }),
+    });
+    expect(attempt.status).toBe(404);
+    const check = await router.request('/check', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8', ...stamp() }),
+    });
+    expect(check.status).toBe(404);
+    expect(await call<{ due: number }>(`/stats?today=${today}`)).toMatchObject({ due: 0 });
+  });
+
+  it('does not revive a different old puzzle at the same ply after fresh reanalysis', async () => {
+    const replacement = {
+      ply: 1, san: 'Qd5', uci: 'e5d5', fen_before: CHECKS, fen_after: CHECKS,
+      eval_before_cp: 900, eval_after_cp: 100, mate_before: null, mate_after: null,
+      best_move_uci: 'e5e4', best_move_san: 'Qe4+', best_pv: ['Qe4+'],
+      centipawn_loss: 700, classification: 'blunder',
+    };
+    db.prepare(`UPDATE analyses SET moves_json = ?, source_hash = 'fresh-reanalysis',
+      source_revision = (SELECT source_revision FROM games WHERE id = 1),
+      analysis_generation = analysis_generation + 1 WHERE game_id = 1`)
+      .run(JSON.stringify([replacement]));
+
+    // This is the *first* try of the new puzzle, not an overdue review of
+    // Qxd8+ in the previous game. Its due count must also be zero.
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
+    expect(await call('/attempt', { game_id: 1, ply: 1, solved: true, attempted_uci: 'e5e4', today }))
+      .toMatchObject({ counted: true, done: true });
+    expect(db.prepare(`SELECT fen, solution_uci, solved FROM puzzle_attempts WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get())
+      .toEqual({ fen: CHECKS, solution_uci: 'e5e4', solved: 1 });
+
+    // A further game edit and fresh analysis brings back a different FEN at
+    // ply 1; even a *solved* attempt at the previous position cannot hide it.
+    db.prepare(`UPDATE games SET pgn = '1. d4 d5 2. c4 e6 1-0' WHERE id = 1`).run();
+    const initial = {
+      ...replacement, san: 'Qd3', uci: 'd2d3', fen_before: BACK_RANK,
+      best_move_uci: 'd2d8', best_move_san: 'Qxd8+', best_pv: ['Qxd8+', 'Qxd8', 'Rxd8#'],
+    };
+    db.prepare(`UPDATE analyses SET moves_json = ?, source_hash = 'second-reanalysis',
+      source_revision = (SELECT source_revision FROM games WHERE id = 1),
+      analysis_generation = analysis_generation + 1 WHERE game_id = 1`)
+      .run(JSON.stringify([initial]));
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['d2d8', 'f6d8', 'd1d8'] }, due: 0,
+    });
+    expect(await call('/attempt', { game_id: 1, ply: 1, solved: false, attempted_uci: 'd2d3', today }))
+      .toMatchObject({ counted: true, done: false });
+    expect(db.prepare(`SELECT fen, solution_uci, solved FROM puzzle_attempts WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get())
+      .toEqual({ fen: BACK_RANK, solution_uci: 'd2d8', solved: 0 });
+  });
+
+  it('rejects a stale browser attempt and alternative-move check after fresh reanalysis', async () => {
+    const snapshot = db.prepare(`SELECT source_revision, analysis_generation FROM analyses WHERE game_id = 1`).get() as {
+      source_revision: number; analysis_generation: number;
+    };
+    const old = db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get();
+    db.prepare(`UPDATE games SET pgn = '1. Nf3 d5 2. g3 c5 1-0' WHERE id = 1`).run();
+    const replacement = {
+      ply: 1, san: 'Qd5', uci: 'e5d5', fen_before: CHECKS, fen_after: CHECKS,
+      eval_before_cp: 900, eval_after_cp: 100, mate_before: null, mate_after: null,
+      best_move_uci: 'e5e4', best_move_san: 'Qe4+', best_pv: ['Qe4+'],
+      centipawn_loss: 700, classification: 'blunder',
+    };
+    db.prepare(`UPDATE analyses SET moves_json=?, source_hash='third-reanalysis',
+      source_revision=(SELECT source_revision FROM games WHERE id=1),
+      analysis_generation=analysis_generation+1 WHERE game_id=1`).run(JSON.stringify([replacement]));
+
+    const staleAttempt = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, attempted_uci: 'd2d8', today, ...snapshot }),
+    });
+    expect(staleAttempt.status).toBe(409);
+    expect(await staleAttempt.json()).toEqual({ error: 'stale_puzzle' });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(old);
+
+    const staleCheck = await router.request('/check', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8', ...snapshot }),
+    });
+    expect(staleCheck.status).toBe(409);
+    expect(await staleCheck.json()).toEqual({ error: 'stale_puzzle' });
+
+    // Reanalysis of the *same* PGN also changes the authoritative engine
+    // generation. Matching the source revision alone must not be sufficient.
+    const afterEdit = stamp();
+    db.prepare(`UPDATE analyses SET analysis_generation = analysis_generation + 1 WHERE game_id = 1`).run();
+    const priorGeneration = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, attempted_uci: 'e5e4', today, ...afterEdit }),
+    });
+    expect(priorGeneration.status).toBe(409);
+    expect(await priorGeneration.json()).toEqual({ error: 'stale_puzzle' });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(old);
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
+  });
+
+  it('does not declare training complete when the first 60 newer analyzed games have no fresh puzzles', async () => {
+    const addGame = db.prepare(`INSERT INTO games
+      (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (?, 1, 'chesscom', '', 'Me', 'Opponent', 'win', '2026-11-11 10:00:00', 'white')`);
+    const addAnalysis = db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (?, 14, '[]', ?, 'scanned-without-mistakes', 0, 1)`);
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    for (let i = 0; i < 60; i++) {
+      const id = 100 + i;
+      addGame.run(id);
+      addAnalysis.run(id, SCORING_VERSION);
+    }
+    // A legitimate eligible blunder is in game 1, ranked 61st. A scan that
+    // imposes a global LIMIT 60 reports an empty queue incorrectly.
+    const next = await call<Next>(`/next?today=${today}`);
+    expect(next).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
+  });
+
+  it('skips an unsaved puzzle for this request without recording or deleting its learning state', async () => {
+    const original = await call<Next>(`/next?today=${today}`);
+    expect(original.puzzle).toMatchObject({ game_id: 1, ply: 1 });
+    const previous = db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get();
+    const skipped = await call<Next>(`/next?today=${today}&skip=1:1`);
+    expect(skipped).toMatchObject({ puzzle: null, due: 0 });
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({ puzzle: { game_id: 1, ply: 1 } });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(previous);
   });
 });

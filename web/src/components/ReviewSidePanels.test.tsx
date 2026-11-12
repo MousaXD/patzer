@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
@@ -27,6 +27,14 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+// The disclosure button keeps one stable, accessible name whether expanded
+// or collapsed. Isolate every rendered panel so prior test instances cannot
+// masquerade as duplicate controls in later tests.
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
 describe('ThreatPanel', () => {
   it('shows the threat description after requesting analysis', async () => {
     post.mockResolvedValue({
@@ -34,7 +42,7 @@ describe('ThreatPanel', () => {
     });
     render(<ThreatPanel fen={THREAT_FEN} currentCpWhite={0} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show threat' }));
+    fireEvent.click(screen.getByRole('button', { name: "What's the threat?" }));
 
     expect(await screen.findByText('If black passed')).toBeTruthy();
     expect(await screen.findByText('Nxf7')).toBeTruthy();
@@ -43,7 +51,7 @@ describe('ThreatPanel', () => {
 
   it('reports check without requesting an impossible null-move analysis', async () => {
     render(<ThreatPanel fen={CHECK_FEN} currentCpWhite={0} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show threat' }));
+    fireEvent.click(screen.getByRole('button', { name: "What's the threat?" }));
 
     expect(await screen.findByText('In check — the threat is the check itself.')).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
@@ -55,7 +63,7 @@ describe('ThreatPanel', () => {
       lines: [{ uci: 'g5f7', san: 'Nxf7', pv_san: ['Nxf7'], cp: 300, mate: null, multipv: 1 }],
     });
     render(<ThreatPanel fen={THREAT_FEN} currentCpWhite={0} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show threat' }));
+    fireEvent.click(screen.getByRole('button', { name: "What's the threat?" }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(400);
@@ -70,10 +78,10 @@ describe('ExplorerPanel', () => {
   it('collapses to the unavailable message when the explorer is down', async () => {
     get.mockResolvedValue({ available: false });
     render(<ExplorerPanel fen="startpos" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show master stats' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Master games' }));
 
     expect(await screen.findByText('Lichess master database unreachable right now.')).toBeTruthy();
-    expect(screen.queryByText(/master games/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Preview master move/ })).toBeNull();
   });
 
   it('renders the game totals and top continuations', async () => {
@@ -86,7 +94,7 @@ describe('ExplorerPanel', () => {
       moves: [{ uci: 'e2e4', san: 'e4', white: 40, draws: 10, black: 5, averageRating: 1800 }],
     });
     render(<ExplorerPanel fen="startpos" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Show master stats' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Master games' }));
 
     expect(await screen.findByText('100 master games')).toBeTruthy();
     expect(screen.getByText('e4')).toBeTruthy();

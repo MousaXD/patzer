@@ -23,7 +23,7 @@ describe('Game Review master explorer', () => {
     }).mockResolvedValueOnce({ available: false, total: 0, moves: [] });
     const onPreview = vi.fn();
     const view = render(<ExplorerPanel fen="position-one" onPreview={onPreview} />);
-    fireEvent.click(screen.getByText('Show master stats'));
+    fireEvent.click(screen.getByRole('button', { name: 'Master games' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(310); });
     expect(screen.getByRole('button', { name: /Preview master move e4/i })).toBeTruthy();
 
@@ -38,8 +38,12 @@ describe('Game Review master explorer', () => {
   it('clears board-preview arrows when closing the panel', () => {
     const onPreview = vi.fn();
     render(<ExplorerPanel fen="starting-fen" onPreview={onPreview} />);
-    fireEvent.click(screen.getByText('Show master stats'));
-    fireEvent.click(screen.getByText('Hide'));
+    const toggle = screen.getByRole('button', { name: 'Master games' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(onPreview).toHaveBeenCalledWith(null);
   });
 });

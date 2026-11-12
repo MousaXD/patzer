@@ -5,8 +5,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Link, useBlocker, type BlockerFunction } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { Chess, type Move } from 'chess.js';
 import type { DrawShape } from 'chessground/draw';
@@ -25,6 +25,7 @@ import { playSound, soundForMove } from '../../lib/sounds';
 import { speak, cancel as cancelSpeech } from '../../lib/tts';
 import { cn } from '../../lib/utils';
 import type { LessonRef } from '../../learn/content';
+import { LessonProgressQueue, type ProgressSaveStatus } from '../../learn/progressQueue';
 import {
   isRightMove, judgeOwnMove, judgeReply, legalDests, lessonStars, levelOf, levelPiece, moveStepDone,
   moveStepStart, parseUci, play, shortestStars, sideToMove, starsDests, starsMove, starsStart, wrongReason,
@@ -258,6 +259,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   // With the best result and the star total from before this run: saving
   // updates both props, and the end screen shows what this run changed.
   const [finished, setFinished] = useState<null | { stars: 1 | 2 | 3; bestBefore: number; totalBefore: number }>(null);
+  const [saveStatus, setSaveStatus] = useState<ProgressSaveStatus>('idle');
   const [run, setRun] = useState(0);
   // The last explanation before a task, to look up again while solving it.
   const [recall, setRecall] = useState(false);
@@ -272,15 +274,57 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   useEffect(() => { window.scrollTo({ top: 0 }); }, [index, finished]);
   useEffect(() => () => cancelSpeech(), []);
 
-  const save = useCallback((body: object) => {
-    api.post(`/api/learn/${lesson.id}`, body)
-      .then(() => {
+  // A learner can complete steps faster than requests return. Run saves in
+  // order so an older response can never overwrite the next step or final
+  // stars. Keep a failed write queued for explicit retry instead of silently
+  // treating an unsaved run as persisted.
+  const savesRef = useRef<LessonProgressQueue<object> | null>(null);
+  useEffect(() => {
+    // Construct inside the effect: React Strict Mode invokes a development
+    // cleanup/setup cycle at mount. Constructing in useMemo and disposing in
+    // cleanup permanently disabled the queue before the first real click.
+    const saves = new LessonProgressQueue<object>(
+      (body) => api.post(`/api/learn/${lesson.id}`, body),
+      setSaveStatus,
+      () => {
         void qc.invalidateQueries({ queryKey: LEARN_QUERY_KEY });
         void qc.invalidateQueries({ queryKey: ['achievements-home'] });
         void qc.invalidateQueries({ queryKey: ['achievements'] });
-      })
-      .catch(() => { /* progress is a nicety; never interrupt a lesson for it */ });
+      },
+    );
+    savesRef.current = saves;
+    return () => {
+      saves.dispose();
+      if (savesRef.current === saves) savesRef.current = null;
+    };
   }, [lesson.id, qc]);
+  const save = useCallback((body: object) => savesRef.current?.enqueue(body), []);
+
+  // Patzer uses a data router. Block *all* in-app route changes while writes
+  // are unacknowledged, not just this lesson's Back/Next buttons: the shared
+  // navigation rail, command palette and browser Back can navigate too.
+  // Never block authentication redirects when another user logs out.
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    if (saveStatus === 'idle' || !user?.id) return false;
+    if (['/login', '/setup', '/signup', '/forgot-password', '/reset-password', '/verify-email'].includes(nextLocation.pathname)) return false;
+    return currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search;
+  }, [saveStatus, user?.id]);
+  const blocker = useBlocker(shouldBlock);
+
+  // A route request waits until the queued write is acknowledged. On failure
+  // the dialog remains blocked, allowing retry or an intentional unsaved exit.
+  useEffect(() => {
+    if (saveStatus === 'idle' && blocker.state === 'blocked') blocker.proceed();
+  }, [saveStatus, blocker]);
+
+  // Native reloads / tab closes bypass the in-app controls. The browser can
+  // warn while unsaved work exists; it owns the wording and final decision.
+  useEffect(() => {
+    if (saveStatus === 'idle') return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [saveStatus]);
 
   const speakText = useCallback((s: string) => {
     const ui = normalizeLanguage(i18n.language);
@@ -312,8 +356,16 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   advanceRef.current = advance;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el && ['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(el.tagName)) return;
+      // Lesson shortcuts never override a focused dialog, an editable region,
+      // another feature's handled key, or OS/browser modifier shortcuts.
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+      // A dialog may not have moved focus yet (or may be animating open).
+      // Even a body-targeted key must not complete a lesson behind it.
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const el = e.target instanceof Element ? e.target as HTMLElement : null;
+      if (el && (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(el.tagName)
+        || el.isContentEditable
+        || el.closest('[contenteditable="true"], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'))) return;
       if (e.key === 'Enter' || e.key === 'ArrowRight') advanceRef.current();
     };
     window.addEventListener('keydown', onKey);
@@ -343,11 +395,69 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, run, finished]);
 
+  const saveNotice = saveStatus === 'error' ? (
+    <div role="alert" className="card mx-auto mb-3 flex w-full max-w-[980px] flex-wrap items-center justify-between gap-3 border border-amber-500/40 p-3 text-sm">
+      <p className="min-w-0 flex-1 text-chesscom-700 dark:text-chesscom-200">
+        {t('learn.saveFailed', { defaultValue: "Your latest lesson progress couldn't be saved. Retry before leaving, or recent work may be lost." })}
+      </p>
+      <button type="button" onClick={() => savesRef.current?.retry()} className="btn-primary min-h-11 text-sm">
+        {t('learn.retrySave', { defaultValue: 'Retry saving' })}
+      </button>
+    </div>
+  ) : finished && saveStatus === 'saving' ? (
+    <div role="status" className="mx-auto mb-3 w-full max-w-[980px] text-center text-xs text-chesscom-500">
+      {t('learn.savingResult', { defaultValue: 'Saving your lesson result…' })}
+    </div>
+  ) : null;
+
+  const leaveDialog = blocker.state === 'blocked' && (
+    <div role="presentation" className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4" onClick={() => blocker.reset()}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="lesson-leave-title" aria-describedby="lesson-leave-desc"
+        className="card w-full max-w-md space-y-3 p-5 shadow-lift sm:p-6"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); blocker.reset(); }
+          if (event.key === 'Tab') {
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+            const first = buttons[0], last = buttons[buttons.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }
+          event.stopPropagation();
+        }}>
+        <h2 id="lesson-leave-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+          {t('learn.unsavedLeaveTitle', { defaultValue: 'Your progress is not saved yet' })}
+        </h2>
+        <p id="lesson-leave-desc" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+          {saveStatus === 'error'
+            ? t('learn.unsavedLeaveError', { defaultValue: 'Saving failed. Retry before leaving to keep your recent work.' })
+            : t('learn.unsavedLeaveSaving', { defaultValue: 'Your progress is still saving. You can stay here until it finishes or leave without saving.' })}
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <button type="button" autoFocus className="btn-primary min-h-11 flex-1 text-sm" onClick={() => blocker.reset()}>
+            {t('learn.stayForSave', { defaultValue: 'Stay here' })}
+          </button>
+          {saveStatus === 'error' && (
+            <button type="button" className="btn-secondary min-h-11 flex-1 text-sm" onClick={() => savesRef.current?.retry()}>
+              {t('learn.retrySave', { defaultValue: 'Retry saving' })}
+            </button>
+          )}
+          <button type="button" className="btn-danger min-h-11 flex-1 text-sm" onClick={() => blocker.proceed()}>
+            {t('learn.leaveUnsaved', { defaultValue: 'Leave without saving' })}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (finished) {
     return (
+      <>
+      {saveNotice}
       <LessonDone
         refInfo={refInfo}
         stars={finished.stars}
+        saved={saveStatus === 'idle'}
         bestBefore={finished.bestBefore}
         totalBefore={finished.totalBefore}
         next={next}
@@ -355,6 +465,8 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         onAgain={restart}
         onExit={onExit}
       />
+      {leaveDialog}
+      </>
     );
   }
 
@@ -420,6 +532,8 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   const common = { lessonId: lesson.id, onSolved, onReopen };
 
   return (
+    <>
+    {saveNotice}
     <FrameContext.Provider value={{ header, next: nextButton || null, speakText }}>
       <div key={`${run}-${index}`}>
         {step.type === 'info' && <InfoView step={step} {...common} />}
@@ -430,6 +544,8 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         {step.type === 'quiz' && <QuizView step={step} {...common} />}
       </div>
     </FrameContext.Provider>
+    {leaveDialog}
+    </>
   );
 }
 
@@ -1069,9 +1185,10 @@ function QuizView({ step, lessonId, onSolved }: StepProps<QuizStep>) {
 
 // ---- The end of a lesson ------------------------------------------------------------
 
-function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onAgain, onExit }: {
+function LessonDone({ refInfo, stars, saved, bestBefore, totalBefore, next, onNext, onAgain, onExit }: {
   refInfo: LessonRef;
   stars: 1 | 2 | 3;
+  saved: boolean;
   bestBefore: number;
   totalBefore: number;
   next: LessonRef | null;
@@ -1082,39 +1199,49 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
   const { t } = useTranslation();
   const { text } = useLessonText(refInfo.lesson.id);
   const { t: tl } = useTranslation('learn');
-  const gained = Math.max(0, stars - bestBefore);
+  const reduceMotion = useReducedMotion();
+  // The board can score a run locally, but an award is not earned until the
+  // authoritative progress write is acknowledged. Failed/pending writes must
+  // not show an invented level-up or add provisional stars to saved totals.
+  const gained = saved ? Math.max(0, stars - bestBefore) : 0;
   const totalAfter = totalBefore + gained;
   const before = levelOf(totalBefore);
   const after = levelOf(totalAfter);
-  const levelUp = after.level > before.level;
+  const levelUp = saved && after.level > before.level;
   const pct = ((totalAfter - after.floor) / (after.next - after.floor)) * 100;
   const trainer = refInfo.lesson.trainer;
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       className="mx-auto max-w-md"
     >
       <div className="card overflow-hidden text-center">
         <div className="relative bg-gradient-to-br from-chesscom-900 via-[#3b4c2f] to-board-dark px-6 pb-6 pt-7 text-white">
-          <Confetti />
-          <Trophy className="mx-auto h-9 w-9 text-gold-300" />
-          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/60">{t('learn.lessonDone')}</div>
+          {saved && !reduceMotion && <Confetti />}
+          {saved ? <Trophy className="mx-auto h-9 w-9 text-gold-300" aria-hidden="true" />
+            : <BookOpen className="mx-auto h-9 w-9 text-white/75" aria-hidden="true" />}
+          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80" aria-live="polite">
+            {saved ? t('learn.lessonDone') : t('learn.lessonAwaitingSave', { defaultValue: 'Lesson result awaiting save' })}
+          </div>
           <h2 className="mt-1 text-xl font-bold">{text('title')}</h2>
           <div className="mt-4 flex justify-center gap-3">
             {[1, 2, 3].map((i) => (
               <motion.div
                 key={i}
-                initial={{ scale: 0, rotate: -40 }}
+                initial={reduceMotion ? false : { scale: 0, rotate: -40 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.25 + i * 0.22, type: 'spring', stiffness: 320, damping: 14 }}
+                transition={reduceMotion ? { duration: 0 } : { delay: 0.25 + i * 0.22, type: 'spring', stiffness: 320, damping: 14 }}
               >
-                <Star className={cn('h-11 w-11', i <= stars ? 'fill-gold-500 text-gold-300 drop-shadow-[0_0_10px_rgba(255,201,52,0.55)]' : 'text-white/25')} />
+                <Star className={cn('h-11 w-11', i > stars ? 'text-white/25'
+                  : saved ? 'fill-gold-500 text-gold-300 drop-shadow-[0_0_10px_rgba(255,201,52,0.55)]'
+                    : 'fill-gold-500/10 text-gold-200/70')} />
               </motion.div>
             ))}
           </div>
-          <div className="mt-3 text-sm text-white/80">{t(`learn.starsResult.${stars}`)}</div>
+          <div className="mt-3 text-sm text-white/80">{saved ? t(`learn.starsResult.${stars}`)
+            : t('learn.provisionalScore', { defaultValue: 'Your score is provisional. Stars will count after saving.' })}</div>
           {stars < 3 && <div className="mt-1 text-xs text-white/60">{t('learn.starsRule')}</div>}
         </div>
 
@@ -1128,9 +1255,9 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
             </div>
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-700">
               <motion.div
-                initial={{ width: 0 }}
+                initial={reduceMotion ? false : { width: 0 }}
                 animate={{ width: `${pct}%` }}
-                transition={{ delay: 0.9, duration: 0.7, ease: 'easeOut' }}
+                transition={reduceMotion ? { duration: 0 } : { delay: 0.9, duration: 0.7, ease: 'easeOut' }}
                 className="h-full rounded-full bg-gold-500"
               />
             </div>
@@ -1140,9 +1267,9 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
             <AnimatePresence>
               {levelUp && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.6 }}
+                  initial={reduceMotion ? false : { opacity: 0, scale: 0.6 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 1.5, type: 'spring', stiffness: 300, damping: 15 }}
+                  transition={reduceMotion ? { duration: 0 } : { delay: 1.5, type: 'spring', stiffness: 300, damping: 15 }}
                   className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-gold-500/15 px-3 py-2 text-sm font-semibold text-gold-700 ring-1 ring-gold-500/40 dark:text-gold-300"
                 >
                   <PieceIcon piece={levelPiece(after.level)} className="h-6 w-6" /> {t('learn.levelUp', { n: after.level })}

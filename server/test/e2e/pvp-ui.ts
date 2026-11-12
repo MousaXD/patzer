@@ -98,6 +98,9 @@ await A.waitForURL(/\/play\?game=/, { timeout: 20000 }).catch(async () => {
 });
 await A.waitForTimeout(2500); await B.waitForTimeout(1500);
 ok(A.url().includes('/play?game='), 'Alice was pulled into the game by the lobby socket');
+const desktopBoard = await A.locator('cg-container').first().boundingBox();
+ok(!!desktopBoard && desktopBoard.width >= 530,
+  `desktop: board remains prominent at 1440×900 (${Math.round(desktopBoard?.width ?? 0)}px)`);
 
 // who is white?
 const orientA: 'white' | 'black' = 'white';
@@ -184,6 +187,15 @@ await phone.addCookies(await ctxA.cookies());
 const P = await phone.newPage();
 await P.goto(A.url());
 await P.waitForTimeout(3000);
+// The full-page workspace is a flex column. A Play root with `mx-auto` but
+// without `w-full` shrank to its minimum content width on phones: the chess
+// board occupied only ~125px of a 390px viewport while the rest was blank.
+const boardBox = await P.locator('cg-container').first().boundingBox();
+const viewportWidth = P.viewportSize()!.width;
+ok(!!boardBox && boardBox.width >= viewportWidth * 0.78,
+  `phone: board uses the available width (${Math.round(boardBox?.width ?? 0)} of ${viewportWidth}px)`);
+const hasHorizontalOverflow = await P.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+ok(!hasHorizontalOverflow, 'phone: board layout does not introduce horizontal scrolling');
 await P.screenshot({ path: `${SHOTS}/pvp-phone-board.png` });
 const movesBtn = P.getByRole('button', { name: /moves/i }).first();
 const hasBar = await movesBtn.isVisible().catch(() => false);
@@ -193,6 +205,66 @@ if (hasBar) {
   await P.waitForTimeout(1200);
   await P.screenshot({ path: `${SHOTS}/pvp-phone-sheet.png` });
   ok(true, 'phone: moves sheet opens');
+  await P.getByRole('button', { name: /^close$/i }).first().click();
+  await P.waitForTimeout(400); // let the sheet finish its exit before the paused-tab screenshot
+}
+
+// --- One active tab per player, with an explicit handoff ------------------
+// The mobile phone reused Alice's authenticated session above. It should
+// become the active controller; desktop must be paused, never silently left
+// with a live-looking board and an obsolete WebSocket. Test both directions.
+const pauseText = /This game was opened in another tab/;
+const pausedDesktop = A.getByRole('alert').filter({ hasText: pauseText });
+ok(await pausedDesktop.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: opening on phone pauses old desktop controller');
+ok(await A.getByRole('button', { name: /^resign$/i }).first().isDisabled(),
+  'tabs: old controller cannot send an irreversible game action');
+await A.screenshot({ path: `${SHOTS}/pvp-desktop-paused.png` });
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: replacing Alice socket does not falsely mark her offline for Bob');
+
+await A.getByRole('button', { name: /Take control here/i }).click();
+const pausedPhone = P.getByRole('alert').filter({ hasText: pauseText });
+ok(await pausedPhone.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: explicit desktop takeover pauses the phone');
+await P.screenshot({ path: `${SHOTS}/pvp-phone-paused.png` });
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: an old socket closing does not report a false disconnect to the opponent');
+
+await P.getByRole('button', { name: /Take control here/i }).click();
+ok(await pausedDesktop.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false),
+  'tabs: phone can deliberately retake control and pause the desktop again');
+await P.close();
+await A.getByRole('button', { name: /Take control here/i }).click();
+const controlsRestored = await A.waitForFunction(() => {
+  const resign = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Resign');
+  return !!resign && !resign.disabled;
+}, null, { timeout: 10000 }).then(() => true).catch(() => false);
+ok(controlsRestored, 'tabs: desktop regains playable controls after authoritative replay');
+ok((await B.getByText(/Alice disconnected/i).count()) === 0,
+  'tabs: opponent remains online throughout same-player handoffs');
+
+// --- deliberate resignation, never a one-tap accidental forfeiture --------
+if (hasRematch) {
+  const resignTrigger = A.getByRole('button', { name: /^resign$/i }).first();
+  await resignTrigger.click();
+  const confirm = A.getByRole('alertdialog', { name: /resign this game/i });
+  ok(await confirm.isVisible(), 'resign: first tap asks for confirmation instead of ending the game');
+  await A.waitForTimeout(350); // capture the settled dialog, not its transparent entry frame
+  await A.screenshot({ path: `${SHOTS}/pvp-resign-confirmation.png` });
+  await confirm.getByRole('button', { name: /keep playing/i }).click();
+  ok(await confirm.waitFor({ state: 'hidden', timeout: 3000 }).then(() => true).catch(() => false),
+    'resign: Keep playing cancels without forfeiting');
+  await resignTrigger.click();
+  await confirm.getByRole('button', { name: /confirm resignation/i }).click();
+  const savedGames = await api('/api/games?limit=20', undefined, admin.cookie);
+  const currentGameId = Number(new URL(A.url()).searchParams.get('game'));
+  const savedRow = savedGames.json?.games?.find((g: any) => g.id === currentGameId);
+  ok(savedRow?.result === 'loss', 'resign: server records the resignation as a loss');
+  ok(await A.getByText(/you lost/i).first().waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false),
+    'resign: confirmed forfeiture reaches the real server and ends the game');
+  await A.waitForTimeout(350);
+  await A.screenshot({ path: `${SHOTS}/pvp-resign-result.png` });
 }
 
 console.log(fails === 0 ? '\nALL OK' : `\n${fails} FAILURE(S)`);

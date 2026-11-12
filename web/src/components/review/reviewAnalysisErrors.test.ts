@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reviewAnalysisErrorMessage } from './reviewAnalysisErrors';
+import { reviewAnalysisErrorKind, reviewAnalysisErrorMessage } from './reviewAnalysisErrors';
 
 function httpError(status: number, message: string): Error {
   return Object.assign(new Error(message), { status });
@@ -17,5 +17,11 @@ describe('Game Review engine error recovery guidance', () => {
   it('keeps unexpected failures recoverable without exposing server internals', () => {
     expect(reviewAnalysisErrorMessage(httpError(503, 'internal path /tmp/secrets')))
       .toBe('Engine analysis could not finish. Retry when Stockfish is available.');
+  });
+  it('assigns stable translation identities for all recovery cases', () => {
+    expect(reviewAnalysisErrorKind(httpError(413, 'pgn_too_large'))).toBe('tooLarge');
+    expect(reviewAnalysisErrorKind(httpError(400, 'invalid_pgn'))).toBe('invalidPgn');
+    expect(reviewAnalysisErrorKind(httpError(429, 'engine_busy'))).toBe('busy');
+    expect(reviewAnalysisErrorKind(httpError(503, '/tmp/private/server.log'))).toBe('unavailable');
   });
 });

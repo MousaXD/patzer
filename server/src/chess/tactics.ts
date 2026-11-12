@@ -68,12 +68,14 @@ export function ratingOf(userId: number, now = Date.now()): { rating: number; rd
 
 /** The next puzzle for you: one you haven't tried, as close to your rating as
  *  possible (a random one of those within the smallest window that has any),
- *  optionally only of one theme. Null once you've tried every one. */
-export function nextPuzzle(userId: number, theme: string | null, rng = Math.random): TacticsPuzzle | null {
+ *  optionally only of one theme. `skip` omits locally abandoned unsaved
+ *  puzzles for this request only. Null once every eligible one is excluded. */
+export function nextPuzzle(userId: number, theme: string | null, rng = Math.random, skip: ReadonlySet<string> = new Set()): TacticsPuzzle | null {
   const tried = new Set((db.prepare('SELECT puzzle_id FROM tactics_attempts WHERE user_id = ?').all(userId) as { puzzle_id: string }[])
     .map((r) => r.puzzle_id));
   const tags = theme ? THEME_FILTERS[theme] : null;
-  const pool = allPuzzles().filter((p) => !tried.has(p.id) && (!tags || p.themes.some((t) => tags.includes(t))));
+  const pool = allPuzzles().filter((p) => !tried.has(p.id) && !skip.has(p.id)
+    && (!tags || p.themes.some((t) => tags.includes(t))));
   if (pool.length === 0) return null;
   const { rating } = ratingOf(userId);
   for (let window = 75; ; window *= 2) {

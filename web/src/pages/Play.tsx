@@ -11,7 +11,7 @@ import CapturedPieces from '../components/CapturedPieces';
 import PieceEmotionsOverlay from '../components/PieceEmotionsOverlay';
 import Spinner from '../components/Spinner';
 import { useAuth } from '../state/auth';
-import { useLobby } from '../state/lobby';
+import { useLobby, type Challenge } from '../state/lobby';
 import { fmtClock } from '../lib/utils';
 import { api } from '../api';
 import { ReconnectingSocket, type SocketLike } from '../lib/reconnectingSocket';
@@ -22,10 +22,31 @@ import { parseFromPosition } from '../lib/fromPosition';
 const DIFFICULTIES: Difficulty[] = ['kid','beginner','easy','medium','hard','master','stockfish'];
 const TIME_CONTROLS = ['untimed','bullet','blitz','rapid','classical'] as const;
 
+const CHALLENGE_FEEDBACK = {
+  error: {
+    send: 'Could not send your challenge. Check your connection and try again.',
+    accept: 'Could not accept this challenge. Try again.',
+    decline: 'Could not decline this challenge. Try again.',
+    cancel: 'Could not cancel this challenge. Try again.',
+  },
+  success: {
+    send: 'Challenge sent. Waiting for a reply.',
+    accept: 'Challenge accepted. Opening the game…',
+    decline: 'Challenge declined.',
+    cancel: 'Challenge cancelled.',
+  },
+} as const;
+
 interface Move { ply: number; san: string; uci: string; classification?: Classification }
 interface Position { fen: string; lastFrom?: string; lastTo?: string }
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function parsePvpGameId(value: string | null): number | null {
+  if (value === null || !/^[0-9]+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 /** A move the player has queued up while the opponent is still thinking. */
 interface Premove { uci: string; from: string; to: string; san: string }
@@ -118,6 +139,29 @@ interface ServerMsg {
   online?: boolean;
 }
 
+function isUsableGameSnapshot(msg: ServerMsg): boolean {
+  // The server sends a complete replayable position at the start of each
+  // session/reconnection. A malformed snapshot must not unlock the board,
+  // overwrite its last good FEN, or throw while rebuilding move history.
+  if (typeof msg.fen !== 'string' || !Array.isArray(msg.history)
+    || !msg.history.every((san: unknown) => typeof san === 'string' && san.length > 0)
+    || (msg.start_fen != null && typeof msg.start_fen !== 'string')) return false;
+  try {
+    new Chess(msg.fen);
+    const replay = new Chess(msg.start_fen ?? undefined);
+    for (const san of msg.history) replay.move(san, { strict: false });
+    // A legal history paired with a different FEN is still not an
+    // authoritative snapshot: the move list and board would disagree.
+    return replay.fen() === msg.fen;
+  } catch { return false; }
+}
+
+function isUsableMoveUpdate(msg: ServerMsg): boolean {
+  if (typeof msg.fen !== 'string' || typeof msg.san !== 'string' || msg.san.length === 0
+    || typeof msg.uci !== 'string' || !/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(msg.uci)) return false;
+  try { new Chess(msg.fen); return true; } catch { return false; }
+}
+
 interface ResumableBot {
   difficulty: Difficulty;
   user_color: 'white' | 'black';
@@ -142,13 +186,26 @@ interface BlunderPreview { uci: string; classification: Classification; cp_loss:
 export default function Play() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const lobby = useLobby();
+  // Selecting the whole Zustand store here makes every lobby refresh a new
+  // effect dependency. In the friend tab that causes an endless refresh loop:
+  // refresh -> store update -> render -> refresh again. Subscribe only to the
+  // stable actions needed to fetch on tab entry.
+  const refreshLobbyUsers = useLobby((state) => state.refreshUsers);
+  const refreshLobbyChallenges = useLobby((state) => state.refreshChallenges);
+  const setActivePlaySession = useLobby((state) => state.setActivePlaySession);
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const pvpGameId = Number(params.get('game') ?? 0) || null;
+  const rawPvpGameId = params.get('game');
+  const pvpGameId = parsePvpGameId(rawPvpGameId);
   const fromPos = useMemo(() => parseFromPosition(params.get('fen'), params.get('moves'), params.get('color')), [params]);
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'over'>('setup');
+  // Global invitations must not block the board or steal keyboard focus
+  // during a live/connecting game. Keep them queued for the setup screen.
+  useEffect(() => {
+    setActivePlaySession(phase !== 'setup' || pvpGameId !== null);
+    return () => setActivePlaySession(false);
+  }, [phase, pvpGameId, setActivePlaySession]);
   const [setupTab, setSetupTab] = useState<'bot' | 'friend'>('bot');
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -191,6 +248,8 @@ export default function Play() {
   const [blunder, setBlunder] = useState<BlunderPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
+  const [resignConfirm, setResignConfirm] = useState(false);
+  const resignTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [lastClassifiedMove, setLastClassifiedMove] = useState<{ ply: number; san: string; uci: string; classification: Classification; cp_loss: number; best_san: string | null; fen_before: string } | null>(null);
   const [boardArrows, setBoardArrows] = useState<{ orig: string; dest: string; brush: string }[]>([]);
   // Queued premoves, in the order they'll be played. chessground has its own
@@ -219,9 +278,29 @@ export default function Play() {
   // the clock tick, which outlives the render it was created in.
   const [connected, setConnected] = useState(true);
   const connectedRef = useRef(true);
+  // An open WebSocket is not yet a playable chess game. In particular, after
+  // connecting or waking up we must receive the authoritative game snapshot
+  // before offering any moves, clocks or actions. A dropped connection may
+  // have reached the server just before it closed, so local pending state is
+  // invalid until the next snapshot arrives.
+  const [gameReady, setGameReady] = useState(false);
+  const [hasSyncedGame, setHasSyncedGame] = useState(false);
+  const [sessionReplaced, setSessionReplaced] = useState(false);
+  const [pvpUnavailable, setPvpUnavailable] = useState(false);
   const [live, setLive] = useState<LiveGames | null>(null);
+  const [liveStatus, setLiveStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [liveReload, setLiveReload] = useState(0);
+  const [savedBotConfirm, setSavedBotConfirm] = useState<'replace' | 'discard' | null>(null);
+  const [savedBotDeletePending, setSavedBotDeletePending] = useState(false);
+  const [savedBotDeleteFailed, setSavedBotDeleteFailed] = useState(false);
+  const savedBotTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const savedBotRequestEpoch = useRef(0);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
+  // A search-param change does not unmount Play. Track the game the socket
+  // actually belongs to, not just the ?game= URL currently shown.
+  const connectedPvpGameRef = useRef<number | null>(null);
+  const accountRef = useRef<number | null>(user?.id ?? null);
   function socket(): ReconnectingSocket {
     if (!socketRef.current) {
       socketRef.current = new ReconnectingSocket({
@@ -229,17 +308,62 @@ export default function Play() {
         // Via refs, so a message arriving after a reconnect never lands in the
         // closure from the render that happened to open the socket.
         onMessage: (ev) => handleMessageRef.current(ev),
-        onStatusChange: (up) => { setConnected(up); connectedRef.current = up; },
+        onStatusChange: (up) => {
+          setConnected(up);
+          connectedRef.current = up;
+          if (!up) {
+            setGameReady(false);
+            setResignConfirm(false);
+            // The server may have accepted the optimistic move, or not. The
+            // next game_started/pvp_hello resolves this uncertainty.
+            setPending(null);
+            setPreviewing(false);
+            setBlunder(null);
+            setHintLoading(false);
+            setHint(null);
+            setPremoves([]);
+            premovesRef.current = [];
+            soundedRef.current = null;
+            setBoardKey((k) => k + 1);
+          }
+        },
       });
     }
     return socketRef.current;
   }
 
+  // The route stays mounted when a shared browser changes from one signed-in
+  // player to another. An active bot/PvP socket, board and resume card belong
+  // to the old player and must never survive that identity change.
   useEffect(() => {
+    const nextId = user?.id ?? null;
+    if (accountRef.current === nextId) return;
+    accountRef.current = nextId;
+    setPvpUnavailable(false);
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
+    connectedRef.current = false;
+    setConnected(false);
+    resetGameState();
+    setLive(null);
+    setSavedBotConfirm(null);
+    setSavedBotDeletePending(false);
+    setSavedBotDeleteFailed(false);
+    setPhase('setup');
+    // Do not automatically reconnect player B to player A's ?game= link.
+    if (pvpGameId) nav('/play', { replace: true });
+    // The effect intentionally follows account identity, not route changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    setCoachConfigured(false);
     api.get<{ configured: boolean }>('/api/coach/status')
-      .then((s) => setCoachConfigured(s.configured))
-      .catch(() => setCoachConfigured(false));
-  }, []);
+      .then((s) => { if (active) setCoachConfigured(s.configured); })
+      .catch(() => { if (active) setCoachConfigured(false); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   // Once a bot game is over and saved there is nothing left to hold a socket
   // open for — and the server has already deleted the snapshot, so a
@@ -257,11 +381,29 @@ export default function Play() {
   useEffect(() => {
     if (phase !== 'setup' || pvpGameId) return;
     let alive = true;
+    setLive(null);
+    setLiveStatus('loading');
     api.get<LiveGames>('/api/games/live')
-      .then((l) => { if (alive) setLive(l); })
-      .catch(() => { if (alive) setLive(null); });
+      .then((l) => { if (alive) { setLive(l); setLiveStatus('ready'); } })
+      .catch(() => { if (alive) { setLive(null); setLiveStatus('error'); } });
     return () => { alive = false; };
-  }, [phase, pvpGameId]);
+  }, [phase, pvpGameId, user?.id, liveReload]);
+
+  // Both starting over and discarding a saved bot game are destructive. A
+  // request already in flight belongs to the account that initiated it, and
+  // must not remove the next account's resume card when it eventually lands.
+  useEffect(() => {
+    savedBotRequestEpoch.current += 1;
+    setSavedBotConfirm(null);
+    setSavedBotDeletePending(false);
+    setSavedBotDeleteFailed(false);
+  }, [user?.id]);
+  useEffect(() => {
+    if (savedBotConfirm !== null) return;
+    const trigger = savedBotTriggerRef.current;
+    savedBotTriggerRef.current = null;
+    if (trigger?.isConnected) trigger.focus();
+  }, [savedBotConfirm]);
 
   // A phone doesn't tell the page it went to sleep — it just stops running it,
   // and the socket is dead by the time you look again. These three events are
@@ -284,21 +426,55 @@ export default function Play() {
   }, []);
 
   // Leaving the page must not leave a reconnect loop running behind it.
-  useEffect(() => () => { socketRef.current?.disconnect(); }, []);
+  // Clear the tracked game ID too: React Strict Mode replays effect cleanup
+  // and setup on mount, and must re-open the direct ?game= link afterwards.
+  useEffect(() => () => {
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
+  }, []);
 
-  // PvP: auto-connect when arriving with ?game=ID
+  // PvP: keep the mounted board and WebSocket in sync with the actual route.
+  // Checking `phase === 'setup'` silently left the old bot/PvP board active
+  // after Join game changed the URL. Browser Back also needs to close an old
+  // PvP socket instead of displaying it under a URL without ?game=.
   useEffect(() => {
-    if (pvpGameId && phase === 'setup') connectPvp(pvpGameId);
+    if (pvpGameId) {
+      if (connectedPvpGameRef.current !== pvpGameId) connectPvp(pvpGameId);
+    } else if (connectedPvpGameRef.current !== null) {
+      connectedPvpGameRef.current = null;
+      socketRef.current?.disconnect();
+      connectedRef.current = false;
+      setConnected(false);
+      resetGameState();
+      setPhase('setup');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvpGameId]);
+
+  // A malformed ?game= route must not become a fake bot session or repeatedly
+  // attempt an impossible PvP connection. The server expects an integer row
+  // ID, but Number('Infinity'), a fraction, or unsafe integers previously
+  // bypassed client checks and could strand the player in a reconnect loop.
+  useEffect(() => {
+    if (rawPvpGameId === null || pvpGameId !== null) return;
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
+    connectedRef.current = false;
+    setConnected(false);
+    resetGameState();
+    setPhase('setup');
+    setPvpUnavailable(true);
+    nav('/play', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawPvpGameId, pvpGameId, nav]);
 
   // Refresh users + challenges when entering friend tab
   useEffect(() => {
     if (setupTab === 'friend') {
-      void lobby.refreshUsers();
-      void lobby.refreshChallenges();
+      void refreshLobbyUsers();
+      void refreshLobbyChallenges();
     }
-  }, [setupTab, lobby]);
+  }, [setupTab, refreshLobbyUsers, refreshLobbyChallenges]);
 
   // Local clock tick during play.
   //
@@ -309,7 +485,7 @@ export default function Play() {
   // is down: we have no idea what it's really doing until the server says so,
   // and a display that keeps counting a game you aren't connected to is a lie.
   useEffect(() => {
-    if (phase !== 'playing' || tc === 'untimed') return;
+    if (phase !== 'playing' || tc === 'untimed' || !gameReady) return;
     const turn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
     let last = Date.now();
     const id = window.setInterval(() => {
@@ -322,7 +498,7 @@ export default function Play() {
     }, 100);
     tickRef.current = id;
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
-  }, [phase, fen, tc]);
+  }, [phase, fen, tc, gameReady]);
 
   // Show suggested-move arrow when hint arrives
   useEffect(() => {
@@ -345,10 +521,14 @@ export default function Play() {
   };
 
   function startBot() {
+    setPvpUnavailable(false);
+    connectedPvpGameRef.current = null;
     const finalColor = fromPos ? fromColor : color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
     setUserColor(finalColor);
     userColorRef.current = finalColor;
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     if (fromPos) {
       socket().connect(
@@ -370,24 +550,68 @@ export default function Play() {
 
   /** Walk back into the bot game the server kept for us. */
   function resumeBot(from: ResumableBot) {
+    setPvpUnavailable(false);
+    connectedPvpGameRef.current = null;
     setUserColor(from.user_color);
     userColorRef.current = from.user_color;
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     socket().connect(wsUrl(null), { type: 'resume' });
   }
 
   function connectPvp(gameId: number) {
+    setPvpUnavailable(false);
+    // Switching from another game must close its socket. ReconnectingSocket
+    // protects stale messages, but connect() alone does not close the old
+    // underlying WebSocket (which can keep a second session alive).
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = gameId;
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     // PvP needs no opening message: the server hands the socket its whole
     // state in `pvp_hello`, on the first connection and on every one after.
     socket().connect(wsUrl(gameId), null);
   }
 
+  function confirmSavedBotAction(action: 'replace' | 'discard', trigger: HTMLButtonElement) {
+    if (liveStatus !== 'ready' || !live?.bot) return;
+    savedBotTriggerRef.current = trigger;
+    setSavedBotDeleteFailed(false);
+    setSavedBotConfirm(action);
+  }
+
+  function cancelSavedBotAction() {
+    if (!savedBotDeletePending) {
+      setSavedBotDeleteFailed(false);
+      setSavedBotConfirm(null);
+    }
+  }
+
+  function chooseStartBot(trigger: HTMLButtonElement) {
+    if (liveStatus !== 'ready') return;
+    if (live?.bot) confirmSavedBotAction('replace', trigger);
+    else startBot();
+  }
+
   async function discardBotGame() {
-    try { await api.del('/api/games/live/bot'); } catch { /* ignore */ }
-    setLive((l) => l ? { ...l, bot: null } : l);
+    if (savedBotDeletePending || savedBotConfirm !== 'discard') return;
+    const epoch = savedBotRequestEpoch.current;
+    setSavedBotDeletePending(true);
+    setSavedBotDeleteFailed(false);
+    try {
+      await api.del('/api/games/live/bot');
+      if (epoch !== savedBotRequestEpoch.current) return;
+      setLive((l) => l ? { ...l, bot: null } : l);
+      setSavedBotConfirm(null);
+    } catch {
+      if (epoch === savedBotRequestEpoch.current) setSavedBotDeleteFailed(true);
+    } finally {
+      if (epoch === savedBotRequestEpoch.current) setSavedBotDeletePending(false);
+    }
   }
 
   function clearPremoves() {
@@ -397,12 +621,19 @@ export default function Play() {
 
   function resetGameState() {
     resultRef.current = null;
+    setGameReady(false);
+    setHasSyncedGame(false);
+    setSessionReplaced(false);
     setFen(START_FEN);
+    // New games have no clock snapshot until the server greets us. Never
+    // display a previous game's remaining time during this transition.
+    setWhiteMs(0); setBlackMs(0);
     setMoves([]); setResult(null); setHint(null); setLastClassifiedMove(null);
     setOpponent(null); setBoardArrows([]);
     setPositions([{ fen: START_FEN }]);
     setBrowseIndex(null);
     setGameOverDismissed(false);
+    setResignConfirm(false);
     setDrawOffer(null); setTakeback(null); setRematch(null); setRematchDeclined(false);
     setMoreOpen(false); setSheetOpen(false);
     setPending(null);
@@ -436,10 +667,19 @@ export default function Play() {
   const mine = (by: string | undefined): Offer => (by ? (by === userColorRef.current ? 'me' : 'them') : null);
 
   function handleMessage(ev: MessageEvent) {
-    const msg = JSON.parse(ev.data) as ServerMsg;
+    let msg: ServerMsg;
+    try {
+      // JSON-valid null/arrays/primitives are not chess messages. Ignore
+      // malformed envelopes without interrupting the current board or the
+      // next authoritative game snapshot from this connection.
+      const parsed: unknown = JSON.parse(ev.data);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      msg = parsed as ServerMsg;
+    } catch { return; }
     switch (msg.type) {
       case 'game_started':
       case 'pvp_hello': {
+        if (!isUsableGameSnapshot(msg)) return;
         // A reconnect that lands on a game we already saw finish must not put
         // the result away and hand the board back — the server replays the
         // position either way, and a checkmate is still a checkmate.
@@ -453,6 +693,9 @@ export default function Play() {
         if (msg.whiteTimeMs !== undefined) setWhiteMs(msg.whiteTimeMs);
         if (msg.blackTimeMs !== undefined) setBlackMs(msg.blackTimeMs);
         if (msg.time_control) setTc(msg.time_control as typeof TIME_CONTROLS[number]);
+        setGameReady(true);
+        setHasSyncedGame(true);
+        setSessionReplaced(false);
         if (msg.your_color) userColorRef.current = msg.your_color;
         // Rebuild the position list from the SAN history (PvP reconnect can land mid-game).
         loadHistory(msg.history, startFen, msg.start_fen);
@@ -477,6 +720,7 @@ export default function Play() {
         setTakeback(null);
         break;
       case 'takeback_applied': {
+        if (!isUsableGameSnapshot(msg)) return;
         setTakeback(null); setDrawOffer(null); clearPremoves(); setPending(null);
         if (msg.fen) setFen(msg.fen);
         loadHistory(msg.history, msg.fen ?? START_FEN);
@@ -507,6 +751,7 @@ export default function Play() {
         setOpponent((o) => o ? { ...o, online: !!msg.online } : o);
         break;
       case 'move_made': {
+        if (!isUsableMoveUpdate(msg)) return;
         setPending(null);
         if (msg.fen) setFen(msg.fen);
         if (msg.san && msg.uci) {
@@ -593,6 +838,7 @@ export default function Play() {
       }
       case 'game_over':
         clearPremoves();
+        setResignConfirm(false);
         setPending(null);
         setPhase('over');
         playSound('game_end');
@@ -608,6 +854,25 @@ export default function Play() {
       case 'analysis_ready':
         // PvP analysis is ready — could refresh UI; for now just no-op
         break;
+      case 'session_replaced':
+        // Another tab took this player's active PvP socket. Do not keep
+        // reconnecting in the background and wresting control back from it.
+        // The player can explicitly choose to take control on this tab.
+        socketRef.current?.disconnect();
+        setConnected(false);
+        connectedRef.current = false;
+        setGameReady(false);
+        setSessionReplaced(true);
+        setPending(null);
+        setPreviewing(false);
+        setBlunder(null);
+        setHintLoading(false);
+        setHint(null);
+        setResignConfirm(false);
+        setMoreOpen(false);
+        clearPremoves();
+        forceBoardSync();
+        break;
       case 'resume_failed':
         // The stored game is gone or unplayable. Say so and go back to setup
         // rather than leaving someone staring at an empty board.
@@ -617,6 +882,21 @@ export default function Play() {
         setLive((l) => l ? { ...l, bot: null } : l);
         break;
       case 'error':
+        if ((msg.message === 'game_not_found' || msg.message === 'invalid game id') && pvpGameId) {
+          // The server has definitively rejected this user's game ID and
+          // closes the socket. Retrying that same URL can never recover it.
+          // Return to a usable setup page instead of a permanent reconnect
+          // spinner (and never reveal whether someone else owns the ID).
+          socketRef.current?.disconnect();
+          connectedPvpGameRef.current = null;
+          connectedRef.current = false;
+          setConnected(false);
+          resetGameState();
+          setPhase('setup');
+          setPvpUnavailable(true);
+          nav('/play', { replace: true });
+          break;
+        }
         // Server rejected something (illegal move etc) — re-sync the board and
         // drop the queue: whatever we thought the position was, it isn't.
         clearPremoves();
@@ -635,6 +915,10 @@ export default function Play() {
   /** Board move handler. Plays immediately when it's our turn and nothing is
    *  queued; otherwise adds to the premove queue. */
   function onBoardMove(uci: string) {
+    if (!gameReady || !connected || !socketRef.current?.connected) {
+      forceBoardSync();
+      return;
+    }
     const myTurnNow = boardTurn === userColor && premoves.length === 0;
     if (myTurnNow) { attemptMove(uci); return; }
     if (phase !== 'playing' || isBrowsing || blunder || previewing) return;
@@ -653,13 +937,22 @@ export default function Play() {
   }
 
   function attemptMove(uci: string) {
+    if (!gameReady || !socketRef.current?.connected) {
+      setPending(null);
+      forceBoardSync();
+      return;
+    }
     const enableWarning = !!user?.profile.blunder_warning;
     fenBeforeMoveRef.current = fen;
     if (enableWarning) {
       // Shown, but not sounded: the warning may still take it back.
       playLocally(fen, uci, false);
       setPreviewing(true);
-      socket().send({ type: 'preview_move', uci });
+      if (!socket().send({ type: 'preview_move', uci })) {
+        setPreviewing(false);
+        setPending(null);
+        forceBoardSync();
+      }
     } else {
       playLocally(fen, uci, true);
       commitMove(uci);
@@ -680,7 +973,11 @@ export default function Play() {
 
   function commitMove(uci: string) {
     setBlunder(null);
-    socket().send({ type: 'move', uci });
+    if (!gameReady || !socket().send({ type: 'move', uci })) {
+      setPending(null);
+      soundedRef.current = null;
+      forceBoardSync();
+    }
   }
 
   function tryAnotherMove() {
@@ -689,8 +986,26 @@ export default function Play() {
     forceBoardSync(); // roll back the chessground visual to the authoritative FEN
   }
 
-  function resign() { socket().send({ type: 'resign' }); }
-  const sendType = (type: string) => socket().send({ type });
+  function askResign(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!gameReady || !socketRef.current?.connected) return;
+    resignTriggerRef.current = event.currentTarget;
+    setResignConfirm(true);
+  }
+
+  function resign() {
+    setResignConfirm(false);
+    // Confirmation can outlive a dropped socket. Don't claim a resignation
+    // the server never received; the reconnect banner remains authoritative.
+    if (gameReady && socketRef.current?.connected) socket().send({ type: 'resign' });
+  }
+
+  useEffect(() => {
+    if (resignConfirm) return;
+    const trigger = resignTriggerRef.current;
+    if (trigger?.isConnected && !trigger.disabled) trigger.focus();
+    resignTriggerRef.current = null;
+  }, [resignConfirm]);
+  const sendType = (type: string) => gameReady && socket().send({ type });
   const offerDraw = () => sendType('offer_draw');
   const acceptDraw = () => sendType('accept_draw');
   const declineDraw = () => sendType('decline_draw');
@@ -701,8 +1016,9 @@ export default function Play() {
   const acceptRematch = () => sendType('accept_rematch');
   const declineRematch = () => sendType('decline_rematch');
   function requestHint() {
+    if (!gameReady || !socketRef.current?.connected) return;
     setHintLoading(true);
-    socket().send({ type: 'request_hint' });
+    if (!socket().send({ type: 'request_hint' })) setHintLoading(false);
   }
 
   function startSheetDrag(event: React.PointerEvent<HTMLElement>) {
@@ -747,7 +1063,8 @@ export default function Play() {
   // move that gives check leaves a position chess.js won't continue from, and
   // guessing past that point is fiction.
   const canQueueMore = shadowTurn === userColor && premoves.length < MAX_PREMOVES;
-  const movable = phase === 'playing' && !blunder && !previewing && !isBrowsing
+  const canInteract = gameReady && connected && !!socketRef.current?.connected;
+  const movable = phase === 'playing' && canInteract && !blunder && !previewing && !isBrowsing
     && (boardTurn === userColor ? true : canQueueMore);
   const goToLive = () => setBrowseIndex(null);
   const stepBack = () => setBrowseIndex((b) => Math.max(0, (b ?? liveIndex) - 1));
@@ -761,8 +1078,13 @@ export default function Play() {
   useEffect(() => {
     if (phase !== 'playing') return;
     function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (resignConfirm) return;
+      // Rewind shortcuts only apply when the player isn't using another
+      // control. In particular, arrow keys belong to a focused button/menu,
+      // contenteditable field or a screen-reader-operated slider, not Play.
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented) return;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.closest('input, textarea, select, button, a, [contenteditable="true"], [role="slider"], [role="textbox"], [role="combobox"], [role="menu"]')) return;
       if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
       else if (e.key === 'Home') { e.preventDefault(); setBrowseIndex(0); }
@@ -774,16 +1096,38 @@ export default function Play() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, liveIndex]);
+  }, [phase, liveIndex, resignConfirm]);
 
   // ---- SETUP screen ----
   if (phase === 'setup' && !pvpGameId) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4">
         <header>
           <h1 className="page-h1">{t('play.newGame')}</h1>
           <p className="page-sub">{t('play.subtitle')}</p>
         </header>
+        {pvpUnavailable && (
+          <p role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+            {t('play.gameUnavailable', { defaultValue: 'This game is no longer available. Start another game or choose a saved one.' })}
+          </p>
+        )}
+        {liveStatus === 'loading' && (
+          <p role="status" className="flex items-center gap-2 text-sm text-chesscom-500">
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+            {t('play.resume.loading', { defaultValue: 'Checking saved games…' })}
+          </p>
+        )}
+        {liveStatus === 'error' && (
+          <div role="alert" className="space-y-2 rounded-xl border border-move-mistake/40 bg-move-mistake/5 p-4 text-sm">
+            <p className="text-chesscom-800 dark:text-chesscom-100">
+              {t('play.resume.loadError', { defaultValue: 'Could not check your saved games. Starting a new bot game could erase your unfinished game.' })}
+            </p>
+            <button type="button" className="btn-secondary min-h-11 text-sm" onClick={() => { setLiveStatus('loading'); setLiveReload((n) => n + 1); }}>
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
+              {t('play.resume.retryLoad', { defaultValue: 'Retry loading saved games' })}
+            </button>
+          </div>
+        )}
         {/* Games you walked away from. Before v7.14.0 there was no way back into
             one at all — a bot game was simply destroyed, and a friend game could
             only be reached if you still had its URL. */}
@@ -811,7 +1155,7 @@ export default function Play() {
                 <button onClick={() => resumeBot(live.bot!)} className="btn-primary shrink-0">
                   <Swords className="h-4 w-4" />{t('play.resume.action', { defaultValue: 'Resume' })}
                 </button>
-                <button onClick={discardBotGame} className="btn-ghost shrink-0 text-xs text-ink-500">
+                <button type="button" onClick={(event) => confirmSavedBotAction('discard', event.currentTarget)} className="btn-ghost min-h-11 shrink-0 text-xs text-ink-500">
                   {t('play.resume.discard', { defaultValue: 'Discard' })}
                 </button>
               </div>
@@ -896,18 +1240,82 @@ export default function Play() {
                 ))}
               </div>
             </div>
-            <button onClick={startBot} className="btn-primary w-full text-base"><Swords className="h-4 w-4" />{t('play.start')}</button>
+            <button type="button" onClick={(event) => chooseStartBot(event.currentTarget)} disabled={liveStatus !== 'ready'} className="btn-primary w-full min-h-11 text-base"><Swords className="h-4 w-4" />{t('play.start')}</button>
           </div>
         )}
 
-        {setupTab === 'friend' && <FriendTab onChallengeAccepted={(gid) => connectPvp(gid)} />}
+        {setupTab === 'friend' && <FriendTab key={user?.id} onChallengeAccepted={(gid) => nav(`/play?game=${gid}`)} />}
+
+        <AnimatePresence>
+          {savedBotConfirm && live?.bot && (
+            <motion.div role="presentation"
+              initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              onClick={cancelSavedBotAction}
+              className="fixed inset-0 z-[58] flex items-center justify-center bg-black/50 p-4"
+            >
+              <motion.div role="alertdialog" aria-modal="true"
+                aria-labelledby="saved-bot-confirm-title" aria-describedby="saved-bot-confirm-description"
+                initial={reduceMotion ? false : { y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                exit={reduceMotion ? undefined : { y: 12, opacity: 0 }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault(); cancelSavedBotAction();
+                  } else if (event.key === 'Tab') {
+                    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                    const first = buttons[0], last = buttons[buttons.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                  }
+                  event.stopPropagation();
+                }}
+                className="card w-full max-w-md space-y-4 p-5 shadow-lift sm:p-6"
+              >
+                <div className="flex items-center gap-2">
+                  <Bot aria-hidden="true" className="h-5 w-5 shrink-0 text-bad" />
+                  <h2 id="saved-bot-confirm-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+                    {savedBotConfirm === 'replace'
+                      ? t('play.resume.replaceTitle', { defaultValue: 'Start a new game instead?' })
+                      : t('play.resume.discardTitle', { defaultValue: 'Discard saved game?' })}
+                  </h2>
+                </div>
+                <p id="saved-bot-confirm-description" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+                  {savedBotConfirm === 'replace'
+                    ? t('play.resume.replaceDescription', { defaultValue: "Starting a new bot game will replace your unfinished game. You won't be able to resume it." })
+                    : t('play.resume.discardDescription', { defaultValue: 'Your unfinished bot game will be permanently deleted. This cannot be undone.' })}
+                </p>
+                {savedBotDeleteFailed && <p role="alert" className="rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+                  {t('play.resume.discardError', { defaultValue: 'Could not discard the saved game. Try again or keep your game.' })}
+                </p>}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" autoFocus disabled={savedBotDeletePending} onClick={cancelSavedBotAction} className="btn-primary min-h-11 flex-1 text-sm">
+                    {t('play.resume.keep', { defaultValue: 'Keep saved game' })}
+                  </button>
+                  <button type="button" disabled={savedBotDeletePending}
+                    onClick={() => {
+                      if (savedBotConfirm === 'replace') { setSavedBotConfirm(null); startBot(); }
+                      else void discardBotGame();
+                    }}
+                    className="btn-danger min-h-11 flex-1 text-sm"
+                  >
+                    {savedBotDeletePending && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+                    {savedBotConfirm === 'replace'
+                      ? t('play.resume.confirmReplace', { defaultValue: 'Start new game' })
+                      : t('play.resume.confirmDiscard', { defaultValue: 'Discard saved game' })}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
 
   if (phase === 'setup' && pvpGameId) {
     return (
-      <div className="mx-auto max-w-md py-12 text-center">
+      <div className="mx-auto w-full min-w-0 max-w-md py-12 text-center">
         <Spinner size="lg" label={t('play.connecting')} />
       </div>
     );
@@ -942,27 +1350,46 @@ export default function Play() {
   const isPvP = !!pvpGameId;
   const oppDisconnected = isPvP && opponent && !opponent.online;
 
-  const statusNode = isBrowsing ? <span className="font-medium text-amber-600">{t('play.browsingPast')}</span>
+  const statusNode = sessionReplaced
+    ? <span className="font-medium text-amber-600">{t('play.pausedOtherTab', { defaultValue: 'Paused in this tab' })}</span>
+    : !canInteract ? <span className="font-medium text-amber-600">{hasSyncedGame
+    ? t('play.waitingForSync', { defaultValue: 'Waiting for the game to reconnect' })
+    : t('play.connecting', { defaultValue: 'Connecting to game…' })}</span>
+    : isBrowsing ? <span className="font-medium text-amber-600">{t('play.browsingPast')}</span>
     : previewing ? <Spinner inline label={t('play.checking')} />
     : turn === userColor ? <span className="font-medium text-accent-600">{t('play.yourTurn')}</span>
     : <span className="text-ink-500">{t('play.thinking')}</span>;
 
   return (
-    <div className="mx-auto max-w-7xl pb-24 lg:pb-0">
+    <div className="mx-auto w-full min-w-0 max-w-7xl pb-24 lg:pb-0">
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-        {/* BOARD COLUMN — full width on lg+ (max 760px). The BOARD ELEMENT
-            below uses aspect-square + a viewport-height-aware max-width so the
-            board shrinks vertically on short screens without making the
-            column itself narrow. */}
+        {/* BOARD COLUMN — full width on phones, capped at 760px on desktop.
+            The board itself has a viewport-height-aware limit so it remains
+            prominent without pushing clocks and primary controls far below
+            the fold on shorter desktop screens. */}
         <div className="mx-auto w-full lg:mx-0 lg:flex-1 lg:max-w-[760px]">
-          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={turn !== userColor} label={oppLabel} flip />
+          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={phase === 'playing' && canInteract && turn !== userColor} label={oppLabel} timed={tc !== 'untimed'} waiting={!hasSyncedGame} />
           {/* Say it plainly rather than letting a dead socket look like a live
               game. The clock is frozen behind this and the game is safe on the
               server — which is the reassurance worth giving. */}
-          {!connected && phase === 'playing' && (
+          {sessionReplaced && phase === 'playing' && (
+            <div role="alert" className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-amber-800 dark:text-amber-200">
+              <span className="min-w-0 flex-1">
+                {t('play.otherTabControl', { defaultValue: 'This game was opened in another tab. Play is paused here until you take control again.' })}
+              </span>
+              {pvpGameId && (
+                <button type="button" onClick={() => connectPvp(pvpGameId)} className="btn-secondary min-h-11 shrink-0 text-sm">
+                  {t('play.takeControlHere', { defaultValue: 'Take control here' })}
+                </button>
+              )}
+            </div>
+          )}
+          {!canInteract && !sessionReplaced && phase === 'playing' && (
             <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-              {t('play.reconnecting', { defaultValue: 'Reconnecting… your game is saved.' })}
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <span role="status">{hasSyncedGame
+                ? t('play.reconnecting', { defaultValue: 'Reconnecting… your game is saved.' })
+                : t('play.connecting', { defaultValue: 'Connecting to your game…' })}</span>
             </div>
           )}
           {oppDisconnected && (
@@ -978,8 +1405,8 @@ export default function Play() {
                   : takeback === 'them' ? t('play.takebackRequestedBy', { name: oppLabel })
                   : t('play.rematchOfferedBy', { name: oppLabel })}
               </span>
-              <button onClick={drawOffer === 'them' ? acceptDraw : takeback === 'them' ? acceptTakeback : acceptRematch} className="btn-primary h-9 px-3 text-sm"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
-              <button onClick={drawOffer === 'them' ? declineDraw : takeback === 'them' ? declineTakeback : declineRematch} className="btn-secondary h-9 px-3 text-sm"><X className="h-4 w-4" />{t('challenge.decline')}</button>
+              <button onClick={drawOffer === 'them' ? acceptDraw : takeback === 'them' ? acceptTakeback : acceptRematch} disabled={!canInteract} className="btn-primary h-9 px-3 text-sm"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
+              <button onClick={drawOffer === 'them' ? declineDraw : takeback === 'them' ? declineTakeback : declineRematch} disabled={!canInteract} className="btn-secondary h-9 px-3 text-sm"><X className="h-4 w-4" />{t('challenge.decline')}</button>
             </div>
           )}
           {isPvP && phase === 'playing' && (drawOffer === 'me' || takeback === 'me') && (
@@ -992,13 +1419,12 @@ export default function Play() {
             <CapturedPieces fen={fen} side={userColor === 'white' ? 'black' : 'white'} />
           </div>
           <div className="my-2 flex justify-center">
-            {/* `aspect-square` + `lg:max-w-[calc(100vh-26rem)]` shrinks the
-                board to fit the viewport height (chrome ≈ 17rem inside column
-                + ≈ 9rem outside) without narrowing the surrounding column.
-                Position:relative here so the badge children are anchored to
-                the board, not the outer flex container. */}
+            {/* Reserve ~22rem for navigation, clocks and game controls. The
+                former 26rem reserve held a 900px-tall desktop board at ~484px
+                even though ~548px fits comfortably; on mobile, take the full
+                available width. Position:relative anchors badge overlays. */}
             <div
-              className={`relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'wood'} lg:max-w-[calc(100vh-26rem)]`}
+              className={`relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'wood'} lg:max-w-[calc(100vh-22rem)]`}
             >
               <ChessBoard
                 fen={displayedFen}
@@ -1038,7 +1464,7 @@ export default function Play() {
           <div className="my-1 flex items-center justify-between gap-2">
             <CapturedPieces fen={fen} side={userColor} />
           </div>
-          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} />
+          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={phase === 'playing' && canInteract && turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} timed={tc !== 'untimed'} waiting={!hasSyncedGame} />
 
           {/* Rewind nav — visible once at least one move has been played */}
           {phase !== 'setup' && positions.length > 1 && (
@@ -1064,19 +1490,19 @@ export default function Play() {
                 </button>
                 {isPvP && (
                   <>
-                    <button onClick={offerDraw} disabled={drawOffer !== null} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.offerDraw')}>
+                    <button onClick={offerDraw} disabled={!canInteract || drawOffer !== null} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.offerDraw')}>
                       <Handshake className="h-4 w-4" />{t('play.offerDraw')}
                     </button>
-                    <button onClick={requestTakeback} disabled={takeback !== null || moves.length === 0} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.takeback')}>
+                    <button onClick={requestTakeback} disabled={!canInteract || takeback !== null || moves.length === 0} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.takeback')}>
                       <Undo2 className="h-4 w-4" />{t('play.takeback')}
                     </button>
                   </>
                 )}
-                <button onClick={requestHint} disabled={hintLoading || isBrowsing} className="btn-secondary h-11 px-3 text-sm sm:px-4">
+                <button onClick={requestHint} disabled={!canInteract || hintLoading || isBrowsing} className="btn-secondary h-11 px-3 text-sm sm:px-4">
                   {hintLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
                   {t('play.hint')}
                 </button>
-                <button onClick={resign} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                <button onClick={askResign} disabled={!canInteract} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
               </div>
             </div>
           )}
@@ -1161,7 +1587,7 @@ export default function Play() {
               <span className="ml-1 rounded-full bg-ink-100 px-1.5 text-[11px] tabular-nums dark:bg-ink-800">{moves.length}</span>
             </button>
             {phase === 'playing' && (
-              <button onClick={requestHint} disabled={hintLoading || isBrowsing} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.hint')}>
+              <button onClick={requestHint} disabled={!canInteract || hintLoading || isBrowsing} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.hint')}>
                 {hintLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lightbulb className="h-5 w-5" />}
               </button>
             )}
@@ -1173,9 +1599,9 @@ export default function Play() {
                     <div className="fixed inset-0 z-[41]" onClick={() => setMoreOpen(false)} />
                     <div className="absolute bottom-full right-0 z-[42] mb-2 w-52 space-y-1 rounded-xl border border-ink-200 bg-white p-1.5 shadow-lift dark:border-ink-700 dark:bg-ink-900">
                       <button onClick={() => { setMoreOpen(false); setFlipped((f) => !f); }} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><FlipVertical2 className="h-4 w-4" />{t('play.flip')}</button>
-                      <button onClick={() => { setMoreOpen(false); offerDraw(); }} disabled={drawOffer !== null} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Handshake className="h-4 w-4" />{t('play.offerDraw')}</button>
-                      <button onClick={() => { setMoreOpen(false); requestTakeback(); }} disabled={takeback !== null || moves.length === 0} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Undo2 className="h-4 w-4" />{t('play.takeback')}</button>
-                      <button onClick={() => { setMoreOpen(false); resign(); }} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                      <button onClick={() => { setMoreOpen(false); offerDraw(); }} disabled={!canInteract || drawOffer !== null} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Handshake className="h-4 w-4" />{t('play.offerDraw')}</button>
+                      <button onClick={() => { setMoreOpen(false); requestTakeback(); }} disabled={!canInteract || takeback !== null || moves.length === 0} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Undo2 className="h-4 w-4" />{t('play.takeback')}</button>
+                      <button onClick={(event) => { setMoreOpen(false); askResign(event); }} disabled={!canInteract} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
                     </div>
                   </>
                 )}
@@ -1184,7 +1610,7 @@ export default function Play() {
               <>
                 <button onClick={() => setFlipped((f) => !f)} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.flip', { defaultValue: 'Flip board' })}><FlipVertical2 className="h-5 w-5" /></button>
                 {phase === 'playing' && (
-                  <button onClick={resign} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
+                  <button onClick={askResign} disabled={!canInteract} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
                 )}
               </>
             )}
@@ -1249,6 +1675,63 @@ export default function Play() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Resigning is irreversible. Require a separate deliberate action so a
+          stray mobile tap on the bottom bar cannot forfeit a real game. */}
+      <AnimatePresence>
+        {resignConfirm && phase === 'playing' && (
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            role="presentation"
+            className="fixed inset-0 z-[58] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setResignConfirm(false)}
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="play-resign-title"
+              aria-describedby="play-resign-description"
+              initial={reduceMotion ? false : { y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={reduceMotion ? undefined : { y: 12, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setResignConfirm(false);
+                } else if (event.key === 'Tab') {
+                  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                  const first = buttons[0], last = buttons[buttons.length - 1];
+                  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                }
+                event.stopPropagation();
+              }}
+              className="card w-full max-w-md space-y-4 p-5 shadow-lift sm:p-6"
+            >
+              <div className="flex items-center gap-2">
+                <Flag aria-hidden="true" className="h-5 w-5 shrink-0 text-bad" />
+                <h2 id="play-resign-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+                  {t('play.confirmResignTitle', { defaultValue: 'Resign this game?' })}
+                </h2>
+              </div>
+              <p id="play-resign-description" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+                {t('play.confirmResignDesc', { defaultValue: 'Resigning ends the game immediately and counts as a loss. It cannot be undone.' })}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button type="button" autoFocus onClick={() => setResignConfirm(false)} className="btn-primary min-h-11 flex-1 text-sm">
+                  {t('play.keepPlaying', { defaultValue: 'Keep playing' })}
+                </button>
+                <button type="button" onClick={resign} disabled={!canInteract} className="btn-danger min-h-11 flex-1 text-sm">
+                  {t('play.confirmResign', { defaultValue: 'Confirm resignation' })}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1320,7 +1803,7 @@ export default function Play() {
                   <div className="flex flex-col gap-2 sm:flex-row">
                     {isPvP ? (
                       rematch === 'them' ? (
-                        <button onClick={acceptRematch} className="btn-primary flex-1">
+                        <button onClick={acceptRematch} disabled={!canInteract} className="btn-primary flex-1">
                           <RefreshCw className="h-4 w-4" />{t('play.acceptRematch')}
                         </button>
                       ) : rematch === 'me' ? (
@@ -1328,7 +1811,7 @@ export default function Play() {
                           <Loader2 className="h-4 w-4 animate-spin" />{t('play.rematchOffered')}
                         </button>
                       ) : (
-                        <button onClick={offerRematch} className="btn-primary flex-1" title={rematchDeclined ? t('play.rematchDeclined') : undefined}>
+                        <button onClick={offerRematch} disabled={!canInteract} className="btn-primary flex-1" title={rematchDeclined ? t('play.rematchDeclined') : undefined}>
                           <RefreshCw className="h-4 w-4" />{t('play.rematch')}
                         </button>
                       )
@@ -1383,14 +1866,31 @@ function TabButton({ active, onClick, icon: Icon, children }: { active: boolean;
   );
 }
 
-function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: number) => void }) {
+export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: number) => void }) {
   const { t } = useTranslation();
   const lobby = useLobby();
   const { user } = useAuth();
   const [color, setColor] = useState<'white' | 'black' | 'random'>('random');
   const [tc, setTc] = useState<typeof TIME_CONTROLS[number]>('rapid');
   const [target, setTarget] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
+  type ChallengeAction = 'send' | 'accept' | 'decline' | 'cancel';
+  const [busy, setBusy] = useState<ChallengeAction | null>(null);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<{ action: ChallengeAction; kind: 'error' | 'success' | 'unavailable' } | null>(null);
+  const actionSession = useRef({ account: user?.id ?? null, generation: 0 });
+  // A request that started for player A may finish after player B signs in.
+  // Invalidate its callbacks during render so even an immediate Promise
+  // resolution cannot open A's game under B's session.
+  if (actionSession.current.account !== (user?.id ?? null)) {
+    actionSession.current = { account: user?.id ?? null, generation: actionSession.current.generation + 1 };
+  }
+  useEffect(() => {
+    inFlight.current = false;
+    setBusy(null);
+    setTarget(null);
+    setNotice(null);
+    return () => { actionSession.current.generation += 1; };
+  }, [user?.id]);
 
   // Sort: online first, then by name
   const users = useMemo(() => {
@@ -1402,30 +1902,112 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
     });
   }, [lobby.users, lobby.online]);
 
-  async function sendChallenge() {
-    if (!target) return;
-    setBusy(true);
+  // Mutation failures must never disappear as unhandled Promise rejections.
+  // Keep the invitation visible and its action retryable; only report success
+  // after the server has acknowledged it. An optional list refresh failing
+  // afterward is not evidence that the mutation itself failed.
+  async function act<T>(action: ChallengeAction, mutate: () => Promise<T>, onSuccess?: (value: T) => void, challengeId?: number) {
+    if (inFlight.current) return;
+    const generation = actionSession.current.generation;
+    inFlight.current = true;
+    setBusy(action);
+    setNotice(null);
     try {
-      await api.post('/api/challenges', { to_user_id: target, color, time_control: tc });
-      await lobby.refreshChallenges();
-    } finally { setBusy(false); }
+      const result = await mutate();
+      if (actionSession.current.generation !== generation) return;
+      onSuccess?.(result);
+      setNotice({ action, kind: 'success' });
+      // The mutation has been acknowledged. Updating the sidebar is useful,
+      // but a slow or failed refresh must not keep all challenge actions
+      // blocked or turn a confirmed invitation into an apparent failure.
+      void lobby.refreshChallenges().catch(() => {});
+    } catch (err) {
+      if (actionSession.current.generation !== generation) return;
+      const failure = err as { status?: number; data?: { error?: string } };
+      const noLongerPending = (failure.status === 409 && failure.data?.error === 'not_pending')
+        || (failure.status === 404 && failure.data?.error === 'not_found');
+      if (action !== 'send' && challengeId !== undefined && noLongerPending) {
+        // The server is authoritative: this invitation can never succeed on
+        // retry, so stop offering futile buttons while preserving other rows.
+        lobby.forgetChallenge(action === 'cancel' ? 'outgoing' : 'incoming', challengeId);
+        setNotice({ action, kind: 'unavailable' });
+        void lobby.refreshChallenges().catch(() => {});
+      } else {
+        setNotice({ action, kind: 'error' });
+      }
+    } finally {
+      if (actionSession.current.generation === generation) {
+        inFlight.current = false;
+        setBusy(null);
+      }
+    }
   }
-  async function cancel(id: number) {
-    await api.del(`/api/challenges/${id}`);
-    await lobby.refreshChallenges();
+
+  function sendChallenge() {
+    const recipientId = target;
+    if (!recipientId) return;
+    void act('send', () => api.post<{ challenge: Challenge }>('/api/challenges',
+      { to_user_id: recipientId, color, time_control: tc }),
+      (result) => {
+        // An HTTP-200 response without the complete server-owned challenge
+        // is not confirmation. Preserve the selection for an explicit retry.
+        if (!lobby.recordSentChallenge(result?.challenge, recipientId)) {
+          throw new Error('Invalid challenge acknowledgment');
+        }
+        setTarget(null);
+      });
   }
-  async function accept(id: number) {
-    const r = await api.post<{ game_id: number }>(`/api/challenges/${id}/accept`);
-    await lobby.refreshChallenges();
-    onChallengeAccepted(r.game_id);
+  function cancel(id: number) {
+    void act('cancel', () => api.del<{ ok: boolean }>(`/api/challenges/${id}`),
+      (result) => {
+        if (result?.ok !== true) throw new Error('Invalid cancel acknowledgment');
+        lobby.forgetChallenge('outgoing', id);
+      }, id);
   }
-  async function decline(id: number) {
-    await api.post(`/api/challenges/${id}/decline`);
-    await lobby.refreshChallenges();
+  function accept(id: number) {
+    void act('accept', () => api.post<{ game_id: number }>(`/api/challenges/${id}/accept`),
+      (result) => {
+        if (!Number.isSafeInteger(result?.game_id) || result.game_id <= 0) {
+          throw new Error('Invalid accepted game ID');
+        }
+        lobby.forgetChallenge('incoming', id);
+        onChallengeAccepted(result.game_id);
+      }, id);
+  }
+  function decline(id: number) {
+    void act('decline', () => api.post<{ ok: boolean }>(`/api/challenges/${id}/decline`),
+      (result) => {
+        if (result?.ok !== true) throw new Error('Invalid decline acknowledgment');
+        lobby.forgetChallenge('incoming', id);
+      }, id);
   }
 
   return (
     <div className="space-y-4">
+      {lobby.challengesStatus === 'error' && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+          <span>{t('challenge.loadError', {
+            defaultValue: 'Could not refresh challenges. Any available invitations remain visible.',
+          })}</span>
+          <button type="button" className="btn-secondary min-h-11 shrink-0 text-xs"
+            onClick={() => { void lobby.refreshChallenges(); }}>
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+            {t('challenge.retryChallenges', { defaultValue: 'Retry loading challenges' })}
+          </button>
+        </div>
+      )}
+      {notice && (
+        <div role={notice.kind === 'error' ? 'alert' : 'status'}
+          className={`rounded-md border px-3 py-2 text-sm ${notice.kind === 'error'
+            ? 'border-move-mistake/40 bg-move-mistake/5 text-chesscom-800 dark:text-chesscom-100'
+            : notice.kind === 'unavailable'
+              ? 'border-amber-500/40 bg-amber-500/10 text-chesscom-800 dark:text-chesscom-100'
+              : 'border-board-dark/30 bg-board-dark/5 text-chesscom-800 dark:text-chesscom-100'}`}>
+          {notice.kind === 'unavailable'
+            ? t('challenge.noLongerAvailable', { defaultValue: 'This invitation has expired or is no longer available.' })
+            : t(`challenge.${notice.kind}.${notice.action}`, { defaultValue: CHALLENGE_FEEDBACK[notice.kind][notice.action] })}
+        </div>
+      )}
       {lobby.incoming.length > 0 && (
         <div className="card overflow-hidden">
           <div className="section-header">
@@ -1440,8 +2022,11 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                   <div className="truncate font-medium">{c.from.display_name}</div>
                   <div className="text-xs text-ink-500">{t(`play.${c.color}`)} · {t(`play.tc.${c.time_control}`)}</div>
                 </div>
-                <button onClick={() => decline(c.id)} className="btn-ghost p-2"><X className="h-4 w-4" /></button>
-                <button onClick={() => accept(c.id)} className="btn-primary text-xs"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
+                <button type="button" onClick={() => decline(c.id)} disabled={busy !== null}
+                  aria-label={t('challenge.decline')} title={t('challenge.decline')}
+                  className="btn-ghost min-h-11 min-w-11 p-2"><X className="h-4 w-4" /></button>
+                <button type="button" onClick={() => accept(c.id)} disabled={busy !== null}
+                  className="btn-primary min-h-11 text-xs"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
               </div>
             ))}
           </div>
@@ -1462,7 +2047,8 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                   <div className="truncate font-medium">{c.to.display_name}</div>
                   <div className="text-xs text-ink-500">{t(`play.${c.color}`)} · {t(`play.tc.${c.time_control}`)}</div>
                 </div>
-                <button onClick={() => cancel(c.id)} className="btn-secondary text-xs">{t('common.cancel')}</button>
+                <button type="button" onClick={() => cancel(c.id)} disabled={busy !== null}
+                  className="btn-secondary min-h-11 text-xs">{t('common.cancel')}</button>
               </div>
             ))}
           </div>
@@ -1483,25 +2069,46 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
               <div className="label mb-1">{t('play.color')}</div>
               <div className="grid grid-cols-3 gap-1">
                 {(['white','random','black'] as const).map((c) => (
-                  <button key={c} onClick={() => setColor(c)} className={`btn text-xs ${color === c ? 'btn-primary' : 'btn-secondary'}`}>{t(`play.${c}`)}</button>
+                  <button key={c} type="button" disabled={busy !== null} aria-pressed={color === c}
+                    onClick={() => { setColor(c); setNotice(null); }} className={`btn min-h-11 text-xs ${color === c ? 'btn-primary' : 'btn-secondary'}`}>{t(`play.${c}`)}</button>
                 ))}
               </div>
             </div>
             <div>
               <div className="label mb-1">{t('play.timeControl')}</div>
-              <select className="input" value={tc} onChange={(e) => setTc(e.target.value as typeof TIME_CONTROLS[number])}>
+              <select className="input min-h-11" value={tc} disabled={busy !== null}
+                onChange={(e) => { setTc(e.target.value as typeof TIME_CONTROLS[number]); setNotice(null); }}>
                 {TIME_CONTROLS.map((tt) => <option key={tt} value={tt}>{t(`play.tc.${tt}`)}</option>)}
               </select>
             </div>
           </div>
-          {users.length === 0 ? (
+          {lobby.usersStatus === 'error' && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+              <span>{users.length > 0
+                ? t('challenge.playersError', { defaultValue: 'Could not load players. Showing the last loaded list.' })
+                : t('challenge.playersErrorEmpty', { defaultValue: 'Could not load players. Check your connection and try again.' })}
+              </span>
+              <button type="button" className="btn-secondary min-h-11 shrink-0 text-xs"
+                onClick={() => { void lobby.refreshUsers(); }}>
+                <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                {t('challenge.retryPlayers', { defaultValue: 'Retry loading players' })}
+              </button>
+            </div>
+          )}
+          {users.length === 0 && lobby.usersStatus === 'loading' ? (
+            <div role="status" className="flex items-center justify-center gap-2 rounded-xl bg-ink-100 p-4 text-center text-sm text-ink-500 dark:bg-ink-800">
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              {t('challenge.loadingPlayers', { defaultValue: 'Loading players…' })}
+            </div>
+          ) : users.length === 0 && lobby.usersStatus === 'ready' ? (
             <div className="rounded-xl bg-ink-100 p-4 text-center text-sm text-ink-500 dark:bg-ink-800">
               {t('challenge.noPlayers')}
             </div>
-          ) : (
+          ) : users.length > 0 ? (
             <div className="max-h-72 space-y-1 overflow-auto">
               {users.map((u) => (
-                <button key={u.id} onClick={() => setTarget(u.id)}
+                <button key={u.id} type="button" disabled={busy !== null} aria-pressed={target === u.id}
+                  onClick={() => { setTarget(u.id); setNotice(null); }}
                   className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors
                     ${target === u.id ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900' : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800'}`}>
                   <span className="text-xl">{u.avatar_emoji}</span>
@@ -1509,13 +2116,15 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                     <div className="text-sm font-medium">{u.display_name}</div>
                     <div className="text-xs opacity-70">@{u.username}</div>
                   </div>
-                  <span className={`h-2.5 w-2.5 rounded-full ${u.online ? 'bg-green-500' : 'bg-chesscom-400/60'}`} title={u.online ? 'online' : 'offline'} />
+                  <span role="img" className={`h-2.5 w-2.5 rounded-full ${lobby.presenceReady && lobby.online.has(u.id) ? 'bg-green-500' : 'bg-chesscom-400/60'}`}
+                    aria-label={lobby.presenceReady ? (lobby.online.has(u.id) ? 'online' : 'offline') : t('challenge.presenceUnavailable', { defaultValue: 'Live status unavailable' })}
+                    title={lobby.presenceReady ? (lobby.online.has(u.id) ? 'online' : 'offline') : t('challenge.presenceUnavailable', { defaultValue: 'Live status unavailable' })} />
                 </button>
               ))}
             </div>
-          )}
-          <button onClick={sendChallenge} disabled={!target || busy} className="btn-primary w-full">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
+          ) : null}
+          <button type="button" onClick={sendChallenge} disabled={!target || busy !== null} className="btn-primary min-h-11 w-full">
+            {busy === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
             {t('challenge.send')}
           </button>
         </div>
@@ -1526,26 +2135,28 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
   );
 }
 
-function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boolean; label: string; flip?: boolean }) {
+function ClockBar({ timeMs, active, label, timed, waiting }: { timeMs: number; active: boolean; label: string; timed: boolean; waiting: boolean }) {
+  const { t } = useTranslation();
   // Under 30s the clock is the thing you need to read at a glance, so it grows
   // and the row grows with it; under 10s it also goes red and pulses. Only for
   // the side actually on the clock — a big number on the idle side is noise.
-  const urgent = active && timeMs > 0 && timeMs <= 30_000;
-  const critical = active && timeMs > 0 && timeMs < 10_000;
+  const urgent = timed && !waiting && active && timeMs > 0 && timeMs <= 30_000;
+  const critical = timed && !waiting && active && timeMs > 0 && timeMs < 10_000;
+  const clockText = waiting ? '—' : timed ? fmtClock(timeMs) : t('play.tc.untimed', { defaultValue: 'Untimed' });
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 rounded-md px-3 sm:px-4 transition-colors
       ${urgent ? 'py-2.5' : 'py-2'}
       ${active
         ? (critical ? 'bg-bad text-white animate-pulse-soft' : 'bg-green-500 text-white')
-        : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'} ${flip ? '' : ''}`}>
+        : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'}`}>
       <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide" title={label}>{label}</span>
       <span
-        role="timer"
-        aria-label={`${label}: ${fmtClock(timeMs)}`}
+        role={timed && !waiting ? 'timer' : 'status'}
+        aria-label={`${label}: ${clockText}`}
         className={`shrink-0 font-mono font-bold tabular-nums ${urgent ? 'text-2xl leading-none tracking-tight sm:text-3xl' : 'text-lg'}`}
         aria-live="off"
       >
-        {fmtClock(timeMs)}
+        {clockText}
       </span>
     </div>
   );
