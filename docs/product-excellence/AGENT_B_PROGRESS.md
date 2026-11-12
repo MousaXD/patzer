@@ -1283,3 +1283,32 @@
 ### Next audit
 
 - Audit the **public sign-in / setup language selector** at 320px and enlarged text for touch accessibility. The selector appears as five compact two-letter controls, and actual hit rectangles may fall short of the 44px target; measure in Chromium and fix within the global authentication shell only if confirmed. Include keyboard selection and all themes.
+
+## 2026-11-12: Increase public language-switch touch targets without breaking keyboard use
+
+### Verified defect and cause
+
+- Resumed from clean pushed `2b0b685`. Independent Chromium measurements of public `/login` found **all five language buttons only 40×36px** at default font size in both themes, at **320, 390 and 1440px**. This falls below the 44×44px touch target established for Patzer's other interactive shell controls.
+- The already-existing admin Setup language buttons use `min-h-11`; they did not need modification. The shared `AuthShell` (also used for signup and account recovery) still specified `min-h-9 min-w-10`.
+
+### Implementation
+
+1. Set `min-h-11 min-w-11` on the five shared public AuthShell language buttons, preserving their original compact appearance, native-language accessible names, pressed state, focus ring and onClick language switching.
+2. Extend Login unit tests to assert all five available, labeled controls have the expected minimum-size classes and selecting German updates both `aria-pressed` and the document `lang` attribute.
+3. Extend the actual Chromium shell fixture after the mobile logout journey to check **both themes**, **320/390/1440px**, **100% and 150% text scaling**, no horizontal overflow, all five actual hit rectangles at least 44×44px and **Tab → Enter** keyboard activation with visible focus and German selection.
+4. The first new browser pass detected a **test selector mistake**, not an application failure: the language navigation's accessible name changes from `Language` to `Sprache` after switching. The assertion was updated to locate the selected German button independent of the translated navigation label; the complete Chromium fixture then passed.
+
+### Evidence and verification
+
+- Negative-control Chromium: **40×36px** for each language in light and dark at default text size; enlarged 150% text already scaled the old controls to 60×54px.
+- Post-fix independent Chromium matrix: **44×44px at default text size**, **66×66px at 150%**, across all three widths and both themes; no horizontal overflow.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** with actual Tab/Enter keyboard traversal and preserved all prior responsive, focus, translation, outage, Home and sign-out checks.
+- Inspected `artifacts/agent-02/auth-language-light-320-font16.png` and `auth-language-dark-320-font24.png`: selected German button has a visible blue focus indicator; enlarged controls wrap and remain keyboard accessible.
+- `npx vitest run web/src/pages/Login.test.tsx --maxWorkers=2`: **10/10 passed**.
+- First full run had **453/454 passing**, with one unrelated Settings persistence navigation test timing out. That file passed **9/9 when run alone**, and a single full rerun passed **454/454 across 75 files**. No Settings code was altered.
+- `npm run build -w web`: **passed**; `git diff --check`: **passed**.
+- Scope limited to shared public AuthShell, its Login test, and the existing Agent B Chromium fixture; no main merge, deployment, production data, or other-agent worktrees touched.
+
+### Next audit
+
+- Check **public sign-in primary action and recovery links** at 320/390px and enlarged text: the normal-sized login button and small Create account / Forgot password links may be below 44px touch targets or become crowded in translated languages. Require actual Chromium measurements and avoid changes to authentication logic or backend capabilities.

@@ -99,7 +99,7 @@ export default function AuthShell({ title, subtitle, children, variant = 'standa
                   aria-label={language.native}
                   aria-pressed={active}
                   onClick={() => { void i18n.changeLanguage(language.code); }}
-                  className={`min-h-9 min-w-10 rounded-lg px-2 py-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus ${active
+                  className={`min-h-11 min-w-11 rounded-lg px-2 py-2 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus ${active
                     ? 'bg-ui-muted text-ui-foreground'
                     : 'text-ui-mutedText hover:bg-ui-hover hover:text-ui-foreground'}`}
                 >

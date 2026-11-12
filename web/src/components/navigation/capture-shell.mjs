@@ -1041,6 +1041,63 @@ try {
   if (signedIn || (await page.locator('[data-app-shell]').count())) {
     throw new Error('Mobile logout retry left the authenticated workspace visible');
   }
+
+  // The public sign-in language choices are used before any account exists.
+  // Their original 40x36px targets were too small to tap at normal font size.
+  // Keep the 44px target at phone/desktop widths, allow larger text to wrap,
+  // and verify that Tab + Enter changes the actual UI document language.
+  for (const authTheme of ['light', 'dark']) {
+    for (const { width, font } of [
+      { width: 320, font: 16 },
+      { width: 320, font: 24 },
+      { width: 390, font: 16 },
+      { width: 1440, font: 16 },
+    ]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 700 });
+      await page.evaluate((mode) => {
+        localStorage.setItem('patzer-site-theme', mode);
+        localStorage.setItem('lang', 'en');
+      }, authTheme);
+      await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
+      const languageChoices = page.getByRole('navigation', { name: 'Language' });
+      await languageChoices.waitFor();
+      await page.waitForFunction((isDark) =>
+        document.documentElement.classList.contains('dark') === isDark, authTheme === 'dark');
+      await page.addStyleTag({ content: `html { font-size: ${font}px !important; }` });
+      const buttons = languageChoices.getByRole('button');
+      const sizes = await buttons.evaluateAll((elements) => elements.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { label: button.getAttribute('aria-label'), width: rect.width, height: rect.height };
+      }));
+      if (sizes.length !== 5 || sizes.some((button) =>
+        button.width < 44 || button.height < 44 || !button.label)) {
+        throw new Error(`Public login language targets ${authTheme}/${width}px/root${font}: ${JSON.stringify(sizes)}`);
+      }
+      const german = languageChoices.getByRole('button', { name: 'Deutsch' });
+      let tabbedToGerman = false;
+      for (let i = 0; i < 25; i++) {
+        await page.keyboard.press('Tab');
+        if (await german.evaluate((button) => button === document.activeElement)) {
+          tabbedToGerman = true;
+          break;
+        }
+      }
+      const visibleFocus = await german.evaluate((button) => button.matches(':focus-visible'));
+      if (!tabbedToGerman || !visibleFocus) {
+        throw new Error(`Public login language button unreachable or unfocused by Tab at ${authTheme}/${width}px/root${font}`);
+      }
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.documentElement.lang === 'de');
+      // The navigation's accessible name changes from "Language" to
+      // "Sprache" after switching, so do not retain its English locator.
+      const selectedGerman = page.getByRole('button', { name: 'Deutsch' });
+      if (await selectedGerman.getAttribute('aria-pressed') !== 'true') {
+        throw new Error(`Public login German selection not announced at ${authTheme}/${width}px/root${font}`);
+      }
+      await checkNoHorizontalOverflow(page, `public language controls ${authTheme}/${width}px/root${font}`);
+      await page.screenshot({ path: resolve(output, `auth-language-${authTheme}-${width}-font${font}.png`) });
+    }
+  }
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {
   await browser?.close();

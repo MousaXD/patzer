@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -40,6 +40,23 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe('Login page and single sign-on', () => {
+  it('keeps five touch-sized, labeled language controls keyboard-accessible before sign-in', async () => {
+    renderLogin({});
+    await screen.findByLabelText('Username');
+    const languageNav = screen.getByRole('navigation', { name: 'Language' });
+    const languages = within(languageNav).getAllByRole('button');
+    expect(languages).toHaveLength(5);
+    for (const button of languages) {
+      expect(button.className).toContain('min-h-11');
+      expect(button.className).toContain('min-w-11');
+      expect(button.getAttribute('aria-label')?.trim()).toBeTruthy();
+    }
+    const german = within(languageNav).getByRole('button', { name: 'Deutsch' });
+    fireEvent.click(german);
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
+    expect(german.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('without SSO: the password form only, as before', async () => {
     renderLogin({});
     expect(await screen.findByLabelText('Username')).toBeTruthy();
