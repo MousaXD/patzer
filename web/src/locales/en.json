@@ -384,6 +384,27 @@
       "analyzed": "Review status",
       "sort": "Sort games"
     },
+    "libraryFilterGroup": "Filter and sort games",
+    "clearLibraryFilters": "Clear filters",
+    "libraryFilterOptions": {
+      "source": {
+        "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",
+        "played": "Played", "pvp": "Friends", "imported": "PGN import"
+      },
+      "time_class": {
+        "all": "All speeds", "bullet": "Bullet", "blitz": "Blitz",
+        "rapid": "Rapid", "daily": "Daily"
+      },
+      "result": {
+        "all": "All results", "win": "Wins", "draw": "Draws", "loss": "Losses"
+      },
+      "analyzed": {
+        "all": "Any status", "1": "Analyzed", "0": "Not analyzed"
+      },
+      "sort": {
+        "newest": "Newest first", "oldest": "Oldest first"
+      }
+    },
     "bookmarkSaveFailed": "Could not update the bookmark. The previous state is restored; you can retry.",
     "bookmarkRetry": "Retry bookmark",
     "flip": "Flip",

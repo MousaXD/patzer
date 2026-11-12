@@ -583,3 +583,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Fix the Library's **untranslated filter option choices** (e.g. "All sources", "Newest first") across all five languages, keeping enum values unchanged. Reproduce in German Chromium, provide localized option names, and verify a selection still updates the exact URL and backend query. Also inspect `Clear filters` and the Library's accessible filter-group label, which are currently English literals; keep all work within the Library lane.
+
+## 2026-11-12 — Localize Library filter choices and keep narrow controls legible
+
+- Recovered clean pushed `bfde1a5` and reproduced the next issue in the saved German 390px Chromium screenshot: the five filter *labels* had been translated, but every native `<select>` still displayed its English options. Wrote failing locale tests for all **20** static enum choices in **five** languages, plus the filter group's accessible name and **Clear filters** action. A pre-fix locale run had five failed tests, one per language.
+- Added explicit `review.libraryFilterOptions` translations for source, speed, result, analysis status and sort, preserving the existing underlying option values and same `updateFilter`/URL flow. Localized the Library-only filter group (`role=group`) and reset button. Kept the original English labels as translation fallbacks for the existing component test stub. Updated synthetic Chromium selectors to use a stable in-scope `library-filters` element ID rather than depending on the English accessible name.
+- Real German 390px Chromium verified the translated group, all five labels, native source option **Alle Quellen**, sort option **Neueste zuerst**, switching to Lichess (`source=lichess`) and clearing it without stale query state. Added 320px light-mode fixture to check first-screen search, geometry, overflow and native select text width. The first true-width test reproduced clipping: **Alle Bedenkzeiten** rendered 103px of text in roughly 92px of available select content width. Narrowed only that translation to **Alle Tempi**; reran Chromium and inspected the final 320px screenshot to confirm complete text without layout widening.
+
+### Verification
+
+- Focused component/locales tests: **96/96 passed**. Full repository suite: **109 passed files, 2 skipped; 1,068 passed tests, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium covered desktop 1440px and mobile 390/320px in light/dark plus German 390px dark and 320px light; complete existing import, Unicode, large-history cursor, keyboard, bookmark, error and source-filter scenarios passed. No horizontal overflow or browser JS errors. Visually inspected `qa-artifacts/agent-c-library/library-german-filters-firstfold-dark-390.png` and `qa-artifacts/agent-c-library/library-german-filters-light-320.png`.
+- No Game Review internals, Play/Learn/Insights, global design system, other agents' worktrees, production data, deployments or external provider imports modified.
+
+### Next independent audit
+
+- Inspect **Library result-count and loading feedback** in the German mobile session. Current `40 of 620 Partien` mixes an English connective with German text; determine whether locale-specific count phrases can be shown without breaking pagination, loading/error announcements, English test expectations or translated number formats. Reproduce and fix within the Library page only.

@@ -379,6 +379,27 @@
       "analyzed": "Estado del análisis",
       "sort": "Ordenar partidas"
     },
+    "libraryFilterGroup": "Filtrar y ordenar partidas",
+    "clearLibraryFilters": "Borrar filtros",
+    "libraryFilterOptions": {
+      "source": {
+        "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",
+        "played": "Jugadas", "pvp": "Amigos", "imported": "Importadas por PGN"
+      },
+      "time_class": {
+        "all": "Todos los ritmos", "bullet": "Bala", "blitz": "Relámpago",
+        "rapid": "Rápidas", "daily": "Diarias"
+      },
+      "result": {
+        "all": "Todos los resultados", "win": "Victorias", "draw": "Tablas", "loss": "Derrotas"
+      },
+      "analyzed": {
+        "all": "Cualquier estado", "1": "Analizadas", "0": "Sin analizar"
+      },
+      "sort": {
+        "newest": "Más recientes primero", "oldest": "Más antiguas primero"
+      }
+    },
     "bookmarkSaveFailed": "No se pudo actualizar el marcador. Se restauró el estado anterior; puedes reintentarlo.",
     "bookmarkRetry": "Reintentar marcador",
     "flip": "Girar",

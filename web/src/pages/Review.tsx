@@ -702,7 +702,8 @@ export default function Review() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center" aria-label="Filter and sort games">
+      <div id="library-filters" role="group" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"
+        aria-label={t('review.libraryFilterGroup', { defaultValue: 'Filter and sort games' })}>
         {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => {
           const filterLabel = t(`review.libraryFilterLabel.${key}`, { defaultValue: {
             source: 'Game source', time_class: 'Game speed', result: 'Game result',
@@ -713,7 +714,9 @@ export default function Review() {
             <select aria-label={filterLabel}
               className="input w-full min-w-0 text-xs sm:w-auto" value={filters[key]}
               onChange={(e) => updateFilter(key, e.target.value)}>
-              {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>
+                {t(`review.libraryFilterOptions.${key}.${value || 'all'}`, { defaultValue: label })}
+              </option>)}
             </select>
           </label>;
         })}
@@ -732,7 +735,7 @@ export default function Review() {
           </label>
         </div>
         {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
-          onClick={clearLibraryFilters}>Clear filters</button>}
+          onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}
       </div>
 
       {selectedOpening && (

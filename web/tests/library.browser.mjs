@@ -241,7 +241,7 @@ async function newPage(theme, width, height,
 function metrics(page) {
   return page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - window.innerWidth,
-    filterBounds: (() => {const e=document.querySelector('[aria-label="Filter and sort games"]'); const b=e.getBoundingClientRect();return {x:b.x,right:b.right,width:b.width,display:getComputedStyle(e).display,grid:getComputedStyle(e).gridTemplateColumns};})(),
+    filterBounds: (() => {const e=document.getElementById('library-filters'); const b=e.getBoundingClientRect();return {x:b.x,right:b.right,width:b.width,display:getComputedStyle(e).display,grid:getComputedStyle(e).gridTemplateColumns};})(),
     selectSizes: [...document.querySelectorAll('select')].map(el => {
       const b = el.getBoundingClientRect();
       const p=el.parentElement.getBoundingClientRect();
@@ -337,20 +337,60 @@ try {
   const germanFilters=await newPage('dark',390,844,{locale:'de'});
   try {
     const {page,pageErrors}=germanFilters;
+    assert.equal(await page.getByRole('group',{name:'Partien filtern und sortieren'}).count(),1,
+      'German Library controls must have a localized accessible group name');
     for (const label of ['Partiequelle','Partiegeschwindigkeit','Partieergebnis',
       'Analysestatus','Partien sortieren']) {
       assert.equal(await page.getByRole('combobox',{name:label,exact:true}).count(),1,
         `German screen-reader filter label missing: ${label}`);
     }
+    assert.equal(await page.getByRole('combobox',{name:'Partiequelle'}).locator('option').first().textContent(),
+      'Alle Quellen', 'German Library must not display the English All sources option');
+    assert.equal(await page.getByRole('combobox',{name:'Partien sortieren'}).locator('option').first().textContent(),
+      'Neueste zuerst', 'German Library must localize sort options');
     await page.getByRole('combobox',{name:'Partiequelle'}).selectOption('lichess');
     await page.waitForURL(/source=lichess/);
     assert.equal(new URL(page.url()).searchParams.get('source'),'lichess');
+    await page.getByRole('button',{name:'Filter zurücksetzen'}).click();
+    await page.waitForURL(href => !(new URL(href)).searchParams.has('source'));
     const geometry=await metrics(page);
     assert.ok(geometry.overflow<=2,`Localized Library causes mobile overflow: ${geometry.overflow}px`);
     await page.screenshot({path:join(output,'library-german-filters-dark-390.png'),fullPage:true});
     assert.deepEqual(pageErrors,[],'Localized Library filters caused a browser exception');
     console.log('PASS German Library filter accessibility labels and URL-backed source selection');
   } finally {await germanFilters.context.close();}
+
+  const narrowGerman=await newPage('light',320,700,{locale:'de'});
+  try {
+    const {page,pageErrors}=narrowGerman;
+    const layout=await metrics(page);
+    assert.ok(layout.overflow<=2,'German Library must not overflow at 320px');
+    for (const select of layout.selectSizes.filter(s=>s.width>0)) {
+      assert.ok(select.x>=-2 && select.right<=322,
+        `Localized narrow filter is clipped: ${JSON.stringify(select)}`);
+    }
+    const selectedOptions=await page.locator('#library-filters select').evaluateAll(nodes => nodes.map(select => {
+      const style=getComputedStyle(select);
+      const label=select.selectedOptions[0]?.textContent || '';
+      const canvas=document.createElement('canvas');
+      const ctx=canvas.getContext('2d');
+      ctx.font=style.font;
+      return {
+        label, width:ctx.measureText(label).width,
+        // The native-select chevron is already reserved by the right padding
+        // in the app's .input style; do not deduct it a second time.
+        available:select.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),
+      };
+    }));
+    assert.ok(selectedOptions.every(choice=>choice.width<=choice.available+2),
+      `German 320px selected options should remain readable: ${JSON.stringify(selectedOptions)}`);
+    const search=await page.getByRole('searchbox').boundingBox();
+    assert.ok(search && search.y>=0 && search.y+search.height<=700,
+      'German returning players must see game search without scrolling at 320px');
+    await page.screenshot({path:join(output,'library-german-filters-light-320.png')});
+    assert.deepEqual(pageErrors,[],'German 320px Library produced a browser error');
+    console.log('PASS German 320px filter layout, visible search and zero overflow');
+  } finally {await narrowGerman.context.close();}
 
   const errorFixture = await newPage('light', 390, 844, {failOpeningsOnce:true});
   try {

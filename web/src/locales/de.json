@@ -384,6 +384,27 @@
       "analyzed": "Analysestatus",
       "sort": "Partien sortieren"
     },
+    "libraryFilterGroup": "Partien filtern und sortieren",
+    "clearLibraryFilters": "Filter zurücksetzen",
+    "libraryFilterOptions": {
+      "source": {
+        "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",
+        "played": "Gespielt", "pvp": "Freunde", "imported": "PGN-Import"
+      },
+      "time_class": {
+        "all": "Alle Tempi", "bullet": "Bullet", "blitz": "Blitz",
+        "rapid": "Schnellschach", "daily": "Fernschach"
+      },
+      "result": {
+        "all": "Alle Ergebnisse", "win": "Siege", "draw": "Remis", "loss": "Niederlagen"
+      },
+      "analyzed": {
+        "all": "Alle Status", "1": "Analysiert", "0": "Nicht analysiert"
+      },
+      "sort": {
+        "newest": "Neueste zuerst", "oldest": "Älteste zuerst"
+      }
+    },
     "bookmarkSaveFailed": "Die Markierung konnte nicht geändert werden. Der vorherige Zustand wurde wiederhergestellt; versuche es erneut.",
     "bookmarkRetry": "Markierung erneut versuchen",
     "flip": "Drehen",

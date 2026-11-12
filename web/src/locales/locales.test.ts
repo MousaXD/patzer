@@ -75,6 +75,32 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(localized).not.toEqual(en.review.libraryFilterLabel[filter]);
       }
     });
+    it('localizes Library filter options, group and clear action without changing filter values', () => {
+      const options: Record<string, Record<string, string>> = locale.review.libraryFilterOptions;
+      const englishOptions: Record<string, Record<string, string>> = en.review.libraryFilterOptions;
+      const expected = {
+        source: ['', 'chesscom', 'lichess', 'played', 'pvp', 'imported'],
+        time_class: ['', 'bullet', 'blitz', 'rapid', 'daily'],
+        result: ['', 'win', 'draw', 'loss'],
+        analyzed: ['', '1', '0'],
+        sort: ['newest', 'oldest'],
+      };
+      expect(locale.review.libraryFilterGroup?.trim().length).toBeGreaterThan(0);
+      expect(locale.review.clearLibraryFilters?.trim().length).toBeGreaterThan(0);
+      for (const [filter, values] of Object.entries(expected)) {
+        for (const value of values) {
+          const key = value || 'all';
+          const actual = options[filter]?.[key];
+          expect(actual?.trim().length, `${lang}: ${filter}.${key}`).toBeGreaterThan(0);
+          // Chess.com and Lichess are names; Bullet and Blitz are also the
+          // conventional German chess terms, not untranslated UI copy.
+          if (lang !== 'en' && key !== 'chesscom' && key !== 'lichess' &&
+            !(lang === 'de' && (key === 'bullet' || key === 'blitz'))) {
+            expect(actual, `${lang}: ${filter}.${key}`).not.toEqual(englishOptions[filter]?.[key]);
+          }
+        }
+      }
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);
