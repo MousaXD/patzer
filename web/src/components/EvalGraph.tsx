@@ -8,7 +8,9 @@ interface Mistake { ply: number; classification: string }
 interface Props {
   evals: EvalSample[];
   current?: number;
-  onClick?: (ply: number) => void;
+  /** Keep keyboard slider scrubbing separate from pointer selection: a phone
+   * tap can reveal the board without stealing focus after each arrow key. */
+  onClick?: (ply: number, input: 'keyboard' | 'pointer') => void;
   /** Plies where blunders/mistakes/inaccuracies happened, drawn as colored dots. */
   markers?: Mistake[];
   /** Pixel height; defaults to 96 (chess.com Game Review). */
@@ -85,7 +87,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
           else if (e.key === 'End') next = evals.length;
           else return;
           e.preventDefault(); e.stopPropagation();
-          onClick(next === 0 ? 0 : evals[next - 1]!.ply);
+          onClick(next === 0 ? 0 : evals[next - 1]!.ply, 'keyboard');
         }}
         onPointerMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -95,7 +97,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
         onClick={(e) => {
           if (!onClick) return;
           const rect = e.currentTarget.getBoundingClientRect();
-          onClick(pickPly(e.clientX, rect));
+          onClick(pickPly(e.clientX, rect), 'pointer');
         }}
       >
         {/* Unknown evaluations are neutral rather than fabricated as equality. */}

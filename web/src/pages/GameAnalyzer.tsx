@@ -1087,7 +1087,15 @@ function GameAnalyzerView() {
                 <EvalGraph
                   evals={timeline.evals}
                   current={isVariation ? undefined : ply}
-                  onClick={(p) => setPly(p)}
+                  onClick={(p, input) => {
+                    setPly(p);
+                    // The timeline is below the board on phones. After a
+                    // tap, reveal the saved position; leave keyboard focus
+                    // on the slider for uninterrupted arrow-key scrubbing.
+                    if (input === 'pointer' && window.matchMedia('(max-width: 959px)').matches) {
+                      requestAnimationFrame(jumpToBoard);
+                    }
+                  }}
                   markers={analysis.moves
                     .filter((m) => ['blunder','mistake','inaccuracy','miss','brilliant','great'].includes(m.classification))
                     .map((m) => ({ ply: m.ply, classification: m.classification }))}

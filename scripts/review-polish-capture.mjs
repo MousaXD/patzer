@@ -1370,6 +1370,65 @@ try {
       },undefined,{timeout:2400});
       await trail.scrollIntoViewIfNeeded();
       await page.screenshot({path:join(output,`long-variation-active-trail-${width}.png`)});
+      // Clicking the original-game graph exits an exploratory branch. On a
+      // phone the saved board is above the graph; reveal it immediately,
+      // while desktop should preserve side-by-side graph/board context.
+      const timeline=page.getByRole('slider',{name:'Move evaluation timeline'});
+      await timeline.scrollIntoViewIfNeeded();
+      const graphBox=await timeline.boundingBox();
+      assert.ok(graphBox);
+      const previousScroll=await page.evaluate(()=>window.scrollY);
+      await page.mouse.click(graphBox.x+graphBox.width*.30,graphBox.y+graphBox.height*.50);
+      await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')
+        ?.textContent?.trim().match(/^\d+ \/ \d+$/),undefined,{timeout:3000});
+      const savedCursor=Number((await page.locator('[data-review-move-progress]').innerText()).split(' / ')[0]);
+      const replay=new Chess();
+      replay.loadPgn(savedPgn);
+      const savedMoves=replay.history();
+      assert.ok(savedCursor>0 && savedCursor<=savedMoves.length,'The graph must select a real saved move');
+      const expected=new Chess();
+      for(const san of savedMoves.slice(0,savedCursor)) assert.ok(expected.move(san));
+      await page.waitForFunction(san=>document.querySelector('[data-review-move-summary]')
+        ?.textContent?.includes(san),savedMoves[savedCursor-1],{timeout:3000});
+      assert.equal(await page.getByRole('button',{name:'Return to game'}).count(),1,
+        'Previously created variations remain selectable after returning to saved-game evaluation');
+      if(width===390){
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('review-board-square'),
+          undefined,{timeout:2500});
+        const board=await page.locator('.review-board-square').boundingBox();
+        assert.ok(board && board.y>=40 && board.y<=110,
+          `A mobile graph click must reveal the original-game board: ${JSON.stringify(board)}`);
+      }else{
+        const currentScroll=await page.evaluate(()=>window.scrollY);
+        assert.ok(Math.abs(currentScroll-previousScroll)<=3,
+          `Desktop graph clicks must not jump the whole page: ${previousScroll} -> ${currentScroll}`);
+      }
+      await page.screenshot({path:join(output,`variation-graph-return-board-${width}.png`)});
+      // The rendered board's source is the selected, legal PGN position,
+      // not the exploratory branch or an invented score. Use the existing
+      // Copy FEN control to inspect its authoritative displayed identity.
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async text=>{window.__graphSelectedFen=text;}},
+      }));
+      await page.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      assert.equal(await page.evaluate(()=>window.__graphSelectedFen),expected.fen(),
+        'Selecting the saved timeline must render the saved PGN FEN, not the variation FEN');
+      // Keyboard slider scrubbing must remain continuous: focus stays on
+      // the graph after every arrow key instead of jumping offscreen to the
+      // board. A phone tap, tested above, deliberately reveals the board.
+      await page.getByRole('button',{name:'Variation 2 · 9 moves',exact:true}).click();
+      await expectProgress('Var 9 / 9');
+      await timeline.focus();
+      await page.keyboard.press('End');
+      await expectProgress(`${savedMoves.length} / ${savedMoves.length}`);
+      assert.ok(await timeline.evaluate(el=>document.activeElement===el),
+        'Keyboard End must keep focus on the graph for further scrubbing');
+      await page.keyboard.press('ArrowLeft');
+      await expectProgress(`${savedMoves.length-1} / ${savedMoves.length}`);
+      assert.equal(await timeline.getAttribute('aria-valuenow'),String(savedMoves.length-1));
+      assert.ok(await timeline.evaluate(el=>document.activeElement===el),
+        'Keyboard arrows must retain slider focus and use saved-game plies');
+      await page.screenshot({path:join(output,`variation-graph-keyboard-scrub-${width}.png`)});
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
     }finally{await nestedContext.close();}
   }

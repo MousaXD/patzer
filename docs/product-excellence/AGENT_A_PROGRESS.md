@@ -545,3 +545,26 @@
 ### Next issue
 
 - Verify that choosing a saved move from the original evaluation graph while the player is in a nested variation exits exploration cleanly and focuses the correct saved board/move details (especially keyboard slider navigation). Reproduce focus, ply and PGN behavior in Chromium before touching the existing graph or controller.
+
+## 2026-11-12: reveal saved chessboard after evaluation-graph taps without breaking keyboard scrubbing
+
+### Exact recovery and reproduced failure
+
+- Resumed from clean pushed `27b4de0` and recovered an **already-uncommitted** Chromium regression for selecting the original evaluation graph while an exploratory branch is active. Preserved the existing test work rather than restarting the earlier timeline/aria-label investigations.
+- The regression created a legal nested `e4 c5 d4` branch, extended it to nine child moves, and tapped the original-game evaluation graph at 390px. Baseline **failed**: saved-game progress updated, but focus/scroll stayed on the graph below the chessboard (`waitForFunction` timed out expecting `.review-board-square` focus). This was an interaction defect, not a scoring or PGN defect.
+
+### Fix and self-audit
+
+- Made Game Review's `EvalGraph` report whether a selection comes from a pointer click or keyboard slider navigation. On mobile, a graph tap now selects the saved original ply and uses the existing focus/scroll-to-board behavior; at desktop widths, the side-by-side layout stays stationary. Keyboard End/Arrow navigation deliberately **keeps focus on the graph**, so a learner can scrub multiple saved moves without focus being stolen after the first arrow.
+- The expanded authenticated Chromium test verifies the clicked saved move's SAN and exact FEN via the existing Copy FEN action against a legal replay of the untouched saved PGN, not merely a changed counter. It then resumes the nine-move exploratory branch, presses End and ArrowLeft on the graph, and checks exact ply counts, `aria-valuenow`, slider focus, and unchanged saved PGN on both 390px and 1024px viewports.
+
+### Verification
+
+- Focused EvalGraph/model/variation tests: **22 passed**. `npm run typecheck`: PASS. `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including graph pointer/keyboard controls, FEN/PGN identity, nested branches, mobile/desktop screenshots, error recovery, source, scoring and accessibility cases. Independently opened actual `qa-artifacts/agent-a/graph-return-after-20261112/variation-graph-return-board-{390,1024}.png` and `variation-graph-keyboard-scrub-{390,1024}.png`: the phone view reveals a saved `c3` position (7/24), desktop remains side-by-side, and keyboard focus outlines the graph at saved 23/24.
+- All browser engine scores remain **synthetic fixture values**, not Stockfish accuracy certification. No merge, deployment, production SQLite mutation or modifications outside Agent A.
+
+### Next high-impact issue
+
+- `MoveList` in the Game Review right rail still uses `onSelect={setPly}`. On 390px mobile, choosing a saved SAN from that list likely changes the offscreen board without revealing it, just as the evaluation graph did before this fix. Audit the actual nested-branch-to-saved-MoveList workflow in Chromium, with keyboard focus preserved for list navigation if appropriate. Correct only if reproducible; keep desktop side-by-side and original PGN intact.
