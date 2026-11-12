@@ -149,10 +149,10 @@ function GameAnalyzerView() {
   const [showDepthControl, setShowDepthControl] = useState(false);
   const [storedProse, setStoredProse] = useState<{ source: string; prose: GameReviewProse } | null>(null);
   const [tab, setTab] = useState<Tab>('moves');
-  // An in-review retry is transient. A blind attempt entered from the
-  // library uses a separate URL history entry so Back returns to its
-  // spoiler-free picker instead of unexpectedly leaving the saved game.
-  const [reviewPracticePly, setReviewPracticePly] = useState<number | null>(null);
+  // A blind attempt entered from the library uses a separate URL history
+  // entry so Back returns to its spoiler-free picker. In-review attempts
+  // instead replace the current URL: this exposes the same guarded route
+  // transition to Notes before practice unmounts the review workspace.
   // A category picked in the Game Report table (e.g. Black's misses): those
   // moves stand out in the move list and the arrows below step through them.
   const [pick, setPick] = useState<MovePick | null>(null);
@@ -168,11 +168,10 @@ function GameAnalyzerView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const practicePicker = searchParams.get('practice') === '1';
   const routeAttempt = searchParams.get('practicePly');
-  const routePracticePly = practicePicker && routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
+  const routePracticePly = routeAttempt !== null && /^[1-9]\d*$/.test(routeAttempt)
     ? Number(routeAttempt) : null;
-  const practicePly = practicePicker
-    ? routePracticePly !== null && Number.isSafeInteger(routePracticePly) ? routePracticePly : null
-    : reviewPracticePly;
+  const practicePly = routePracticePly !== null && Number.isSafeInteger(routePracticePly)
+    ? routePracticePly : null;
   // Blind practice must not compete with a previously started full-game
   // reanalysis, whether entered through the library or from normal Review.
   useEffect(() => {
@@ -366,7 +365,12 @@ function GameAnalyzerView() {
       // Push one history entry for browser Back/Forward and mark its actual
       // origin. A bookmarked attempt URL has no guaranteed picker to pop to.
     } else {
-      setReviewPracticePly(selected);
+      // This transition replaces the Review UI. Route through the existing
+      // Notes leave guard rather than unmounting an unsaved draft by local
+      // state alone. Keep the original no-extra-history behavior.
+      const next = new URLSearchParams(searchParams);
+      next.set('practicePly', String(selected));
+      setSearchParams(next, { replace: true });
     }
   };
   const leavePractice = (restoreSelectedMove: boolean) => {
@@ -382,7 +386,9 @@ function GameAnalyzerView() {
       }
     } else {
       if (restoreSelectedMove && practicePly !== null) setPly(practicePly);
-      setReviewPracticePly(null);
+      const next = new URLSearchParams(searchParams);
+      next.delete('practicePly');
+      setSearchParams(next, { replace: true });
       requestAnimationFrame(() => document.getElementById(
         restoreSelectedMove ? 'learn-from-mistake' : 'full-game-review-heading',
       )?.focus());
@@ -848,7 +854,6 @@ function GameAnalyzerView() {
       const next = new URLSearchParams(searchParams);
       next.delete('practice');
       next.delete('practicePly');
-      setReviewPracticePly(null);
       setSearchParams(next, { replace: true });
       requestAnimationFrame(() => document.getElementById('full-game-review-heading')?.focus());
     };

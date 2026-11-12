@@ -1447,6 +1447,24 @@
 
 - Explore the Notes **draft recovery after a background game refetch** while a stale save response arrives. Check that the editor never replaces the player's in-progress text or navigates early. Prior rapid-queue assertions cover two saves, but a background refetch triggered externally is a separate case. Only change product behavior if Chromium reproduces actual data loss.
 
+## 2026-11-13: preserve private notes when entering in-review blind practice
+
+### Actual state-only transition bug and source-matched reproduction
+
+- Resumed from clean pushed `baeec2f`. The normal in-review **Retry this mistake** used a local `setReviewPracticePly` state transition, which could unmount GameMetaToolbar/its Notes editor without traversing React Router. The existing `useBlocker` therefore never ran. First browser reproduction with the ordinary game correctly found no practice action: the original synthetic PGN is ongoing (`result='*'`), and unfinished games should not offer blind drills. Reproduced faithfully using a **separate completed and source-hash-attested copy** of the same legal PGN/analysis, with White's genuine classified mistake at ply 17. The corrected baseline failed waiting for Notes' save-protection dialog after clicking practice with a pending, deliberately held Notes PATCH.
+- Changed only the in-review practice transition to use `?practicePly=<ply>` through `setSearchParams(..., { replace: true })`, rather than a local state-only transition. Both picker and in-review practice now read that parameter, but the library picker still pushes its own intentional history entry; in-review practice still replaces the current entry (no extra Back step). On Return to saved game, in-review practice removes the parameter with replace. The existing Notes blocker sees the `practicePly` change and guards an unsaved draft without introducing another mutation/save mechanism. Source-attested practice eligibility and the spoiler-free blind attempt board remain unchanged.
+- Full authenticated disposable Chromium matrix on port **8998** PASSED: a source-eligible player mistake starts the guard; with the first PATCH held it keeps the typed note and normal Review UI mounted. A synthetic 503 keeps the draft and offers Retry; retry succeeds, the original intent continues into blind practice, Return to saved game restores its move and saved private note, and the original PGN remains byte-for-byte unchanged. All existing responsive, locale, engine, source, keyboard and variation checks passed as well.
+
+### Verification and boundaries
+
+- `git diff --check`, `node --check scripts/review-polish-capture.mjs`, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- No changes to the stored chess game, source analysis, server, production service/database, other agent worktrees, main branch, or deployment.
+
+### Next scoped independent audit
+
+- The new in-review `?practicePly` deep link can be opened directly with no picker history. Verify that **browser Back / Return to saved game and keyboard focus** are predictable from both a direct bookmarked practice URL and an in-review Retry action, and that stale/invalid practice target URLs remain spoiler-safe. Reproduce before changing routing or navigation semantics.
+
 ## 2026-11-13: certify normal move exploration while private notes autosave
 
 - Continued from clean pushed `386a089`. While a note PATCH is deliberately held by the authenticated disposable browser fixture, clicked the real saved-game **Next move** transport button. Confirmed the active position progresses from **15 / 24 → 16 / 24**, that no navigation-blocking Notes `alertdialog` appears for the ordinary `?ply=` change, the private draft remains mounted and unchanged, and releasing the pending response persists the draft without rewriting the source PGN.

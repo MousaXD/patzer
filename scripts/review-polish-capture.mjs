@@ -984,6 +984,76 @@ try {
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,moveText);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{releaseRaceOlder();releaseRaceNewer();releaseRaceMove();await noteRaceContext.close();}
+  // In-review "Retry this mistake" currently changes React state without a
+  // URL transition. A pending failed notes save must still have a recovery
+  // surface before the normal Review workspace disappears into blind mode.
+  // The ordinary replay fixture is an *ongoing* game, and correctly cannot
+  // offer blind practice. Use a separate completed, source-attested copy with
+  // the same legal moves to exercise a real eligible white-player mistake.
+  const practicePgn=new Chess();
+  practicePgn.loadPgn(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn);
+  practicePgn.setHeader('Result','1-0');
+  const practiceGameId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-completed-practice',?,'Practice White','Practice Black','1-0','600',datetime('now'),'white')`)
+    .run(user.id,practicePgn.pgn()).lastInsertRowid);
+  const practiceSource=loadAnalysisGameSource(db,practiceGameId);
+  assert.ok(practiceSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,81,77,?,?,?,1)`)
+    .run(practiceGameId,db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json,
+      SCORING_VERSION,analysisSourceHash(practiceSource),practiceSource.source_revision);
+  const practiceNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releasePracticeNotes=()=>{};
+  try{
+    await practiceNotesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await practiceNotesContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const pgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn;
+    const held=new Promise(resolve=>{releasePracticeNotes=resolve;});
+    let attempts=0;
+    const draft='Private note before practicing this mistake';
+    await page.route(`**/api/games/${practiceGameId}/notes`,async route=>{
+      attempts++;
+      if(attempts===1){
+        await held;
+        await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+      } else await route.continue();
+    });
+    await page.goto(`${base}/review/${practiceGameId}?ply=17`,{waitUntil:'domcontentloaded'});
+    const practiceAction=page.locator('#learn-from-mistake');
+    await practiceAction.waitFor({state:'visible',timeout:5000});
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'17 / 24',
+      'Blind-practice safety must be tested on a genuine user-side mistake');
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    await page.getByPlaceholder(enNotes.review.notesPlaceholder).fill(draft);
+    const pending=page.waitForRequest(req=>req.url().endsWith(`/api/games/${practiceGameId}/notes`)
+      && req.postDataJSON().notes===draft);
+    await practiceAction.click();
+    await pending;
+    const guard=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
+    await guard.getByText(enNotes.review.notesLeaveSaving,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    assert.ok(await page.getByPlaceholder(enNotes.review.notesPlaceholder).isVisible(),
+      'Unsaved Notes must not unmount when starting blind practice from Review');
+    releasePracticeNotes();
+    await guard.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    const recovered=page.waitForResponse(response=>response.url().endsWith(`/api/games/${practiceGameId}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===draft);
+    await guard.getByRole('button',{name:enNotes.review.notesRetrySave,exact:true}).click();
+    await recovered;
+    await page.getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(attempts,2);
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(practiceGameId).notes,draft);
+    await page.getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).click();
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    assert.equal(await page.getByPlaceholder(enNotes.review.notesPlaceholder).inputValue(),draft);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn,pgn);
+  }finally{releasePracticeNotes();await practiceNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
