@@ -1302,17 +1302,24 @@ try {
     await page.getByText('40 of 56 games').waitFor();
     const firstStar=page.locator('a[href="/review/11"]').locator('..')
       .getByRole('button',{name:'Remove bookmark'});
-    await firstStar.click();
+    await firstStar.focus();
+    await page.keyboard.press('Enter');
     assert.equal(await firstStar.getAttribute('aria-pressed'),'true',
       'A pending unbookmark must not show an unstarred card in Starred only');
     assert.equal(await page.getByRole('button',{name:'Bookmark game'}).count(),0);
     await page.locator('a[href="/review/11"]').waitFor({state:'detached'});
     await page.getByText('40 of 55 games').waitFor();
+    const starredToggle=page.getByRole('button',{name:'Starred only'});
+    assert.ok(await starredToggle.evaluate(node=>document.activeElement===node),
+      'Keyboard focus must move to Starred-only toggle when the successfully unstarred card disappears');
     const failingStar=page.locator('a[href="/review/22"]').locator('..')
       .getByRole('button',{name:'Remove bookmark'});
-    await failingStar.click();
+    await failingStar.focus();
+    await page.keyboard.press('Enter');
     const starError=page.getByRole('alert').getByText(/Bookmark could not be saved/);
     await starError.waitFor();
+    assert.ok(await failingStar.evaluate(node=>document.activeElement===node),
+      'Keyboard focus must remain on a failed unbookmark for immediate retry');
     assert.equal(await page.locator('a[href="/review/22"]').count(),1,
       'A failed unbookmark must retain the starred game for retry');
     assert.equal(await failingStar.getAttribute('aria-pressed'),'true');
@@ -1326,6 +1333,35 @@ try {
     assert.deepEqual(pageErrors,[], 'Starred-only bookmark retry caused a JS error');
     console.log('PASS Starred-only pending bookmark removal, server success and retryable failure');
   } finally {await starred.context.close();}
+
+  for (const activation of ['mouse','keyboard-moved-focus']) {
+    const focusChoice=await newPage('light',390,844,{starredOnlyScenario:true});
+    try {
+      const {page,pageErrors}=focusChoice;
+      await page.getByRole('button',{name:'All games'}).click();
+      await page.getByText('40 of 56 games').waitFor();
+      const remove=page.locator('a[href="/review/11"]').locator('..')
+        .getByRole('button',{name:'Remove bookmark'});
+      const source=page.getByRole('combobox',{name:'Game source'});
+      if (activation==='mouse') await remove.click();
+      else {
+        await remove.focus();
+        await page.keyboard.press('Enter');
+        await source.focus();
+      }
+      await page.locator('a[href="/review/11"]').waitFor({state:'detached'});
+      await page.getByText('40 of 55 games').waitFor();
+      const starredToggle=page.getByRole('button',{name:'Starred only'});
+      assert.equal(await starredToggle.evaluate(node=>document.activeElement===node),false,
+        `${activation} unbookmark must not steal focus to the Starred-only toggle`);
+      if (activation==='keyboard-moved-focus') {
+        assert.ok(await source.evaluate(node=>document.activeElement===node),
+          'Moving keyboard focus during a pending save must preserve the new focus target');
+      }
+      assert.deepEqual(pageErrors,[],`${activation} unbookmark caused a JS exception`);
+      console.log(`PASS ${activation} unbookmark avoids unexpected focus stealing`);
+    } finally {await focusChoice.context.close();}
+  }
 
   for (const pendingStarResult of ['success','failure']) {
     const transition=await newPage('light',390,844,{pendingStarResult});

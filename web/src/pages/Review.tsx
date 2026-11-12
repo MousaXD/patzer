@@ -95,6 +95,7 @@ export default function Review() {
   const location = useLocation();
   const navigationType = useNavigationType();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const starredFilterRef = useRef<HTMLButtonElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [bookmarkFailures, setBookmarkFailures] = useState<{id:number; players:string}[]>([]);
@@ -785,6 +786,7 @@ export default function Review() {
           )}
         </div>
         <button
+          ref={starredFilterRef}
           onClick={toggleBookmarkedOnly}
           aria-pressed={bookmarkedOnly}
           className={cn(
@@ -927,6 +929,7 @@ export default function Review() {
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
           {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
+            restoreKeyboardFocus={() => starredFilterRef.current?.focus()}
             onBookmarkAttempt={(gameId) => setBookmarkFailures(current => current.filter(failure => failure.id !== gameId))}
             onBookmarkFailure={(gameId, players) => {
               if (accountIdRef.current === user?.id) setBookmarkFailures(current =>
@@ -959,8 +962,9 @@ export default function Review() {
   );
 }
 
-function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFailure }: {
+function GameCard({ g, accountId, starredOnly, restoreKeyboardFocus, onBookmarkAttempt, onBookmarkFailure }: {
   g: GameRow; accountId: number | undefined; starredOnly: boolean;
+  restoreKeyboardFocus: () => void;
   onBookmarkAttempt: (id: number) => void; onBookmarkFailure: (id: number, players: string) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -970,6 +974,9 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
   const whiteName = g.white?.trim() || unknownPlayer;
   const blackName = g.black?.trim() || unknownPlayer;
   const qc = useQueryClient();
+  const bookmarkButtonRef = useRef<HTMLButtonElement | null>(null);
+  const keyboardBookmarkRef = useRef(false);
+  const retryKeyboardFocusRef = useRef(false);
   const [bookmarkError, setBookmarkError] = useState(false);
   const star = useMutation({
     mutationFn: (next: boolean) => api.patch(`/api/games/${g.id}/bookmark`, { bookmarked: next }),
@@ -986,6 +993,8 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
       }
     },
     onError: (_error, next) => {
+      retryKeyboardFocusRef.current = keyboardBookmarkRef.current;
+      keyboardBookmarkRef.current = false;
       if (!(starredOnly && !next)) {
         qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
           (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
@@ -993,8 +1002,27 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
       setBookmarkError(true);
       onBookmarkFailure(g.id, `${whiteName} ${t('players.vs')} ${blackName}`);
     },
+    onSuccess: (_result, next) => {
+      // A keyboard-activated unstar removes its own focused button after the
+      // Starred-only refetch. Land on a stable nearby control, unless the
+      // player has already focused something else while the request ran.
+      if (starredOnly && !next && keyboardBookmarkRef.current && bookmarkButtonRef.current?.isConnected &&
+          (document.activeElement === bookmarkButtonRef.current || document.activeElement === document.body)) {
+        restoreKeyboardFocus();
+      }
+      keyboardBookmarkRef.current = false;
+    },
     onSettled: () => qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) }),
   });
+  useEffect(() => {
+    // A pending mutation disables its button, causing browsers to move focus
+    // away. After rejection, return keyboard users to the enabled Retry
+    // action, but never steal focus from a control they moved to meanwhile.
+    if (bookmarkError && !star.isPending && retryKeyboardFocusRef.current) {
+      retryKeyboardFocusRef.current = false;
+      if (document.activeElement === document.body) bookmarkButtonRef.current?.focus();
+    }
+  }, [bookmarkError, star.isPending]);
   const isStarred = !!g.bookmarked;
 
   return (
@@ -1057,7 +1085,12 @@ function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFail
         </Link>
       ) : null}
       <button
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); star.mutate(!isStarred); }}
+        ref={bookmarkButtonRef}
+        onClick={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          keyboardBookmarkRef.current = e.detail === 0;
+          star.mutate(!isStarred);
+        }}
         title={isStarred ? t('review.removeBookmark', { defaultValue: 'Remove bookmark' }) : t('review.bookmarkGame', { defaultValue: 'Bookmark game' })}
         aria-label={isStarred ? t('review.removeBookmark', { defaultValue: 'Remove bookmark' }) : t('review.bookmarkGame', { defaultValue: 'Bookmark game' })}
         aria-pressed={isStarred}

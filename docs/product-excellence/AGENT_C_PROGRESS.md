@@ -1101,3 +1101,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **keyboard focus after removing a bookmark from Starred-only**. The Library deliberately keeps a starred card during a pending unbookmark request, but then removes it after success. If keyboard focus was on the removed star control, it may fall to the document body with no meaningful target, making consecutive starred-game cleanup frustrating. Reproduce on a 390px real Chromium page with keyboard activation and completed server mutation; if focus is lost, restore it to the Starred-only toggle or a nearby surviving game control without disturbing mouse interactions or the existing failure retry path.
+
+## 2026-11-13 — Restore keyboard focus after successful or failed unbookmark
+
+- Recovered pushed `46ba2c3` and extended the existing 390px dark Chromium Starred-only fixture. Keyboard Enter on the focused Remove bookmark control reproduced a genuine accessibility issue: after the successful server reply and card removal, **focus fell away from interactive controls**. Added a failing browser assertion before the change. The same fixture then revealed a second issue: on an HTTP 503 rejection, the card stayed visible but disabling its button during the pending save caused keyboard focus to be lost, preventing straightforward retry.
+- Added a Library-local ref to the persistent Starred-only filter toggle and tracked whether the card's bookmark action was initiated with a keyboard click (`MouseEvent.detail === 0`). After a **successful keyboard-initiated removal**, focus moves to the existing Starred-only toggle before the card is removed, but only if the original button still exists and the user has not focused another control. After a **failed keyboard-initiated removal**, a small React effect restores focus to the re-enabled original bookmark button once the pending mutation has settled. Neither mouse actions nor intentional mid-request keyboard focus changes trigger focus stealing. Existing optimistic-bookmark state, account scoping and failure messages remain unchanged.
+- Browser regression now checks all four paths: keyboard success focuses the stable toggle, keyboard failure permits immediate retry, mouse success does not redirect focus, and a keyboard user who moves to another select during the pending save keeps that focus. All other Starred-only, concurrent bookmark, import, pagination and keyboard scenarios remain green.
+
+### Verification
+
+- Focused Library tests: **59/59 passed**. Full repository suite: **109 passed files, 2 skipped; 1,137 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Complete isolated Chromium 1440px desktop, 390/320px light/dark, Starred-only keyboard/pointer focus scenarios, German, search, import, PGN, pagination and recovery: passed without browser JS errors or horizontal overflow.
+- Only Agent C's Library view, synthetic browser fixture and progress report changed. No other agents, production data, merge or deploy touched.
+
+### Next independent audit
+
+- Audit **keyboard activation of Load more and focus after a successful continuation**. A large Library's paging button remains reachable as more cards load, but when the final page removes the button a keyboard user may land on the document body. Verify actual Chromium focus after the last page at desktop and 320px; if lost, restore focus to a durable Library summary or nearest surviving game link without moving pointer users or causing a screen-reader announcement storm.
