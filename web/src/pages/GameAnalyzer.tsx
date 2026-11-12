@@ -1693,9 +1693,15 @@ function LinesPanel({ enabled, onToggle, lines, terminalPosition, scoreTurn, loa
             </div>
           )}
           {!loading && !error && lines.length === 0 && (
-            <div role="status" className="px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
-              {t(terminalPosition === 'checkmate' ? 'review.linesCheckmate'
-                : terminalPosition === 'stalemate' ? 'review.linesStalemate' : 'review.linesNoMoves')}
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
+              <span>{t(terminalPosition === 'checkmate' ? 'review.linesCheckmate'
+                : terminalPosition === 'stalemate' ? 'review.linesStalemate' : 'review.linesNoMoves')}</span>
+              {terminalPosition === null && (
+                <button type="button" onClick={retryLines}
+                  className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
+                  {t('review.linesRetry')}
+                </button>
+              )}
             </div>
           )}
           {error && (

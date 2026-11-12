@@ -1134,3 +1134,22 @@
 ### Next audited issue
 
 - When a **nonterminal** position's engine request succeeds with `lines:[]`, the new truthful text tells the user no continuations were returned, but the rail still provides no Retry action; only collapsing and reopening triggers a fresh request. Reproduce a playable zero-line HTTP result and test whether a direct, keyboard-accessible retry recovers verified legal suggestions without rerunning the full game or changing its PGN.
+
+## 2026-11-12: recover empty but playable engine-line responses from the keyboard
+
+### Failing browser reproduction and small UX fix
+
+- Continued on Agent A's own branch after the localized terminal-state fix. A successful HTTP response with the **correct playable FEN** but `lines:[]` showed the truthful no-continuations explanation yet offered no direct retry. A new authenticated Chromium assertion **failed before the fix** waiting for an accessible `Retry` button.
+- Reused the existing Engine Lines `retryLines()` action rather than introducing a new request path: the empty-state message now has a **44px Retry button only for nonterminal FENs**. Confirmed checkmate and stalemate remain informational with no misleading Retry. The existing handler keeps focus in the durable Engine Lines region when the transient retry button disappears.
+- Extended the disposable browser source: first request yields `lines:[]`; keyboard Enter on Retry requests the same FEN and returns a fully source-verified legal `e4` line with `+0.40`; subsequent Tab moves from the focused region into the actual suggestion. The test checks two requests total, correct score, focus recovery, button target size, and byte-for-byte unchanged original PGN. Opened `qa-artifacts/agent-a/empty-lines-retry-final-20261112/engine-lines-empty-nonterminal-recovered-390.png` and inspected the visible focus ring at 390px.
+
+### Verification and isolation
+
+- `git diff --check`, browser-script syntax, `npm run typecheck`, and `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000 --maxWorkers=4`: **1005 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium desktop/mobile, both themes, five-language, source validation, FEN, variation, keyboard and original PGN matrix: **PASS (exit 0)** on port 8953. Screenshots are test-only synthetic scores, not proof of real Stockfish scoring accuracy.
+- No merge, deployment, production SQLite/service access or changes to other agents' branches.
+
+### Next independent review audit candidate
+
+- Add a real-browser custom-FEN **stalemate** saved-game fixture to independently certify that the new terminal explanation announces a draw without a Retry or invented line, including non-White-to-move start positions. Unit tests already prove the classifier; this would close the untested end-user flow.

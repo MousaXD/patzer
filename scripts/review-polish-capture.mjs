@@ -239,7 +239,9 @@ try {
       assert.equal(route.request().postDataJSON().fen,initialFen);
       requests++;
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
-        fen:initialFen,depth:12,lines:[],
+        fen:initialFen,depth:12,lines:requests===1 ? [] : [
+          {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:40,mate:null,multipv:1},
+        ],
       })});
     });
     const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
@@ -250,8 +252,26 @@ try {
     assert.equal(requests,1);
     assert.equal(await page.getByText('Checkmate. No legal moves remain.',{exact:true}).count(),0,
       'An ordinary playable position with no engine PV must never be announced as checkmate');
+    const retryEmpty=page.getByRole('button',{name:'Retry',exact:true});
+    await retryEmpty.waitFor({state:'visible',timeout:3000});
+    const emptyTarget=await retryEmpty.boundingBox();
+    assert.ok(emptyTarget && emptyTarget.width>=44 && emptyTarget.height>=44,
+      'An empty playable result must expose a usable 44px Retry action');
     await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-lines-empty-nonterminal-390.png')});
+    await retryEmpty.focus();
+    await page.keyboard.press('Enter');
+    const recovered=page.getByRole('button',{name:'Follow played move e4'});
+    await recovered.waitFor({state:'visible',timeout:5000});
+    assert.equal(requests,2,'Retrying a valid but empty position should fetch new live candidates');
+    assert.equal((await recovered.locator('[data-review-engine-line-score]').innerText()).trim(),'+0.40');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'review-engine-lines-content',
+      'Retry must keep keyboard focus in the persistent Engine Lines region');
+    await page.keyboard.press('Tab');
+    assert.ok(await recovered.evaluate(el=>document.activeElement===el),
+      'Tab from an empty-result retry must reach the recovered legal move');
+    await recovered.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-empty-nonterminal-recovered-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await emptyNonterminalContext.close();}
   for(const theme of ['light','dark']){
