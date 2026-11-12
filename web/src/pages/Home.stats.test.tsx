@@ -60,6 +60,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
+  it('keeps all four continuation destinations readable and touch-accessible on narrow screens', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: { id: 'p1', rating: 1400 }, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    const continuation = screen.getByRole('region', { name: 'Continue improving' });
+    await waitFor(() => expect(within(continuation).getAllByRole('link')).toHaveLength(4));
+    const links = within(continuation).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/learn', '/train?tab=puzzles&daily=1', '/plan', '/insights#achievements',
+    ]);
+    for (const link of links) {
+      expect(link.className).toContain('gap-[8px]');
+      expect(link.className).toContain('p-[12px]');
+      expect(link.firstElementChild?.className).toContain('h-[44px]');
+      expect(link.lastElementChild?.getAttribute('class')).toContain('h-[16px]');
+      const title = link.querySelector('[data-home-continue-title]');
+      expect(title?.textContent?.trim()).toBeTruthy();
+      expect(title?.className).toContain('break-words');
+      expect(title?.className).toContain('sm:line-clamp-2');
+      expect(title?.className).not.toContain('line-clamp-2 ');
+    }
+  });
+
   it.each([
     ['win', 'Win', 'W', 'text-ui-success'],
     ['loss', 'Loss', 'L', 'text-ui-danger'],

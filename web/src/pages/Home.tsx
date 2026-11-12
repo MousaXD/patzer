@@ -291,10 +291,10 @@ function LearnTile() {
   const next = cur ? suggestedLesson(cur, progress) : null;
   const started = next ? (progress.get(next.lesson.id)?.step ?? 0) > 0 : false;
   return (
-    <Link to={next ? `/learn?lesson=${next.lesson.id}` : '/learn'} className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="board" Icon={GraduationCap} />
+    <Link to={next ? `/learn?lesson=${next.lesson.id}` : '/learn'} className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="board" Icon={GraduationCap} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('learn.nav')}</Kicker>
           <span className="flex items-center gap-0.5 font-mono text-[11px] tabular-nums text-ui-mutedText">
             {t('learn.levelShort', { n: levelOf(stars).level })} · <Star className="h-3 w-3 fill-gold-500 text-gold-600" />{stars}
@@ -303,7 +303,7 @@ function LearnTile() {
         <Title>{next ? tl(`${next.lesson.id}.title`) : cur ? t('learn.allDone') : t('learn.nav')}</Title>
         <Sub>{next ? (started ? t('home.learnResume') : t('home.learnNext')) : t('home.learnDesc')}</Sub>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -319,8 +319,8 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
 }) {
   const { t } = useTranslation();
   return (
-    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-3 p-4">
-      <Pill tone="muted" Icon={Icon} />
+    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="muted" Icon={Icon} compact />
       <div className="min-w-0 flex-1">
         <Kicker>{label}</Kicker>
         <Title>{loading
@@ -329,7 +329,7 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
         {!loading && (
           <button type="button" onClick={retry}
             aria-label={`${t('common.retry', { defaultValue: 'Retry' })} ${label}`}
-            className="mt-2 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:bg-ui-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
+            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:bg-ui-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400 sm:min-h-11 sm:min-w-11">
             {t('common.retry', { defaultValue: 'Retry' })}
           </button>
         )}
@@ -377,21 +377,21 @@ function DailyPuzzleTile() {
     : done ? (done.solved ? t('home.dailySolved') : t('home.dailyDone'))
     : t('home.dailyOpen');
   return (
-    <Link to="/train?tab=puzzles&daily=1" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone={done ? 'board' : 'gold'} Icon={Target} />
+    <Link to="/train?tab=puzzles&daily=1" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone={done ? 'board' : 'gold'} Icon={Target} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.todayPuzzle')}</Kicker>
           {data?.puzzle && <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">{data.puzzle.rating}</span>}
         </div>
         <Title>{title}</Title>
         <Sub>
           {data && data.streak > 0 ? (
-            <span className="inline-flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-gold-600" />{t('home.dailyStreak', { count: data.streak })}</span>
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-[4px]"><Flame className="h-[14px] w-[14px] shrink-0 text-gold-600 sm:h-3.5 sm:w-3.5" />{t('home.dailyStreak', { count: data.streak })}</span>
           ) : t('home.dailyStart')}
         </Sub>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -412,24 +412,24 @@ function PlanTile({ goals, loading, error, retry }: {
 
   if (active.length === 0) {
     return (
-      <Link to="/plan" className="card-hover flex h-full items-start gap-3 p-4">
-        <Pill tone="board" Icon={ListChecks} />
+      <Link to="/plan" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+        <Pill tone="board" Icon={ListChecks} compact />
         <div className="min-w-0 flex-1">
           <Kicker>{t('home.planLabel', { defaultValue: "This week's plan" })}</Kicker>
           <Title>{t('home.planEmpty', { defaultValue: 'Build your first improvement plan' })}</Title>
           <Sub>{t('home.planEmptyDesc', { defaultValue: 'Pick a few weekly goals — puzzles, openings, accuracy.' })}</Sub>
         </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+        <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
       </Link>
     );
   }
 
   const pct = imminent ? Math.min(100, Math.round((imminent.progress / Math.max(1, imminent.target)) * 100)) : 0;
   return (
-    <Link to="/plan" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="board" Icon={ListChecks} />
+    <Link to="/plan" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="board" Icon={ListChecks} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.planLabel', { defaultValue: "This week's plan" })}</Kicker>
             <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {active.length} {t('home.planActive', { defaultValue: 'active' })}
@@ -454,7 +454,7 @@ function PlanTile({ goals, loading, error, retry }: {
           </>
         )}
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -474,10 +474,10 @@ function AchievementsTile({ achievements, loading, error, retry }: {
     .slice(0, 3);
 
   return (
-    <Link to="/insights#achievements" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="gold" Icon={Award} />
+    <Link to="/insights#achievements" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="gold" Icon={Award} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.achievementsLabel', { defaultValue: 'Achievements' })}</Kicker>
           <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {unlocked.length}/{list.length || '—'}
@@ -486,16 +486,16 @@ function AchievementsTile({ achievements, loading, error, retry }: {
         {recent.length > 0 ? (
           <>
             <Title>{t(`achievements.${recent[0]!.id}.title`, { defaultValue: recent[0]!.title })}</Title>
-            <div className="mt-2 flex items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-[6px] sm:gap-1.5">
               {recent.map((a) => {
                 const Icon = resolveIcon(a.icon);
                 return (
                   <span
                     key={a.id}
                     title={t(`achievements.${a.id}.title`, { defaultValue: a.title })}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gold-500/15 text-gold-600 ring-1 ring-gold-500/30"
+                    className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-full bg-gold-500/15 text-gold-600 ring-1 ring-gold-500/30 sm:h-7 sm:w-7"
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-[14px] w-[14px] sm:h-3.5 sm:w-3.5" />
                   </span>
                 );
               })}
@@ -511,7 +511,7 @@ function AchievementsTile({ achievements, loading, error, retry }: {
           </>
         )}
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -705,13 +705,13 @@ function Kicker({ children }: { children: React.ReactNode }) {
 
 function Title({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-0.5 line-clamp-2 text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">{children}</div>
+    <div data-home-continue-title className="mt-0.5 min-w-0 break-words text-sm font-semibold text-chesscom-900 dark:text-chesscom-100 sm:line-clamp-2">{children}</div>
   );
 }
 
 function Sub({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 line-clamp-2 text-xs text-ui-mutedText">{children}</div>
+    <div data-home-continue-description className="mt-1 min-w-0 break-words text-xs text-ui-mutedText sm:line-clamp-2">{children}</div>
   );
 }
 
@@ -729,8 +729,8 @@ function Pill({ Icon, tone, compact = false }: {
     ? 'bg-[#ffa459]/15 text-[#ffa459]'
     : toneCls[tone];
   return (
-    <div className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-[44px] w-[44px]' : 'h-10 w-10'} ${cls}`}>
-      <Icon className={compact ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
+    <div className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-[44px] w-[44px] sm:h-10 sm:w-10' : 'h-10 w-10'} ${cls}`}>
+      <Icon className={compact ? 'h-[18px] w-[18px] sm:h-4 sm:w-4' : 'h-4 w-4'} />
     </div>
   );
 }

@@ -1748,3 +1748,36 @@
 ### Next audit
 
 - Inspect the **Home Continue improving cards** (learning progress, weekly plan and achievements) at 320/390px and 200% root text. Their font-relative 40px icon pills, title/description clamps and arrow may be crowding actual content even when document overflow is zero. Check first-use and returning-player states in actual Chromium before deciding on any visual change.
+
+## 2026-11-13: Restore readable next-action titles in the Home continuation cards at 200% text scale
+
+### Chromium reproduction
+
+- Continued from clean pushed `386a3bd`, auditing the four **Continue improving** destinations (Learning, Daily Puzzle, Weekly Plan and Achievements) on first-use and returning-player Home with synthetic API responses.
+- The initial 72-case Chromium matrix covered both themes, English/German/Russian, 320/390px and root font sizes 16/24/32px. **24/72 cases failed** visual visibility checks. At 320px and 200% text the four links allocated only **46px** to their text column, because their icon pill expanded from 40px to 80px, the arrow from 16px to 32px, and all link padding/gaps doubled as well.
+- With two-line clamps in the remaining column, the English Daily Puzzle title displayed **3/19** nonspace characters, and the German weekly plan title **6/33**. Some card header metadata was also pushed beyond the link; the enclosing card and document still did not horizontally scroll. The screenshots made the cards' next actions practically unreadable.
+
+### Scoped correction
+
+1. In Home-owned tiles, bound narrow-screen card padding and gaps to **12px / 8px** physical sizes. Use the existing `Pill`'s compact option only on the four continuation cards and the Home loading/retry placeholder; below 640px it renders **44px** with an 18px icon, returning to existing tablet/desktop icon dimensions at `sm`.
+2. Keep the trailing chevron **16 physical pixels** on phones and retain the original styling at wider breakpoints. The link remains its full accessible touch target and keeps the same destination.
+3. Allow the small level/rating/goal/achievement metadata to wrap without taking all the title's horizontal space. Make the Home continuation `Title` and `Sub` wrap completely on narrow phones; preserve the existing two-line clamp from `sm` upward. Keep text sizes unchanged. Compact achievement icon sizes/spacing and allow the daily puzzle streak to wrap without clipping.
+4. Extend `Home.stats.test.tsx` with a test covering all four actual routes and mobile sizing/title wrapping semantics.
+5. Add `web/src/components/navigation/capture-scaled-continuation.mjs`, a local-only **120-case Chromium regression** spanning both first-use and returning-player states, all five languages, both themes, 320/390px, and 100%/150%/200% text. Assert link routes and touch sizes, compact icon/arrow geometry, full title/description glyph visibility, no overflowing descendants, and visible keyboard focus on the Learning destination.
+
+### Verification
+
+- Initial matrix: **24/72 scenarios** with visibly clipped content; minimum continuation text width **46px**.
+- Post-fix regression: **120/120 passed**; minimum text column **170px**, full title visibility across all configurations, and zero measured card/document overflow. The tallest 320px/200% continuation tile is **477.94px**: vertically longer at large text, but fully readable without shrinking text.
+- Inspected `artifacts/agent-02/continue-verified-empty-light-320-font32.png` and `continue-verified-progress-dark-320-font32.png`: meaningful full titles, readable descriptions, intact progress and achievement data, consistent light/dark styling and visible keyboard focus.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **21/21 passed**.
+- `node web/src/components/navigation/capture-scaled-onboarding.mjs`: **36/36 passed**, confirming the shared compact Pill change did not regress first-use actions.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **474/474 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No production data, deployment, main branch, feature-owned pages or other agents' worktrees modified.
+
+### Next audit
+
+- Check **Home stats/summary tiles and persistent mobile navigation** at 320/390px with 150%–200% font scaling, both themes and all five languages. Measure *visible* numbers, labels and action space inside each component; page-level overflow checks alone have repeatedly missed content clipped by local containers. Do not edit without Chromium evidence.
