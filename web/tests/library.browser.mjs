@@ -109,6 +109,7 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false, pendingStarResult = null,
+    hideFailedBookmarkAfterRefresh = false,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
@@ -124,6 +125,7 @@ async function newPage(theme, width, height,
   let invalidProviderSummary = providerImportInvalidSummary;
   let continuationFailureActive=failContinuationUntilRetry;
   let addedBookmark = false;
+  let failedBookmarkRefresh = false;
   let releaseStarSave;
   const starSaveGate = new Promise(resolve=>{releaseStarSave=resolve;});
   let releaseContinuation;
@@ -197,7 +199,9 @@ async function newPage(theme, width, height,
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
       } else json = pendingStarResult
-        ? list(parsed.searchParams,games.map(g=>g.id===1 ? {...g,bookmarked:Number(addedBookmark)} : g))
+        ? list(parsed.searchParams,games
+          .filter(g=>!(hideFailedBookmarkAfterRefresh && failedBookmarkRefresh && g.id===1))
+          .map(g=>g.id===1 ? {...g,bookmarked:Number(addedBookmark)} : g))
         : noStarredGames
         ? list(parsed.searchParams, games.map(g=>({...g, bookmarked:0})))
         : starredOnlyScenario
@@ -208,7 +212,10 @@ async function newPage(theme, width, height,
       json = {bookmarked:Number(longPlayerBookmarked)};
     } else if (pendingStarResult && path === '/api/games/1/bookmark' && request.method() === 'PATCH') {
       await starSaveGate;
-      if (pendingStarResult === 'failure') { status=503; json={error:'synthetic_bookmark_failure'}; }
+      if (pendingStarResult === 'failure') {
+        failedBookmarkRefresh = true;
+        status=503; json={error:'synthetic_bookmark_failure'};
+      }
       else { addedBookmark=true; json={bookmarked:1}; }
     } else if (starredOnlyScenario && /^\/api\/games\/\d+\/bookmark$/.test(path) && request.method() === 'PATCH') {
       const id = Number(path.split('/')[3]);
@@ -1201,7 +1208,7 @@ try {
       await pending;
       await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
       await page.getByText('40 of 310 games').waitFor();
-      assert.equal(await page.locator('a[href="/review/1"]').count(),0,
+      assert.equal(await page.locator('.card-hover > a[href="/review/1"]').count(),0,
         'Old Chess.com game leaked into the new Lichess-only collection');
       releaseContinuation();
       await sleep(550);
@@ -1291,25 +1298,47 @@ try {
       await completion;
       if (pendingStarResult === 'success') {
         await page.getByText('40 of 57 games').waitFor();
-        await page.locator('a[href="/review/1"]').waitFor();
+        await page.locator('.card-hover > a[href="/review/1"]').waitFor();
         assert.equal(await page.getByRole('alert').count(),0);
       } else {
         await page.getByRole('alert').getByText('Bookmark could not be saved. Try again.').waitFor({timeout:5000});
         await page.getByText('40 of 56 games').waitFor();
-        assert.equal(await page.locator('a[href="/review/1"]').count(),0);
+        assert.equal(await page.locator('.card-hover > a[href="/review/1"]').count(),0);
         assert.equal(await page.getByRole('alert').count(),1,
           'Bookmark failure should have exactly one visible announcement');
-        await page.getByRole('button',{name:'Show all games'}).click();
-        await page.getByText('40 of 620 games').waitFor();
-        const retry=page.locator('a[href="/review/1"]').locator('..')
-          .getByRole('button',{name:'Bookmark game'});
-        assert.equal(await retry.isEnabled(),true,
-          'The failed bookmark must be available to retry from All games');
+        const recovery=page.getByRole('link',{name:'Open game to retry'});
+        assert.equal(await recovery.getAttribute('href'),'/review/1');
+        await recovery.focus();
+        await page.keyboard.press('Enter');
+        await page.waitForURL('**/review/1');
       }
       assert.deepEqual(pageErrors,[], 'Switching to Starred-only during a pending bookmark threw a JS exception');
       console.log(`PASS pending bookmark ${pendingStarResult} stays consistent after switching to Starred-only`);
     } finally {transition.releaseStarSave(); await transition.context.close();}
   }
+
+  const disappeared=await newPage('light',390,844,{
+    pendingStarResult:'failure',hideFailedBookmarkAfterRefresh:true,
+  });
+  try {
+    const {page,pageErrors,releaseStarSave}=disappeared;
+    const pending=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/games/1/bookmark' &&
+      req.method()==='PATCH');
+    await page.locator('a[href="/review/1"]').locator('..')
+      .getByRole('button',{name:'Bookmark game'}).click();
+    await pending;
+    const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/games/1/bookmark');
+    releaseStarSave();
+    await response;
+    await page.getByText('40 of 619 games').waitFor();
+    assert.equal(await page.locator('.card-hover > a[href="/review/1"]').count(),0);
+    const open=page.getByRole('link',{name:'Open game to retry'});
+    await open.waitFor();
+    assert.equal(await page.getByRole('alert').count(),1);
+    assert.equal(await open.getAttribute('href'),'/review/1');
+    assert.deepEqual(pageErrors,[],'Bookmark recovery after server result reordering threw a JS error');
+    console.log('PASS hidden failed bookmark offers direct recovery even after server result reordering');
+  } finally {disappeared.releaseStarSave();await disappeared.context.close();}
 
   const germanBookmarkError=await newPage('dark',390,844,{locale:'de',starredOnlyScenario:true});
   try {

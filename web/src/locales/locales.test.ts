@@ -140,6 +140,10 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
       }
     });
+    it('offers a localized direct recovery link when a failed bookmarked game is hidden', () => {
+      expect(locale.review.bookmarkFailureOpenGame?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.bookmarkFailureOpenGame).not.toBe(en.review.bookmarkFailureOpenGame);
+    });
     it('explains bounded recent-game imports in the selected language', () => {
       for (const key of ['libraryRecentImportTitle','libraryRecentImportHelp','libraryRecentImportLimit'] as const) {
         expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);

@@ -398,6 +398,7 @@
     "notAnalyzed": "Noch nicht analysiert",
     "analysisReady": "Analyse verfügbar",
     "bookmarkFailed": "Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.",
+    "bookmarkFailureOpenGame": "Partie öffnen und erneut versuchen",
     "libraryRecentImportTitle": "Letzte Partien importieren",
     "pgnNoFileSelected": "Keine Datei ausgewählt",
     "libraryRecentImportHelp": "Wähle die Anzahl der Partien. Bereits gespeicherte Partien werden nicht überschrieben.",

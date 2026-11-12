@@ -393,6 +393,7 @@
     "notAnalyzed": "Aún sin analizar",
     "analysisReady": "Análisis disponible",
     "bookmarkFailed": "No se pudo guardar el marcador. Inténtalo de nuevo.",
+    "bookmarkFailureOpenGame": "Abrir partida para reintentar",
     "libraryRecentImportTitle": "Importar partidas recientes",
     "pgnNoFileSelected": "Ningún archivo seleccionado",
     "libraryRecentImportHelp": "Elige cuántas partidas importar; las ya guardadas no se sobrescriben.",

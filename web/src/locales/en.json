@@ -398,6 +398,7 @@
     "notAnalyzed": "Not reviewed yet",
     "analysisReady": "Analysis available",
     "bookmarkFailed": "Bookmark could not be saved. Try again.",
+    "bookmarkFailureOpenGame": "Open game to retry",
     "libraryRecentImportTitle": "Import recent games",
     "pgnNoFileSelected": "No file selected",
     "libraryRecentImportHelp": "Choose a batch size; existing games are not overwritten.",

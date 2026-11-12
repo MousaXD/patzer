@@ -398,6 +398,7 @@
     "notAnalyzed": "Партия ещё не разобрана",
     "analysisReady": "Анализ доступен",
     "bookmarkFailed": "Не удалось сохранить закладку. Попробуйте ещё раз.",
+    "bookmarkFailureOpenGame": "Открыть партию и повторить",
     "libraryRecentImportTitle": "Импорт последних партий",
     "pgnNoFileSelected": "Файл не выбран",
     "libraryRecentImportHelp": "Выберите количество партий; уже сохранённые партии не перезаписываются.",

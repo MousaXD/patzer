@@ -389,6 +389,7 @@
     "notAnalyzed": "Все още не е анализирана",
     "analysisReady": "Наличен анализ",
     "bookmarkFailed": "Неуспешно запазване на отметката. Опитайте отново.",
+    "bookmarkFailureOpenGame": "Отвори партията и опитай отново",
     "libraryRecentImportTitle": "Импортиране на скорошни партии",
     "pgnNoFileSelected": "Няма избран файл",
     "libraryRecentImportHelp": "Избери брой партии; вече запазените партии няма да бъдат презаписани.",

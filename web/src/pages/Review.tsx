@@ -875,12 +875,9 @@ export default function Review() {
       {bookmarkFailureId != null && !games.some(game => game.id === bookmarkFailureId) && (
         <div role="alert" className="card flex flex-wrap items-center justify-between gap-2 border-bad/30 p-3">
           <p className="text-sm text-bad">{t('review.bookmarkFailed', {defaultValue:'Bookmark could not be saved. Try again.'})}</p>
-          <button type="button" className="btn-secondary min-h-11 text-xs" onClick={() => {
-            if (bookmarkedOnly) toggleBookmarkedOnly(); else clearLibraryFilters();
-          }}>
-            {bookmarkedOnly ? t('review.showAll', {defaultValue:'Show all games'})
-              : t('review.clearLibraryFilters', {defaultValue:'Clear filters'})}
-          </button>
+          <Link to={`/review/${bookmarkFailureId}`} className="btn-secondary min-h-11 shrink-0 text-xs">
+            {t('review.bookmarkFailureOpenGame', {defaultValue:'Open game to retry'})}
+          </Link>
         </div>
       )}
 

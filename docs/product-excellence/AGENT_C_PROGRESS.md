@@ -1026,3 +1026,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Check **a bookmark failure in a source or search filter whose game disappears after the subsequent server refresh**, including whether the recovery warning offers a meaningful route back to the failed game and never leaks across account switches. Reproduce in Chromium with a changing server result and keyboard activation; avoid introducing a second alert when the game card is already visible.
+
+## 2026-11-13 — Make hidden bookmark failures directly recoverable regardless of pagination
+
+- Recovered clean pushed `06e3d45`, checked the Game Review's own bookmark and retry controls, and audited the Library fallback action. The previous **Show all games / Clear filters** choice was helpful for a freshly filtered-out game, but not reliable if a concurrent server refresh moved the game beyond the first page; when already in All games, **Clear filters** could do nothing at all.
+- Replaced only the fallback action with a direct, keyboard-focusable `Link` to the exact affected game's `/review/{id}` route, where the existing Game Review bookmark control can retry. Added localized **Open game to retry** copy for English, German, Spanish, Russian and Bulgarian; first wrote five failing locale tests to prove the gap. Kept the same single visible alert and the existing per-card inline warning when the card remains present.
+- Added isolated Chromium coverage for two failures: (1) a pending new bookmark fails after switching to Starred-only, with keyboard Enter following the direct recovery link, and (2) the initial game disappears from the server's All-games first page after a rejected bookmark and query refresh. The second scenario verifies the warning still points to `/review/1` despite the missing card. Corrected a test-only selector to distinguish the new recovery link from a primary game-card link. Both scenarios and the prior late-success path passed.
+
+### Verification
+
+- Focused Library + locale tests: **163/163 passed**. Full repository suite: **109 passed files, 2 skipped; 1,135 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full isolated Chromium 1440px desktop, 390/320px light/dark, bookmark late success/failure/reordered results, keyboard recovery link, German, imports, PGN, pagination and search: passed with no browser errors or horizontal overflow.
+- Only Agent C Library UI, five locale files, locale/browser tests and durable progress changed; no other-agent code, merge, deployment or production data touched.
+
+### Next independent audit
+
+- Audit **multiple bookmark saves completing out of order**. The Library fallback currently holds one failed game id; when two bookmark requests are started from separate cards, a late error from an older attempt could replace a newer failure warning or continue after a later success. Use delayed synthetic Chromium PATCH responses and assert that all visible bookmark states, error announcements, and recovery links refer to the correct affected game. Avoid changing global mutation behavior or unrelated Game Review code.
