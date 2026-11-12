@@ -81,7 +81,8 @@ function computeProgress(userId: number, row: GoalRow): number {
       const r = db.prepare(`
         SELECT COUNT(*) AS c FROM games
         WHERE user_id = ? AND eco = ? AND user_color = ?
-          AND created_at >= ? AND created_at < ?
+          AND result IN ('win', 'loss', 'draw') AND end_time IS NOT NULL
+          AND datetime(end_time) >= datetime(?) AND datetime(end_time) < datetime(?)
       `).get(userId, eco, color, row.created_at, row.completes_at) as { c: number };
       return r.c;
     }

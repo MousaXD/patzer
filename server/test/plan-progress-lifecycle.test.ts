@@ -32,12 +32,13 @@ beforeAll(async () => {
     (1,'practice-player','x','user'), (2,'completed-player','x','user'),
     (3,'expired-player','x','user'), (4,'other-player','x','user'),
     (5,'late-activity','x','user'), (6,'late-completion','x','user'),
-    (7,'streak-player','x','user'), (8,'unobserved-streak','x','user')`).run();
+    (7,'streak-player','x','user'), (8,'unobserved-streak','x','user'),
+    (9,'opening-player','x','user')`).run();
   db.prepare(`INSERT INTO profiles (user_id,display_name) VALUES
     (1,'Practice Player'), (2,'Completed Player'),
     (3,'Expired Player'), (4,'Other Player'),
     (5,'Late Activity'), (6,'Late Completion'), (7,'Streak Player'),
-    (8,'Unobserved Streak')`).run();
+    (8,'Unobserved Streak'), (9,'Opening Player')`).run();
 });
 
 afterAll(() => {
@@ -154,5 +155,23 @@ describe('weekly Plan uses real play and training progress', () => {
     insert.run(802,'win','-2 hours');
     insert.run(803,'loss','-1 hour');
     expect((await goals(8)).goals).toMatchObject([{ kind: 'win_streak',status: 'completed',progress: 2 }]);
+  });
+
+  it('does not reward importing old games as fresh opening practice', async () => {
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,metadata,status,created_at,completes_at)
+      VALUES (9,'opening_play','Play the Italian Game','Practice the opening',2,
+        '{"eco":"C50","color":"white"}','active',datetime('now','-1 day'),datetime('now','+6 days'))`).run();
+    // Both rows are imported *during* this goal. Only the game actually
+    // played in the goal's window should count toward "Play N games".
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color,eco,end_time)
+      VALUES (901,9,'chesscom','','Opening Player','Bot','win','white','C50',datetime('now','-50 days'))`).run();
+    expect((await goals(9)).goals).toMatchObject([{ kind: 'opening_play',progress: 0,status: 'active' }]);
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color,eco,end_time)
+      VALUES (902,9,'played','','Opening Player','Bot','win','white','C50',datetime('now','-30 minutes'))`).run();
+    expect((await goals(9)).goals).toMatchObject([{ kind: 'opening_play',progress: 1,status: 'active' }]);
+    db.prepare(`INSERT INTO games(id,user_id,source,pgn,white,black,result,user_color,eco,end_time)
+      VALUES (903,9,'lichess','','Opening Player','Bot','win','white','C50',datetime('now','+9 days'))`).run();
+    expect((await goals(9)).goals).toMatchObject([{ kind: 'opening_play',progress: 1,status: 'active' }]);
   });
 });
