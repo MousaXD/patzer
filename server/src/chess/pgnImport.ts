@@ -112,7 +112,15 @@ function parsedGame(pgn: string, index: number): ParsedGame {
       /^\[(?:SetUp|FEN)[ \t]+"/im.test(pgn) || headers.SetUp === '1' || headers.FEN) {
     throw new PgnImportError('unsupported_pgn_position', index);
   }
-  const name = (v: string | undefined) => v && v !== '?' && v.length <= 120 ? v : null;
+  const name = (v: string | undefined) => {
+    const value = v?.trim();
+    if (!value || value === '?') return null;
+    // Do not discard a real, potentially international player name because
+    // its header is long. Bound the materialized list metadata without
+    // splitting a Unicode character, and leave the full original PGN intact.
+    const chars = Array.from(value);
+    return chars.length <= 120 ? value : `${chars.slice(0,119).join('')}…`;
+  };
   const opening = importOpeningMetadata(pgn);
   return {
     pgn,

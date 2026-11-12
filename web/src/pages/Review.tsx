@@ -834,9 +834,9 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
         <ResultIcon r={g.result} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className={cn('truncate font-semibold', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.white}</span>
+            <span className={cn('truncate font-semibold', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.white?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
             <span className="text-chesscom-400">{t('players.vs')}</span>
-            <span className={cn('truncate font-semibold', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.black}</span>
+            <span className={cn('truncate font-semibold', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.black?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
             <span className="text-xs text-chesscom-400">· {fmtTimeControl(g.time_control, t)}</span>
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>

@@ -92,6 +92,18 @@ describe('explicit local PGN archive import', () => {
       .toEqual({total:3,imported:0,duplicates:3});
   });
 
+  it('keeps recognizable bounded player metadata for long Unicode names and preserves the original PGN', () => {
+    const db=fixture();
+    const longName='José-'+'棋'.repeat(145)+'-LastPart';
+    const pg=`[Event "Lengthy names"]\n[White "${longName}"]\n[Black "Bob"]\n\n1. e4 e5 *`;
+    expect(importPgnArchive(db,1,pg)).toEqual({total:1,imported:1,duplicates:0});
+    const stored=db.prepare('SELECT white,black,pgn FROM games WHERE user_id=1').get() as {white:string|null;black:string|null;pgn:string};
+    expect(stored.white).toBe(Array.from(longName).slice(0,119).join('')+'…');
+    expect(stored.black).toBe('Bob');
+    expect(stored.pgn).toBe(pg);
+    expect(importPgnArchive(db,1,pg)).toEqual({total:1,imported:0,duplicates:1});
+  });
+
   it('ignores tag-like lines inside comments, but recognizes the next real reordered header block', () => {
     const annotated='[Event "Annotated"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 {These are just notes:\n[Site "Not a new game"]\n[Event "Also not a game"]\nStill one game.} e5 1-0';
     const siteFirst = '[Site "Real new game"]\n[Event "Round Two"]\n[White "Chris"]\n[Black "Daria"]\n\n1. d4 d5 0-1';

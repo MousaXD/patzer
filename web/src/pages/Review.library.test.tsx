@@ -98,6 +98,18 @@ describe('Review library with large histories', () => {
     expect(preview?.className).toContain('sm:hidden');
   });
 
+  it('shows explicit unknown players when an imported PGN has no player headers', async () => {
+    mocks.get.mockImplementation(async (url:string) => url==='/api/games/openings'
+      ? {total:1,classified:0,unclassified:1,openings:[]}
+      : {games:[{...makeGame(1),source:'imported',white:null,black:null,user_color:null,
+        result:null,end_time:null}],total:1,offset:0,has_more:false});
+    mount();
+    const card=await screen.findByRole('link',{name:/Unknown player.*Unknown player/});
+    expect(card.textContent?.match(/Unknown player/g)).toHaveLength(2);
+    expect(card.getAttribute('href')).toBe('/review/1');
+    expect(card.textContent).toContain('Date unavailable');
+  });
+
   it('keeps the bookmark state consistent in Starred only while a removal is pending or fails', async () => {
     let saved = true;
     let rejectSave!: (error: Error) => void;

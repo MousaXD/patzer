@@ -99,7 +99,8 @@ async function awaitUp() {
 
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
-    changingHistory = false, starredOnlyScenario = false} = {}) {
+    changingHistory = false, starredOnlyScenario = false,
+    unknownImportedNames = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
@@ -124,7 +125,9 @@ async function newPage(theme, width, height,
         openingFailuresRemaining--;
         status = 503;
         json = {error:'temporary_fixture_failure'};
-      } else json = emptyLibrary
+      } else json = unknownImportedNames
+        ? {total:1,classified:1,unclassified:0,openings:[{name:"King's Pawn Game",games:1}]}
+        : emptyLibrary
         ? {total:hasPgnImports ? 2 : 0,classified:hasPgnImports ? 2 : 0,
           unclassified:0,openings:hasPgnImports ? [{name:"King's Pawn Game",games:1},{name:"Queen's Pawn Game",games:1}] : []}
         : {
@@ -145,7 +148,13 @@ async function newPage(theme, width, height,
           {id:9002, source:'imported',white:'Chris',black:'Dana',result:null,time_control:null,
             end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"Queen's Pawn Game",notes:''},
         ], total:2,offset:0,limit:40,has_more:false};
-      } else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
+      } else if (unknownImportedNames) json = {
+        games:[{id:9001, source:'imported', white:null, black:null, result:null,
+          time_control:null,end_time:null,user_color:null,bookmarked:0,analyzed:0,
+          opening_name:"King's Pawn Game",notes:''}],
+        total:1,offset:0,limit:40,has_more:false,
+      };
+      else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
@@ -181,7 +190,9 @@ async function newPage(theme, width, height,
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
-  if (emptyLibrary) {
+  if (unknownImportedNames) {
+    await page.getByText('1 of 1 games').waitFor();
+  } else if (emptyLibrary) {
     await page.getByText('Your game history starts here').waitFor();
     await page.getByText('0 of 0 games').waitFor();
   } else {
@@ -348,6 +359,23 @@ try {
     assert.deepEqual(pageErrors, [], 'PGN import UI had a JavaScript exception');
     console.log('PASS PGN file import, source filter, UTF-8 integrity, count validation, partial failure and recovery');
   } finally { await pgnFixture.context.close(); }
+
+  const unknownNames = await newPage('light', 320, 700, {unknownImportedNames:true});
+  try {
+    const {page,pageErrors}=unknownNames;
+    const card=page.locator('a[href="/review/9001"]');
+    await card.waitFor();
+    assert.equal(await card.getByText('Unknown player',{exact:true}).count(),2,
+      'An imported game with no known players should not show empty player labels');
+    await card.getByText('Date unavailable').waitFor();
+    const cardBounds=await card.boundingBox();
+    assert.ok(cardBounds && cardBounds.x>=0 && cardBounds.x+cardBounds.width<=322,
+      'Unknown-player labels overflow a narrow mobile game card');
+    assert.deepEqual(pageErrors,[], 'Unknown-player card produced a JavaScript error');
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-unknown-players-light-320.png')});
+    console.log('PASS imported PGN without player headers has explicit mobile player labels');
+  } finally { await unknownNames.context.close(); }
 
   // Real first-use path: account has no linked providers and no saved games.
   // The empty-state CTA must open the native file picker and then navigate

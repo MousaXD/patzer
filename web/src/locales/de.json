@@ -270,6 +270,7 @@
     "pgnImportSuccess": "{{imported}} neue Partien aus {{total}} PGNs gespeichert ({{duplicates}} bereits vorhanden). Weder Spieleridentität noch Ergebnis wurden angenommen.",
     "pgnGameIndex": "Partie {{index}}",
     "pgnUnknownDate": "Datum nicht verfügbar",
+    "unknownPlayer": "Unbekannter Spieler",
     "pgnError": {
       "generic": "PGN-Datei konnte nicht importiert werden. Prüfe die Datei und versuche es erneut.",
       "invalid_pgn": "Ungültiges oder unvollständiges PGN. Keine Partie wurde importiert.",

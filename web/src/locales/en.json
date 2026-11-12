@@ -270,6 +270,7 @@
     "pgnImportSuccess": "{{imported}} new games saved from {{total}} PGNs ({{duplicates}} already saved). No player identity or result was assumed.",
     "pgnGameIndex": "Game {{index}}",
     "pgnUnknownDate": "Date unavailable",
+    "unknownPlayer": "Unknown player",
     "pgnError": {
       "generic": "Could not import the PGN file. Check the file and retry.",
       "invalid_pgn": "Invalid or incomplete PGN. No games from this file were imported.",

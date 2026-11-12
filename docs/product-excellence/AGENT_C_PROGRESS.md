@@ -421,3 +421,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next highest-impact inspection
 
 - Audit imported-game **player name metadata** when a valid PGN has long names, non-English characters, or placeholder headers. Confirm Library game cards never silently discard a valid player name or misidentify a player's side; preserve source PGN and authenticated ownership. Reproduce first; prefer conservative display handling over ungrounded inference.
+
+## 2026-11-12 — Preserve recognizable international player names and label unknown players
+
+- Resumed clean pushed `d69d260` and reproduced the next PGN metadata issue. A valid `[White "..."]` longer than 120 characters previously became `NULL` in the saved game record despite remaining present in the original PGN. An imported game with no White/Black headers also rendered two **blank player names** on the Library card, not a useful explanation. Two focused regressions failed before changes.
+- Bound derived player-name metadata to **120 Unicode code points**, preserving the recognizable first 119 plus a visible ellipsis when truncated, rather than dropping a real name. The original PGN remains unchanged and its SHA-256 dedupe identity stays stable. Missing, empty and `?`-placeholder names remain unknown instead of inventing players or ownership.
+- The Library now renders an explicit **Unknown player** label for absent/blank White and Black metadata, with translations in en/es/de/ru/bg. The action remains a normal `/review/:id` link; the card continues to say **Date unavailable** for imported undated games, and never invents the player's color or result.
+- Added a Unicode unit/SQLite test checking the saved truncated name, byte-for-byte original PGN retention and idempotent retry. Added a React Library test verifying both unknown labels and the Review link. Isolated Chromium verified the missing-player card at **320px light mode**, full card in view, no overflow or JS errors. Visually inspected `qa-artifacts/agent-c-library/library-unknown-players-light-320.png`; the fixture uses consistent 1/1 opening coverage and 1/1 game counts.
+
+### Verification
+
+- Focused parser/Library tests: **52/52 passed**. Full repository suite: **109 files passed, 2 skipped; 1,050 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium covered 1440/390/320 widths, light/dark, PGN import, source-specific exploration, pagination, bookmark recovery, and missing-name rendering. No real provider or production data was used.
+- No Game Review internals, schema migration, merge, deployment, production SQLite, or other agents' worktrees changed.
+
+### Next highest-impact audit
+
+- Audit **import-file boundary detection around free-text comments, termination markers and single-game PGNs**: ensure valid annotations do not create phantom games and multi-game concatenation is never reported as a one-game success. Prefer deterministic parser regressions and indexed errors over permissive parsing. Preserve the existing 4 MiB / 1,000-game limits and all-or-nothing transaction semantics.
