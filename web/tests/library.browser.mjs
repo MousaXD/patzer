@@ -462,7 +462,21 @@ try {
       await toggle.waitFor();
       assert.equal(await toggle.getAttribute('aria-expanded'),'false',
         'Advanced filters should be collapsed by default on a narrow phone');
-      assert.equal(await page.getByRole('group',{name:'Filter and sort games'}).isVisible(),false);
+      const panel=page.locator('#library-filters');
+      assert.equal(await panel.isVisible(),false);
+      await page.setViewportSize({width:1024,height:844});
+      assert.equal(await panel.isVisible(),true,
+        'Desktop must always show advanced controls even when the mobile disclosure is closed');
+      assert.equal(await toggle.isVisible(),false,
+        'Desktop should not show a redundant mobile-only Filters button');
+      await page.setViewportSize({width,height:844});
+      assert.equal(await panel.isVisible(),false,
+        'Returning to mobile should preserve the deliberate collapsed state');
+      await toggle.focus();
+      await page.keyboard.press('Tab');
+      assert.ok(await page.locator('.card-hover > a[href="/review/1"]')
+        .evaluate(node=>document.activeElement===node),
+        'Tab from closed Filters should skip hidden selects and reach the first saved game');
       const firstGame=await page.locator('.card-hover > a[href="/review/1"]').boundingBox();
       assert.ok(firstGame && firstGame.y<665,
         `The first saved game should be discoverable in the initial phone viewport: ${JSON.stringify(firstGame)}`);
@@ -475,6 +489,12 @@ try {
       assert.equal(await toggle.getAttribute('aria-expanded'),'false');
       assert.match(await toggle.textContent(),/Filters \(1\)/,
         'The collapsed filter control must disclose active filter count');
+      await page.goBack();
+      await page.waitForURL(href=>!new URL(href).searchParams.has('source'));
+      await page.goForward();
+      await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess');
+      assert.equal(await toggle.getAttribute('aria-expanded'),'true',
+        'Forward navigation to an active filter must reveal the previously hidden controls');
       await page.reload();
       assert.equal(await toggle.getAttribute('aria-expanded'),'true',
         'A direct URL with an active source filter should reveal its existing controls');
