@@ -1128,28 +1128,9 @@
 
 - Focused 63/63 Review-source and locale tests PASS, including checkmate, stalemate, playable and invalid-FEN cases. Typecheck and production build PASS.
 - Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1005 passed / 12 skipped**, 110 passing test files.
-- Full authenticated disposable Chromium responsive/theme/locale/source/variation/keyboard matrix: **PASS (exit 0)** on port 8951, with no saved PGN mutation. The new checkmate fixture uses real Fool's Mate PGN/FEN, test-only scored metadata and an intercepted engine response `{lines:[]}`. Inspected `qa-artifacts/agent-a/empty-lines-terminal-final-20261112/engine-lines-terminal-checkmate-390.png`: English checkmate message is legible in the 390px Engine Lines rail, with no fake move or retry pretending a terminal position has legal continuations.
+- Full authenticated disposable Chromium responsive/theme/locale/source/variation/keyboard matrix: **PASS (exit 0)** on ports 8951 and 8949, with no saved PGN mutation. The new checkmate fixture uses real Fool's Mate PGN/FEN, test-only scored metadata and an intercepted engine response `{lines:[]}`. Inspected `qa-artifacts/agent-a/empty-lines-terminal-final-20261112/engine-lines-terminal-checkmate-390.png` and `qa-artifacts/agent-a/engine-lines-terminal-20261112/engine-lines-empty-nonterminal-390.png`: the checkmate and playable-position empty-result messages are distinct and legible at 390px, with no fabricated legal move or unsupported mate claim.
 - No merge, deployment, production SQLite/service or other-agent worktree changes.
 
 ### Next audited issue
 
 - When a **nonterminal** position's engine request succeeds with `lines:[]`, the new truthful text tells the user no continuations were returned, but the rail still provides no Retry action; only collapsing and reopening triggers a fresh request. Reproduce a playable zero-line HTTP result and test whether a direct, keyboard-accessible retry recovers verified legal suggestions without rerunning the full game or changing its PGN.
-
-## 2026-11-12: explain terminal and unscored empty Engine Lines without guessing
-
-### Reproduced missing context and narrow correction
-
-- Resumed from `ed155fe` with the existing terminal-position investigation in progress; preserved the pre-existing synthetic Fool's Mate browser fixture and the source-matched analysis record instead of restarting it. The actual `LinesPanel` rendered a bare em dash for every successful zero-line response, whether chess.js proved the board was finished or a playable position simply received no candidate PVs. The position route can legitimately return zero candidates for checkmate or stalemate.
-- Added `reviewTerminalPosition(fen)` to Game Review's existing position-only helper, using chess.js to check **only** checkmate and stalemate (not unproven history-dependent draws). The `LinesPanel` now uses the actual displayed FEN to announce a distinct outcome for checkmate, stalemate or a nonterminal empty engine response. All three messages are localized to English, German, Spanish, Russian and Bulgarian; locale parity tests prevent untranslated fallback. Never fabricates an evaluation, PV or mating side. Existing source verification, scoring and engine requests unchanged.
-
-### Actual browser and QA results
-
-- The authenticated disposable browser fixture saves Fool's Mate (`f3 e5 g4 Qh4#`) to SQLite and attaches the same source-revision-attested synthetic analyzed moves so the real Game Review rail is present. A FEN-matched empty position response now displays **“Checkmate. No legal moves remain.”**, with no pointless Retry action, no engine move and unchanged stored PGN. A separate playable starting FEN receiving `{lines:[]}` displays **“The engine returned no continuations for this position.”** instead of mislabeling it as mate. Both test-only sources are legal chess positions.
-- Inspected real 390px screenshots `qa-artifacts/agent-a/engine-lines-terminal-20261112/engine-lines-terminal-checkmate-390.png` and `engine-lines-empty-nonterminal-390.png`; text is legible, explanatory and consistent with the rest of the compact rail.
-- Focused source+locale tests: **63 passed**; `git diff --check`, script syntax, typecheck and production build: PASS.
-- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1005 passed / 12 skipped** (110 passing files). Full authenticated disposable Chromium viewport/theme/localization/source-integrity/variation/keyboard/PGN matrix: **PASS (exit 0)** on port 8949.
-- No merge, deployment, live SQLite mutation, service restart or changes to other agents' branches.
-
-### Next independent improvement candidate
-
-- In a playable position, a successful yet empty engine result gives an accurate explanation but **no Retry action**; the user cannot recover a temporary engine gap without closing/reopening the panel. Audit keyboard-only recovery for this real empty-response path and, if justified, offer a scoped 44px Retry control while preserving the correct terminal states' absence of Retry.
