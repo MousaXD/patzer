@@ -212,6 +212,50 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect((await literal.json() as typeof data).total).toBe(1);
   });
 
+  it('searches Unicode player names case-insensitively without treating percent or underscores as wildcards', async () => {
+    const {createSession,SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const session=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,opening_name,notes)
+      VALUES (?, 'imported', ?, '1. e4 e5 *', ?, 'Opponent', ?, ?)`);
+    const fixtures=[
+      ['JOSÉ',null,''],
+      ['БОРИС',null,''],
+      ['Cafe\u0301',null,''],
+      ['JOSE','ÉCHEC','ПОБЕДА / 100%'],
+      ['Under_score',null,''],
+    ] as const;
+    const ids:number[]=[];
+    try {
+      fixtures.forEach(([white,opening,notes],i)=>ids.push(Number(
+        insert.run(3,`agentc-unicode-search-${i}`,white,opening,notes).lastInsertRowid)));
+      ids.push(Number(insert.run(2,'agentc-unicode-other','ÉCLAIR',null,'').lastInsertRowid));
+      const cases:[string,number[]][]=[
+        ['josé',[ids[0]]],
+        ['борис',[ids[1]]],
+        ['café',[ids[2]]],
+        ['JOSE',[ids[3]]],
+        ['échec',[ids[3]]],
+        ['победа',[ids[3]]],
+        ['100%',[ids[3]]],
+        ['%', [ids[3]]],
+        ['under_score',[ids[4]]],
+        ['_', [ids[4]]],
+        ['éclair',[]],
+      ];
+      for(const [term,expected] of cases) {
+        const response=await gamesRoute.request(`/?q=${encodeURIComponent(term)}&source=imported`,
+          {headers:{Cookie:session}});
+        expect(response.status).toBe(200);
+        const result=await response.json() as {total:number;games:{id:number}[]};
+        expect(result.games.map(g=>g.id),`Incorrect Unicode/literal search for ${term}`).toEqual(expected);
+        expect(result.total).toBe(expected.length);
+      }
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      ids.forEach(id=>remove.run(id));
+    }
+  });
+
   it('rejects negative, non-finite, ambiguous and unbounded query parameters', async () => {
     for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',

@@ -17,6 +17,14 @@ import { clearLiveBotGame, loadLiveBotGame, resumableSummary } from '../chess/li
 const router = new Hono();
 router.use('*', requireAuth);
 
+// SQLite's built-in LOWER() only folds ASCII. A chess username or PGN player
+// may be written as JOSÉ, БОРИС, or in decomposed Unicode. Keep the Library's
+// substring search literal (not LIKE wildcards), while matching canonical
+// Unicode equivalents and upper/lower case on the authenticated user's rows.
+const searchFold = (value: string) => value.normalize('NFC').toLowerCase();
+db.function('patzer_unicode_search_fold', {deterministic:true},
+  (value: unknown) => searchFold(String(value ?? '')));
+
 router.get('/', (c) => {
   const user = c.get('user');
   const query = parseGameListQuery(new URL(c.req.url).searchParams);
@@ -62,13 +70,16 @@ router.get('/', (c) => {
   }
   if (query.q) {
     // Literal substring search: percent and underscore are not wildcards.
+    // The registered deterministic SQLite function does Unicode-aware case
+    // normalization without materializing the user's entire library in JS.
     filters.push(`(
-      instr(LOWER(COALESCE(g.white, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.black, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.opening_name, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.notes, '')), ?) > 0
+      instr(patzer_unicode_search_fold(COALESCE(g.white, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.black, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.opening_name, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.notes, '')), ?) > 0
     )`);
-    params.push(query.q, query.q, query.q, query.q);
+    const needle = searchFold(query.q);
+    params.push(needle, needle, needle, needle);
   }
   const joined = 'FROM games g LEFT JOIN analyses a ON a.game_id = g.id';
   // Freeze the upper auto-increment ID at the first request. Later imports do

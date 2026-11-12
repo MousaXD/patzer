@@ -44,11 +44,20 @@ const games = Array.from({ length: 620 }, (_, i) => {
     from_position: 0,
   };
 });
+const unicodeGames = [
+  {...games[0],id:7001,source:'imported',white:'JOSÉ',black:'Bob',opening_name:'ÉCHEC',
+    user_color:null,result:null,end_time:null},
+  {...games[1],id:7002,source:'imported',white:'БОРИС',black:'Chris',opening_name:'King’s Pawn Game',
+    user_color:null,result:null,end_time:null},
+  {...games[2],id:7003,source:'imported',white:'Cafe\u0301',black:'Dana',opening_name:'Queen’s Gambit',
+    user_color:null,result:null,end_time:null},
+];
+const unicodeFold = (value) => value.normalize('NFC').toLowerCase();
 
 function list(params, availableGames = games) {
   let filtered = availableGames.filter(g =>
     (!params.get('q') || [g.white,g.black,g.opening_name,g.notes].some(v =>
-      v.toLowerCase().includes(params.get('q').toLowerCase()))) &&
+      unicodeFold(v || '').includes(unicodeFold(params.get('q'))))) &&
     (!params.get('source') || g.source === params.get('source')) &&
     (!params.get('result') || g.result === params.get('result')) &&
     (!params.get('time_class') || g.time_class === params.get('time_class')) &&
@@ -100,7 +109,7 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
-    unknownImportedNames = false} = {}) {
+    unknownImportedNames = false, unicodeLibrary = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
@@ -125,7 +134,9 @@ async function newPage(theme, width, height,
         openingFailuresRemaining--;
         status = 503;
         json = {error:'temporary_fixture_failure'};
-      } else json = unknownImportedNames
+      } else json = unicodeLibrary
+        ? {total:3,classified:3,unclassified:0,openings:[{name:'ÉCHEC',games:1},{name:'King’s Pawn Game',games:1},{name:'Queen’s Gambit',games:1}]}
+        : unknownImportedNames
         ? {total:1,classified:1,unclassified:0,openings:[{name:"King's Pawn Game",games:1}]}
         : emptyLibrary
         ? {total:hasPgnImports ? 2 : 0,classified:hasPgnImports ? 2 : 0,
@@ -154,6 +165,7 @@ async function newPage(theme, width, height,
           opening_name:"King's Pawn Game",notes:''}],
         total:1,offset:0,limit:40,has_more:false,
       };
+      else if (unicodeLibrary) json = list(parsed.searchParams,unicodeGames);
       else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
@@ -190,7 +202,9 @@ async function newPage(theme, width, height,
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
-  if (unknownImportedNames) {
+  if (unicodeLibrary) {
+    await page.getByText('3 of 3 games').waitFor();
+  } else if (unknownImportedNames) {
     await page.getByText('1 of 1 games').waitFor();
   } else if (emptyLibrary) {
     await page.getByText('Your game history starts here').waitFor();
@@ -401,6 +415,24 @@ try {
     await page.screenshot({path:join(output,'library-unknown-players-light-320.png')});
     console.log('PASS imported PGN without player headers has explicit mobile player labels');
   } finally { await unknownNames.context.close(); }
+
+  const internationalHistory=await newPage('dark',390,844,{unicodeLibrary:true});
+  try {
+    const {page,pageErrors}=internationalHistory;
+    const search=page.getByRole('searchbox');
+    for(const [term,id] of [['josé',7001],['борис',7002],['café',7003]]) {
+      await search.fill(term);
+      await page.getByText('1 of 1 games').waitFor();
+      await page.locator(`a[href="/review/${id}"]`).waitFor();
+      assert.ok(queries.some(q=>new URLSearchParams(q).get('q')===term),
+        `International search term was not sent unchanged: ${term}`);
+    }
+    const card=page.locator('a[href="/review/7003"]');
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-unicode-search-dark-390.png')});
+    assert.deepEqual(pageErrors,[], 'Unicode search produced a browser exception');
+    console.log('PASS Unicode player searches through saved-game cards and URL query params');
+  } finally {await internationalHistory.context.close();}
 
   // Real first-use path: account has no linked providers and no saved games.
   // The empty-state CTA must open the native file picker and then navigate

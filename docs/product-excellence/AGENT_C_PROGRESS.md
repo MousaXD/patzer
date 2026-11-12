@@ -485,3 +485,21 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next audit
 
 - Search international chess-player names accurately. SQLite's built-in `LOWER()` is ASCII-only: in disposable probes `JOSÉ` did not match `josé`, and `БОРИС` did not match `борис`. The Library uses `instr(LOWER(...),q)` for literal search, so this is a reproducible mismatch between browser expectations and the authenticated backend. Design a bounded, performant Unicode-aware search without introducing SQL wildcards, authentication changes or expensive full-library JS materialization; add regression and run a disposable large-library benchmark before pushing.
+
+## 2026-11-12 — Unicode-aware, literal full-Library search
+
+- Recovered clean pushed `88a6fd9` after the disclosure retry audit. Confirmed a real international player-name search bug with both an isolated SQLite probe and a **failing authenticated Hono regression**: `LOWER('JOSÉ')` returns `josÉ` and `LOWER('БОРИС')` returns `БОРИС` in stock SQLite, so searching `josé` or `борис` failed despite owning the corresponding games. Decomposed and composed Unicode names also failed canonical substring matching.
+- Registered a deterministic, account-scoped query helper `patzer_unicode_search_fold` on the existing SQLite connection, implementing `normalize('NFC').toLowerCase()` for stored White, Black, opening and note metadata. Queries continue to use **parameterized `instr`** rather than LIKE, so `%`, `_` and other special characters remain literal. The helper runs within the existing SQL user-ID-filtered count/page queries; no row materialization, schema changes, background job, or cross-account search was added.
+- Added Hono/SQLite regressions using a disposable authenticated user for uppercase accented `JOSÉ`, Cyrillic `БОРИС`, canonically decomposed `Café`, uppercase Unicode opening `ÉCHEC`, Cyrillic note text, literal percent/underscore matches, accent-sensitive distinctions, and rejection of a match belonging only to another account. Existing 1,200-game history, pagination, filters and ownership tests remain green.
+- Added an isolated Chromium Library fixture with three Unicode named games, queried `josé`, `борис`, and `café` through the real search input. Verified each term was passed unchanged in the URL, the correct saved card opened via its normal Review link, no browser errors, and the 390px dark-mode rendered layout stayed within bounds. Inspected `qa-artifacts/agent-c-library/library-unicode-search-dark-390.png`.
+
+### Verification and measured overhead
+
+- Targeted Hono suite: **47 passed**. Full repository suite: **109 files passed, 2 skipped; 1,055 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`, isolated Chromium across 1440/390/320 light/dark: passed.
+- Disposable **32,500-game SQLite** performance probe (30,000 owned, 2,500 foreign; count plus first 41-row retrieval): common ASCII query median ~37.7 ms with Unicode folding vs ~15.9 ms prior; international `josé` median ~86.7 ms vs ~22.2 ms prior **incorrect zero-match** query; Cyrillic median ~84.8 ms. This is a deliberate but bounded CPU tradeoff for correct Unicode matching; local timings are *not* service-level guarantees. Existing result limits, cursor and filters still bound output and request count.
+- No real accounts, production server, schema change, merge, deploy, other agent branches or Game Review internals touched.
+
+### Next independent audit
+
+- Verify Unicode-aware Library search maintains correct **cursor pagination and sort order** for large matching international sets, with no duplicate or skipped games after a concurrent insert. The new function is deterministic, but exercising the combined search+cursor path would guard against any future query-order changes. Then independently inspect search-empty recovery on 320px.
