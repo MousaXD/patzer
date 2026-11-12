@@ -288,3 +288,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 
 - Examine whether other PGN comment forms or nonstandard header order cause a false import success. Only implement fixes after reproducing on an actual parser behavior. Continue to reject ambiguous archives rather than dropping games.
 - The full historical Chess.com UI sync remains a separate, authorization-sensitive design and is intentionally not enabled by this boundary change.
+
+## 2026-11-12 — Preserve UTF-8 PGN bytes on browser upload
+
+- Recovered clean `6630bc1`. The next audit of unusual PGN exports found a new integrity gap: `File.text()` may silently replace invalid UTF-8 bytes with U+FFFD, corrupting imported player names and comments while the UI reports a successful archive import. An isolated frontend regression reproduced the unhandled condition before changing the importer.
+- Replaced permissive `File.text()` with bounded `File.arrayBuffer()` plus `new TextDecoder('utf-8', {fatal:true})` so undecodable bytes cause an explicit pre-upload error. No replacement characters are injected into source PGNs, and no network request is made for invalid encoding. Retained 4 MiB/extension checks and the authenticated, atomic backend import unchanged.
+- Added user-facing UTF-8 conversion guidance in the existing five UI languages. The file remains selected after the recoverable failure, allowing the user to replace it and retry.
+- Added component assertions for invalid single-byte Latin-1 input and updated the browser regression to select a real malformed UTF-8 file, verify zero API submissions for that attempt, then submit an actual valid UTF-8 file with a non-ASCII player name (`José`) and verify its exact text reaches the mocked API.
+
+### Verification
+
+- Targeted Library component suite: **34/34 passed**. Full repository suite: **109 files passed, 2 skipped; 1,035 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Chromium verified 1440/390/320 px light/dark, strict encoding rejection, successful Unicode import, PGN first-use, import recovery, filters and pagination. No production data, deployed services or cross-agent changes.
+
+### Next audit
+
+- Verify asynchronous file reading cannot submit account A's selected PGN under account B's session if a user switches accounts while the bytes are being read. The upload mutation already guards result UI by account; test and independently verify the pre-request identity boundary.

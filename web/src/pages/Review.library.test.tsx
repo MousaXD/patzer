@@ -27,6 +27,7 @@ vi.mock('react-i18next', () => ({
             'review.pgnError.invalid_pgn': 'Invalid or incomplete PGN. No games from this file were imported.',
             'review.pgnError.pgn_bad_file_type': 'Choose a .pgn or .txt file.',
             'review.pgnError.pgn_too_large': 'The PGN file exceeds the 4 MB limit. Split it into smaller files.',
+            'review.pgnError.pgn_bad_encoding': 'This file is not valid UTF-8. Convert the PGN to UTF-8 and retry; no games were imported.',
           } as Record<string,string>)[key] ?? opts?.defaultValue ?? key,
   }),
 }));
@@ -122,6 +123,7 @@ describe('Review library with large histories', () => {
     const pgn='[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
     const file = new File([pgn],'my-history.pgn',{type:'text/plain'});
     Object.defineProperty(file,'text',{value:async()=>pgn});
+    Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode(pgn).buffer});
     const input = screen.getByLabelText('Choose a PGN file') as HTMLInputElement;
     fireEvent.change(input,{target:{files:[file]}});
     expect(button.hasAttribute('disabled')).toBe(false);
@@ -141,6 +143,7 @@ describe('Review library with large histories', () => {
     const pgn='[Event "One"]\n\n1. e4 e5 *\n\n[Event "Second"]\n\n1. d4 d5 *';
     const file=new File([pgn],'fix-this.pgn',{type:'text/plain'});
     Object.defineProperty(file,'text',{value:async()=>pgn});
+    Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode(pgn).buffer});
     fireEvent.change(screen.getByLabelText('Choose a PGN file'),{target:{files:[file]}});
     const button=screen.getByRole('button',{name:'Import PGN file'});
     fireEvent.click(button);
@@ -166,6 +169,21 @@ describe('Review library with large histories', () => {
     fireEvent.change(input,{target:{files:[huge]}});
     fireEvent.click(upload);
     expect((await screen.findByRole('alert')).textContent).toContain('exceeds the 4 MB limit');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('refuses invalid UTF-8 bytes before uploading a PGN so player names cannot be silently corrupted', async () => {
+    mocks.post.mockResolvedValue({total:1,imported:1,duplicates:0});
+    mount();
+    const prefix = new TextEncoder().encode('[Event "Archive"]\n[White "Jos');
+    const suffix = new TextEncoder().encode('"]\n[Black "Bob"]\n\n1. e4 e5 *');
+    const bytes = new Uint8Array([...prefix,0xe9,...suffix]);
+    const file = new File([bytes], 'latin1-name.pgn', {type:'text/plain'});
+    Object.defineProperty(file,'text',{value:async()=>new TextDecoder().decode(bytes)});
+    Object.defineProperty(file,'arrayBuffer',{value:async()=>bytes.buffer.slice(0)});
+    fireEvent.change(screen.getByLabelText('Choose a PGN file'),{target:{files:[file]}});
+    fireEvent.click(screen.getByRole('button',{name:'Import PGN file'}));
+    expect((await screen.findByRole('alert')).textContent).toContain('not valid UTF-8');
     expect(mocks.post).not.toHaveBeenCalled();
   });
 

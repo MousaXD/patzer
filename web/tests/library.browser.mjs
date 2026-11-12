@@ -266,8 +266,25 @@ try {
     await importButton.click();
     await page.getByRole('alert').getByText(/Game 2: Invalid or incomplete PGN/).waitFor();
     await page.getByText('2 of 2 games').waitFor();
+    const uploadsBeforeEncodingCheck = seenPgnFiles.length;
+    const invalidEncoding = Buffer.concat([
+      Buffer.from('[Event "Legacy"]\n[White "Jos'),
+      Buffer.from([0xe9]), // Latin-1 é without a valid UTF-8 leading sequence
+      Buffer.from('"]\n[Black "Bob"]\n\n1. e4 e5 *'),
+    ]);
+    await input.setInputFiles({name:'latin1.pgn',mimeType:'text/plain',buffer:invalidEncoding});
+    await importButton.click();
+    await page.getByRole('alert').getByText(/not valid UTF-8/).waitFor();
+    assert.equal(seenPgnFiles.length, uploadsBeforeEncodingCheck,
+      'Invalid UTF-8 was sent to the API as a corrupted PGN');
+    const unicodePgn=good.replace('Alice','José');
+    await input.setInputFiles({name:'unicode.pgn',mimeType:'text/plain',buffer:Buffer.from(unicodePgn,'utf8')});
+    await importButton.click();
+    await page.getByText(/1 new games saved from 2 PGNs/).waitFor();
+    assert.equal(seenPgnFiles.at(-1),unicodePgn,
+      'Valid accented player names must retain their original Unicode text');
     assert.deepEqual(pageErrors, [], 'PGN import UI had a JavaScript exception');
-    console.log('PASS PGN file import, source filter, original content, partial failure and recovery');
+    console.log('PASS PGN file import, source filter, UTF-8 integrity, original content, partial failure and recovery');
   } finally { await pgnFixture.context.close(); }
 
   // Real first-use path: account has no linked providers and no saved games.

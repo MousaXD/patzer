@@ -270,6 +270,7 @@
       "pgn_game_too_large": "Una partida supera el tamaño permitido. No se importaron partidas.",
       "pgn_too_many_games": "El archivo contiene más de 1.000 partidas. Divídelo.",
       "pgn_bad_file_type": "Elige un archivo .pgn o .txt.",
+      "pgn_bad_encoding": "Este archivo no usa UTF-8 válido. Convierte el PGN a UTF-8 y vuelve a intentarlo; no se importó ninguna partida.",
       "invalid_input": "No se pudo leer el archivo como PGN. Elige un archivo de texto válido."
     },
     "libraryTopOpenings": "Explora tus aperturas",

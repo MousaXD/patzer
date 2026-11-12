@@ -279,6 +279,7 @@
       "pgn_game_too_large": "A game exceeds the safe PGN length limit. No games were imported.",
       "pgn_too_many_games": "This file contains more than 1,000 games. Split it into smaller files.",
       "pgn_bad_file_type": "Choose a .pgn or .txt file.",
+      "pgn_bad_encoding": "This file is not valid UTF-8. Convert the PGN to UTF-8 and retry; no games were imported.",
       "invalid_input": "The file could not be read as PGN. Please choose a valid text file."
     },
     "libraryTopOpenings": "Explore your openings",

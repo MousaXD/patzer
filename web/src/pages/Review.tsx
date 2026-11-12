@@ -310,7 +310,13 @@ export default function Review() {
     mutationFn: async ({file}: {file: File; accountId: number}) => {
       if (file.size > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
       if (!/\.(pgn|txt)$/i.test(file.name)) throw new Error('pgn_bad_file_type');
-      const pgn = await file.text();
+      // File.text() silently replaces malformed UTF-8 with U+FFFD. That can
+      // change original player names and comments yet report a successful
+      // archive import. Refuse undecodable bytes instead of corrupting PGNs.
+      const bytes = await file.arrayBuffer();
+      let pgn: string;
+      try { pgn = new TextDecoder('utf-8', {fatal:true}).decode(bytes); }
+      catch { throw new Error('pgn_bad_encoding'); }
       if (new TextEncoder().encode(pgn).byteLength > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
       return api.post<{total:number;imported:number;duplicates:number}>('/api/games/import/pgn', {pgn});
     },
