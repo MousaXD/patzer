@@ -1346,3 +1346,21 @@
 ### Next independent Game Review discoverability audit
 
 - Inspect the **Flip board** action next to Star. It reverses the board and has a readable label but may not expose the **current flipped state** to screen readers, unlike Star's `aria-pressed`. Check the button's actual accessibility state and the board orientation in Chromium before adding an accessible toggle state; preserve the current board behavior and keyboard controls.
+
+## 2026-11-13: announce Flip board's actual toggle state
+
+### Verified accessibility gap and minimal fix
+
+- Continued from clean pushed `d9f254c` and independently audited the Game Review toolbar's Flip board control. While it correctly rotated the board, the native button exposed **no** `aria-pressed`, unlike the adjacent Star. The new 320px authenticated Chromium regression **failed before the change** because `Flip` had `aria-pressed=null` rather than the initial `false` toggle state.
+- Passed the existing `flipped` state from GameAnalyzer into GameMetaToolbar and bound it directly to the Flip button's `aria-pressed`. The visible label and original `onFlip` action are untouched. The state is relative to the player's original viewing orientation, so initial `false` is correct regardless of whether White or Black was originally at the bottom.
+- The real Chromium test at both 320px and 390px focuses Flip and presses Enter, verifies `aria-pressed=true` **and** Chessground's `.orientation-*` class genuinely switches to the opposite side. Pressing Space switches both back and clears the pressed state. The button retains focus; the saved PGN is unchanged. The test initially revealed an unrelated *fixture selector assumption*: the older Star test matched `button[aria-pressed]` but now Flip also has that correct attribute. Narrowed the Star locator to its existing `aria-busy` identity, without changing application code.
+
+### Verification and isolation
+
+- `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive/locale/source/PGN/keyboard/engine/variation matrix: **PASS (exit 0)** on isolated port 8979. No deployment, main merge, production service/data, or other agents' worktree changes.
+
+### Next independent Game Review audit
+
+- Verify that a **Black-side saved-game review** starts with the flipped perspective announced as `false` (player-facing default), changes to `true` when Flip rotates to White's perspective, and preserves keyboard focus and source FEN through move navigation. The current test uses the ordinary White-side imported game; the Black-side perspective should receive equivalent browser evidence before changing any orientation/labeling logic.

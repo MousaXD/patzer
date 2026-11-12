@@ -530,6 +530,24 @@ try {
       const bookmark=page.getByRole('button',{name:'Star',exact:true});
       assert.equal(await bookmark.getAttribute('aria-pressed'),'false',
         'The saved-game bookmark must expose its pressed state');
+      const flipButton=page.getByRole('button',{name:'Flip',exact:true});
+      const boardWrap=page.locator('.review-board-square .cg-wrap');
+      const initialOrientation=await boardWrap.evaluate(element=>element.classList.contains('orientation-white')?'white':'black');
+      assert.equal(await flipButton.getAttribute('aria-pressed'),'false',
+        'Flip must announce its initial toggle state to keyboard and screen-reader users');
+      await flipButton.focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await flipButton.getAttribute('aria-pressed'),'true',
+        'Flip must announce that the board orientation was toggled');
+      await page.waitForFunction(orientation=>document.querySelector('.review-board-square .cg-wrap')
+        ?.classList.contains(`orientation-${orientation}`),initialOrientation==='white'?'black':'white',{timeout:3000});
+      await page.keyboard.press('Space');
+      assert.equal(await flipButton.getAttribute('aria-pressed'),'false',
+        'Using Space to restore the original perspective must clear pressed state');
+      await page.waitForFunction(orientation=>document.querySelector('.review-board-square .cg-wrap')
+        ?.classList.contains(`orientation-${orientation}`),initialOrientation,{timeout:3000});
+      assert.ok(await flipButton.evaluate(element=>document.activeElement===element),
+        'Flipping the board with a keyboard must not drop focus');
       const notesButton=page.getByRole('button',{name:'Notes',exact:true});
       assert.equal(await notesButton.getAttribute('aria-expanded'),'false');
       await notesButton.click();
@@ -719,12 +737,12 @@ try {
     // The optimistic toggle changes the visible label from Star to Starred
     // before the PATCH settles. Anchor focus checks to this stable control,
     // not an accessible-name locator that legitimately changes mid-request.
-    const starButton=page.locator('[data-review-meta-toolbar] button[aria-pressed]');
+    const starButton=page.locator('[data-review-meta-toolbar] button[aria-pressed][aria-busy]');
     await starButton.focus();
     const startedBookmark=page.waitForRequest(req=>req.url().endsWith(`/api/games/${id}/bookmark`));
     await page.keyboard.press('Enter');
     await startedBookmark;
-    await page.waitForFunction(()=>document.querySelector('[data-review-meta-toolbar] button[aria-pressed]')?.getAttribute('aria-disabled')==='true',
+    await page.waitForFunction(()=>document.querySelector('[data-review-meta-toolbar] button[aria-pressed][aria-busy]')?.getAttribute('aria-disabled')==='true',
       undefined,{timeout:3000});
     const pendingBookmarkFocused=await starButton.evaluate(element=>document.activeElement===element);
     await page.keyboard.press('Enter');

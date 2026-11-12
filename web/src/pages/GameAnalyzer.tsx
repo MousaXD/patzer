@@ -1378,6 +1378,7 @@ function GameAnalyzerView() {
                 gameId={gameId}
                 bookmarked={!!data.game.bookmarked}
                 notes={data.game.notes ?? ''}
+                flipped={flipped}
                 onFlip={() => setFlipped((f) => !f)}
                 linkCopied={linkCopied}
                 shareCopyFailed={shareCopyFailed}
@@ -1399,7 +1400,7 @@ function GameAnalyzerView() {
   );
 }
 
-function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
+function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, shareUrl, linkCopied, shareCopyFailed, sharingVariation }: { gameId: number; bookmarked: boolean; notes: string; flipped: boolean; onFlip: () => void; onShare: () => Promise<void>; shareUrl: string; linkCopied: boolean; shareCopyFailed: boolean; sharingVariation: boolean }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [saveError, setSaveError] = useState('');
@@ -1472,7 +1473,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
           <Star className={`h-3.5 w-3.5 ${isStarred ? 'fill-gold-500' : ''}`} />
           {isStarred ? t('review.starred', { defaultValue: 'Starred' }) : t('review.star', { defaultValue: 'Star' })}
         </button>
-        <button type="button" onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
+        <button type="button" aria-pressed={flipped} onClick={onFlip} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={t('shortcuts.flipBoard', { defaultValue: 'Flip board' })}>
           <FlipVertical2 className="h-3.5 w-3.5" /> {t('review.flip', { defaultValue: 'Flip' })}
         </button>
         <button type="button" onClick={() => { void onShare(); }} className="btn-ghost min-h-11 px-2 py-2 text-xs" title={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share', { defaultValue: 'Copy link to position' })}>
