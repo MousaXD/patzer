@@ -125,9 +125,10 @@ describe('incoming challenge modal failure recovery', () => {
     expect(useLobby.getState().incoming).toHaveLength(1); // do not decline it
   });
 
-  it('closes an already-expired invitation instead of trapping the player in futile Accept retries', async () => {
-    mocks.post.mockRejectedValueOnce(Object.assign(new Error('not_pending'), {
-      status: 409, data: { error: 'not_pending' },
+  it.each([{ status: 409, error: 'not_pending' }, { status: 404, error: 'not_found' }])(
+    'closes a no-longer-available $status invitation instead of offering futile Accept retries', async ({ status, error }) => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error(error), {
+      status, data: { error },
     }));
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));

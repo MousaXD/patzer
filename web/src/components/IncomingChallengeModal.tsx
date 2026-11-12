@@ -79,7 +79,8 @@ export default function IncomingChallengeModal() {
     } catch (err) {
       if (actionSession.current.generation !== generation) return;
       const failure = err as { status?: number; data?: { error?: string } };
-      if (failure.status === 409 && failure.data?.error === 'not_pending') {
+      if ((failure.status === 409 && failure.data?.error === 'not_pending')
+        || (failure.status === 404 && failure.data?.error === 'not_found')) {
         // The invitation may have expired while this tab was open, or the
         // opponent changed it elsewhere. It is not a network error to retry.
         forgetChallenge('incoming', id);

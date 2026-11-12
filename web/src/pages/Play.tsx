@@ -1842,7 +1842,7 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
   type ChallengeAction = 'send' | 'accept' | 'decline' | 'cancel';
   const [busy, setBusy] = useState<ChallengeAction | null>(null);
   const inFlight = useRef(false);
-  const [notice, setNotice] = useState<{ action: ChallengeAction; kind: 'error' | 'success' } | null>(null);
+  const [notice, setNotice] = useState<{ action: ChallengeAction; kind: 'error' | 'success' | 'unavailable' } | null>(null);
   const actionSession = useRef({ account: user?.id ?? null, generation: 0 });
   // A request that started for player A may finish after player B signs in.
   // Invalidate its callbacks during render so even an immediate Promise
@@ -1872,7 +1872,7 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
   // Keep the invitation visible and its action retryable; only report success
   // after the server has acknowledged it. An optional list refresh failing
   // afterward is not evidence that the mutation itself failed.
-  async function act<T>(action: ChallengeAction, mutate: () => Promise<T>, onSuccess?: (value: T) => void) {
+  async function act<T>(action: ChallengeAction, mutate: () => Promise<T>, onSuccess?: (value: T) => void, challengeId?: number) {
     if (inFlight.current) return;
     const generation = actionSession.current.generation;
     inFlight.current = true;
@@ -1887,8 +1887,20 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
       // but a slow or failed refresh must not keep all challenge actions
       // blocked or turn a confirmed invitation into an apparent failure.
       void lobby.refreshChallenges().catch(() => {});
-    } catch {
-      if (actionSession.current.generation === generation) setNotice({ action, kind: 'error' });
+    } catch (err) {
+      if (actionSession.current.generation !== generation) return;
+      const failure = err as { status?: number; data?: { error?: string } };
+      const noLongerPending = (failure.status === 409 && failure.data?.error === 'not_pending')
+        || (failure.status === 404 && failure.data?.error === 'not_found');
+      if (action !== 'send' && challengeId !== undefined && noLongerPending) {
+        // The server is authoritative: this invitation can never succeed on
+        // retry, so stop offering futile buttons while preserving other rows.
+        lobby.forgetChallenge(action === 'cancel' ? 'outgoing' : 'incoming', challengeId);
+        setNotice({ action, kind: 'unavailable' });
+        void lobby.refreshChallenges().catch(() => {});
+      } else {
+        setNotice({ action, kind: 'error' });
+      }
     } finally {
       if (actionSession.current.generation === generation) {
         inFlight.current = false;
@@ -1916,7 +1928,7 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
       (result) => {
         if (result?.ok !== true) throw new Error('Invalid cancel acknowledgment');
         lobby.forgetChallenge('outgoing', id);
-      });
+      }, id);
   }
   function accept(id: number) {
     void act('accept', () => api.post<{ game_id: number }>(`/api/challenges/${id}/accept`),
@@ -1926,14 +1938,14 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
         }
         lobby.forgetChallenge('incoming', id);
         onChallengeAccepted(result.game_id);
-      });
+      }, id);
   }
   function decline(id: number) {
     void act('decline', () => api.post<{ ok: boolean }>(`/api/challenges/${id}/decline`),
       (result) => {
         if (result?.ok !== true) throw new Error('Invalid decline acknowledgment');
         lobby.forgetChallenge('incoming', id);
-      });
+      }, id);
   }
 
   return (
@@ -1954,10 +1966,12 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
         <div role={notice.kind === 'error' ? 'alert' : 'status'}
           className={`rounded-md border px-3 py-2 text-sm ${notice.kind === 'error'
             ? 'border-move-mistake/40 bg-move-mistake/5 text-chesscom-800 dark:text-chesscom-100'
-            : 'border-board-dark/30 bg-board-dark/5 text-chesscom-800 dark:text-chesscom-100'}`}>
-          {t(`challenge.${notice.kind}.${notice.action}`, {
-            defaultValue: CHALLENGE_FEEDBACK[notice.kind][notice.action],
-          })}
+            : notice.kind === 'unavailable'
+              ? 'border-amber-500/40 bg-amber-500/10 text-chesscom-800 dark:text-chesscom-100'
+              : 'border-board-dark/30 bg-board-dark/5 text-chesscom-800 dark:text-chesscom-100'}`}>
+          {notice.kind === 'unavailable'
+            ? t('challenge.noLongerAvailable', { defaultValue: 'This invitation has expired or is no longer available.' })
+            : t(`challenge.${notice.kind}.${notice.action}`, { defaultValue: CHALLENGE_FEEDBACK[notice.kind][notice.action] })}
         </div>
       )}
       {lobby.incoming.length > 0 && (

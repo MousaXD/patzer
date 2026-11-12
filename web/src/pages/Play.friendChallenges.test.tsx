@@ -271,6 +271,31 @@ describe('Play friend challenges request recovery', () => {
     expect(mocks.refreshChallenges).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { action: 'accept', direction: 'incoming', status: 409, error: 'not_pending' },
+    { action: 'decline', direction: 'incoming', status: 409, error: 'not_pending' },
+    { action: 'cancel', direction: 'outgoing', status: 409, error: 'not_pending' },
+    { action: 'accept', direction: 'incoming', status: 404, error: 'not_found' },
+  ] as const)('removes a no-longer-available $direction challenge after $action returns $status', async ({ action, direction, status, error }) => {
+    const row = {
+      id: 61, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+      to: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    };
+    mocks.lobby[direction] = [row];
+    const rejection = Object.assign(new Error(error), { status, data: { error } });
+    if (action === 'cancel') mocks.del.mockRejectedValue(rejection);
+    else mocks.post.mockRejectedValue(rejection);
+    const accepted = vi.fn();
+    render(<FriendTab onChallengeAccepted={accepted} />);
+    fireEvent.click(screen.getByRole('button', { name: action === 'cancel' ? 'common.cancel' : `challenge.${action}` }));
+    expect((await screen.findByRole('status')).textContent).toContain('no longer available');
+    expect(mocks.forgetChallenge).toHaveBeenCalledExactlyOnceWith(direction, 61);
+    expect(mocks.refreshChallenges).toHaveBeenCalledTimes(1);
+    expect(accepted).not.toHaveBeenCalled();
+    expect(mocks.lobby[direction]).toHaveLength(0);
+  });
+
   it('does not hide a challenge after an HTTP-200 response without a confirmed mutation result', async () => {
     mocks.lobby.incoming = [{
       id: 10, color: 'white', time_control: 'rapid',
