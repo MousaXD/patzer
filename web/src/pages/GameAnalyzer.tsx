@@ -71,8 +71,8 @@ interface EngineLine {
 
 function fmtCp(cp: number | null | undefined): string {
   if (cp == null) return '0.00';
-  if (cp >= 9000) return '#';
-  if (cp <= -9000) return '-#';
+  // Saved analysis can contain mate-like cp proxies without a consistent
+  // explicit mate distance. Only formatReviewMate may claim an actual mate.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }

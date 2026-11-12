@@ -23,10 +23,9 @@ function fmtCp(cp: number | null, mate?: number | null): string {
   const verifiedMate = displayableMate(mate, cp);
   const preciseLabel = formatReviewMate(verifiedMate);
   if (preciseLabel != null) return preciseLabel;
-  // A very large cp can be a mate proxy, but without a consistent explicit
-  // mate field we have no source for an exact "mate in N" announcement.
-  if (cp >= 9000) return '#';
-  if (cp <= -9000) return '-#';
+  // A very large cp can be a saved mate proxy, but without a consistent
+  // explicit mate field even a bare # incorrectly asserts a forced mate.
+  // Keep the actual recorded numeric score instead of inventing that claim.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }

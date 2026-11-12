@@ -2199,21 +2199,24 @@ try {
       'The timeline must announce the verified Black mate without losing its sign');
     await page.screenshot({path:join(output,'review-mate-black-390.png')});
     await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^2\. White Nf3/}).click();
-    await page.waitForFunction(()=>document.querySelector('[data-review-move-summary] .font-mono.text-base')?.textContent?.trim()==='#');
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-summary] .font-mono.text-base')?.textContent?.trim()==='+100.00');
     assert.equal(await page.getByRole('img',{name:/Mate in 0/}).count(),0,
       'A terminal mate 0 has no winning-side sign; never invent Black as the mating side');
-    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'#',
-      'An ambiguous terminal mate zero must not advertise a precise distance in the graph');
+    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'+100.00',
+      'An ambiguous terminal mate zero must preserve the recorded numeric cp without claiming mate');
     await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^2… Black Nc6/}).click();
-    await page.getByRole('img',{name:'Evaluation -# for White',exact:true}).waitFor({state:'visible',timeout:4000});
-    assert.equal((await score.innerText()).trim(),'-#',
-      'Contradictory cached mate and cp evidence must not advertise a precise White M3');
-    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'-#',
-      'Contradictory mate and cp fields must not produce a fabricated timeline M-count');
+    await page.getByRole('img',{name:'Evaluation −99.70 for White',exact:true}).waitFor({state:'visible',timeout:4000});
+    assert.equal((await score.innerText()).trim(),'−99.70',
+      'Contradictory cached mate and cp must show only the numeric evidence, not a fabricated White M3');
+    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'−99.70',
+      'Contradictory mate and cp must not imply a terminal outcome in the graph');
     await page.screenshot({path:join(output,'review-mate-contradictory-390.png')});
     await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^3\. White Bc4/}).click();
-    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'#',
-      'A high normalized cp without explicit mate evidence has no reliable mate distance');
+    assert.equal(await savedGraph.getAttribute('aria-valuetext'),'+99.70',
+      'A high normalized cp without explicit mate evidence must remain numeric in the graph');
+    assert.equal((await score.innerText()).trim(),'+99.70',
+      'The saved score header must agree with the graph and not invent checkmate');
+    await page.getByRole('img',{name:'Evaluation +99.70 for White',exact:true}).waitFor({state:'visible',timeout:4000});
     await page.screenshot({path:join(output,'review-mate-unproven-graph-390.png')});
     assert.ok(sourceInjected,'This test must receive source-matched full saved move history');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalMatePgn);

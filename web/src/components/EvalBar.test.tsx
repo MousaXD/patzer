@@ -22,6 +22,15 @@ describe('Game Review evaluation bar', () => {
     expect(html).toContain('aria-label="Mate in 3 for Black"');
   });
 
+  it('does not claim checkmate from extreme cp without a source-backed mate count', () => {
+    const winning = renderToStaticMarkup(createElement(EvalBar, { cp: 9970, mate: null }));
+    const losing = renderToStaticMarkup(createElement(EvalBar, { cp: -9970, mate: null }));
+    expect(winning).toContain('aria-label="Evaluation +99.7 for White"');
+    expect(losing).toContain('aria-label="Evaluation −99.7 for White"');
+    expect(winning).not.toContain('>\u0023</div>');
+    expect(losing).not.toContain('>-\u0023</div>');
+  });
+
   it('allows Game Review to supply localized accessible names without changing score geometry', () => {
     const unknown = renderToStaticMarkup(createElement(EvalBar, {
       cp: null, ariaLabel: 'Evaluación de la posición no disponible',

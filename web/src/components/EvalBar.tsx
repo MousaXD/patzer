@@ -22,8 +22,8 @@ function cpToShare(cp: number): number {
 
 function fmtCp(cp: number | null): string {
   if (cp == null) return '—';
-  if (cp >= 9000) return '#';
-  if (cp <= -9000) return '-#';
+  // A high cp without a verified mate distance represents an extreme score,
+  // not a proven checkmate. Mate chips are handled separately above.
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(1)}`;
 }

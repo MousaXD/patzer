@@ -1171,3 +1171,26 @@
 ### Next independent review audit
 
 - Examine whether the current saved Game Review score header, EvalBar, and graph can still render an unsupported bare checkmate glyph (`#`/`-#`) from a large **cp-only** number without authoritative mate evidence. Unlike explicit mate distances, that claim can mislead the learner. First verify the classifier's high-cp saved format and the existing graph/cached-data contract before changing semantics; keep source-backed mate distances and White perspective intact.
+
+## 2026-11-12: align saved-score displays with source-backed mate evidence
+
+### Source-contract and independently failing tests
+
+- Continued from clean pushed `c1a7f72`, reviewing how full-game scores are normalized: `server/src/routes/analyze.ts` records a large signed cp proxy for verified `mate_after`, but cached/legacy data can also contain cp-only values without a verifiable mate distance. `displayableMate` correctly validates explicit signed integer mate counts against their cp proxy. However the saved Game Review header, the EvalBar chip, and the graph all turned **any** cp magnitude ≥9000 into `#`/`-#`, even with missing, terminal-zero, or contradictory mate evidence. A bare checkmate glyph falsely implies a proven forced mate.
+- Wrote two renderer regressions **before** changing product code: a high cp-only EvalBar expected the recorded `+99.7`/`−99.7` instead of an announced checkmate, and the graph's ARIA text expected `−99.70` / `+99.70` for contradictory/missing mate evidence. Both tests failed against the previous `#`/`-#` formatting.
+
+### Scoped correction and browser proof
+
+- Removed only the cp-magnitude-to-mate-glyph fallback in `GameAnalyzer.tsx`, `EvalBar.tsx`, and `EvalGraph.tsx`. The score header and graph now retain numeric cp to two decimals, and the compact bar chip to one decimal. **Only** a source-verified compatible nonzero integer mate still displays exact `M3` / `−M2`; missing source scores remain explicitly unavailable. Scoring, classification, win-probability graph geometry, persisted analysis and PGN are untouched.
+- Updated the existing authenticated adversarial saved-mate browser scenario: confirmed exact `M3` and `−M2` still appear, while an ambiguous `mate:0` + `cp:10000` is rendered `+100.00`, contradictory mate/cp becomes `−99.70`, and cp-only `+9970` becomes `+99.70` in both header and graph and in the evaluation bar's accessible name. Opened `qa-artifacts/agent-a/saved-cp-truthfulness-20261112/review-mate-unproven-graph-390.png`: numeric labels are legible at 390px dark mode, with no claimed mate distance and unchanged source PGN.
+
+### Verification and isolation
+
+- Focused EvalBar/graph tests: **9 passed**, including the new red/green cases. `git diff --check`, browser script syntax, `npm run typecheck` and `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium screen, keyboard, source, locale, variation, graph and stored-PGN matrix: **PASS (exit 0)** on port 8955. Injected score extremes are synthetic adversarial fixtures, not engine strength claims.
+- No merge, deployment, live database/service mutation or changes to other agents' branches.
+
+### Next independent audit
+
+- A 5-character numeric score replaces a single bare glyph in the narrow floating EvalBar chip. Test the **actual 320px and 390px board** with extreme signed numeric scores to ensure the chip stays inside the viewport and never obscures chess squares or keyboard focus. Fix only a measured clipping/overlap issue; don't alter the score again without new evidence.

@@ -63,8 +63,8 @@ describe('Game Review evaluation graph marker rendering', () => {
     }));
     expect(render(1)).toContain('aria-valuetext="M3"');
     expect(render(2)).toContain('aria-valuetext="−M2"');
-    expect(render(3)).toContain('aria-valuetext="-#"');
-    expect(render(4)).toContain('aria-valuetext="#"');
+    expect(render(3)).toContain('aria-valuetext="−99.70"');
+    expect(render(4)).toContain('aria-valuetext="+99.70"');
     expect(render(4)).not.toContain('aria-valuetext="M3"');
   });
 });
