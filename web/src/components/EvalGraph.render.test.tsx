@@ -50,4 +50,21 @@ describe('Game Review evaluation graph marker rendering', () => {
     expect(html).not.toContain('<circle');
     expect(html).toContain('aria-hidden="true"');
   });
+
+  it('announces exact mate distances only when the original saved score has consistent mate evidence', () => {
+    const samples = [
+      { ply: 1, cp: 9970, mate: 3 },
+      { ply: 2, cp: -9980, mate: -2 },
+      { ply: 3, cp: -9970, mate: 3 },
+      { ply: 4, cp: 9970 },
+    ];
+    const render = (current: number) => renderToStaticMarkup(createElement(EvalGraph, {
+      evals: samples, current, onClick: () => undefined,
+    }));
+    expect(render(1)).toContain('aria-valuetext="M3"');
+    expect(render(2)).toContain('aria-valuetext="−M2"');
+    expect(render(3)).toContain('aria-valuetext="-#"');
+    expect(render(4)).toContain('aria-valuetext="#"');
+    expect(render(4)).not.toContain('aria-valuetext="M3"');
+  });
 });

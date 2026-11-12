@@ -49,4 +49,17 @@ describe('saved game timeline with partial engine coverage', () => {
       evals: [{ ply: 1, cp: null }, { ply: 2, cp: null }],
     });
   });
+
+  it('passes mate provenance only from a matching PGN move, not stale engine rows', () => {
+    const positions = replay(['e4', 'e5', 'Nf3']);
+    const cached = [
+      { ...scored(1, 'e2e4', 9970), mate_after: 3 },
+      { ...scored(2, 'd7d5', -9980), mate_after: -2 },
+      { ...scored(3, 'g1f3', 9980), mate_after: null },
+    ];
+    const timeline = buildSavedReviewTimeline(positions, cached);
+    expect(timeline.evals[0]).toMatchObject({ ply: 1, cp: 9970, mate: 3 });
+    expect(timeline.evals[1]).toEqual({ ply: 2, cp: null });
+    expect(timeline.evals[2]).toEqual({ ply: 3, cp: 9980 });
+  });
 });

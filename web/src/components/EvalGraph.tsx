@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { buildEvalGraphPoints, scoredEvalSegments, evalPlyAtRatio, type EvalSample } from './review/evalGraphModel';
 import { useTranslation } from 'react-i18next';
 import { styleFor } from '../lib/classification';
+import { displayableMate, formatReviewMate } from './review/reviewMateScore';
 
 interface Mistake { ply: number; classification: string }
 
@@ -17,16 +18,15 @@ interface Props {
   height?: number;
 }
 
-function fmtCp(cp: number | null): string {
-  if (cp == null) return '0.0';
-  if (cp >= 9000) {
-    const moves = Math.max(1, Math.round((10000 - cp) / 10));
-    return `M${moves}`;
-  }
-  if (cp <= -9000) {
-    const moves = Math.max(1, Math.round((10000 - Math.abs(cp)) / 10));
-    return `-M${moves}`;
-  }
+function fmtCp(cp: number | null, mate?: number | null): string {
+  if (cp == null) return '—';
+  const verifiedMate = displayableMate(mate, cp);
+  const preciseLabel = formatReviewMate(verifiedMate);
+  if (preciseLabel != null) return preciseLabel;
+  // A very large cp can be a mate proxy, but without a consistent explicit
+  // mate field we have no source for an exact "mate in N" announcement.
+  if (cp >= 9000) return '#';
+  if (cp <= -9000) return '-#';
   const sign = cp > 0 ? '+' : cp < 0 ? '−' : '';
   return `${sign}${(Math.abs(cp) / 100).toFixed(2)}`;
 }
@@ -57,7 +57,7 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
     ? t('review.variationTimelineHint')
     : current === 0
       ? t('review.startingPosition', { defaultValue: 'Starting position' })
-      : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp);
+      : currentPoint?.cp == null ? t('review.variationEvalUnavailable') : fmtCp(currentPoint.cp, currentPoint.mate);
 
   function pickPly(clientX: number, rect: DOMRect): number {
     return evalPlyAtRatio(evals, (clientX - rect.left) / rect.width);
@@ -158,12 +158,12 @@ export default function EvalGraph({ evals, current, onClick, markers = [], heigh
             transform: (hoverPoint?.x ?? 0) > 80 ? 'translateX(-100%)' : undefined,
           }}
         >
-          {hoverPly === 0 ? t('review.startingPosition', { defaultValue: 'Starting position' }) : (hoverPoint?.cp == null ? '—' : fmtCp(hoverPoint.cp))}
+          {hoverPly === 0 ? t('review.startingPosition', { defaultValue: 'Starting position' }) : (hoverPoint?.cp == null ? '—' : fmtCp(hoverPoint.cp, hoverPoint.mate))}
         </div>
       )}
       {currentPoint?.cp != null && (
         <div className="pointer-events-none absolute right-2 top-2 rounded-sm bg-chesscom-900/85 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white backdrop-blur-sm">
-          {fmtCp(currentPoint.cp)}
+          {fmtCp(currentPoint.cp, currentPoint.mate)}
         </div>
       )}
     </div>

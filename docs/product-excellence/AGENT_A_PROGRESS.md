@@ -813,3 +813,23 @@
 ### Next highest-value Game Review issue
 
 - The evaluation timeline graph receives only normalized cp values; mate count is available in authoritative saved move evidence but the graph's screen-reader slider text still treats mate as a cp proxy. Audit actual `aria-valuetext` for source-consistent M3/−M2 in the same authenticated browser fixture, and distinguish precise valid mate counts from contradictory cached fields. Keep the graph's current bar/plot geometry and original-game timeline semantics unchanged; use the same source-safe mate helper.
+
+## 2026-11-12: source-safe mate announcements on the original-game evaluation timeline
+
+### Reproduction and fix
+
+- Continued from clean pushed `f9d289e`; the board already used precise source-consistent `mate_after` values, but `EvalGraph`'s `fmtCp` inferred `M3` / `-M2` from large cp values alone. That advertised an exact mating distance even if the authoritative move had no mate evidence or its cached mate field contradicted the normalized cp. The saved review timeline also dropped mate provenance before giving rows to the graph.
+- Added two focused **failing** regressions: the slider must distinguish genuine White/Black mate evidence from inconsistent/no-mate cp proxies; the timeline may copy `mate_after` only when the analyzed ply and UCI match the saved PGN position. Previously `aria-valuetext` was derived from cp alone, and the timeline contained no mate data.
+- Added optional mate provenance to `EvalSample`; `buildSavedReviewTimeline` forwards it only for matching scored PGN moves. The graph now uses the same `displayableMate` / `formatReviewMate` guard as the board for its slider, hover tooltip, and current-position chip. Valid consistent mate fields display `M3` / `−M2`; contradictory or absent mates retain generic high-score `#` / `-#` notation rather than inventing a distance. Ply-zero, unselected variation rail, unknown score gaps and SVG graph geometry remain unchanged.
+
+### Verification
+
+- Focused EvalGraph/timeline/geometry tests: **11 passed**; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **995 passed / 12 skipped**, 109 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)**. Extended the existing 24-ply saved PGN fixture to verify slider `aria-valuetext=M3` for genuine White mate, `−M2` for genuine Black mate, `#` for ambiguous terminal mate zero, `-#` for contradicted mate/cp evidence, and `#` for a high cp with no mate field. No false exact mate distance, previously confirmed board source behaviors, keyboard, retry and variation checks remain green.
+- Opened/inspected `qa-artifacts/agent-a/mate-graph-verified-20261112/review-mate-unproven-graph-390.png`: at saved ply 5/24 the bar, summary and graph show a non-precise `#` fallback, while graph markers, current cursor and 390px layout remain intact. Scores are **test-only synthetic HTTP annotations**, not actual Stockfish certification. Original PGN remained unchanged.
+- No merge, deployment, production SQLite mutation, or edits outside Agent A scope.
+
+### Next issue
+
+- Review the evaluation bar's localized accessible name. It currently hardcodes `Evaluation unavailable`, `Mate in 3 for White`, and similar strings in English; unlike the score summary and graph, this is announced in English even on a Spanish/Game Review screen. The EvalBar is currently used only by GameAnalyzer, so improve translation there without impacting other agents, and add Spanish Chromium/locale tests that verify the mating side and unknown state. Keep visual scores/geometry unchanged.
