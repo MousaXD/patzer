@@ -5,7 +5,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useBlocker, type BlockerFunction } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { Chess, type Move } from 'chess.js';
@@ -300,6 +300,32 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
   }, [lesson.id, qc]);
   const save = useCallback((body: object) => savesRef.current?.enqueue(body), []);
 
+  // Patzer uses a data router. Block *all* in-app route changes while writes
+  // are unacknowledged, not just this lesson's Back/Next buttons: the shared
+  // navigation rail, command palette and browser Back can navigate too.
+  // Never block authentication redirects when another user logs out.
+  const shouldBlock = useCallback<BlockerFunction>(({ currentLocation, nextLocation }) => {
+    if (saveStatus === 'idle' || !user?.id) return false;
+    if (['/login', '/setup', '/signup', '/forgot-password', '/reset-password', '/verify-email'].includes(nextLocation.pathname)) return false;
+    return currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search;
+  }, [saveStatus, user?.id]);
+  const blocker = useBlocker(shouldBlock);
+
+  // A route request waits until the queued write is acknowledged. On failure
+  // the dialog remains blocked, allowing retry or an intentional unsaved exit.
+  useEffect(() => {
+    if (saveStatus === 'idle' && blocker.state === 'blocked') blocker.proceed();
+  }, [saveStatus, blocker]);
+
+  // Native reloads / tab closes bypass the in-app controls. The browser can
+  // warn while unsaved work exists; it owns the wording and final decision.
+  useEffect(() => {
+    if (saveStatus === 'idle') return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [saveStatus]);
+
   const speakText = useCallback((s: string) => {
     const ui = normalizeLanguage(i18n.language);
     // Speak in the language the text is actually in (a lesson without its
@@ -376,6 +402,46 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
     </div>
   ) : null;
 
+  const leaveDialog = blocker.state === 'blocked' && (
+    <div role="presentation" className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4" onClick={() => blocker.reset()}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="lesson-leave-title" aria-describedby="lesson-leave-desc"
+        className="card w-full max-w-md space-y-3 p-5 shadow-lift sm:p-6"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); blocker.reset(); }
+          if (event.key === 'Tab') {
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+            const first = buttons[0], last = buttons[buttons.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+          }
+          event.stopPropagation();
+        }}>
+        <h2 id="lesson-leave-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+          {t('learn.unsavedLeaveTitle', { defaultValue: 'Your progress is not saved yet' })}
+        </h2>
+        <p id="lesson-leave-desc" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+          {saveStatus === 'error'
+            ? t('learn.unsavedLeaveError', { defaultValue: 'Saving failed. Retry before leaving to keep your recent work.' })
+            : t('learn.unsavedLeaveSaving', { defaultValue: 'Your progress is still saving. You can stay here until it finishes or leave without saving.' })}
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <button type="button" autoFocus className="btn-primary min-h-11 flex-1 text-sm" onClick={() => blocker.reset()}>
+            {t('learn.stayForSave', { defaultValue: 'Stay here' })}
+          </button>
+          {saveStatus === 'error' && (
+            <button type="button" className="btn-secondary min-h-11 flex-1 text-sm" onClick={() => savesRef.current?.retry()}>
+              {t('learn.retrySave', { defaultValue: 'Retry saving' })}
+            </button>
+          )}
+          <button type="button" className="btn-danger min-h-11 flex-1 text-sm" onClick={() => blocker.proceed()}>
+            {t('learn.leaveUnsaved', { defaultValue: 'Leave without saving' })}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (finished) {
     return (
       <>
@@ -390,6 +456,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         onAgain={restart}
         onExit={onExit}
       />
+      {leaveDialog}
       </>
     );
   }
@@ -468,6 +535,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
         {step.type === 'quiz' && <QuizView step={step} {...common} />}
       </div>
     </FrameContext.Provider>
+    {leaveDialog}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createMemoryRouter, Link, RouterProvider, useNavigate } from 'react-router-dom';
 import type { LessonRef } from '../../learn/content';
 
 const mocks = vi.hoisted(() => ({ post: vi.fn() }));
@@ -43,21 +44,47 @@ const refInfo = {
   lesson: { id: 'board', icon: 'board', steps: [{ id: 'intro', type: 'info' }] },
   course: { id: 'pieces' }, level: { id: 'basics' }, order: 0,
 } as unknown as LessonRef;
+const nextRef = {
+  lesson: { id: 'rook', icon: 'rook', steps: [{ id: 'intro', type: 'info' }] },
+  course: { id: 'pieces' }, level: { id: 'basics' }, order: 1,
+} as unknown as LessonRef;
+
+function LessonHarness({ next, onExit, onOpenLesson }: {
+  next: LessonRef | null;
+  onExit: ReturnType<typeof vi.fn>;
+  onOpenLesson: ReturnType<typeof vi.fn>;
+}) {
+  const navigate = useNavigate();
+  return <>
+    <Link to="/home">Global Home</Link>
+    <LessonPlayer refInfo={refInfo} resume={{ step: 0, flawed: 0 }} bestStars={0} totalStars={0}
+      next={next} onOpenLesson={(id) => { onOpenLesson(id); void navigate(`/learn?lesson=${id}`); }}
+      onExit={() => { onExit(); void navigate('/learn?course=pieces'); }} />
+  </>;
+}
+
+function mount(next: LessonRef | null = null, onExit = vi.fn(), onOpenLesson = vi.fn()) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter([
+    { path: '/learn', element: <LessonHarness next={next} onExit={onExit} onOpenLesson={onOpenLesson} /> },
+    { path: '/home', element: <div>Home page</div> },
+  ], { initialEntries: ['/learn?lesson=board'] });
+  const page = render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+  return { ...page, onExit, onOpenLesson, router };
+}
 
 afterEach(() => { cleanup(); mocks.post.mockReset(); });
 
 describe('LessonPlayer saved progress', () => {
   it('still saves after StrictMode effect cleanup, and can retry a failed finish', async () => {
     mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ stars: 3 });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <StrictMode>
-        <QueryClientProvider client={client}>
-          <LessonPlayer refInfo={refInfo} resume={{ step: 0, flawed: 0 }} bestStars={0} totalStars={0} next={null}
-            onOpenLesson={() => {}} onExit={() => {}} />
-        </QueryClientProvider>
-      </StrictMode>,
-    );
+    mount();
     fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
     expect((await screen.findByRole('alert')).textContent).toContain("Your latest lesson progress couldn't be saved.");
     expect(mocks.post).toHaveBeenCalledTimes(1);
@@ -66,5 +93,64 @@ describe('LessonPlayer saved progress', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  it('waits for an acknowledged final result before continuing to the next lesson', async () => {
+    let saved!: () => void;
+    mocks.post.mockImplementation(() => new Promise<void>((resolve) => { saved = resolve; }));
+    const { onOpenLesson, router } = mount(nextRef);
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    expect(screen.getByRole('status').textContent).toContain('Saving your lesson result');
+    fireEvent.click(screen.getByRole('button', { name: /learn.nextLesson/i }));
+    expect(screen.getByRole('alertdialog', { name: 'Your progress is not saved yet' })).toBeTruthy();
+    expect(router.state.location.search).toBe('?lesson=board');
+    expect(onOpenLesson).toHaveBeenCalledExactlyOnceWith('rook'); // attempted, but blocked
+    saved();
+    await waitFor(() => expect(router.state.location.search).toBe('?lesson=rook'));
+    expect(onOpenLesson).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('lets a player retry a failed result before leaving the course, or cancel with Escape', async () => {
+    mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ stars: 3 });
+    const { onExit, router } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'learn.toCourse' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Your progress is not saved yet' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(router.state.location.search).toBe('?lesson=board');
+    fireEvent.click(screen.getByRole('button', { name: 'learn.toCourse' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retry saving' }).at(-1)!);
+    await waitFor(() => expect(router.state.location.search).toBe('?course=pieces'));
+    expect(onExit).toHaveBeenCalledTimes(2); // each exit attempt is handled once
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires an explicit choice to leave while a save has failed', async () => {
+    mocks.post.mockRejectedValue(new Error('offline'));
+    const { onExit, router } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'learn.toCourse' }));
+    expect(router.state.location.search).toBe('?lesson=board');
+    fireEvent.click(screen.getByRole('button', { name: 'Leave without saving' }));
+    expect(onExit).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(router.state.location.search).toBe('?course=pieces'));
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks global navigation and resumes it after the pending save completes', async () => {
+    let saved!: () => void;
+    mocks.post.mockImplementation(() => new Promise<void>((resolve) => { saved = resolve; }));
+    const { router } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Global Home' }));
+    expect(router.state.location.pathname).toBe('/learn');
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    saved();
+    await waitFor(() => expect(router.state.location.pathname).toBe('/home'));
+    expect(screen.getByText('Home page')).toBeTruthy();
   });
 });
