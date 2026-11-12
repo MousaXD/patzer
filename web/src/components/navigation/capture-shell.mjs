@@ -15,6 +15,8 @@ let server;
 let browser;
 let theme = 'light';
 let role = 'user';
+let logoutMode = 'success';
+let signedIn = true;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -28,7 +30,7 @@ const profile = {
 const fixtures = (pathname) => {
   if (pathname === '/api/setup/status') return { setup_required: false };
   if (pathname === '/api/auth/me') return {
-    user: { id: 1, username: 'sample-player', role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } },
+    user: signedIn ? { id: 1, username: 'sample-player', role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } } : null,
   };
   if (pathname === '/api/meta') return { version: '7.19.0' };
   if (pathname === '/api/meta/update') return { enabled: false, updateAvailable: false, current: '7.19.0', latest: null };
@@ -126,6 +128,17 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === '/api/auth/logout' && route.request().method() === 'POST') {
+      if (logoutMode === 'error') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
+      } else if (logoutMode === 'unconfirmed') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":false}' });
+      } else {
+        signedIn = false;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+      }
+      return;
+    }
     const missingFixture = url.pathname === '/api/players/42' || url.pathname === '/api/games/42';
     await route.fulfill({
       status: missingFixture ? 404 : 200,
@@ -333,6 +346,53 @@ try {
   const secondReturn = await page.evaluate(() => window.scrollY);
   if (Math.abs(secondReturn - beforeHistory) > 20) {
     throw new Error(`Repeated Back navigation lost the dashboard position: before=${beforeHistory} after=${secondReturn}`);
+  }
+
+  logoutMode = 'error';
+  await openWithFixture(page, { width: 1440, height: 900 });
+  const logoutButton = page.getByRole('button', { name: 'Log out' });
+  await logoutButton.click();
+  const logoutError = page.locator('[data-logout-error]');
+  await logoutError.waitFor();
+  await page.screenshot({ path: resolve(output, 'shell-logout-error-1440.png') });
+  if (!signedIn || !(await page.locator('[data-app-shell]').isVisible())) {
+    throw new Error('Failed logout incorrectly removed the authenticated shell');
+  }
+  logoutMode = 'unconfirmed';
+  await logoutButton.click();
+  await logoutError.waitFor();
+  if (!signedIn) throw new Error('Unconfirmed logout incorrectly removed the authenticated shell');
+  logoutMode = 'success';
+  await logoutButton.click();
+  await page.waitForURL((url) => url.pathname === '/login');
+  if (signedIn || (await page.locator('[data-app-shell]').count())) {
+    throw new Error('Successful logout left the authenticated workspace visible');
+  }
+
+  signedIn = true;
+  logoutMode = 'error';
+  await openWithFixture(page, { width: 320, height: 700 });
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await page.getByRole('dialog', { name: 'Mobile navigation' })
+    .getByRole('button', { name: 'Log out' }).click();
+  const mobileLogoutError = page.locator('[data-logout-error]');
+  await mobileLogoutError.waitFor();
+  const errorClose = mobileLogoutError.getByRole('button', { name: 'Close' });
+  const errorCloseRect = await errorClose.boundingBox();
+  if (!errorCloseRect || errorCloseRect.width < 44 || errorCloseRect.height < 44) {
+    throw new Error('Mobile sign-out error close target is under 44px: ' + JSON.stringify(errorCloseRect));
+  }
+  const errorWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  if (errorWidth > 321) throw new Error('Mobile logout failure caused horizontal overflow');
+  await page.screenshot({ path: resolve(output, 'shell-logout-error-mobile-320.png') });
+  await errorClose.click();
+  logoutMode = 'success';
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  await page.getByRole('dialog', { name: 'Mobile navigation' })
+    .getByRole('button', { name: 'Log out' }).click();
+  await page.waitForURL((url) => url.pathname === '/login');
+  if (signedIn || (await page.locator('[data-app-shell]').count())) {
+    throw new Error('Mobile logout retry left the authenticated workspace visible');
   }
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {

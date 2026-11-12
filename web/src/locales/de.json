@@ -11,6 +11,8 @@
     "close": "Menü schließen",
     "language": "Sprache",
     "languageSaveFailed": "Die Sprache konnte nicht gespeichert werden. Überprüfe die Verbindung und versuche es erneut.",
+    "logoutBusy": "Abmeldung läuft…",
+    "logoutFailed": "Abmeldung fehlgeschlagen. Überprüfe die Verbindung und versuche es erneut.",
     "skip": "Zum Hauptinhalt springen",
     "loading": "Seite wird geladen…",
     "breadcrumb": "Navigationspfad",

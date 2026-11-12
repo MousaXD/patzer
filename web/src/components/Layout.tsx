@@ -136,6 +136,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const [showChangelog, setShowChangelog] = useState(false);
   const [languageSaving, setLanguageSaving] = useState(false);
   const [languageError, setLanguageError] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [version, setVersion] = useState('');
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -243,9 +245,20 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   }, [drawerOpen]);
 
   async function logout() {
-    if (await endSession()) return;
-    await refresh();
-    navigate('/login');
+    if (logoutPending) return;
+    setLogoutPending(true);
+    setLogoutError(false);
+    try {
+      if (await endSession()) return;
+      await refresh();
+      navigate('/login');
+    } catch {
+      // The logout request might have failed entirely. Never claim sign-out
+      // or navigate away from the authenticated shell on a rejected request.
+      setLogoutError(true);
+    } finally {
+      setLogoutPending(false);
+    }
   }
 
   async function changeLanguage(value: string) {
@@ -373,10 +386,11 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
           </NavLink>
           <button
             type="button"
+            disabled={logoutPending}
             onClick={() => { void logout(); }}
             className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex"
-            title={logoutLabel}
-            aria-label={logoutLabel}
+            title={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
+            aria-label={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
           >
             <LogOut aria-hidden="true" className="h-[18px] w-[18px]" />
           </button>
@@ -397,7 +411,17 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             <span className="min-w-0 flex-1">{t('navigation.languageSaveFailed', { defaultValue: 'Could not save your language. Check your connection and try again.' })}</span>
             <button type="button" onClick={() => setLanguageError(false)}
               aria-label={t('common.close', { defaultValue: 'Close' })}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+              <X aria-hidden="true" className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        {logoutError && (
+          <div role="alert" className="fixed right-3 top-[4.25rem] z-[60] flex max-w-[calc(100vw-1.5rem)] items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-logout-error>
+            <span className="min-w-0 flex-1">{t('navigation.logoutFailed', { defaultValue: 'Could not sign out. Check your connection and try again.' })}</span>
+            <button type="button" onClick={() => setLogoutError(false)}
+              aria-label={t('common.close', { defaultValue: 'Close' })}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
               <X aria-hidden="true" className="h-4 w-4" />
             </button>
           </div>
@@ -512,10 +536,11 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               )}
               <button
                 type="button"
+                disabled={logoutPending}
                 onClick={() => { setDrawerOpen(false); void logout(); }}
-                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-chesscom-800"
               >
-                <LogOut aria-hidden="true" className="h-5 w-5" />{logoutLabel}
+                <LogOut aria-hidden="true" className="h-5 w-5" />{logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
               </button>
             </div>
           </aside>

@@ -17,6 +17,8 @@ let profilePatchMode = 'success';
 let patchAttempts = 0;
 let recentGamesMode = 'ok';
 let activeUserId = 1;
+let logoutMode = 'success';
+let signedIn = true;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '',
@@ -93,6 +95,17 @@ try {
   page.setDefaultTimeout(5000);
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/auth/logout' && route.request().method() === 'POST') {
+      if (logoutMode === 'error') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
+      } else if (logoutMode === 'unconfirmed') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":false}' });
+      } else {
+        signedIn = false;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+      }
+      return;
+    }
     if (path === '/api/games' && recentGamesMode === 'error') {
       await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
       return;
@@ -122,8 +135,8 @@ try {
       return;
     }
     const result = path === '/api/setup/status' ? { setup_required: false }
-      : path === '/api/auth/me' ? { user: { id: activeUserId, username: 'sample-player', role: 'user', created_at: '2026-01-01',
-        profile: { ...profile, user_id: activeUserId, site_theme: theme } } }
+      : path === '/api/auth/me' ? { user: signedIn ? { id: activeUserId, username: 'sample-player', role: 'user', created_at: '2026-01-01',
+        profile: { ...profile, user_id: activeUserId, site_theme: theme } } : null }
       : path === '/api/games' ? { games: [] }
       : path === '/api/stats/me' ? { total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null }
       : path === '/api/meta' ? { version: '7.19.0' }
@@ -418,6 +431,29 @@ try {
     throw new Error('Recent games from the previous account leaked into the new session');
   }
   await accountPalette.getByRole('option', { name: /SecondAccountOpponent/ }).waitFor();
+
+  // Logout is a security-sensitive action. A rejected server request must
+  // keep the dialog and the session intact with actionable error feedback.
+  activeUserId = 1;
+  recentGamesMode = 'ok';
+  logoutMode = 'error';
+  await visit(page, 390, 844);
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  const logoutPalette = page.getByRole('dialog', { name: 'Search' });
+  await logoutPalette.getByRole('combobox', { name: 'Search' }).fill('Log out');
+  await logoutPalette.getByRole('option', { name: 'Log out' }).click();
+  await logoutPalette.getByRole('alert').waitFor();
+  if (!signedIn) throw new Error('Failed logout unexpectedly invalidated the session');
+  logoutMode = 'unconfirmed';
+  await logoutPalette.getByRole('option', { name: 'Log out' }).click();
+  await logoutPalette.getByRole('alert').waitFor();
+  if (!signedIn) throw new Error('Unconfirmed logout unexpectedly invalidated the session');
+  logoutMode = 'success';
+  await logoutPalette.getByRole('option', { name: 'Log out' }).click();
+  await page.waitForURL((url) => url.pathname === '/login');
+  if (signedIn || (await page.locator('[data-app-shell]').count())) {
+    throw new Error('Successful logout left the authenticated workspace visible');
+  }
 
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {

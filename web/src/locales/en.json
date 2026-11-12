@@ -11,6 +11,8 @@
     "close": "Close menu",
     "language": "Language",
     "languageSaveFailed": "Could not save your language. Check your connection and try again.",
+    "logoutBusy": "Signing out…",
+    "logoutFailed": "Could not sign out. Check your connection and try again.",
     "skip": "Skip to main content",
     "loading": "Loading page…",
     "breadcrumb": "Breadcrumb",

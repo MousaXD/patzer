@@ -99,6 +99,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Patzer navigation rail', () => {
+  it('reports failed sign-out and permits retry without navigating on the error', async () => {
+    harness.endSession.mockRejectedValueOnce(new Error('HTTP 503'))
+      .mockResolvedValueOnce(false);
+    mount();
+    const signout = screen.getByRole('button', { name: 'Log out' });
+    fireEvent.click(signout);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('Could not sign out. Check your connection and try again.')).toBeTruthy();
+    expect(harness.refresh).not.toHaveBeenCalled();
+    expect(screen.getByTestId('route-content').textContent).toBe('/');
+    fireEvent.click(signout);
+    await waitFor(() => expect(harness.refresh).toHaveBeenCalledTimes(1));
+    expect(harness.endSession).toHaveBeenCalledTimes(2);
+  });
+
   it('retains all ten destinations, settings and functional route changes', () => {
     mount();
     const rail = screen.getByRole('navigation', { name: 'Primary navigation' });

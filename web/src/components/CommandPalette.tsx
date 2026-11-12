@@ -107,7 +107,14 @@ export default function CommandPalette({ open, onClose }: Props) {
       ...LANGUAGES.map((l) => ({ id: `lang-${l.code}`, label: `${t('palette.switchLanguage', { defaultValue: 'Switch to' })} ${l.native}`, icon: Globe, group: 'action' as const, keywords: `language ${l.native} ${l.code} ${LANGUAGE_SEARCH_ALIASES[l.code]}`, run: async () => { await saveInterfaceLanguage(l.code); onClose(); } })),
       { id: 'theme-light', label: t('palette.themeLight', { defaultValue: 'Light theme' }), icon: Sun, group: 'action', run: async () => { await api.patch('/api/settings/profile', { site_theme: 'light' }); await refresh(); onClose(); } },
       { id: 'theme-dark', label: t('palette.themeDark', { defaultValue: 'Dark theme' }), icon: Moon, group: 'action', run: async () => { await api.patch('/api/settings/profile', { site_theme: 'dark' }); await refresh(); onClose(); } },
-      { id: 'logout', label: t('common.logout'), icon: LogOut, group: 'action', run: async () => { onClose(); if (await endSession()) return; await refresh(); nav('/login'); } },
+      { id: 'logout', label: t('common.logout'), icon: LogOut, group: 'action', run: async () => {
+        // Do not dismiss the palette before the server confirms sign-out:
+        // a rejected request must leave an accessible, retryable error.
+        if (await endSession()) { onClose(); return; }
+        await refresh();
+        onClose();
+        nav('/login');
+      } },
     );
     // Recent games as actions
     for (const g of (gamesData?.games ?? []).slice(0, 12)) {

@@ -585,3 +585,32 @@
 ### Next investigation
 
 - Inspect the shared shell's logout action feedback when the logout endpoint fails or authentication refresh remains unavailable. Confirm actual behavior with an isolated local fixture before touching the global logout flow.
+
+## 2026-11-12: Confirmed logout, retryable errors and reliable global feedback
+
+### Recovery and verified failure
+
+- Recovered the exact clean pushed Agent B commit `b3714e1` and resumed the documented logout investigation, preserving earlier work and other agents' worktrees.
+- In real Chromium, a **503** from `POST /api/auth/logout` previously closed the command palette with no explanation. The user was still signed in but received no failure feedback. Header and drawer logout buttons also had an unhandled rejected promise.
+- The existing logout helper accepted any HTTP 200 payload, even `{ok:false}`, as success; server contract currently returns `{ok:true}` on confirmed logout.
+
+### Implementation
+
+1. Kept the command palette open during sign-out, using its existing accessible busy/error/duplicate-submission handling. Only closes on confirmation; rejected requests retain the option for immediate retry and never expose server error details.
+2. Added shell-level busy/disabled and localized error feedback to desktop and mobile logout buttons. Failed requests keep the authenticated workspace visible; successful password-session logout refreshes auth and navigates to sign-in.
+3. Validated `ok === true` in the shared logout helper before following an SSO provider logout URL or reporting local success. HTTP 200 with `ok:false` or a malformed response is treated as an error.
+4. Added logout busy/error strings in all five locales. Enlarged the shell's transient alert close targets to 44x44px and confirmed no horizontal overflow in the 320px mobile shell.
+5. Added targeted unit tests for failed/retried palette logout, failed/retried shell logout and unconfirmed HTTP 200; extended local Chromium shell and palette fixtures for HTTP 503, `ok:false`, and successful retry. Both dark/light/global navigation smoke tests remain in place.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **413/413 passed across 70 test files**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** including desktop/320px mobile logout failure, alert dismissal, 44px close target and successful retry; visually inspected both error screenshots.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed** including failed/unconfirmed palette logout and successful retry, plus all existing palette tests.
+- `git diff --check`: **passed**.
+- Fixture endpoints only; no production sign-outs, user data changes, main merge, deployment or other agent worktree modifications.
+
+### Next audit
+
+- Evaluate the shared command palette's accessibility semantics for searching, moving through results and invoking commands by keyboard, especially the relationship between `aria-activedescendant`, displayed result IDs, and grouped results. Reproduce with actual keyboard and accessibility-tree browser checks before altering the shared palette.

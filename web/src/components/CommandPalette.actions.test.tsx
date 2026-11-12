@@ -2,13 +2,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { patch, refresh, navigate, saveLanguage, recentGamesQuery, account, queryCall } = vi.hoisted(() => ({
+const { patch, refresh, navigate, saveLanguage, recentGamesQuery, account, queryCall, logout } = vi.hoisted(() => ({
   patch: vi.fn(),
   refresh: vi.fn(),
   navigate: vi.fn(),
   saveLanguage: vi.fn(),
   account: { id: 1 },
   queryCall: vi.fn(),
+  logout: vi.fn(),
   recentGamesQuery: {
     data: { games: [] } as { games: unknown[] } | undefined,
     isLoading: false,
@@ -27,7 +28,7 @@ vi.mock('../state/auth', () => ({
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: unknown) => { queryCall(options); return recentGamesQuery; } }));
-vi.mock('../lib/logout', () => ({ endSession: vi.fn() }));
+vi.mock('../lib/logout', () => ({ endSession: logout }));
 vi.mock('../lib/saveInterfaceLanguage', () => ({ saveInterfaceLanguage: saveLanguage }));
 
 import i18n from '../i18n';
@@ -47,11 +48,33 @@ beforeEach(async () => {
   recentGamesQuery.refetch.mockReset();
   account.id = 1;
   queryCall.mockReset();
+  logout.mockReset();
   await i18n.changeLanguage('en');
 });
 afterEach(cleanup);
 
 describe('global command palette async actions', () => {
+  it('keeps a failed sign-out visible and retryable, without claiming success', async () => {
+    logout.mockRejectedValueOnce(new Error('HTTP 503 private session details'))
+      .mockResolvedValueOnce(false);
+    const onClose = vi.fn();
+    render(<CommandPalette open onClose={onClose} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'Log out' } });
+    const signout = screen.getByRole('option', { name: 'Log out' });
+    fireEvent.click(signout);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('private session details');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+
+    fireEvent.click(signout);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(logout).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/login');
+  });
+
   it('never shares the recent-game query key between different signed-in accounts', () => {
     const view = render(<CommandPalette open onClose={vi.fn()} />);
     expect(queryCall).toHaveBeenLastCalledWith(expect.objectContaining({
