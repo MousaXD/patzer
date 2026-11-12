@@ -113,6 +113,13 @@ export default function App() {
       if (paletteOpen || shortcutsOpen) return;
       if (isTextField(e.target)) return;
       if (e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); setShortcutsOpen(true); return; }
+      // The mobile drawer is modal. Ignore G+letter routing while it owns
+      // focus; Ctrl+K and ? above may still open a global overlay, which
+      // closes the drawer before the new dialog takes focus.
+      if (document.getElementById('patzer-mobile-drawer')) {
+        gPrefixRef.current = 0;
+        return;
+      }
       // "g X" prefix navigation
       if (e.key === 'g' || e.key === 'G') {
         gPrefixRef.current = Date.now();
@@ -215,7 +222,11 @@ export default function App() {
         {/* Email links still resolve even if the user happens to be logged in. */}
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route element={<Layout onOpenPalette={() => setPaletteOpen(true)} onOpenShortcuts={() => setShortcutsOpen(true)} />}>
+        <Route element={<Layout
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          globalOverlayOpen={paletteOpen || shortcutsOpen}
+        />}>
           <Route path="/" element={<Home />} />
           <Route path="/play" element={<Play />} />
           <Route path="/review" element={<Review />} />

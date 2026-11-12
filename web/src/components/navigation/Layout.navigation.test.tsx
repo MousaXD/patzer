@@ -194,6 +194,29 @@ describe('Patzer navigation rail', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  it('dismisses the mobile drawer when a global dialog opens and returns focus to its trigger', async () => {
+    function Fixture({ overlayOpen }: { overlayOpen: boolean }) {
+      return (
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<Layout globalOverlayOpen={overlayOpen} />}>
+              <Route path="/" element={<div data-testid="route-content">Home</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      );
+    }
+    const view = render(<Fixture overlayOpen={false} />);
+    const trigger = screen.getByRole('button', { name: 'Open menu' });
+    fireEvent.click(trigger);
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' });
+    await waitFor(() => expect(document.activeElement).toBe(within(drawer).getByRole('button', { name: 'Close menu' })));
+    view.rerender(<Fixture overlayOpen />);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.style.overflow).toBe('');
+  });
+
   it('releases mobile focus containment when resized to the desktop breakpoint', () => {
     const listeners = new Set<(event: MediaQueryListEvent) => void>();
     vi.stubGlobal('matchMedia', vi.fn(() => ({

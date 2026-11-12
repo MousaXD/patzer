@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -19,6 +19,7 @@ import { saveInterfaceLanguage } from '../lib/saveInterfaceLanguage';
 interface LayoutProps {
   onOpenPalette?: () => void;
   onOpenShortcuts?: () => void;
+  globalOverlayOpen?: boolean;
 }
 
 type Destination = {
@@ -125,7 +126,7 @@ function LanguageSelector({ value, label, onChange, mobile = false, disabled = f
   );
 }
 
-export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) {
+export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOpen = false }: LayoutProps) {
   const { t, i18n } = useTranslation();
   const uiLang = normalizeLanguage(i18n.language);
   const { user, refresh } = useAuth();
@@ -143,6 +144,15 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const drawerRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const lastFocusedPathRef = useRef(location.pathname);
+  // Hardware shortcuts may launch a global dialog while the mobile drawer
+  // owns focus. Dismiss the drawer and hand the return target to the menu
+  // trigger before the new dialog's focus trap captures its previous focus.
+  useLayoutEffect(() => {
+    if (globalOverlayOpen && drawerOpen) {
+      setDrawerOpen(false);
+      menuTriggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [globalOverlayOpen, drawerOpen]);
 
   const primaryLabel = t('navigation.primary', { defaultValue: 'Primary navigation' });
   const mobileLabel = t('navigation.mobile', { defaultValue: 'Mobile navigation' });

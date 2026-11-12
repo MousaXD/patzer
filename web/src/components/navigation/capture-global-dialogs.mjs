@@ -286,6 +286,68 @@ try {
       throw new Error('Mobile shortcuts close left keyboard focus outside the shell controls: ' + JSON.stringify(focus));
     }
   }
+  // A hardware keyboard connected to a phone or narrow tablet can invoke
+  // shortcuts while the mobile drawer is modal. Exactly one dialog may own
+  // focus; G+letter navigation must not run behind an open drawer.
+  theme = 'light';
+  for (const { width, height } of [{ width: 390, height: 844 }, { width: 568, height: 320 }]) {
+    await visit(page, width, height);
+    const menuButton = page.getByRole('button', { name: 'Open menu' });
+    await menuButton.click();
+    await page.getByRole('dialog', { name: 'Mobile navigation' }).waitFor();
+    await page.keyboard.press('g');
+    await page.keyboard.press('r');
+    if (new URL(page.url()).pathname !== '/' || (await page.getByRole('dialog', { name: 'Mobile navigation' }).count()) !== 1) {
+      throw new Error(`A G+R shortcut navigated behind the modal drawer at ${width}px`);
+    }
+    await page.keyboard.press('?');
+    const mobileShortcut = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    await mobileShortcut.waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('[role="dialog"][aria-modal="true"]').length === 1);
+    await assertInside(page, mobileShortcut, `shortcuts opened from drawer ${width}px`);
+    await page.screenshot({ path: resolve(output, `shortcuts-from-drawer-${width}.png`) });
+    await page.keyboard.press('Escape');
+    await mobileShortcut.waitFor({ state: 'detached' });
+    if (!(await menuButton.evaluate((element) => element === document.activeElement))) {
+      const focus = await page.evaluate(() => ({
+        active: document.activeElement?.outerHTML.slice(0, 180),
+        menu: document.querySelector('[aria-label="Open menu"]')?.outerHTML.slice(0, 160),
+      }));
+      throw new Error(`Closing keyboard shortcut from drawer did not restore menu-trigger focus at ${width}px: ${JSON.stringify(focus)}`);
+    }
+
+    await menuButton.click();
+    await page.getByRole('dialog', { name: 'Mobile navigation' }).waitFor();
+    await page.keyboard.press('Control+k');
+    const mobilePalette = page.getByRole('dialog', { name: 'Search' });
+    await mobilePalette.waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('[role="dialog"][aria-modal="true"]').length === 1);
+    const paletteSearch = mobilePalette.getByRole('combobox', { name: 'Search' });
+    await paletteSearch.waitFor();
+    if (!(await paletteSearch.evaluate((element) => element === document.activeElement))) {
+      throw new Error(`Global search did not focus its input after closing the drawer at ${width}px`);
+    }
+    await page.keyboard.press('Escape');
+    await mobilePalette.waitFor({ state: 'detached' });
+    if (!(await menuButton.evaluate((element) => element === document.activeElement))) {
+      throw new Error(`Closing search from the drawer did not restore focus at ${width}px`);
+    }
+  }
+
+  // At the tablet rail breakpoint, help and search shortcuts should switch
+  // the active overlay without competing focus traps.
+  await visit(page, 768, 900);
+  await page.keyboard.press('?');
+  await page.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
+  await page.keyboard.press('Control+k');
+  const tabletPalette = page.getByRole('dialog', { name: 'Search' });
+  await tabletPalette.waitFor();
+  if ((await page.getByRole('dialog').count()) !== 1) {
+    throw new Error('Tablet breakpoint stacked global keyboard dialogs');
+  }
+  await page.keyboard.press('Escape');
+  await tabletPalette.waitFor({ state: 'detached' });
+
   // Landscape phones have enough width for the palette but very little height.
   // Dialog controls and the footer must remain inside the visual viewport.
   for (const color of ['light', 'dark']) {

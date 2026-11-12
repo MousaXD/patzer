@@ -666,3 +666,31 @@
 ### Next audit
 
 - Examine global keyboard shortcut discoverability outside the palette, including the shortcut help overlay and keyboard gestures on narrow tablet layouts. Investigate actual navigation confusion or focus collisions in Chromium before any changes.
+
+## 2026-11-12: Global keyboard shortcuts safely transfer focus from mobile navigation
+
+### Exact recovery and reproduced failures
+
+- Resumed the clean, pushed Agent B commit `217e5dc` and the recorded narrow-tablet/shortcut audit. No earlier investigations or feature-owned pages were restarted.
+- Real Chromium at **390x844** reproduced **two competing `aria-modal` dialogs** after pressing `?` with the mobile navigation drawer open. The App keyboard listener opened Shortcuts while the Layout-managed drawer remained visible. A hardware keyboard could also invoke `G+R` behind the drawer.
+- The first fix closed the drawer before the new global overlay became interactive, but a second browser assertion revealed focus returning to **document.body** when Shortcuts was dismissed. The overlay had captured a soon-to-be-removed drawer button as its previous focused element.
+
+### Implementation and verification
+
+1. Added an explicit `globalOverlayOpen` signal from the shared App shell to Layout. A `useLayoutEffect` closes the mobile drawer when search/shortcut help opens, and hands return focus to the persistent **Open menu** trigger *before* the new modal captures the previous focus.
+2. Guarded the App's `G+letter` quick navigation while the mobile drawer is modal; `?` and Ctrl/⌘+K still open the intended global overlay. No changes to chess move/Review or other feature-level keyboard behavior.
+3. Extended the local Chromium fixture at **390x844** and **568x320** to verify `G+R` cannot route behind the drawer, `?` opens exactly one modal, Ctrl+K opens only the palette, both inputs/close buttons receive expected focus, and closing either restores focus to **Open menu**. Also verified tablet **768x900** help-to-palette switching without stacked dialogs.
+4. Visually inspected 390px portrait and 568px landscape keyboard-help screenshots: only one dialog is visible, with the right close target focused and content scrollable on short screens.
+5. Added a component regression test proving Layout dismisses the drawer, releases body scroll lock and restores the menu-trigger focus when the parent global-overlay state opens.
+
+### Results
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **416/416 passed across 70 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed** after the negative control initially failed for stacked dialogs and subsequently for stale return focus.
+- `git diff --check`: **passed**.
+- Only shared App/Layout components, Agent B tests and progress log changed. No other agents' worktrees, merges, production data, deployments or live services were touched.
+
+### Next audit
+
+- Inspect whether global `G+letter` navigation can accidentally intercept browser/system shortcuts or activated controls when modifiers (Ctrl/Alt/Meta) are held. Verify actual behavior in a local browser before implementing any guard; keep the scope limited to shared App-level keyboard handling.
