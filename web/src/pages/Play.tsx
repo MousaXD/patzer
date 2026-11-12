@@ -22,6 +22,21 @@ import { parseFromPosition } from '../lib/fromPosition';
 const DIFFICULTIES: Difficulty[] = ['kid','beginner','easy','medium','hard','master','stockfish'];
 const TIME_CONTROLS = ['untimed','bullet','blitz','rapid','classical'] as const;
 
+const CHALLENGE_FEEDBACK = {
+  error: {
+    send: 'Could not send your challenge. Check your connection and try again.',
+    accept: 'Could not accept this challenge. Try again.',
+    decline: 'Could not decline this challenge. Try again.',
+    cancel: 'Could not cancel this challenge. Try again.',
+  },
+  success: {
+    send: 'Challenge sent. Waiting for a reply.',
+    accept: 'Challenge accepted. Opening the game…',
+    decline: 'Challenge declined.',
+    cancel: 'Challenge cancelled.',
+  },
+} as const;
+
 interface Move { ply: number; san: string; uci: string; classification?: Classification }
 interface Position { fen: string; lastFrom?: string; lastTo?: string }
 
@@ -142,7 +157,12 @@ interface BlunderPreview { uci: string; classification: Classification; cp_loss:
 export default function Play() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const lobby = useLobby();
+  // Selecting the whole Zustand store here makes every lobby refresh a new
+  // effect dependency. In the friend tab that causes an endless refresh loop:
+  // refresh -> store update -> render -> refresh again. Subscribe only to the
+  // stable actions needed to fetch on tab entry.
+  const refreshLobbyUsers = useLobby((state) => state.refreshUsers);
+  const refreshLobbyChallenges = useLobby((state) => state.refreshChallenges);
   const nav = useNavigate();
   const [params] = useSearchParams();
   const pvpGameId = Number(params.get('game') ?? 0) || null;
@@ -323,10 +343,10 @@ export default function Play() {
   // Refresh users + challenges when entering friend tab
   useEffect(() => {
     if (setupTab === 'friend') {
-      void lobby.refreshUsers();
-      void lobby.refreshChallenges();
+      void refreshLobbyUsers();
+      void refreshLobbyChallenges();
     }
-  }, [setupTab, lobby]);
+  }, [setupTab, refreshLobbyUsers, refreshLobbyChallenges]);
 
   // Local clock tick during play.
   //
@@ -1564,14 +1584,17 @@ function TabButton({ active, onClick, icon: Icon, children }: { active: boolean;
   );
 }
 
-function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: number) => void }) {
+export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: number) => void }) {
   const { t } = useTranslation();
   const lobby = useLobby();
   const { user } = useAuth();
   const [color, setColor] = useState<'white' | 'black' | 'random'>('random');
   const [tc, setTc] = useState<typeof TIME_CONTROLS[number]>('rapid');
   const [target, setTarget] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
+  type ChallengeAction = 'send' | 'accept' | 'decline' | 'cancel';
+  const [busy, setBusy] = useState<ChallengeAction | null>(null);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<{ action: ChallengeAction; kind: 'error' | 'success' } | null>(null);
 
   // Sort: online first, then by name
   const users = useMemo(() => {
@@ -1583,30 +1606,55 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
     });
   }, [lobby.users, lobby.online]);
 
-  async function sendChallenge() {
-    if (!target) return;
-    setBusy(true);
+  // Mutation failures must never disappear as unhandled Promise rejections.
+  // Keep the invitation visible and its action retryable; only report success
+  // after the server has acknowledged it. An optional list refresh failing
+  // afterward is not evidence that the mutation itself failed.
+  async function act<T>(action: ChallengeAction, mutate: () => Promise<T>, onSuccess?: (value: T) => void) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(action);
+    setNotice(null);
     try {
-      await api.post('/api/challenges', { to_user_id: target, color, time_control: tc });
-      await lobby.refreshChallenges();
-    } finally { setBusy(false); }
+      const result = await mutate();
+      onSuccess?.(result);
+      setNotice({ action, kind: 'success' });
+      // The mutation has been acknowledged. Updating the sidebar is useful,
+      // but a slow or failed refresh must not keep all challenge actions
+      // blocked or turn a confirmed invitation into an apparent failure.
+      void lobby.refreshChallenges().catch(() => {});
+    } catch {
+      setNotice({ action, kind: 'error' });
+    } finally {
+      inFlight.current = false;
+      setBusy(null);
+    }
   }
-  async function cancel(id: number) {
-    await api.del(`/api/challenges/${id}`);
-    await lobby.refreshChallenges();
+
+  function sendChallenge() {
+    if (!target) return;
+    void act('send', () => api.post('/api/challenges', { to_user_id: target, color, time_control: tc }),
+      () => setTarget(null));
   }
-  async function accept(id: number) {
-    const r = await api.post<{ game_id: number }>(`/api/challenges/${id}/accept`);
-    await lobby.refreshChallenges();
-    onChallengeAccepted(r.game_id);
+  function cancel(id: number) { void act('cancel', () => api.del(`/api/challenges/${id}`)); }
+  function accept(id: number) {
+    void act('accept', () => api.post<{ game_id: number }>(`/api/challenges/${id}/accept`),
+      (result) => onChallengeAccepted(result.game_id));
   }
-  async function decline(id: number) {
-    await api.post(`/api/challenges/${id}/decline`);
-    await lobby.refreshChallenges();
-  }
+  function decline(id: number) { void act('decline', () => api.post(`/api/challenges/${id}/decline`)); }
 
   return (
     <div className="space-y-4">
+      {notice && (
+        <div role={notice.kind === 'error' ? 'alert' : 'status'}
+          className={`rounded-md border px-3 py-2 text-sm ${notice.kind === 'error'
+            ? 'border-move-mistake/40 bg-move-mistake/5 text-chesscom-800 dark:text-chesscom-100'
+            : 'border-board-dark/30 bg-board-dark/5 text-chesscom-800 dark:text-chesscom-100'}`}>
+          {t(`challenge.${notice.kind}.${notice.action}`, {
+            defaultValue: CHALLENGE_FEEDBACK[notice.kind][notice.action],
+          })}
+        </div>
+      )}
       {lobby.incoming.length > 0 && (
         <div className="card overflow-hidden">
           <div className="section-header">
@@ -1621,8 +1669,11 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                   <div className="truncate font-medium">{c.from.display_name}</div>
                   <div className="text-xs text-ink-500">{t(`play.${c.color}`)} · {t(`play.tc.${c.time_control}`)}</div>
                 </div>
-                <button onClick={() => decline(c.id)} className="btn-ghost p-2"><X className="h-4 w-4" /></button>
-                <button onClick={() => accept(c.id)} className="btn-primary text-xs"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
+                <button type="button" onClick={() => decline(c.id)} disabled={busy !== null}
+                  aria-label={t('challenge.decline')} title={t('challenge.decline')}
+                  className="btn-ghost min-h-11 min-w-11 p-2"><X className="h-4 w-4" /></button>
+                <button type="button" onClick={() => accept(c.id)} disabled={busy !== null}
+                  className="btn-primary min-h-11 text-xs"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
               </div>
             ))}
           </div>
@@ -1643,7 +1694,8 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
                   <div className="truncate font-medium">{c.to.display_name}</div>
                   <div className="text-xs text-ink-500">{t(`play.${c.color}`)} · {t(`play.tc.${c.time_control}`)}</div>
                 </div>
-                <button onClick={() => cancel(c.id)} className="btn-secondary text-xs">{t('common.cancel')}</button>
+                <button type="button" onClick={() => cancel(c.id)} disabled={busy !== null}
+                  className="btn-secondary min-h-11 text-xs">{t('common.cancel')}</button>
               </div>
             ))}
           </div>
@@ -1664,13 +1716,15 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
               <div className="label mb-1">{t('play.color')}</div>
               <div className="grid grid-cols-3 gap-1">
                 {(['white','random','black'] as const).map((c) => (
-                  <button key={c} onClick={() => setColor(c)} className={`btn text-xs ${color === c ? 'btn-primary' : 'btn-secondary'}`}>{t(`play.${c}`)}</button>
+                  <button key={c} type="button" disabled={busy !== null} aria-pressed={color === c}
+                    onClick={() => { setColor(c); setNotice(null); }} className={`btn min-h-11 text-xs ${color === c ? 'btn-primary' : 'btn-secondary'}`}>{t(`play.${c}`)}</button>
                 ))}
               </div>
             </div>
             <div>
               <div className="label mb-1">{t('play.timeControl')}</div>
-              <select className="input" value={tc} onChange={(e) => setTc(e.target.value as typeof TIME_CONTROLS[number])}>
+              <select className="input min-h-11" value={tc} disabled={busy !== null}
+                onChange={(e) => { setTc(e.target.value as typeof TIME_CONTROLS[number]); setNotice(null); }}>
                 {TIME_CONTROLS.map((tt) => <option key={tt} value={tt}>{t(`play.tc.${tt}`)}</option>)}
               </select>
             </div>
@@ -1682,7 +1736,8 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
           ) : (
             <div className="max-h-72 space-y-1 overflow-auto">
               {users.map((u) => (
-                <button key={u.id} onClick={() => setTarget(u.id)}
+                <button key={u.id} type="button" disabled={busy !== null} aria-pressed={target === u.id}
+                  onClick={() => { setTarget(u.id); setNotice(null); }}
                   className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors
                     ${target === u.id ? 'bg-chesscom-900 text-white dark:bg-chesscom-100 dark:text-chesscom-900' : 'hover:bg-chesscom-100 dark:hover:bg-chesscom-800'}`}>
                   <span className="text-xl">{u.avatar_emoji}</span>
@@ -1695,8 +1750,8 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
               ))}
             </div>
           )}
-          <button onClick={sendChallenge} disabled={!target || busy} className="btn-primary w-full">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
+          <button type="button" onClick={sendChallenge} disabled={!target || busy !== null} className="btn-primary min-h-11 w-full">
+            {busy === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Swords className="h-4 w-4" />}
             {t('challenge.send')}
           </button>
         </div>

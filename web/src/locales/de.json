@@ -480,7 +480,19 @@
     "noPlayers": "Es gibt noch keine anderen Spieler. Bitte einen Admin, ein weiteres Konto anzulegen.",
     "send": "Herausforderung senden",
     "accept": "Annehmen",
-    "decline": "Ablehnen"
+    "decline": "Ablehnen",
+    "error": {
+      "send": "Die Herausforderung konnte nicht gesendet werden. Prüfe die Verbindung und versuche es erneut.",
+      "accept": "Die Herausforderung konnte nicht angenommen werden. Versuche es erneut.",
+      "decline": "Die Herausforderung konnte nicht abgelehnt werden. Versuche es erneut.",
+      "cancel": "Die Herausforderung konnte nicht zurückgezogen werden. Versuche es erneut."
+    },
+    "success": {
+      "send": "Herausforderung gesendet. Warte auf eine Antwort.",
+      "accept": "Herausforderung angenommen. Die Partie wird geöffnet…",
+      "decline": "Herausforderung abgelehnt.",
+      "cancel": "Herausforderung zurückgezogen."
+    }
   },
   "settings": {
     "title": "Einstellungen",

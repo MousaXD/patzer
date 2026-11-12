@@ -1,0 +1,109 @@
+// @vitest-environment happy-dom
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  post: vi.fn(), del: vi.fn(),
+  refreshChallenges: vi.fn(),
+  lobby: {
+    online: new Set<number>([2]),
+    users: [
+      { id: 2, username: 'peer', display_name: 'Opponent', avatar_emoji: '♟', online: true },
+    ],
+    incoming: [] as unknown[], outgoing: [] as unknown[],
+  },
+}));
+
+vi.mock('../api', () => ({ api: { post: mocks.post, del: mocks.del } }));
+vi.mock('../state/lobby', () => ({ useLobby: () => ({ ...mocks.lobby, refreshChallenges: mocks.refreshChallenges }) }));
+vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: 1 } }) }));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
+}));
+
+import { FriendTab } from './Play';
+
+beforeEach(() => {
+  mocks.post.mockReset();
+  mocks.del.mockReset();
+  mocks.refreshChallenges.mockReset().mockResolvedValue(undefined);
+  mocks.lobby.incoming = [];
+  mocks.lobby.outgoing = [];
+});
+afterEach(() => { cleanup(); });
+
+describe('Play friend challenges request recovery', () => {
+  it('explains a failed invitation, preserves the selected opponent, and allows one deliberate retry', async () => {
+    mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ challenge: { id: 20 } });
+    render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Opponent/ }));
+    const send = screen.getByRole('button', { name: 'challenge.send' });
+    fireEvent.click(send);
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not send your challenge');
+    expect(mocks.post).toHaveBeenCalledWith('/api/challenges', {
+      to_user_id: 2, color: 'random', time_control: 'rapid',
+    });
+    expect((screen.getByRole('button', { name: /Opponent/ }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+    expect((send as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(send);
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect((await screen.findByRole('status')).textContent).toContain('Challenge sent');
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+    expect(mocks.refreshChallenges).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents duplicate invitations while pending and treats a confirmed send as success even if the list refresh fails', async () => {
+    let confirm!: (value: unknown) => void;
+    mocks.post.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));
+    mocks.refreshChallenges.mockRejectedValue(new Error('list offline'));
+    render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Opponent/ }));
+    const send = screen.getByRole('button', { name: 'challenge.send' }) as HTMLButtonElement;
+    fireEvent.click(send);
+    expect(send.disabled).toBe(true);
+    fireEvent.click(send);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    confirm({ challenge: { id: 22 } });
+    expect((await screen.findByRole('status')).textContent).toContain('Challenge sent');
+    expect(screen.queryByRole('alert')).toBeNull();
+    await waitFor(() => expect(send.disabled).toBe(true)); // no target is selected after the successful send
+    expect(mocks.refreshChallenges).toHaveBeenCalledTimes(1);
+  });
+
+  it('never opens a game on a failed accept, but retries the same incoming invitation', async () => {
+    mocks.lobby.incoming = [{
+      id: 10, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    }];
+    mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ game_id: 802 });
+    const openGame = vi.fn();
+    render(<FriendTab onChallengeAccepted={openGame} />);
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not accept this challenge');
+    expect(openGame).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    await waitFor(() => expect(openGame).toHaveBeenCalledExactlyOnceWith(802));
+    expect(mocks.post.mock.calls.map(([url]) => url)).toEqual(['/api/challenges/10/accept', '/api/challenges/10/accept']);
+  });
+
+  it('keeps failed decline and cancellation visible with an actionable error', async () => {
+    mocks.lobby.incoming = [{
+      id: 10, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    }];
+    mocks.lobby.outgoing = [{
+      id: 11, color: 'black', time_control: 'blitz',
+      to: { id: 2, display_name: 'Opponent', avatar_emoji: '♟' },
+    }];
+    mocks.post.mockRejectedValueOnce(new Error('offline'));
+    mocks.del.mockRejectedValueOnce(new Error('offline'));
+    render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.decline' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not decline this challenge');
+    fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not cancel this challenge');
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/challenges/10/decline');
+    expect(mocks.del).toHaveBeenCalledExactlyOnceWith('/api/challenges/11');
+    expect(mocks.refreshChallenges).not.toHaveBeenCalled();
+  });
+});

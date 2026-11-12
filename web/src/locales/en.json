@@ -480,7 +480,19 @@
     "noPlayers": "No other players exist yet. Ask an admin to create another account.",
     "send": "Send challenge",
     "accept": "Accept",
-    "decline": "Decline"
+    "decline": "Decline",
+    "error": {
+      "send": "Could not send your challenge. Check your connection and try again.",
+      "accept": "Could not accept this challenge. Try again.",
+      "decline": "Could not decline this challenge. Try again.",
+      "cancel": "Could not cancel this challenge. Try again."
+    },
+    "success": {
+      "send": "Challenge sent. Waiting for a reply.",
+      "accept": "Challenge accepted. Opening the game…",
+      "decline": "Challenge declined.",
+      "cancel": "Challenge cancelled."
+    }
   },
   "settings": {
     "title": "Settings",

@@ -14,13 +14,19 @@ const socketHarness = vi.hoisted(() => ({
     receive(message: Record<string, unknown>): void;
   },
 }));
+const lobbyHarness = vi.hoisted(() => ({
+  refreshUsers: vi.fn(), refreshChallenges: vi.fn(),
+  online: new Set<number>(), users: [], incoming: [], outgoing: [],
+}));
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ user: {
     id: 1, profile: { display_name: 'Tester', board_theme: 'green', audience: 'beginner', blunder_warning: 0, coach_behavior: 'silent' },
   } }),
 }));
-vi.mock('../state/lobby', () => ({ useLobby: () => ({ refreshUsers: vi.fn(), refreshChallenges: vi.fn() }) }));
+vi.mock('../state/lobby', () => ({ useLobby: (selector?: (state: typeof lobbyHarness) => unknown) =>
+  selector ? selector(lobbyHarness) : { ...lobbyHarness },
+}));
 vi.mock('../api', () => ({ api: {
   get: (url: string) => Promise.resolve(url === '/api/games/live' ? { bot: null, pvp: [] } : { configured: false }),
 } }));
@@ -88,6 +94,25 @@ const snapshot = { type: 'game_started', fen: START, history: [], time_control: 
 afterEach(() => { cleanup(); socketHarness.current = null; });
 
 describe('Play authoritative game readiness', () => {
+  it('refreshes the friend lobby on entry, not again for unrelated parent renders', () => {
+    lobbyHarness.refreshUsers.mockClear();
+    lobbyHarness.refreshChallenges.mockClear();
+    const view = () => <MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>;
+    const page = render(view());
+    fireEvent.click(screen.getByRole('button', { name: 'play.tabFriend' }));
+    expect(lobbyHarness.refreshUsers).toHaveBeenCalledTimes(1);
+    expect(lobbyHarness.refreshChallenges).toHaveBeenCalledTimes(1);
+
+    page.rerender(view());
+    expect(lobbyHarness.refreshUsers).toHaveBeenCalledTimes(1);
+    expect(lobbyHarness.refreshChallenges).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'play.tabBot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'play.tabFriend' }));
+    expect(lobbyHarness.refreshUsers).toHaveBeenCalledTimes(2);
+    expect(lobbyHarness.refreshChallenges).toHaveBeenCalledTimes(2);
+  });
+
   it('blocks early moves until a snapshot, and drops optimistic state when the socket disconnects', () => {
     render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
