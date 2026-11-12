@@ -18,6 +18,7 @@ import { reviewAnalysisErrorKind } from '../components/review/reviewAnalysisErro
 import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
+import ReviewClassificationGuide from '../components/review/ReviewClassificationGuide';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
@@ -1218,15 +1219,17 @@ function GameAnalyzerView() {
                     </div>
                   )}
                   {tab === 'moves' && (
-                    <MoveList
-                      moves={timeline.moves}
-                      current={isVariation ? -1 : ply}
-                      onSelect={selectSavedFromRail}
-                      phaseSplit={analysis.phase_split}
-                      startFen={positions[0]?.fen}
-                      highlight={pickedSet}
-
-                    />
+                    <>
+                      <ReviewClassificationGuide moves={timeline.moves} />
+                      <MoveList
+                        moves={timeline.moves}
+                        current={isVariation ? -1 : ply}
+                        onSelect={selectSavedFromRail}
+                        phaseSplit={analysis.phase_split}
+                        startFen={positions[0]?.fen}
+                        highlight={pickedSet}
+                      />
+                    </>
                   )}
                   {tab === 'report' && (
                     <GameReportPanel

@@ -286,6 +286,7 @@
     "savedMovesWithoutAnalysis": "Вы можете просматривать сохранённые ходы, даже пока анализ движка не готов.",
     "partialMoveUnavailable": "Этот сохранённый ход ещё не оценён движком.",
     "partialReanalyze": "Повторно проанализировать всю партию",
+    "moveSymbolGuide": "Что означают значки ходов?",
     "jumpToMoveDetails": "Разбор хода",
     "returnToBoard": "Вернуться к доске",
     "exploreLabel": "Изучить:",

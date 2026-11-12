@@ -702,3 +702,24 @@
 ### Next highest-value issue
 
 - The review's 24-ply move list can display many classifications but lacks a localized, concise explanation of what its classification icons mean to a new player; every icon has tooltip/accessibility text, but color/icon recognition is not obvious. Investigate whether existing classification legend/help is visible within the Game Review lane, especially at 320px. Do not duplicate an existing legend or change other agents' global navigation; if discoverability is already good, instead audit scoring-error banner focus on a saved (non-partial) move when the reanalysis settings are open.
+
+## 2026-11-12: contextual classification-symbol guide for move-by-move learning
+
+### Problem and implementation
+
+- Continued from pushed, clean `4153e7a` and the recorded next classification-discoverability audit. Actual 320/390px Review screenshots showed the saved SAN history covered in colored glyphs without an adjacent visual key. The separate, lengthy Game Report classification-count table includes icon/label pairs, but sits much farther down the rail and does not help while reading the current move history.
+- Added a Game Review-only **collapsed native `<details>` guide** immediately before the saved SAN move list. A single 44px+ `What do the move symbols mean?` disclosure maps the actual source-backed classifications in this specific saved game to Patzer's existing classification SVGs and localized names, ordered by existing `CLASS_STYLE` classification rank. Missing classifications are never invented or listed, and PGNs without engine-classified moves show no guide at all. No new scoring semantics or custom color palette.
+- Added natural guide text in English, German, Spanish, Russian and Bulgarian, plus parity checks. Built focused rendering tests for class deduplication, order, icon pairing and the absence of a misleading guide when scores are missing.
+
+### Browser self-audit and verification
+
+- The first Chromium expansion test correctly left focus on the native summary, then an unrelated preexisting tab-navigation test failed because it assumed focus had remained on the Moves tab. This was **test-state contamination**, not a UI failure. Restored focus to the Moves tab before that independent Arrow-key assertion rather than changing the native accessible disclosure behavior.
+- Focused new guide/Game Report/localization tests: **56 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **987 passed / 12 skipped**, 108 passing files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including keyboard Enter to open/close the guide at 320px, 390px and 1024px, exactly matching SVG and label counts, present Brilliant/Blunder/Forced categories, no duplicates, 44px touch targets, zero horizontal overflow and correct keyboard Moves-tab navigation afterward. Valid PGNs without engine data show no fictitious classification guide, and prior nested/retry/source/PGN/mobile checks remain green.
+- Independently inspected `qa-artifacts/agent-a/move-symbol-guide-verified-20261112/review-move-symbol-guide-{320,390,1024}.png`: translated label/action is immediately above the saved SAN history, icon/name pairs remain readable in narrow rails, and desktop shows a compact two-column key without covering the board. Scores remain synthetic browser fixtures, not Stockfish accuracy certification.
+- No merge, deployment, production SQLite mutation or changes to other agents' owned areas.
+
+### Next high-impact candidate
+
+- The Game Review move list renders opening/middlegame/endgame boundaries as plain styled `div` labels. The report offers phase breakdowns, but keyboard/screen-reader players cannot jump between phase headings inside the move history itself. Audit DOM semantics and actual marker positions for black-to-move/FEN-start games before adding any in-list heading semantics. Avoid changing phase calculations or redundant global navigation.

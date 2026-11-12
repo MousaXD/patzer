@@ -1601,6 +1601,37 @@ try {
       await list.scrollIntoViewIfNeeded();
       await page.screenshot({path:join(output,`review-move-list-targets-${width}.png`)});
       const english=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+      const guide=page.locator('[data-review-classification-guide]');
+      const guideTrigger=guide.locator('summary');
+      await guideTrigger.waitFor({state:'visible'});
+      assert.equal((await guideTrigger.innerText()).trim(),english.review.moveSymbolGuide,
+        'Move-symbol guide must name the on-demand, localized explanation');
+      const guideHit=await guideTrigger.boundingBox();
+      assert.ok(guideHit && guideHit.width>=44 && guideHit.height>=44,
+        `The move-symbol guide must be touch-friendly at ${width}px: ${JSON.stringify(guideHit)}`);
+      assert.equal(await guide.getAttribute('open'),null,'Move symbol guide must stay collapsed by default');
+      await guideTrigger.focus();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>document.querySelector('[data-review-classification-guide]')?.hasAttribute('open'));
+      const labels=await guide.locator('li span').allTextContents();
+      assert.ok(labels.includes(english.classification.brilliant)
+        && labels.includes(english.classification.blunder)
+        && labels.includes(english.classification.forced),
+        `Guide must explain the observed move-classification glyphs at ${width}px: ${JSON.stringify(labels)}`);
+      assert.equal(new Set(labels).size,labels.length,'Guide should list each icon only once');
+      const glyphs=await guide.locator('li img, li svg').count();
+      assert.equal(glyphs,labels.length,'Every guide label must have its matching icon');
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)<=2,
+        `Expanded move-symbol guide must not overflow a ${width}px viewport`);
+      await guide.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`review-move-symbol-guide-${width}.png`)});
+      await guideTrigger.focus();
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>!document.querySelector('[data-review-classification-guide]')?.hasAttribute('open'));
+      // Return to the originally focused tab before its separate Arrow-key
+      // navigation regression. The native summary correctly retains focus
+      // after toggling the guide and must not steal tab/board shortcuts.
+      await page.getByRole('tab',{name:'Moves'}).focus();
       assert.deepEqual(filterButtons.map(button=>button.name),
         [english.review.filterPrev,english.review.filterNext,english.review.filterClear],
         'Filtered move controls must explain their action to assistive technology');
@@ -2472,6 +2503,8 @@ try {
       await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
       await page.locator('cg-board').waitFor({state:'visible'});
       await page.getByRole('button',{name:spanishWithoutEngine.review.runEngine}).waitFor({state:'visible'});
+      assert.equal(await page.locator('[data-review-classification-guide]').count(),0,
+        'Without actual engine classifications, a saved PGN must not display a classification guide');
       const moveList=page.getByRole('region',{name:spanishWithoutEngine.review.moves});
       await moveList.waitFor({state:'visible',timeout:4000});
       if(label==='unscored'){

@@ -286,6 +286,7 @@
     "savedMovesWithoutAnalysis": "You can replay saved moves even before engine analysis is ready.",
     "partialMoveUnavailable": "This saved move has not been evaluated by the engine yet.",
     "partialReanalyze": "Reanalyze full game",
+    "moveSymbolGuide": "What do the move symbols mean?",
     "jumpToMoveDetails": "Move details",
     "returnToBoard": "Back to board",
     "exploreLabel": "Explore:",

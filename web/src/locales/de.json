@@ -286,6 +286,7 @@
     "savedMovesWithoutAnalysis": "Du kannst gespeicherte Züge auch ansehen, bevor die Engine-Analyse bereit ist.",
     "partialMoveUnavailable": "Dieser gespeicherte Zug wurde von der Engine noch nicht bewertet.",
     "partialReanalyze": "Gesamte Partie erneut analysieren",
+    "moveSymbolGuide": "Was bedeuten die Zugsymbole?",
     "jumpToMoveDetails": "Zugdetails",
     "returnToBoard": "Zurück zum Brett",
     "exploreLabel": "Erkunden:",
