@@ -55,7 +55,8 @@ beforeEach(() => {
   // through the same account-scoped store action used in the real App.
   vi.stubGlobal('WebSocket', class { close() {} });
   useLobby.getState().connect(1);
-  useLobby.setState({ incoming: [{ ...incoming }], outgoing: [], refreshChallenges: mocks.refresh });
+  useLobby.setState({ incoming: [{ ...incoming }], outgoing: [], refreshChallenges: mocks.refresh,
+    activePlaySession: false } as never);
 });
 afterEach(() => {
   cleanup();
@@ -64,6 +65,14 @@ afterEach(() => {
 });
 
 describe('incoming challenge modal failure recovery', () => {
+  it('does not cover an active timed game with a blocking invitation dialog', () => {
+    useLobby.setState({ activePlaySession: true } as never);
+    mount();
+    expect(screen.queryByRole('dialog', { name: 'challenge.incoming' })).toBeNull();
+    expect((screen.getByRole('status') as HTMLElement).textContent).toContain('after your game');
+    expect(useLobby.getState().incoming).toHaveLength(1); // do not decline it
+  });
+
   it('closes an already-expired invitation instead of trapping the player in futile Accept retries', async () => {
     mocks.post.mockRejectedValueOnce(Object.assign(new Error('not_pending'), {
       status: 409, data: { error: 'not_pending' },

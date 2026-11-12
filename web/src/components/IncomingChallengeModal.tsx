@@ -12,10 +12,12 @@ export default function IncomingChallengeModal() {
   const accountId = useAuth((s) => s.user?.id ?? null);
   const nav = useNavigate();
   const incoming = useLobby((s) => s.incoming);
+  const activePlaySession = useLobby((s) => s.activePlaySession);
   const refresh = useLobby((s) => s.refreshChallenges);
   const forgetChallenge = useLobby((s) => s.forgetChallenge);
   const [error, setError] = useState<'accept' | 'decline' | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [snoozedChallengeId, setSnoozedChallengeId] = useState<number | null>(null);
   const [busy, setBusy] = useState<'accept' | 'decline' | null>(null);
   const inFlight = useRef(false);
   const actionSession = useRef({ account: accountId, generation: 0 });
@@ -27,6 +29,7 @@ export default function IncomingChallengeModal() {
     setBusy(null);
     setError(null);
     setUnavailable(false);
+    setSnoozedChallengeId(null);
     return () => { actionSession.current.generation += 1; };
   }, [accountId]);
   useEffect(() => {
@@ -40,11 +43,11 @@ export default function IncomingChallengeModal() {
   const c: Challenge | undefined = incoming[0];
   useEffect(() => {
     setError(null);
-    if (c?.id === undefined) return;
+    if (c?.id === undefined || activePlaySession) return;
     const priorFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogRef.current?.focus();
     return () => { if (priorFocus?.isConnected) priorFocus.focus(); };
-  }, [c?.id]);
+  }, [c?.id, activePlaySession]);
 
   // The invitation lives in the global lobby store. Only remove it after the
   // server accepts a mutation; otherwise a failed request must remain visible
@@ -92,6 +95,18 @@ export default function IncomingChallengeModal() {
 
   return (
     <>
+      {c && activePlaySession && snoozedChallengeId !== c.id && (
+        <div role="status" className="pointer-events-none fixed bottom-28 right-4 z-[55] flex w-[min(90vw,20rem)] items-start gap-2 rounded-xl border border-ink-200 bg-white p-3 text-sm text-chesscom-800 shadow-lift sm:bottom-4 dark:border-ink-700 dark:bg-chesscom-900 dark:text-chesscom-100">
+          <span className="flex-1">{t('challenge.whilePlaying', {
+            name: c.from.display_name,
+            defaultValue: `New challenge from ${c.from.display_name}. Check it after your game if it's still available.`,
+          })}</span>
+          <button type="button" aria-label={t('common.close')} className="btn-ghost pointer-events-auto min-h-11 min-w-11 p-2"
+            onClick={() => setSnoozedChallengeId(c.id)}>
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {unavailable && (
         <div role="status" className="fixed bottom-4 left-1/2 z-[65] flex w-[min(92vw,28rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-amber-500/40 bg-white p-3 text-sm text-chesscom-800 shadow-lift dark:bg-chesscom-900 dark:text-chesscom-100">
           <span className="flex-1">{t('challenge.noLongerAvailable', { defaultValue: 'This invitation has expired or is no longer available.' })}</span>
@@ -102,7 +117,7 @@ export default function IncomingChallengeModal() {
         </div>
       )}
       <AnimatePresence>
-      {c && (
+      {c && !activePlaySession && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           role="dialog" aria-modal="true" aria-labelledby="challenge-dialog-title"

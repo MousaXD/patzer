@@ -16,6 +16,7 @@ const socketHarness = vi.hoisted(() => ({
 }));
 const lobbyHarness = vi.hoisted(() => ({
   refreshUsers: vi.fn(), refreshChallenges: vi.fn(),
+  setActivePlaySession: vi.fn(),
   online: new Set<number>(), users: [], incoming: [], outgoing: [],
 }));
 const authHarness = vi.hoisted(() => ({ id: 1 }));
@@ -96,12 +97,26 @@ const snapshot = { type: 'game_started', fen: START, history: [], time_control: 
 const savedBot = { difficulty: 'kid', user_color: 'white', time_control: 'rapid', ply: 12, updated_at: '2026-11-12T12:00:00Z' };
 
 beforeEach(() => {
+  lobbyHarness.setActivePlaySession.mockReset();
   liveHarness.getLive.mockReset().mockResolvedValue({ bot: null, pvp: [] });
   liveHarness.del.mockReset().mockResolvedValue({ ok: true });
 });
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('suppresses blocking global invitations during a connecting or active game and restores them on exit', async () => {
+    const page = render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    expect(lobbyHarness.setActivePlaySession).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    expect(lobbyHarness.setActivePlaySession).toHaveBeenLastCalledWith(true);
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive(snapshot); });
+    expect(lobbyHarness.setActivePlaySession).toHaveBeenLastCalledWith(true);
+    page.unmount();
+    expect(lobbyHarness.setActivePlaySession).toHaveBeenLastCalledWith(false);
+  });
+
   it('requires an explicit choice before replacing a saved bot game with a new game', async () => {
     liveHarness.getLive.mockResolvedValue({ bot: savedBot, pvp: [] });
     render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);

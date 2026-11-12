@@ -163,12 +163,19 @@ export default function Play() {
   // stable actions needed to fetch on tab entry.
   const refreshLobbyUsers = useLobby((state) => state.refreshUsers);
   const refreshLobbyChallenges = useLobby((state) => state.refreshChallenges);
+  const setActivePlaySession = useLobby((state) => state.setActivePlaySession);
   const nav = useNavigate();
   const [params] = useSearchParams();
   const pvpGameId = Number(params.get('game') ?? 0) || null;
   const fromPos = useMemo(() => parseFromPosition(params.get('fen'), params.get('moves'), params.get('color')), [params]);
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'over'>('setup');
+  // Global invitations must not block the board or steal keyboard focus
+  // during a live/connecting game. Keep them queued for the setup screen.
+  useEffect(() => {
+    setActivePlaySession(phase !== 'setup' || pvpGameId !== null);
+    return () => setActivePlaySession(false);
+  }, [phase, pvpGameId, setActivePlaySession]);
   const [setupTab, setSetupTab] = useState<'bot' | 'friend'>('bot');
 
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');

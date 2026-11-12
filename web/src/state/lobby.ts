@@ -30,6 +30,8 @@ interface LobbyState {
   usersStatus: ListStatus;
   incoming: Challenge[];
   outgoing: Challenge[];
+  activePlaySession: boolean;
+  setActivePlaySession: (active: boolean) => void;
   challengesStatus: ListStatus;
   pendingAcceptedNav: AcceptedNav | null;
   consumeAcceptedNav: () => AcceptedNav | null;
@@ -60,6 +62,8 @@ export const useLobby = create<LobbyState>((set, get) => {
   usersStatus: 'loading',
   incoming: [],
   outgoing: [],
+  activePlaySession: false,
+  setActivePlaySession: (active) => set({ activePlaySession: active }),
   challengesStatus: 'loading',
   pendingAcceptedNav: null,
   consumeAcceptedNav: () => {
@@ -145,6 +149,7 @@ export const useLobby = create<LobbyState>((set, get) => {
     set({
       ws: null, online: new Set(), users: [], incoming: [], outgoing: [],
       usersStatus: 'loading', challengesStatus: 'loading', pendingAcceptedNav: null,
+      activePlaySession: false,
     });
     if (ws) try { ws.close(); } catch { /* ignore */ }
   },
