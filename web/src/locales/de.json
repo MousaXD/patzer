@@ -1215,7 +1215,7 @@
     "empty": "Noch keine Ziele — erstelle deinen ersten Plan.",
     "emptyDesc": "Dein Plan erneuert sich jede Woche mit gezielten Zielen, die sich danach richten, was du wirklich verbessern musst.",
     "activeGroup": "Aktiv",
-    "completedGroup": "Diese Woche erledigt",
+    "completedGroup": "Erledigte Ziele",
     "expiredGroup": "Abgelaufen",
     "progress": "Fortschritt",
     "done": "Erledigt",
@@ -1232,7 +1232,7 @@
     "goal": {
       "puzzles_solve": {
         "title": "Löse diese Woche {{target}} Aufgaben",
-        "description": "Schärfe deine Taktik mit persönlichen Aufgaben aus deinen eigenen Partien."
+        "description": "Löse Aufgaben aus deinen Partien oder trainiere mit Taktikaufgaben aus der Sammlung."
       },
       "opening_play": {
         "title": "Spiele {{target}} Partien mit {{name}}",

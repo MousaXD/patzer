@@ -63,9 +63,13 @@ function computeProgress(userId: number, row: GoalRow): number {
   switch (row.kind as GoalKind) {
     case 'puzzles_solve': {
       const r = db.prepare(`
-        SELECT COUNT(*) AS c FROM puzzle_attempts
-        WHERE user_id = ? AND solved = 1 AND created_at >= ?
-      `).get(userId, row.created_at) as { c: number };
+        SELECT
+          (SELECT COUNT(*) FROM puzzle_attempts
+            WHERE user_id = ? AND solved = 1 AND created_at >= ?)
+          +
+          (SELECT COUNT(*) FROM tactics_attempts
+            WHERE user_id = ? AND solved = 1 AND created_at >= ?) AS c
+      `).get(userId, row.created_at, userId, row.created_at) as { c: number };
       return r.c;
     }
     case 'opening_play': {
@@ -142,7 +146,7 @@ function pickSeedGoals(userId: number): SeedSpec[] {
   seeds.push({
     kind: 'puzzles_solve',
     title: 'Solve 10 puzzles this week',
-    description: 'Sharpen your tactics with personalized puzzles from your own games.',
+    description: 'Solve tactics from your own games or tackle puzzles from the training set.',
     target: 10,
     metadata: null,
   });
@@ -275,8 +279,16 @@ function listAndScore(userId: number): GoalOut[] {
 
 router.get('/', (c) => {
   const me = c.get('user');
-  const active = db.prepare(`SELECT COUNT(*) AS c FROM goals WHERE user_id = ? AND status = 'active'`).get(me.id) as { c: number };
-  if (active.c === 0) {
+  // A weekly plan expires at its own deadline, even if its page is not open
+  // when that moment arrives. Completed goals are still the *same* plan:
+  // never auto-create a second plan simply because every goal was achieved.
+  db.prepare(`UPDATE goals SET status='expired'
+    WHERE user_id = ? AND status = 'active' AND completes_at <= datetime('now')`).run(me.id);
+  const current = db.prepare(`SELECT COUNT(*) AS c FROM goals
+    WHERE user_id = ? AND (
+      status = 'active' OR (status = 'completed' AND completes_at > datetime('now'))
+    )`).get(me.id) as { c: number };
+  if (current.c === 0) {
     insertSeeds(me.id, pickSeedGoals(me.id));
   }
   return c.json({ goals: listAndScore(me.id) });

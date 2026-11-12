@@ -142,7 +142,7 @@ export default function Plan() {
           {groups.completed.length > 0 && (
             <section className="space-y-3">
               <SectionHeader
-                label={t('plan.completedGroup', { defaultValue: 'Completed this week' })}
+                label={t('plan.completedGroup', { defaultValue: 'Completed goals' })}
                 count={groups.completed.length}
                 tone="board-dark"
               />
@@ -213,29 +213,24 @@ function GoalCard({ goal }: { goal: PlanGoal }) {
 
   return (
     <div className={`card relative overflow-hidden p-4 ${borderTone}`}>
-      {completed && (
-        <div className="pointer-events-none absolute -right-6 -top-6 text-gold-500/15">
-          <Sparkles className="h-24 w-24" />
-        </div>
-      )}
       <div className="flex items-start gap-3">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${accentBg}`}>
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+            <h3 className="break-words text-sm font-semibold leading-snug text-chesscom-900 dark:text-chesscom-100">
               {text.title}
             </h3>
             {completed && <Check className="h-4 w-4 shrink-0 text-gold-600" />}
           </div>
-          <p className="mt-0.5 text-xs text-chesscom-500">{text.description}</p>
+          <p className="mt-0.5 text-xs text-chesscom-600 dark:text-chesscom-300">{text.description}</p>
         </div>
       </div>
 
       <div className="mt-3 space-y-1.5">
         <div className="flex items-baseline justify-between text-xs">
-          <span className="text-chesscom-500">
+          <span className="text-chesscom-600 dark:text-chesscom-300">
             {t('plan.progress', { defaultValue: 'Progress' })}
           </span>
           <span className="font-mono tabular-nums text-chesscom-700 dark:text-chesscom-200">

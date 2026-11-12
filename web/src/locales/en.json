@@ -1215,7 +1215,7 @@
     "empty": "No goals yet — generate your first plan.",
     "emptyDesc": "Your plan refreshes weekly with focused targets drawn from what you actually need to improve.",
     "activeGroup": "Active",
-    "completedGroup": "Completed this week",
+    "completedGroup": "Completed goals",
     "expiredGroup": "Expired",
     "progress": "Progress",
     "done": "Done",
@@ -1232,7 +1232,7 @@
     "goal": {
       "puzzles_solve": {
         "title": "Solve {{target}} puzzles this week",
-        "description": "Sharpen your tactics with personalized puzzles from your own games."
+        "description": "Solve tactics from your own games or tackle puzzles from the training set."
       },
       "opening_play": {
         "title": "Play {{target}} games in {{name}}",
