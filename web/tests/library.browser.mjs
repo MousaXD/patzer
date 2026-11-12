@@ -109,6 +109,7 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false, pendingStarResult = null,
+    lastPageScenario = false, intermediatePageScenario = false,
     hideFailedBookmarkAfterRefresh = false, concurrentBookmarkFailures = false,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
@@ -199,6 +200,8 @@ async function newPage(theme, width, height,
       }]);
       else if (unicodeLibrary) json = list(parsed.searchParams,unicodeGames);
       else if (emptyLibrary) json = {games:[],total:0,offset:0,limit:40,has_more:false};
+      else if (lastPageScenario) json = list(parsed.searchParams,games.slice(0,45));
+      else if (intermediatePageScenario) json = list(parsed.searchParams,games.slice(0,85));
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
@@ -281,6 +284,8 @@ async function newPage(theme, width, height,
   } else if (emptyLibrary) {
     await page.getByText('Your game history starts here').waitFor();
     await page.getByText('0 of 0 games').waitFor();
+  } else if (lastPageScenario || intermediatePageScenario) {
+    await page.getByText(lastPageScenario ? '40 of 45 games' : '40 of 85 games').waitFor();
   } else {
     if (locale !== 'en') {
       // German translates both its discovery actions and game counts; wait
@@ -1294,6 +1299,52 @@ try {
     assert.deepEqual(pageErrors,[], 'Mobile continuation failure/recovery caused a JS exception');
     console.log('PASS German 320px continuation failure keeps existing games and retries without duplication');
   } finally {await failedPage.context.close();}
+
+  const finalPage=await newPage('dark',320,700,{lastPageScenario:true});
+  try {
+    const {page,pageErrors}=finalPage;
+    const load=page.getByRole('button',{name:'Load more games'});
+    await load.focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('45 of 45 games').waitFor();
+    assert.equal(await load.count(),0,'Load more must disappear after the last saved page');
+    const firstNew=page.locator('.card-hover > a[href="/review/41"]');
+    assert.ok(await firstNew.evaluate(node=>document.activeElement===node),
+      'Keyboard Load more should focus the first newly loaded game when the last-page button disappears');
+    assert.ok((await metrics(page)).overflow<=2,'Last-page keyboard focus caused mobile overflow');
+    assert.deepEqual(pageErrors,[],'Last-page keyboard navigation caused a browser exception');
+    console.log('PASS final Load more keeps keyboard focus on the first appended game');
+  } finally {await finalPage.context.close();}
+
+  const intermediate=await newPage('light',390,844,{intermediatePageScenario:true});
+  try {
+    const {page,pageErrors}=intermediate;
+    const load=page.getByRole('button',{name:'Load more games'});
+    await load.focus();
+    await page.keyboard.press('Enter');
+    await page.getByText('80 of 85 games').waitFor();
+    assert.ok(await load.evaluate(node=>document.activeElement===node),
+      'Keyboard focus should return to Load more when additional pages still exist');
+    await page.keyboard.press('Enter');
+    await page.getByText('85 of 85 games').waitFor();
+    assert.equal(await load.count(),0);
+    assert.ok(await page.locator('.card-hover > a[href="/review/81"]').evaluate(node=>document.activeElement===node),
+      'Final continuation should move keyboard focus to the first newly appended game');
+    assert.deepEqual(pageErrors,[],'Intermediate page focus recovery caused a browser error');
+    console.log('PASS keyboard continuation retains Load more across intermediate pages and lands on final games');
+  } finally {await intermediate.context.close();}
+
+  const pointerFinal=await newPage('light',390,844,{lastPageScenario:true});
+  try {
+    const {page,pageErrors}=pointerFinal;
+    await page.getByRole('button',{name:'Load more games'}).click();
+    await page.getByText('45 of 45 games').waitFor();
+    assert.equal(await page.locator('.card-hover > a[href="/review/41"]')
+      .evaluate(node=>document.activeElement===node),false,
+      'Mouse Load more should not force focus onto a newly appended game');
+    assert.deepEqual(pageErrors,[],'Pointer pagination caused a browser error');
+    console.log('PASS mouse Load more does not redirect focus');
+  } finally {await pointerFinal.context.close();}
 
   const starred = await newPage('dark',390,844,{starredOnlyScenario:true});
   try {

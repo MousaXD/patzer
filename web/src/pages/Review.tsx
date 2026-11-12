@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -96,6 +96,9 @@ export default function Review() {
   const navigationType = useNavigationType();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const starredFilterRef = useRef<HTMLButtonElement | null>(null);
+  const loadMoreRef = useRef<HTMLButtonElement | null>(null);
+  const firstAppendedGameRef = useRef<HTMLAnchorElement | null>(null);
+  const keyboardPageStartRef = useRef<number | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [bookmarkFailures, setBookmarkFailures] = useState<{id:number; players:string}[]>([]);
@@ -483,6 +486,22 @@ export default function Review() {
   const emptyFilteredResults = !isLoading && !initialError && games.length === 0 && !firstUseEmpty;
   const importControlsVisible = firstUseEmpty || importPanelOpen;
   const hiddenBookmarkFailures = bookmarkFailures.filter(failure => !games.some(game => game.id === failure.id));
+  useEffect(() => {
+    const start = keyboardPageStartRef.current;
+    if (start == null || isFetchingNextPage) return;
+    if (isFetchNextPageError || games.length < start || (games.length === start && !hasNextPage)) {
+      keyboardPageStartRef.current = null;
+      return;
+    }
+    if (games.length === start) return;
+    keyboardPageStartRef.current = null;
+    // A keyboard-activated continuation disables its own button. Restore it
+    // for another page, or focus the first new game if the final page removes
+    // Load more entirely. Never redirect someone who has focused elsewhere.
+    if (document.activeElement !== document.body && document.activeElement !== loadMoreRef.current) return;
+    if (hasNextPage) loadMoreRef.current?.focus();
+    else firstAppendedGameRef.current?.focus();
+  }, [games.length, hasNextPage, isFetchingNextPage, isFetchNextPageError]);
 
   function toggleBookmarkedOnly() {
     const next = new URLSearchParams(searchParams);
@@ -928,7 +947,8 @@ export default function Review() {
 
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
-          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
+          {games.map((g, index) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
+            focusLinkRef={index === keyboardPageStartRef.current ? firstAppendedGameRef : undefined}
             restoreKeyboardFocus={() => starredFilterRef.current?.focus()}
             onBookmarkAttempt={(gameId) => setBookmarkFailures(current => current.filter(failure => failure.id !== gameId))}
             onBookmarkFailure={(gameId, players) => {
@@ -947,8 +967,11 @@ export default function Review() {
       )}
       {!isLoading && !initialError && hasNextPage && !isFetchNextPageError && (
         <div className="flex justify-center">
-          <button type="button" className="btn-secondary min-h-11 px-5 text-sm" disabled={isFetchingNextPage}
-            onClick={() => void fetchNextPage()}>
+          <button ref={loadMoreRef} type="button" className="btn-secondary min-h-11 px-5 text-sm" disabled={isFetchingNextPage}
+            onClick={(event) => {
+              keyboardPageStartRef.current = event.detail === 0 ? games.length : null;
+              void fetchNextPage();
+            }}>
             {isFetchingNextPage ? t('common.loading', { defaultValue: 'Loading games…' }) : t('review.loadMore', { defaultValue: 'Load more games' })}
           </button>
         </div>
@@ -962,8 +985,9 @@ export default function Review() {
   );
 }
 
-function GameCard({ g, accountId, starredOnly, restoreKeyboardFocus, onBookmarkAttempt, onBookmarkFailure }: {
+function GameCard({ g, accountId, starredOnly, focusLinkRef, restoreKeyboardFocus, onBookmarkAttempt, onBookmarkFailure }: {
   g: GameRow; accountId: number | undefined; starredOnly: boolean;
+  focusLinkRef?: Ref<HTMLAnchorElement>;
   restoreKeyboardFocus: () => void;
   onBookmarkAttempt: (id: number) => void; onBookmarkFailure: (id: number, players: string) => void;
 }) {
@@ -1027,7 +1051,7 @@ function GameCard({ g, accountId, starredOnly, restoreKeyboardFocus, onBookmarkA
 
   return (
     <div className="card-hover group relative flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4">
-      <Link to={`/review/${g.id}`} className="flex min-w-0 flex-1 items-start gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:items-center sm:gap-4">
+      <Link ref={focusLinkRef} to={`/review/${g.id}`} className="flex min-w-0 flex-1 items-start gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:items-center sm:gap-4">
         <ResultIcon r={g.result} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">

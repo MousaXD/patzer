@@ -1117,3 +1117,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **keyboard activation of Load more and focus after a successful continuation**. A large Library's paging button remains reachable as more cards load, but when the final page removes the button a keyboard user may land on the document body. Verify actual Chromium focus after the last page at desktop and 320px; if lost, restore focus to a durable Library summary or nearest surviving game link without moving pointer users or causing a screen-reader announcement storm.
+
+## 2026-11-13 — Keep keyboard focus useful after paginated Library continuations
+
+- Recovered clean pushed `6a778b0` and resumed the planned pagination audit. Added a failing real-browser 320px fixture with 45 synthetic games: keyboard Enter on **Load more** appended the final five, the button correctly vanished, but focus was lost. The existing code had no stable keyboard landing target once the paging control unmounted.
+- Added Library-local refs for the Load more button, the first newly appended game link and the pending keyboard page-start index. Only keyboard-initiated paging (`click.detail === 0`) requests focus recovery; after a successful continuation, return focus to **Load more** while further pages exist or to the **first new game** if this was the last page. Discard the focus request on an exhausted/failed continuation and never steal focus if the player moved to another element. The new link ref is attached only to the target game; no global DOM selectors, extra announcements, server contracts or pagination-cache logic changed.
+- Expanded the browser matrix with 85-game intermediate/final-page sequencing and a separate mouse-clicked 45-game final page. Verified keyboard focus remains on Load more at **80 of 85**, moves to game **81** at **85 of 85**, and reaches game **41** at **45 of 45**. Mouse-initiated pagination does not force-focus any new card. All desktop/mobile, filter, import, bookmark and error-recovery journeys remained green.
+
+### Verification
+
+- Focused Library React tests: **59/59 passed**. Full repository suite: **109 passed files, 2 skipped; 1,137 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Complete isolated Chromium 1440px desktop and 390/320px light/dark, final/intermediate keyboard pagination, pointer final page, German translations, search, bookmark, PGN and provider imports, and recovery: passed, no browser errors or horizontal overflow.
+- Changes restricted to Agent C Library UI, isolated Chromium fixtures and durable progress report. No production data, other agents, main, merge or deploy touched.
+
+### Next independent audit
+
+- Investigate **pagination focus safety if the player changes source/search/date filters or accounts while a keyboard-initiated continuation is pending**. The new focus target is local state but pending React Query continuations may finish after the Library switches to another query. Reproduce with delayed synthetic responses and an explicit focus move to another control; cancel the stale focus request on query identity change if needed, without changing the existing query-cache isolation or pagination API.
