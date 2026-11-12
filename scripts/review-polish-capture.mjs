@@ -906,6 +906,7 @@ try {
   const noteRaceContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
   let releaseRaceOlder=()=>{};
   let releaseRaceNewer=()=>{};
+  let releaseRaceMove=()=>{};
   try{
     await noteRaceContext.addCookies([{name:account.cookie.split('=')[0],
       value:account.cookie.split('=').slice(1).join('='),url:base}]);
@@ -916,12 +917,15 @@ try {
     const newText='Second draft must be saved before leaving';
     const heldOlder=new Promise(resolve=>{releaseRaceOlder=resolve;});
     const heldNewer=new Promise(resolve=>{releaseRaceNewer=resolve;});
+    const heldMove=new Promise(resolve=>{releaseRaceMove=resolve;});
+    const moveText='Review move navigation should not discard or block notes';
     const submitted=[];
     await page.route(`**/api/games/${id}/notes`,async route=>{
       const text=route.request().postDataJSON().notes;
       submitted.push(text);
       if(text===oldText) await heldOlder;
       if(text===newText) await heldNewer;
+      if(text===moveText) await heldMove;
       await route.continue();
     });
     await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
@@ -954,8 +958,32 @@ try {
       'Only one ordered PATCH should be sent per draft, including the blur/navigation race');
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,newText,
       'Only the final acknowledged edit may release navigation');
+    // Normal ?ply= changes keep GameAnalyzer and its Notes editor mounted.
+    // A held autosave must never introduce an unrelated navigation dialog
+    // when someone simply steps forward in the same saved game.
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const moveEditor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    await moveEditor.fill(moveText);
+    const moveRequest=page.waitForRequest(req=>req.url().endsWith(`/api/games/${id}/notes`)
+      && req.postDataJSON().notes===moveText);
+    await moveEditor.press('Tab');
+    await moveRequest;
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'15 / 24');
+    await page.locator('[data-move-transport] button').nth(2).click();
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')?.textContent?.trim()==='16 / 24',
+      undefined,{timeout:5000});
+    assert.equal(await page.getByRole('alertdialog').count(),0,
+      'Changing ?ply= within the same saved game must not block chess exploration');
+    assert.equal(await moveEditor.inputValue(),moveText,
+      'The private note must remain mounted while the player explores a saved move');
+    const moveResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/notes`)
+      && res.status()===200 && res.request().postDataJSON().notes===moveText);
+    releaseRaceMove();
+    await moveResponse;
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,moveText);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
-  }finally{releaseRaceOlder();releaseRaceNewer();await noteRaceContext.close();}
+  }finally{releaseRaceOlder();releaseRaceNewer();releaseRaceMove();await noteRaceContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});

@@ -1446,3 +1446,13 @@
 ### Next independent audit candidate
 
 - Explore the Notes **draft recovery after a background game refetch** while a stale save response arrives. Check that the editor never replaces the player's in-progress text or navigates early. Prior rapid-queue assertions cover two saves, but a background refetch triggered externally is a separate case. Only change product behavior if Chromium reproduces actual data loss.
+
+## 2026-11-13: certify normal move exploration while private notes autosave
+
+- Continued from clean pushed `386a089`. While a note PATCH is deliberately held by the authenticated disposable browser fixture, clicked the real saved-game **Next move** transport button. Confirmed the active position progresses from **15 / 24 → 16 / 24**, that no navigation-blocking Notes `alertdialog` appears for the ordinary `?ply=` change, the private draft remains mounted and unchanged, and releasing the pending response persists the draft without rewriting the source PGN.
+- An initial new browser assertion inadvertently targeted the fourth transport button (`Last move`) instead of the third (`Next move`). Chromium correctly navigated from ply 15 to 24, and the strict ply-16 test timed out. Diagnostics proved this was a test locator mistake, **not** a product regression. Corrected it to the third button (`nth(2)`) and restored the explicit 16/24 assertion.
+- Full authenticated disposable Chromium viewport/theme/locale/game/keyboard/source/PGN/variation matrix: **PASS (exit 0)** on port 8993. `node --check scripts/review-polish-capture.mjs` and `git diff --check`: PASS. Test-only coverage; previous complete 1006-unit-test/typecheck/build checkpoint still applies. No application changes, merge, deployment, production data or other-agent worktree edits.
+
+### Next independent, higher-value Game Review audit
+
+- A normal `?ply=` change must not block exploration, but switching between *Saved game* and *Blind practice* can replace the analysis workspace. Audit how an unsaved Notes draft behaves when selecting practice from the current game and returning with browser Back. Verify the guard distinguishes a destructive route transition from a harmless move selection, and preserve the saved PGN and pending note state.
