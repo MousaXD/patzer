@@ -1133,3 +1133,32 @@
 ### Next audit
 
 - Measure contrast and visual affordance of **Win/Loss/Draw** glyphs in Home Recent Games across both themes and at 320/1440px. Their accessible outcome names were already corrected in an earlier commit; do not repeat that work. Fix only a demonstrated, meaningful visual accessibility problem.
+
+## 2026-11-12: Restore legible Recent Games result glyphs in both themes
+
+### Measured issue
+
+- Continued from clean pushed `f2faa64` and directly measured Chromium's computed glyph foreground and **alpha-composited badge background**, not the surrounding row.
+- At 320px and 1440px, Win measured **2.88:1 light / 3.28:1 dark** and Loss **2.94:1 light / 3.24:1 dark**. Draw and In progress measured **5.73:1 light / 4.24:1 dark**. These small symbols all require at least **4.5:1**.
+- Existing localized `role=img` outcome names, compact colored badge backgrounds, dimensions, semantics, and link navigation were already correct and remain untouched.
+
+### Scoped implementation
+
+1. Win and Loss glyphs now use existing semantic `text-ui-success` and `text-ui-danger` tokens, which adapt to light and dark themes without mutating global style variables or removing their established green/red backgrounds.
+2. Draw and In progress retain their neutral badge backgrounds and light-theme text, but use `dark:text-ui-mutedText` so small letters remain readable on dark cards.
+3. Extend Home unit regression coverage for all four expected classes while retaining the outcome accessible names.
+4. Add an isolated Chromium result-glyph contrast helper and a full **Win/Loss/Draw/In progress × light/dark × 320/1440px** matrix to the existing shell fixture. It computes foreground-to-composited-badge contrast and rejects any value below **4.5:1**.
+
+### Verification
+
+- Post-fix Chromium measurements: **Win 5.93:1 light / 6.63:1 dark; Loss 5.25:1 in both themes; Draw and In progress 5.73:1 light / 7.15:1 dark**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including all previous theme, width, accessibility, keyboard, localization, outage and long-name cases.
+- `npx vitest run web/src --maxWorkers=2`: **439/439 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Inspected actual Chromium `artifacts/agent-02/home-result-light-win-320.png` and `home-result-dark-loss-320.png`; semantic color meanings remain distinct and the glyphs are visibly readable.
+- No changes to main, production, deployment, other agents' worktrees or feature-owned pages.
+
+### Next audit
+
+- Audit Recent Games' **analyzed accuracy values and game metadata** under light/dark at 320/390/768, particularly if analyzed accuracy has low contrast or becomes illegible due to the right-hand accuracy column. Move on to a higher-impact shell/onboarding issue if those states pass; do not repeat completed status/glyph audits.

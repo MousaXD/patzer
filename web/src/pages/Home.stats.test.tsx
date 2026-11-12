@@ -59,11 +59,11 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Home statistics failure', () => {
   it.each([
-    ['win', 'Win', 'W'],
-    ['loss', 'Loss', 'L'],
-    ['draw', 'Draw', 'D'],
-    ['ongoing', 'In progress', '•'],
-  ])('announces recent-game %s as %s instead of a bare glyph', async (result, label, symbol) => {
+    ['win', 'Win', 'W', 'text-ui-success'],
+    ['loss', 'Loss', 'L', 'text-ui-danger'],
+    ['draw', 'Draw', 'D', 'dark:text-ui-mutedText'],
+    ['ongoing', 'In progress', '•', 'dark:text-ui-mutedText'],
+  ])('announces recent-game %s as %s instead of a bare glyph', async (result, label, symbol, colorClass) => {
     mocks.get.mockImplementation((url: string) => {
       if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null });
       if (url.startsWith('/api/games')) return Promise.resolve({ games: [{
@@ -82,6 +82,7 @@ describe('Home statistics failure', () => {
     const badge = within(link).getByRole('img', { name: label });
     expect(badge.textContent?.trim()).toBe(symbol);
     expect(badge.getAttribute('title')).toBe(label);
+    expect(badge.className).toContain(colorClass);
   });
 
   it('shows a recognizable first-run identity and touch-sized hero actions when profile fields are blank', () => {

@@ -96,6 +96,32 @@ async function checkHomeCardContrast(page, label) {
   }
 }
 
+// A tiny W/L/D glyph must contrast against its own tinted badge surface,
+// not against the surrounding card. The Win/Loss backgrounds are alpha blends.
+async function checkRecentResultContrast(page, label) {
+  const measured = await page.locator('main a[href="/review/103"] [role="img"]').evaluate((badge) => {
+    const channels = (color) => color.match(/[\d.]+/g).map(Number);
+    const foreground = channels(getComputedStyle(badge).color);
+    const base = channels(getComputedStyle(badge.closest('ul')).backgroundColor);
+    const backdrop = channels(getComputedStyle(badge).backgroundColor);
+    const alpha = backdrop[3] ?? 1;
+    const composite = backdrop.slice(0, 3).map((value, i) => value * alpha + base[i] * (1 - alpha));
+    const luminance = (rgb) => rgb.map((value) => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, channel, i) => sum + channel * [0.2126, 0.7152, 0.0722][i], 0);
+    const text = luminance(foreground);
+    const background = luminance(composite);
+    return {
+      name: badge.getAttribute('aria-label'),
+      ratio: (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05),
+    };
+  });
+  if (measured.ratio < 4.5) {
+    throw new Error(`Recent games ${label}: ${measured.name} result glyph contrast ${measured.ratio.toFixed(2)}:1 is below 4.5:1`);
+  }
+}
+
 async function openWithFixture(page, viewport) {
   await page.setViewportSize(viewport);
   await page.goto(origin, { waitUntil: 'domcontentloaded' });
@@ -447,6 +473,33 @@ try {
       throw new Error(result + ' result missing from accessible game link name');
     }
   }
+  // WCAG-sized contrast applies to the small W/L/D/bullet text on the tinted
+  // badge itself. The former green/red text measured below 3.3:1, and dark
+  // Draw/In progress measured 4.24:1. Exercise all outcomes in both themes.
+  for (const outcomeTheme of ['light', 'dark']) {
+    theme = outcomeTheme;
+    for (const width of [320, 1440]) {
+      await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
+      for (const { result, label } of [
+        { result: 'win', label: 'Win' },
+        { result: 'loss', label: 'Loss' },
+        { result: 'draw', label: 'Draw' },
+        { result: 'ongoing', label: 'In progress' },
+      ]) {
+        fixtureGameResult = result;
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        await page.locator('main a[href="/review/103"]').getByRole('img', { name: label }).waitFor();
+        await page.waitForFunction((dark) =>
+          document.documentElement.classList.contains('dark') === dark, outcomeTheme === 'dark');
+        await checkRecentResultContrast(page, `${outcomeTheme}/${width}px/${result}`);
+        if (width === 320 && ['win', 'loss'].includes(result)) {
+          await page.screenshot({ path: resolve(output, `home-result-${outcomeTheme}-${result}-320.png`) });
+        }
+      }
+    }
+  }
+  theme = 'light';
+  await page.setViewportSize({ width: 320, height: 700 });
   profile.language = 'es';
   fixtureGameResult = 'win';
   await page.goto(origin, { waitUntil: 'domcontentloaded' });

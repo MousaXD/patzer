@@ -724,7 +724,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('home.outcome.win', { defaultValue: 'Win' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-ui-success">
         W
       </span>
     );
@@ -733,7 +733,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('home.outcome.loss', { defaultValue: 'Loss' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-bad">
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-ui-danger">
         L
       </span>
     );
@@ -742,7 +742,7 @@ function ResultGlyph({ r }: { r: string }) {
     const label = t('review.inProgress', { defaultValue: 'In progress' });
     return (
       <span role="img" aria-label={label} title={label}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText">
         •
       </span>
     );
@@ -750,7 +750,7 @@ function ResultGlyph({ r }: { r: string }) {
   const label = t('home.outcome.draw', { defaultValue: 'Draw' });
   return (
     <span role="img" aria-label={label} title={label}
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText">
       D
     </span>
   );
