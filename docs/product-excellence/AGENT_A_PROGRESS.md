@@ -459,3 +459,25 @@
 ### Next target
 
 - Audit review analysis state and board feedback during a slow/in-flight exploratory move engine score, particularly when several legal moves are entered quickly. Check that the UI distinguishes *still scoring* from *failed/unavailable*, and that a late result cannot replace the latest move's label; existing stale-response checks cover some cases. Reproduce with a controlled delayed Chromium request before changing state or copy.
+
+## 2026-11-12: truthful accessible scoring feedback under delayed engine requests
+
+### Chromium reproduction
+
+- Continued from clean, pushed `969c622` and the recorded asynchronous scoring feedback audit. Added a deliberately delayed authenticated Chromium `/api/analyze/variation-move` request for a real legal `d2d4`, then a newer `d7d5` scored response with source-matched synthetic quality, and finally released the obsolete first response. No real engine or persistent game was modified.
+- With the first result pending, sighted players saw **`Analyzing…`** while the evaluation area's screen-reader `aria-label` incorrectly said **`Position evaluation unavailable`**. The new browser assertion intentionally **failed** with that exact difference. This incorrectly implies engine failure during a legitimate in-flight request, especially when Stockfish is slow.
+
+### Minimal correction
+
+- Derived the visible and accessible evaluation status from the same explicit pending/failed/source-validated state. Pending exploratory move announces `variationAnalyzing` in the current locale, completed scoring announces the actual evaluated centipawn value, and unavailable/failed states announce `variationEvalUnavailable`. Preserved the existing retry button, AbortController cancellation, quality cache and exact FEN/UCI/source revision guard without introducing new engine heuristics or fabricated scores.
+
+### Verification and evidence
+
+- Targeted classification/variation tests: **18 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **982 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including pending/failed/completed accessible-name assertions, delayed obsolete source response never reviving a false Brilliant, mobile navigation, all prior source/locale/keyboard and saved PGN checks. Opened and visually inspected `qa-artifacts/agent-a/rapid-score-after-20261112/rapid-variation-scoring-status-390.png`: validated `Variation d5`, `Best`, `+0.24` are visible together with accurate board position; the prior false Brilliant never appears.
+- Browser scores are injected UI fixtures, **not** Stockfish scoring certification. No merge, deploy, production SQLite mutation or other agent changes.
+
+### Next highest-impact investigation
+
+- Game Review's loading/empty analysis contexts for source-stale cached games: independently test that refreshing a valid saved game without engine data never describes scores as drawn (0.00), and its reanalysis action gives a useful, keyboard-recoverable result on transient engine failures. Existing imported-game and first-use work belongs to other agents; limit changes to Game Review presentation and source identity.

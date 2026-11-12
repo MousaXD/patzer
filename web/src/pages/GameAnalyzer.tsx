@@ -643,6 +643,13 @@ function GameAnalyzerView() {
     : userColor;
   // Never claim a drawn (0.00) position when a variation has not been scored.
   const currentEvalCp = isVariation ? (variationQuality?.eval_after_cp ?? null) : (move?.eval_after_cp ?? null);
+  const variationScorePending = isVariation && !!branchMove && !qualityError && !variationQuality;
+  const evalStatusText = currentEvalCp === null
+    ? (variationScorePending ? t('review.variationAnalyzing') : '—')
+    : fmtCp(currentEvalCp);
+  const evalStatusAccessible = currentEvalCp === null
+    ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
+    : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) });
 
   const historySoFar = analysis?.moves.slice(0, ply - 1).map((m) => m.san) ?? [];
   const coachReq = move ? () => ({
@@ -912,8 +919,8 @@ function GameAnalyzerView() {
                 </>
               ) : <span className="italic">{t('review.startingPosition')}</span>}
             </div>
-            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={currentEvalCp === null ? t('review.variationEvalUnavailable') : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) })}>
-              {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
+            <div className="font-mono text-base font-semibold tabular-nums" aria-live="polite" aria-label={evalStatusAccessible}>
+              {evalStatusText}
             </div>
           </div>
           {/* Scoring feedback belongs beside the move it describes, not below

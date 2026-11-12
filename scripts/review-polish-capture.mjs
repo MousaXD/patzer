@@ -1100,6 +1100,8 @@ try {
     const failure=page.getByText(locale.review.variationEngineUnavailable,{exact:true});
     await drag(3); // d2-d4, deliberate Stockfish outage
     await failure.waitFor({state:'visible'});
+    assert.equal(await page.locator('[data-review-move-summary] .font-mono.text-base').getAttribute('aria-label'),
+      locale.review.variationEvalUnavailable,'A failed score should be announced as unavailable');
     const variationCounter=page.locator('[data-move-transport] > div');
     assert.equal((await variationCounter.innerText()).trim(),'Var 1 / 1',
       'An unsaved one-move branch must not display the saved game length as its own total');
@@ -1158,6 +1160,77 @@ try {
       'Navigating to the final branch move must use the active branch total');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await branchErrorContext.close();}
+  // While the engine is still scoring an exploratory move, screen readers
+  // must hear the same pending status as sighted players. An older delayed
+  // score must not replace the newer move or falsely announce Brilliant.
+  const pendingScoreContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseD4=()=>{};
+  try{
+    await pendingScoreContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await pendingScoreContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const heldD4=new Promise(resolve=>{releaseD4=resolve;});
+    const qualityFor=(fen,uci,label)=>{
+      const board=new Chess(fen);
+      const before=board.fen();
+      const move=board.move({from:uci.slice(0,2),to:uci.slice(2,4)});
+      assert.ok(move);
+      return {source:'variation',scoring_version:1,fen_before:before,fen_after:board.fen(),
+        ply:before.split(' ')[1]==='w'?1:2,san:move.san,uci,from:move.from,to:move.to,
+        classification:label,centipawn_loss:0,win_pct_drop:0,
+        eval_before_cp:0,eval_after_cp:label==='brilliant'?500:24,mate_before:null,mate_after:null,
+        best_move_uci:uci,best_move_san:move.san,best_pv:[],is_best:true,
+        legal_move_count:20,depth_before:12,depth_after:12,candidate_count:20,terminal:null};
+    };
+    const requests=[];
+    await page.route('**/api/analyze/variation-move',async route=>{
+      const req=route.request().postDataJSON();
+      requests.push(req.move_uci);
+      if(req.move_uci==='d2d4') await heldD4;
+      const quality=qualityFor(req.fen_before,req.move_uci,
+        req.move_uci==='d2d4'?'brilliant':'best');
+      try{await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({quality})});}
+      catch(e){if(req.move_uci!=='d2d4')throw e;}// navigation should abort the obsolete request
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.locator('cg-board').waitFor({state:'visible'});
+    const drag=async(from,to)=>{
+      const board=await page.locator('cg-board').boundingBox();
+      assert.ok(board);
+      const sq=s=>({x:board.x+board.width*(s.charCodeAt(0)-97+.5)/8,
+        y:board.y+board.height*(8-Number(s[1])+.5)/8});
+      const a=sq(from),b=sq(to);
+      await page.mouse.move(a.x,a.y);await page.mouse.down();
+      await page.mouse.move(b.x,b.y,{steps:12});await page.mouse.up();
+    };
+    const firstRequest=page.waitForRequest(req=>req.url().endsWith('/api/analyze/variation-move')
+      && req.postDataJSON().move_uci==='d2d4');
+    await drag('d2','d4');
+    await firstRequest;
+    const evalStatus=page.locator('[data-review-move-summary] .font-mono.text-base');
+    await page.getByText(locale.review.variationAnalyzing,{exact:true}).waitFor({state:'visible'});
+    assert.equal(await evalStatus.getAttribute('aria-label'),locale.review.variationAnalyzing,
+      'A pending engine score must not be announced as an unavailable evaluation');
+    const secondResponse=page.waitForResponse(r=>r.url().endsWith('/api/analyze/variation-move')
+      && r.status()===200);
+    await drag('d7','d5');
+    await secondResponse;
+    await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true})
+      .waitFor({state:'visible'});
+    assert.equal(await evalStatus.getAttribute('aria-label'),
+      locale.review.variationEvalLabel.replace('{{score}}','+0.24'),
+      'A completed score should be announced with its real evaluated value');
+    releaseD4();
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('[data-review-move-summary]').getByText('Brilliant',{exact:true}).count(),0,
+      'A delayed older score must not relabel the latest exploratory move');
+    assert.equal(await page.locator('[data-review-move-summary]').getByText(/d5/).count(),1);
+    await page.screenshot({path:join(output,'rapid-variation-scoring-status-390.png')});
+    assert.deepEqual(requests,['d2d4','d7d5']);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{releaseD4();await pendingScoreContext.close();}
   // A nested branch must preserve its own local cursor, ancestor prefix and
   // last-move highlighting when a learner compares the sibling continuations.
   // Verify in actual chessground, on both phone and side-by-side desktop.
