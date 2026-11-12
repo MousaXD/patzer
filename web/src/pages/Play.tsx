@@ -1898,28 +1898,42 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
   }
 
   function sendChallenge() {
-    if (!target) return;
+    const recipientId = target;
+    if (!recipientId) return;
     void act('send', () => api.post<{ challenge: Challenge }>('/api/challenges',
-      { to_user_id: target, color, time_control: tc }),
+      { to_user_id: recipientId, color, time_control: tc }),
       (result) => {
+        // An HTTP-200 response without the complete server-owned challenge
+        // is not confirmation. Preserve the selection for an explicit retry.
+        if (!lobby.recordSentChallenge(result?.challenge, recipientId)) {
+          throw new Error('Invalid challenge acknowledgment');
+        }
         setTarget(null);
-        lobby.recordSentChallenge(result.challenge);
       });
   }
   function cancel(id: number) {
-    void act('cancel', () => api.del(`/api/challenges/${id}`),
-      () => lobby.forgetChallenge('outgoing', id));
+    void act('cancel', () => api.del<{ ok: boolean }>(`/api/challenges/${id}`),
+      (result) => {
+        if (result?.ok !== true) throw new Error('Invalid cancel acknowledgment');
+        lobby.forgetChallenge('outgoing', id);
+      });
   }
   function accept(id: number) {
     void act('accept', () => api.post<{ game_id: number }>(`/api/challenges/${id}/accept`),
       (result) => {
+        if (!Number.isSafeInteger(result?.game_id) || result.game_id <= 0) {
+          throw new Error('Invalid accepted game ID');
+        }
         lobby.forgetChallenge('incoming', id);
         onChallengeAccepted(result.game_id);
       });
   }
   function decline(id: number) {
-    void act('decline', () => api.post(`/api/challenges/${id}/decline`),
-      () => lobby.forgetChallenge('incoming', id));
+    void act('decline', () => api.post<{ ok: boolean }>(`/api/challenges/${id}/decline`),
+      (result) => {
+        if (result?.ok !== true) throw new Error('Invalid decline acknowledgment');
+        lobby.forgetChallenge('incoming', id);
+      });
   }
 
   return (

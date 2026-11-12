@@ -63,11 +63,15 @@ export default function IncomingChallengeModal() {
       if (action === 'accept') {
         const result = await api.post<{ game_id: number }>(`/api/challenges/${id}/accept`);
         if (actionSession.current.generation !== generation) return;
+        if (!Number.isSafeInteger(result?.game_id) || result.game_id <= 0) {
+          throw new Error('Invalid accepted game ID');
+        }
         forgetChallenge('incoming', id);
         nav(`/play?game=${result.game_id}`);
       } else {
-        await api.post(`/api/challenges/${id}/decline`);
+        const result = await api.post<{ ok: boolean }>(`/api/challenges/${id}/decline`);
         if (actionSession.current.generation !== generation) return;
+        if (result?.ok !== true) throw new Error('Invalid decline acknowledgment');
         forgetChallenge('incoming', id);
       }
       void refresh().catch(() => {});

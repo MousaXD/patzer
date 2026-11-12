@@ -103,6 +103,26 @@ describe('incoming challenge modal failure recovery', () => {
     expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 
+  it.each([0, -1, 1.5, 'bad', null])('keeps an incoming invitation if the modal receives invalid accepted game ID %s', async (gameId) => {
+    mocks.post.mockResolvedValue({ game_id: gameId });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not accept this challenge');
+    expect(screen.getByTestId('route').textContent).toBe('/play');
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+    expect((screen.getByRole('button', { name: 'challenge.accept' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it('does not discard an invitation when Decline returns a malformed acknowledgment', async () => {
+    mocks.post.mockResolvedValue({ ok: false });
+    mount();
+    fireEvent.click(screen.getAllByRole('button', { name: 'challenge.decline' }).at(-1)!);
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not decline this challenge');
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
   it('ignores an old account acceptance after the modal switches to the new account', async () => {
     let confirm!: (value: unknown) => void;
     mocks.post.mockImplementation(() => new Promise((resolve) => { confirm = resolve; }));

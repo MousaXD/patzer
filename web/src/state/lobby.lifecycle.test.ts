@@ -245,8 +245,22 @@ describe('lobby account and socket lifecycle', () => {
     const old = { ...invitation(12), from: invitation(12).to, to: invitation(12).from };
     const recent = { ...old, id: 13 };
     useLobby.setState({ outgoing: [old] });
-    useLobby.getState().recordSentChallenge(recent);
+    expect(useLobby.getState().recordSentChallenge(recent, recent.to.id)).toBe(true);
     expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([13]);
+  });
+
+  it('does not corrupt the outgoing list with a malformed or cross-account Send acknowledgment', () => {
+    useLobby.getState().connect(1);
+    const old = { ...invitation(18), from: invitation(18).to, to: invitation(18).from };
+    useLobby.setState({ outgoing: [old] });
+    const broken = { id: 91, status: 'pending', to: { id: 3 } };
+    expect(useLobby.getState().recordSentChallenge(broken, 3)).toBe(false);
+    expect(useLobby.getState().outgoing).toEqual([old]);
+    const foreign = { ...old, id: 92, from: { ...old.from, id: 9 } };
+    expect(useLobby.getState().recordSentChallenge(foreign, 3)).toBe(false);
+    expect(useLobby.getState().outgoing).toEqual([old]);
+    expect(useLobby.getState().recordSentChallenge({ ...old, id: 93 }, 4)).toBe(false);
+    expect(useLobby.getState().outgoing).toEqual([old]);
   });
 
   it('ignores an older player refresh finishing after a newer successful list', async () => {

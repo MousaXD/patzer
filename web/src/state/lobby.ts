@@ -88,7 +88,8 @@ interface LobbyState {
   refreshUsers: () => Promise<void>;
   refreshChallenges: () => Promise<void>;
   forgetChallenge: (direction: 'incoming' | 'outgoing', id: number) => void;
-  recordSentChallenge: (challenge: Challenge) => void;
+  /** True only when the server's response belongs to this account and recipient. */
+  recordSentChallenge: (challenge: unknown, recipientId: number) => boolean;
 }
 
 export const useLobby = create<LobbyState>((set, get) => {
@@ -299,9 +300,11 @@ export const useLobby = create<LobbyState>((set, get) => {
     }
   },
 
-  recordSentChallenge: (challenge) => {
-    if (currentUserId === null || !Number.isSafeInteger(challenge?.id) || challenge.id <= 0
-      || !Number.isSafeInteger(challenge.to?.id)) return;
+  recordSentChallenge: (challenge, recipientId) => {
+    if (currentUserId === null || !isPendingChallenge(challenge)
+      || !Number.isSafeInteger(recipientId) || recipientId <= 0
+      || challenge.from.id !== currentUserId || challenge.to.id !== recipientId
+      || recipientId === currentUserId) return false;
     challengesRequestId++;
     // The server replaces an older pending invitation to the same recipient.
     // Mirror that rule so a failed list refresh cannot leave two waiting rows.
@@ -309,6 +312,7 @@ export const useLobby = create<LobbyState>((set, get) => {
       outgoing: [challenge, ...s.outgoing.filter((old) =>
         old.id !== challenge.id && old.to.id !== challenge.to.id)],
     }));
+    return true;
   },
 };
 });
