@@ -70,3 +70,19 @@
 - Evaluate accidental resignation risk: game controls currently resign immediately on a single tap, with no confirm/recovery path.
 - Check remaining keyboard/touch focus and reduced-motion behavior on Play overlays.
 - Validate bot-game reconnection with a locally provisioned Stockfish engine when available; the current environment lacks a Stockfish executable, so PvP was the live-server/browser coverage.
+
+## Third pass — 2026-11-12 (continued from `83d0212`)
+
+### One-tap irreversible resignation fixed
+
+- **Problem:** Play sent `resign` immediately from a single tap or click (desktop or phone), allowing accidental forfeiture.
+- **Solution:** Dedicated accessible `alertdialog` on the Play page with explicit **Keep playing** and **Confirm resignation** actions, Escape cancellation, focus containment and focus return. Reduced-motion preference disables entry/exit motion; the modal is dismissed on socket loss or game over. Confirmation checks the active connection before sending.
+- **Tests:** `Play.connection.test.tsx` now covers first-tap non-submission, cancellation with the button, Escape cancellation and exactly one confirmed resignation send. The real-Chrome PvP E2E checks that an actual server stores the resulting loss and the browser shows the final outcome. Existing desktop/mobile PvP operations remain covered.
+- **Final validation:** `npm run typecheck` and `npm run build` passed. `npx vitest run --maxWorkers=4` passed with **971 tests, 12 skipped, zero failures**. The latest real-Chrome scratch-database PvP E2E finished **ALL OK**, including the confirmation flow, both views of game termination, and the earlier board-width, rematch and negotiation checks. Captured settled dialog/result screenshots (`qa/agent-d-browser/real-pvp/pvp-resign-{confirmation,result}.png`).
+- **E2E investigation:** A concurrent mobile page for the **same player** took over the server's single active player socket, so an earlier test correctly recorded a loss on the server but did not receive the finish event on the original desktop page. The canonical browser test now closes the extra phone tab and reconnects the desktop tab before asserting the result. This is an **existing multi-tab synchronization limitation**, not part of the resignation behavior; inspect it separately before claiming multi-tab support.
+- **Environment note:** Scratch-server PvP resign triggers the optional post-game Stockfish auto-analysis, which reports an unavailable executable in this environment. Game saving and resignation correctness pass independently; this is not a production test or a new engine failure.
+
+### Next in-lane candidates
+
+- Learn lesson recommendation currently includes saved `step > 0` records even for lessons with `completed_at`, possibly suggesting an already-completed lesson ahead of an unfinished course. Verify with a minimal regression fixture before changing.
+- Account-wide simultaneous-tab PvP state ownership/notification; requires careful client/server protocol audit and isolation from another agent's backend work.

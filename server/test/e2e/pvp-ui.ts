@@ -207,6 +207,38 @@ if (hasBar) {
   ok(true, 'phone: moves sheet opens');
 }
 
+// PvP currently keeps one active WebSocket per player. The mobile context
+// above reattached Alice's player session; leave that viewing context and
+// refresh the desktop game so its socket receives the resignation response.
+// Simultaneous tabs for the same player are a separate integration concern.
+await P.close();
+await A.reload();
+await A.getByRole('button', { name: /^resign$/i }).first().waitFor({ state: 'visible', timeout: 10000 });
+await A.waitForTimeout(400);
+
+// --- deliberate resignation, never a one-tap accidental forfeiture --------
+if (hasRematch) {
+  const resignTrigger = A.getByRole('button', { name: /^resign$/i }).first();
+  await resignTrigger.click();
+  const confirm = A.getByRole('alertdialog', { name: /resign this game/i });
+  ok(await confirm.isVisible(), 'resign: first tap asks for confirmation instead of ending the game');
+  await A.waitForTimeout(350); // capture the settled dialog, not its transparent entry frame
+  await A.screenshot({ path: `${SHOTS}/pvp-resign-confirmation.png` });
+  await confirm.getByRole('button', { name: /keep playing/i }).click();
+  ok(await confirm.waitFor({ state: 'hidden', timeout: 3000 }).then(() => true).catch(() => false),
+    'resign: Keep playing cancels without forfeiting');
+  await resignTrigger.click();
+  await confirm.getByRole('button', { name: /confirm resignation/i }).click();
+  const savedGames = await api('/api/games?limit=20', undefined, admin.cookie);
+  const currentGameId = Number(new URL(A.url()).searchParams.get('game'));
+  const savedRow = savedGames.json?.games?.find((g: any) => g.id === currentGameId);
+  ok(savedRow?.result === 'loss', 'resign: server records the resignation as a loss');
+  ok(await A.getByText(/you lost/i).first().waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false),
+    'resign: confirmed forfeiture reaches the real server and ends the game');
+  await A.waitForTimeout(350);
+  await A.screenshot({ path: `${SHOTS}/pvp-resign-result.png` });
+}
+
 console.log(fails === 0 ? '\nALL OK' : `\n${fails} FAILURE(S)`);
 await browser.close();
 process.exit(fails === 0 ? 0 : 1);

@@ -191,6 +191,8 @@ export default function Play() {
   const [blunder, setBlunder] = useState<BlunderPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [gameOverDismissed, setGameOverDismissed] = useState(false);
+  const [resignConfirm, setResignConfirm] = useState(false);
+  const resignTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [lastClassifiedMove, setLastClassifiedMove] = useState<{ ply: number; san: string; uci: string; classification: Classification; cp_loss: number; best_san: string | null; fen_before: string } | null>(null);
   const [boardArrows, setBoardArrows] = useState<{ orig: string; dest: string; brush: string }[]>([]);
   // Queued premoves, in the order they'll be played. chessground has its own
@@ -241,6 +243,7 @@ export default function Play() {
           connectedRef.current = up;
           if (!up) {
             setGameReady(false);
+            setResignConfirm(false);
             // The server may have accepted the optimistic move, or not. The
             // next game_started/pvp_hello resolves this uncertainty.
             setPending(null);
@@ -438,6 +441,7 @@ export default function Play() {
     setPositions([{ fen: START_FEN }]);
     setBrowseIndex(null);
     setGameOverDismissed(false);
+    setResignConfirm(false);
     setDrawOffer(null); setTakeback(null); setRematch(null); setRematchDeclined(false);
     setMoreOpen(false); setSheetOpen(false);
     setPending(null);
@@ -630,6 +634,7 @@ export default function Play() {
       }
       case 'game_over':
         clearPremoves();
+        setResignConfirm(false);
         setPending(null);
         setPhase('over');
         playSound('game_end');
@@ -743,7 +748,25 @@ export default function Play() {
     forceBoardSync(); // roll back the chessground visual to the authoritative FEN
   }
 
-  function resign() { if (gameReady) socket().send({ type: 'resign' }); }
+  function askResign(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!gameReady || !socketRef.current?.connected) return;
+    resignTriggerRef.current = event.currentTarget;
+    setResignConfirm(true);
+  }
+
+  function resign() {
+    setResignConfirm(false);
+    // Confirmation can outlive a dropped socket. Don't claim a resignation
+    // the server never received; the reconnect banner remains authoritative.
+    if (gameReady && socketRef.current?.connected) socket().send({ type: 'resign' });
+  }
+
+  useEffect(() => {
+    if (resignConfirm) return;
+    const trigger = resignTriggerRef.current;
+    if (trigger?.isConnected && !trigger.disabled) trigger.focus();
+    resignTriggerRef.current = null;
+  }, [resignConfirm]);
   const sendType = (type: string) => gameReady && socket().send({ type });
   const offerDraw = () => sendType('offer_draw');
   const acceptDraw = () => sendType('accept_draw');
@@ -817,6 +840,7 @@ export default function Play() {
   useEffect(() => {
     if (phase !== 'playing') return;
     function onKey(e: KeyboardEvent) {
+      if (resignConfirm) return;
       // Rewind shortcuts only apply when the player isn't using another
       // control. In particular, arrow keys belong to a focused button/menu,
       // contenteditable field or a screen-reader-operated slider, not Play.
@@ -834,7 +858,7 @@ export default function Play() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, liveIndex]);
+  }, [phase, liveIndex, resignConfirm]);
 
   // ---- SETUP screen ----
   if (phase === 'setup' && !pvpGameId) {
@@ -1140,7 +1164,7 @@ export default function Play() {
                   {hintLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
                   {t('play.hint')}
                 </button>
-                <button onClick={resign} disabled={!canInteract} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                <button onClick={askResign} disabled={!canInteract} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
               </div>
             </div>
           )}
@@ -1239,7 +1263,7 @@ export default function Play() {
                       <button onClick={() => { setMoreOpen(false); setFlipped((f) => !f); }} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><FlipVertical2 className="h-4 w-4" />{t('play.flip')}</button>
                       <button onClick={() => { setMoreOpen(false); offerDraw(); }} disabled={!canInteract || drawOffer !== null} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Handshake className="h-4 w-4" />{t('play.offerDraw')}</button>
                       <button onClick={() => { setMoreOpen(false); requestTakeback(); }} disabled={!canInteract || takeback !== null || moves.length === 0} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Undo2 className="h-4 w-4" />{t('play.takeback')}</button>
-                      <button onClick={() => { setMoreOpen(false); resign(); }} disabled={!canInteract} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                      <button onClick={(event) => { setMoreOpen(false); askResign(event); }} disabled={!canInteract} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
                     </div>
                   </>
                 )}
@@ -1248,7 +1272,7 @@ export default function Play() {
               <>
                 <button onClick={() => setFlipped((f) => !f)} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.flip', { defaultValue: 'Flip board' })}><FlipVertical2 className="h-5 w-5" /></button>
                 {phase === 'playing' && (
-                  <button onClick={resign} disabled={!canInteract} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
+                  <button onClick={askResign} disabled={!canInteract} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
                 )}
               </>
             )}
@@ -1313,6 +1337,63 @@ export default function Play() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Resigning is irreversible. Require a separate deliberate action so a
+          stray mobile tap on the bottom bar cannot forfeit a real game. */}
+      <AnimatePresence>
+        {resignConfirm && phase === 'playing' && (
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            role="presentation"
+            className="fixed inset-0 z-[58] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setResignConfirm(false)}
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="play-resign-title"
+              aria-describedby="play-resign-description"
+              initial={reduceMotion ? false : { y: 12, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={reduceMotion ? undefined : { y: 12, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setResignConfirm(false);
+                } else if (event.key === 'Tab') {
+                  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                  const first = buttons[0], last = buttons[buttons.length - 1];
+                  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                }
+                event.stopPropagation();
+              }}
+              className="card w-full max-w-md space-y-4 p-5 shadow-lift sm:p-6"
+            >
+              <div className="flex items-center gap-2">
+                <Flag aria-hidden="true" className="h-5 w-5 shrink-0 text-bad" />
+                <h2 id="play-resign-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+                  {t('play.confirmResignTitle', { defaultValue: 'Resign this game?' })}
+                </h2>
+              </div>
+              <p id="play-resign-description" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+                {t('play.confirmResignDesc', { defaultValue: 'Resigning ends the game immediately and counts as a loss. It cannot be undone.' })}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button type="button" autoFocus onClick={() => setResignConfirm(false)} className="btn-primary min-h-11 flex-1 text-sm">
+                  {t('play.keepPlaying', { defaultValue: 'Keep playing' })}
+                </button>
+                <button type="button" onClick={resign} disabled={!canInteract} className="btn-danger min-h-11 flex-1 text-sm">
+                  {t('play.confirmResign', { defaultValue: 'Confirm resignation' })}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

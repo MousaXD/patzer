@@ -23,6 +23,29 @@ vi.mock('../api', () => ({ api: {
   get: (url: string) => Promise.resolve(url === '/api/games/live' ? { bot: null, pvp: [] } : { configured: false }),
 } }));
 vi.mock('../lib/sounds', () => ({ soundForMove: vi.fn(), inferMoveFlagsFromSan: vi.fn(), playSound: vi.fn() }));
+// These tests exercise socket and dialog state, not animation. happy-dom's
+// Web Animations shim rejects canceled Framer Motion exit animations, so use
+// immediate elements to make a canceled dialog unmount deterministically.
+vi.mock('framer-motion', async () => {
+  const React = await import('react');
+  const motion = new Proxy({} as Record<string, unknown>, {
+    get: (_target, tag: string) => ({
+      children, initial, animate, exit, transition, drag, dragControls,
+      dragListener, dragConstraints, dragElastic, onDragEnd, ...props
+    }: Record<string, unknown>) => {
+      void initial; void animate; void exit; void transition; void drag;
+      void dragControls; void dragListener; void dragConstraints;
+      void dragElastic; void onDragEnd;
+      return React.createElement(tag, props, children as React.ReactNode);
+    },
+  });
+  return {
+    motion,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+    useDragControls: () => ({ start: () => {} }),
+    useReducedMotion: () => true,
+  };
+});
 vi.mock('../components/ChessBoard', () => ({
   default: ({ movable, onMove, fen }: { movable: boolean; onMove?: (uci: string) => void; fen: string }) => (
     <button type="button" data-testid="chess-board" data-fen={fen} disabled={!movable} onClick={() => onMove?.('e2e4')}>Move e2e4</button>
@@ -89,5 +112,31 @@ describe('Play authoritative game readiness', () => {
     expect(board.disabled).toBe(true); // wait for fresh authoritative replay
     act(() => ws.receive(snapshot));
     expect(board.disabled).toBe(false);
+  });
+
+  it('never resigns on the first tap and allows cancellation with a button or Escape', () => {
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive(snapshot); });
+
+    const resignButton = screen.getAllByRole('button', { name: 'play.resign' })[0]!;
+    fireEvent.click(resignButton);
+    expect(ws.sent).toEqual([]);
+    expect(screen.getByRole('alertdialog', { name: 'Resign this game?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep playing' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(ws.sent).toEqual([]);
+
+    fireEvent.click(resignButton);
+    const dialog = screen.getByRole('alertdialog', { name: 'Resign this game?' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(ws.sent).toEqual([]);
+
+    fireEvent.click(resignButton);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm resignation' }));
+    expect(ws.sent).toEqual([{ type: 'resign' }]);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 });
