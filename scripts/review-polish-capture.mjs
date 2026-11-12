@@ -1113,7 +1113,15 @@ try {
     assert.ok(retryRect && retryRect.height>=44 && retryRect.width>=44,
       `The immediate mobile scoring retry must be comfortably actionable: ${JSON.stringify(retryRect)}`);
     await page.screenshot({path:join(output,'variation-scoring-failure-visible-390.png')});
-    await page.getByRole('button',{name:locale.review.variationReturn}).click();
+    // Returning from a branch disables its own Return button. After pressing
+    // Enter there, keyboard focus must reach the saved board rather than
+    // remain on a disabled control or fall back to document BODY.
+    const returnFromBranch=page.getByRole('button',{name:locale.review.variationReturn});
+    await returnFromBranch.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')?.textContent?.trim().startsWith('0 /'));
+    assert.ok(await page.locator('.review-board-square').evaluate(el=>document.activeElement===el),
+      'Return to game must move keyboard focus back to the original chessboard');
     await drag(2); // c2-c4, engine returns source-matched score
     await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true}).waitFor({state:'visible'});
     await failure.waitFor({state:'hidden'});

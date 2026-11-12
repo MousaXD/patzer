@@ -951,7 +951,13 @@ function GameAnalyzerView() {
                   <p className="text-xs text-chesscom-500 dark:text-chesscom-300">{t('review.variationHelp')}</p>
                 </div>
                 <button type="button" className="btn-secondary min-h-11 shrink-0 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
-                  onClick={() => variations.restoreOriginalGame()} disabled={!isVariation}>
+                  onClick={() => {
+                    variations.restoreOriginalGame();
+                    // This button becomes disabled as soon as its branch is
+                    // exited. Return the keyboard user to the saved board
+                    // instead of leaving focus on a disabled action/BODY.
+                    requestAnimationFrame(jumpToBoard);
+                  }} disabled={!isVariation}>
                   {t('review.variationReturn')}
                 </button>
               </div>

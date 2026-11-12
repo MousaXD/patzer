@@ -324,3 +324,22 @@
 ### Next highest-impact candidate
 
 - Independently audit Game Review's asynchronous move-entry/variation loading and recovery when a user switches branches or returns to the saved game during a pending engine score. Some cancellation cases are already covered; focus on user-visible stale/loading indicators and keyboard focus without duplicating completed source checks. Document cross-agent dependencies rather than editing global shell or library/import surfaces.
+
+## 2026-11-12: keyboard focus returns to the saved board after exiting a variation
+
+### Reproduction
+
+- Continued from clean `3d7684f` and inspected the existing Game Review variation rail. The `Return to game` button becomes disabled as soon as the unsaved branch is left, but the click handler only changed variation state. Keyboard focus did not reach a stable destination.
+- Extended the authenticated 390px Chromium cross-branch scenario to focus Return and activate Enter, then assert that the saved game is restored and `.review-board-square` receives focus. **Baseline intentionally failed:** `Return to game must move keyboard focus back to the original chessboard`.
+
+### Fix and verification
+
+- The Game Review-only Return handler now calls the existing `jumpToBoard` in the next animation frame after `variations.restoreOriginalGame`. The board is a stable, navigable keyboard destination and on narrow viewports it is brought back into view. The branch and original PGN are not rewritten.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000`: **979 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: **PASS (exit 0)** including the new Enter→Return→focused-board regression, all 320/390/1024px responsive checks, variation cancellation/cache isolation, locale, source verification, keyboard/coaching, and persisted PGN invariance. Matrix screenshots: `qa-artifacts/agent-a/return-focus-after-20261112/`. Browser engine scores remain synthetic fixtures, not live Stockfish certification.
+- No merge, deployment, production SQLite or changes to other agents' worktrees.
+
+### Next priority
+
+- Audit branch-selection keyboard focus and screen-reader announcement at multiple variation buttons, including nested branches and the difference between the active branch's cursor and saved PGN position. Existing source cancellation and transport counters are certified; target only uncovered real interaction failures, especially when the chosen variation is shorter or has a different fork.
