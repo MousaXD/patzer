@@ -305,6 +305,27 @@ try {
   if (patchAttempts !== 2) throw new Error('Duplicate submissions occurred while a theme update was in progress');
   await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
 
+  // Users may know a language by its English name or type it without an
+  // accent; native-language-only commands must still be discoverable.
+  await visit(page, 320, 700);
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  const languagePalette = page.getByRole('dialog', { name: 'Search' });
+  const languageInput = languagePalette.getByRole('combobox', { name: 'Search' });
+  for (const [search, native] of [
+    ['German', 'Deutsch'],
+    ['Russian', 'Русский'],
+    ['Spanish', 'Español'],
+    ['espanol', 'Español'],
+    ['Bulgarian', 'Български'],
+  ]) {
+    await languageInput.fill(search);
+    await languagePalette.getByRole('option', { name: new RegExp(native) }).waitFor();
+  }
+  await languageInput.fill('German');
+  await languagePalette.getByRole('option', { name: /Deutsch/ }).click();
+  await languagePalette.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: /Befehlspalette/ }).waitFor();
+
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {
   await browser?.close();

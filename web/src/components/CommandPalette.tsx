@@ -15,7 +15,7 @@ import { api } from '../api';
 import { useAuth } from '../state/auth';
 import type { GameRow } from '../types';
 import { cn } from '../lib/utils';
-import { LANGUAGES } from '../lib/languages';
+import { LANGUAGES, type Language } from '../lib/languages';
 import { endSession } from '../lib/logout';
 import { useDialogFocus } from './useDialogFocus';
 
@@ -30,6 +30,21 @@ interface Action {
 }
 
 interface Props { open: boolean; onClose: () => void }
+
+// Native names remain visible so users can always find their own language,
+// but English names and common Latin transliterations improve search when
+// the current UI language is unfamiliar.
+const LANGUAGE_SEARCH_ALIASES: Record<Language, string> = {
+  en: 'english',
+  bg: 'bulgarian bulgarski',
+  es: 'spanish espanol',
+  de: 'german',
+  ru: 'russian russkiy russkii',
+};
+
+function normalizeSearchTerm(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 export default function CommandPalette({ open, onClose }: Props) {
   const { t, i18n } = useTranslation();
@@ -81,7 +96,7 @@ export default function CommandPalette({ open, onClose }: Props) {
       base.push({ id: 'nav-admin-system', label: t('admin.system'), icon: Server, group: 'nav', run: () => { nav('/admin/system'); onClose(); } });
     }
     base.push(
-      ...LANGUAGES.map((l) => ({ id: `lang-${l.code}`, label: `${t('palette.switchLanguage', { defaultValue: 'Switch to' })} ${l.native}`, icon: Globe, group: 'action' as const, keywords: `language ${l.native.toLowerCase()} ${l.code}`, run: async () => { await i18n.changeLanguage(l.code); onClose(); } })),
+      ...LANGUAGES.map((l) => ({ id: `lang-${l.code}`, label: `${t('palette.switchLanguage', { defaultValue: 'Switch to' })} ${l.native}`, icon: Globe, group: 'action' as const, keywords: `language ${l.native} ${l.code} ${LANGUAGE_SEARCH_ALIASES[l.code]}`, run: async () => { await i18n.changeLanguage(l.code); onClose(); } })),
       { id: 'theme-light', label: t('palette.themeLight', { defaultValue: 'Light theme' }), icon: Sun, group: 'action', run: async () => { await api.patch('/api/settings/profile', { site_theme: 'light' }); await refresh(); onClose(); } },
       { id: 'theme-dark', label: t('palette.themeDark', { defaultValue: 'Dark theme' }), icon: Moon, group: 'action', run: async () => { await api.patch('/api/settings/profile', { site_theme: 'dark' }); await refresh(); onClose(); } },
       { id: 'logout', label: t('common.logout'), icon: LogOut, group: 'action', run: async () => { onClose(); if (await endSession()) return; await refresh(); nav('/login'); } },
@@ -104,10 +119,10 @@ export default function CommandPalette({ open, onClose }: Props) {
   }, [t, i18n, user, nav, onClose, gamesData, refresh]);
 
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = normalizeSearchTerm(q.trim());
     if (!s) return actions;
     return actions.filter((a) => {
-      const hay = `${a.label} ${a.hint ?? ''} ${a.keywords ?? ''}`.toLowerCase();
+      const hay = normalizeSearchTerm(`${a.label} ${a.hint ?? ''} ${a.keywords ?? ''}`);
       return hay.includes(s);
     });
   }, [actions, q]);

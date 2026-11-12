@@ -475,3 +475,30 @@
 ### Next investigation
 
 - Audit global navigation behavior when the user changes language from the command palette and when the app shell is in temporary loading or empty states. Prefer reproducible focus, selection or discoverability failures rather than speculative component restyling.
+
+## 2026-11-12: Command palette language discoverability
+
+### Verified defect
+
+- Recovered clean pushed `0c576e3` and investigated the next documented global navigation discoverability target.
+- In real Chromium, typing **German** into the English command palette produced no `Deutsch` action, because language search only included a native-language name and ISO code. This also affected searches for **Russian**, **Spanish**, and **Bulgarian** and Latin-script input without accent marks.
+
+### Implementation
+
+1. Kept the native labels from the shared `LANGUAGES` registry visible, preserving the safety and familiarity of choosing a language even when the interface is set to an unfamiliar locale.
+2. Scoped English language-name and common Latin transliteration keywords to `CommandPalette` only; no shared language registry or feature-owned pages were modified.
+3. Normalized search terms and indexed labels with Unicode NFKD and combining-mark removal so `espanol` finds `Español`, while the existing exact native forms still match.
+4. Expanded real Chromium command-palette checks at 320px for German, Russian, Spanish, accent-free Spanish and Bulgarian queries, followed by an actual German-language switch that updates the global palette affordance.
+5. Added a focused unit test for those aliases and successful language switching, alongside the existing asynchronous-action failure/retry tests.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **403/403 passed across 69 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including alias searches, actual language switch, 320px layout, dialog focus, and all earlier responsive/error-state checks.
+- `git diff --check`: **passed**.
+- No other agent worktrees, production services, real user data, merges or deployments were touched.
+
+### Next audit
+
+- Continue investigating global keyboard-search navigation and shared loading/empty/error state discoverability on 320px mobile and desktop. Focus on substantive problems verified by Chromium; avoid feature internals or speculative CSS changes.

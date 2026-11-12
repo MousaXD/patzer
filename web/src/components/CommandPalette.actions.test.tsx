@@ -72,4 +72,23 @@ describe('global command palette async actions', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(refresh).toHaveBeenCalledTimes(1);
   });
+
+  it('finds native-language actions by English name or accent-free spelling', async () => {
+    const onClose = vi.fn();
+    render(<CommandPalette open onClose={onClose} />);
+    const input = screen.getByRole('combobox', { name: 'Search' });
+    for (const [typed, native] of [
+      ['German', 'Deutsch'],
+      ['Russian', 'Русский'],
+      ['espanol', 'Español'],
+      ['Bulgarian', 'Български'],
+    ]) {
+      fireEvent.change(input, { target: { value: typed } });
+      expect(screen.getByRole('option', { name: new RegExp(native) })).toBeTruthy();
+    }
+    fireEvent.change(input, { target: { value: 'German' } });
+    fireEvent.click(screen.getByRole('option', { name: /Deutsch/ }));
+    await waitFor(() => expect(i18n.language).toBe('de'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
