@@ -165,6 +165,21 @@ try {
         throw new Error(`Standard palette extends outside ${color} ${size.width}x${size.height}: ${JSON.stringify(standardRect)}`);
       }
       await page.screenshot({ path: resolve(output, 'palette-' + color + '-' + size.width + '.png') });
+      // The combobox owns keyboard navigation through its listbox. Tab should
+      // go to Close and then wrap to Search rather than walking through every
+      // individual result as a separate focus stop.
+      const searchFocus = palette.getByRole('combobox', { name: 'Search' });
+      await searchFocus.focus();
+      await page.keyboard.press('Tab');
+      const closeFocus = palette.getByRole('button', { name: 'Close' });
+      if (!(await closeFocus.evaluate((node) => document.activeElement === node))) {
+        throw new Error('Tab from search did not reach the palette close control');
+      }
+      await page.keyboard.press('Tab');
+      if (!(await searchFocus.evaluate((node) => document.activeElement === node))) {
+        const focused = await page.evaluate(() => document.activeElement?.getAttribute('role'));
+        throw new Error('Tab is trapped among individual palette results instead of using arrow keys: ' + focused);
+      }
       if (size.width <= 390) {
         const closeButton = palette.getByRole('button', { name: 'Close' });
         await closeButton.waitFor();

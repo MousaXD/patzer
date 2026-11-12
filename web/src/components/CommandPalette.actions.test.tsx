@@ -54,6 +54,17 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe('global command palette async actions', () => {
+  it('keeps listbox options out of Tab order while remaining clickable and selectable', async () => {
+    const close = vi.fn();
+    render(<CommandPalette open onClose={close} />);
+    const options = screen.getAllByRole('option');
+    expect(options.length).toBeGreaterThan(10);
+    expect(options.every((element) => element.getAttribute('tabindex') === '-1')).toBe(true);
+    fireEvent.click(screen.getByRole('option', { name: 'Play' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/play'));
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('retargets the active descendant when async results shrink without editing the query', async () => {
     const fakeGame = (id: number, black: string) => ({
       id, white: 'sample-player', black, user_color: 'white',

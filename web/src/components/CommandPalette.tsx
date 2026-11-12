@@ -301,6 +301,7 @@ function PaletteSection({ items, active, setActive, busy, onExecute }: {
                   data-i={i}
                   id={`patzer-palette-option-${i}`}
                   role="option"
+                  tabIndex={-1}
                   aria-selected={isActive}
                   disabled={busy}
                   onMouseMove={() => setActive(i)}

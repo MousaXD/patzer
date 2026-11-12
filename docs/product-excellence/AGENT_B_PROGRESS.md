@@ -641,3 +641,28 @@
 ### Next audit
 
 - Check the global palette's result options for efficient keyboard focus and screen-reader navigation when Tab traverses the dialog. It currently combines an `aria-activedescendant` combobox with focusable option buttons; validate whether Tab visits every result instead of the few actual dialog controls. Change only on verified user-facing friction.
+
+## 2026-11-12: Consistent global palette Tab order
+
+### Verified issue
+
+- Continued from clean, pushed `bfe3264` and tested the exact pending shared-overlay keyboard-flow concern, without revisiting completed tasks.
+- Real Chromium confirmed that after focusing Search and pressing Tab twice, focus moved into the first `role=option` button instead of wrapping to Search. The command palette had more than twenty independently tabbable result controls despite documenting the combobox's **Arrow-key + Enter** navigation model.
+
+### Improvement
+
+1. Set the palette's listbox option buttons to `tabIndex=-1`. This removes the excessive Tab stops while leaving options programmatically addressable through `aria-activedescendant`, selectable with Arrow keys and Enter, and clickable/touchable with a pointer.
+2. Extended real Chromium tests at 1440px, 390px and 320px in light/dark themes: focus moves **Search → Close → Search**, while all existing keyboard result selection, mouse interactions, modal focus trapping and accessibility checks remain active.
+3. Added a focused unit regression verifying all listbox options are excluded from the Tab order and an option still activates correctly on click.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **415/415 passed across 70 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed** including new Tab-order assertions, earlier account-switch keyboard assertions and all previous themes/viewports.
+- `git diff --check`: **passed**.
+- Changes were scoped to Agent B's shared palette/tests/progress; no feature-owned pages, production operations, merges or other agent worktrees were touched.
+
+### Next audit
+
+- Examine global keyboard shortcut discoverability outside the palette, including the shortcut help overlay and keyboard gestures on narrow tablet layouts. Investigate actual navigation confusion or focus collisions in Chromium before any changes.
