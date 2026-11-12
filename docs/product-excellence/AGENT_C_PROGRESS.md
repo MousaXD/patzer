@@ -978,3 +978,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Investigate **debounced Library search when players change filters before the 300ms debounce settles**. The typed draft is local state while `q` and other filters live in URL params; a stale debounce could overwrite a new source/result/date filter or restore a query after it was cleared. Reproduce with an isolated Chromium fixture that types and quickly changes filter state; preserve intentional typing and shareable URLs, and fix only confirmed races.
+
+## 2026-11-13 — Verify fast search/filter changes do not resurrect old queries
+
+- Recovered clean pushed `2eea045` and inspected both Library search effects: `q` is URL-owned, the search input has a local draft, and a 300ms timeout updates `q` using the latest search parameters. Added a synthetic Chromium race test that types a unique opponent, immediately changes the source to Lichess, then types a different query and clicks the search X before the debounce settles. It also tests navigating to an opening while a fresh search is pending.
+- The first browser assertion incorrectly expected an exact one-game result from a substring query (`Opponent 20`, which also matches `Opponent 200`, etc.). Corrected the fixture to the unique player `Opponent 502`; the completed Chromium run passed every assertion: `source=lichess` and `q=Opponent 502` were both retained, an explicit clear removed `q` without losing source, and the opening handoff never revived a pending search.
+- **No production bug was reproduced**, so retained only the browser regression and deliberately left the working debounce, URL and filter logic untouched.
+
+### Verification
+
+- Full repository suite: **109 passed files, 2 skipped; 1,130 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Full isolated Chromium desktop/mobile light/dark, rapid search/filter race, German date navigation, provider/PGN import, bookmarks, pagination and recovery: passed, no browser JS errors or horizontal overflow.
+- Test-and-report-only audit; no production data, provider API, other-agent changes, merge or deploy.
+
+### Next independent audit
+
+- Inspect **debounced search history restoration using Back/Forward while a draft is in progress**. A player can navigate through saved search URLs; the input's draft and the URL must remain synchronized without a pending timer overwriting a restored query. Reproduce in real Chromium with distinct search terms and browser history transitions before deciding on any Library-local fix.

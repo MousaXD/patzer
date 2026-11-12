@@ -724,6 +724,33 @@ try {
     console.log('PASS both native date controls can cross an old boundary and clear the incompatible URL filter');
   } finally {await editableDates.context.close();}
 
+  const searchFilterRace=await newPage('light',390,844);
+  try {
+    const {page,pageErrors}=searchFilterRace;
+    const search=page.getByRole('searchbox');
+    await search.fill('Opponent 502');
+    await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+    await page.waitForURL(href=>new URL(href).searchParams.get('q')==='Opponent 502' &&
+      new URL(href).searchParams.get('source')==='lichess');
+    await page.getByText('1 of 1 games').waitFor();
+    await search.fill('Opponent 22');
+    await page.getByRole('button',{name:'Clear search'}).click();
+    await sleep(450);
+    assert.equal(new URL(page.url()).searchParams.has('q'),false,
+      'An obsolete debounce reintroduced a cleared search query');
+    assert.equal(new URL(page.url()).searchParams.get('source'),'lichess',
+      'Clearing a pending search discarded the newer source filter');
+    await page.getByText('40 of 310 games').waitFor();
+    await search.fill('Opponent 502');
+    await page.getByRole('button',{name:'Show 310 saved games in Italian Game'}).click();
+    await sleep(450);
+    assert.equal(new URL(page.url()).searchParams.get('opening'),'Italian Game');
+    assert.equal(new URL(page.url()).searchParams.has('q'),false,
+      'A pending search overwrote the discovery navigation');
+    assert.deepEqual(pageErrors,[],'Rapid search/filter changes caused a browser error');
+    console.log('PASS rapid search/filter changes, explicit clear and opening navigation do not revive stale queries');
+  } finally {await searchFilterRace.context.close();}
+
   const germanDateNotice=await newPage('dark',320,700,{locale:'de'});
   try {
     const {page,pageErrors}=germanDateNotice;
