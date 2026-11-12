@@ -314,6 +314,8 @@
     "gamesFromDate": "Partien ab Datum",
     "throughDate": "Bis",
     "gamesThroughDate": "Partien bis Datum",
+    "libraryStartDateCleared": "Das Startdatum wurde entfernt, weil es nach dem neuen Enddatum liegt.",
+    "libraryEndDateCleared": "Das Enddatum wurde entfernt, weil es vor dem neuen Startdatum liegt.",
     "unavailableHeading": "Partieanalyse nicht verfügbar",
     "unavailableReason": {
       "invalid": "Dieser Partielink ist ungültig.",

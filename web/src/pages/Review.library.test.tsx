@@ -731,6 +731,8 @@ describe('Review library with large histories', () => {
       expect(start.value).toBe('2026-11-09');
       expect(end.value).toBe('');
     });
+    const rangeGroup=screen.getByRole('group',{name:'Game date range'});
+    expect(rangeGroup.querySelector('[role="status"]')?.textContent).toBe('End date cleared because it is before the new start date.');
     expect(mocks.get.mock.calls.some(([url]) => {
       const p = new URLSearchParams(String(url).split('?')[1]);
       return p.get('from_date') === '2026-11-09' && !p.has('to_date');
@@ -738,6 +740,7 @@ describe('Review library with large histories', () => {
     fireEvent.click(screen.getByRole('button', {name:'Clear filters'}));
     expect(start.value).toBe('');
     expect(end.value).toBe('');
+    expect(rangeGroup.querySelector('[role="status"]')).toBeNull();
   });
 
   it('does not revive a hidden end date when an inverted deep-link start is cleared', async () => {

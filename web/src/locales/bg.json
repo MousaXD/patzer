@@ -305,6 +305,8 @@
     "gamesFromDate": "Партии от дата",
     "throughDate": "До дата",
     "gamesThroughDate": "Партии до дата",
+    "libraryStartDateCleared": "Началната дата е изчистена, защото е след новата крайна дата.",
+    "libraryEndDateCleared": "Крайната дата е изчистена, защото е преди новата начална дата.",
     "unavailableHeading": "Анализът на партията не е достъпен",
     "unavailableReason": {
       "invalid": "Връзката към партията е невалидна.",

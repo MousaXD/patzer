@@ -314,6 +314,8 @@
     "gamesFromDate": "Партии с даты",
     "throughDate": "По дату",
     "gamesThroughDate": "Партии по дату",
+    "libraryStartDateCleared": "Начальная дата сброшена: она позже новой конечной даты.",
+    "libraryEndDateCleared": "Конечная дата сброшена: она раньше новой начальной даты.",
     "unavailableHeading": "Разбор партии недоступен",
     "unavailableReason": {
       "invalid": "Ссылка на партию недействительна.",

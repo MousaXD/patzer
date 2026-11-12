@@ -947,3 +947,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Review **feedback when an existing date boundary gets cleared automatically**. Users should understand why their prior Through/From date disappeared after choosing a replacement date; currently `updateDateFilter` removes it silently. Check keyboard and screen-reader awareness in the actual browser before adding a minimal, localized, non-obtrusive explanation that does not compete with game-count announcements or change date semantics.
+
+## 2026-11-13 — Explain automatic date-boundary changes accessibly
+
+- Recovered clean pushed `cfb6488` and the exact open audit. Date-filter updates correctly removed a conflicting older date but gave no explanation to keyboard and screen-reader users; a user could mistake the disappearing date for a failed save. Added failing focused React and five-language locale regressions before changing production code (six failures, as expected).
+- Added a small date-filter-only `role=status` explanation after clearing an incompatible date, using `dateAdjustment` state (`start` or `end`) and translated complete sentences in **English, German, Spanish, Russian and Bulgarian**. The status is adjacent to the two date fields and appears **only** after an edit clears the other boundary; regular date edits and filter reset remove it. Existing date validation, URL normalization and backend requests remain unchanged. No new timers or toasts and no shared CSS changes.
+- Scoped test assertions to the date-range group so the Library's other live status announcements do not confuse selectors. Verified both cross-boundary edit directions in Chromium; captured and visually inspected `qa-artifacts/agent-c-library/library-german-date-adjustment-dark-320.png`. The German message fits in the 320px dark-mode filter section, date fields remain keyboard-focusable, and there is no horizontal overflow or browser exception.
+
+### Verification
+
+- Focused Library + locales: **158/158 passed**. Full repository suite: **109 passed files, 2 skipped; 1,130 tests passed, 12 skipped** (`--maxWorkers=2`), zero failures. `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Complete isolated Chromium 1440px desktop and 390/320px light/dark, German date feedback, date deep links, import/PGN, Unicode, bookmarks, search, pagination, and recovery: passed.
+- Changes restricted to Agent C's Library UI, its five locale dictionaries, Library/locale/browser regressions, and this progress report. No provider, production data, main, merge, deploy, or other agents' worktrees touched.
+
+### Next independent audit
+
+- Audit **stale date-adjustment announcements during browser Back/Forward navigation**. The new contextual message is local component state, but the URL is the authority for active filters; after browser navigation, the previous adjustment message might remain even when the date range returns to its earlier values. Reproduce in a real Chromium session and add a narrowly scoped guard if confirmed; do not interfere with normal onChange announcements or query-state rehydration.

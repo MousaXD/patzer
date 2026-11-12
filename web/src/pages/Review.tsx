@@ -97,6 +97,7 @@ export default function Review() {
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
+  const [dateAdjustment, setDateAdjustment] = useState<'start' | 'end' | null>(null);
   const [pgnFile, setPgnFile] = useState<File | null>(null);
   const pgnInputRef = useRef<HTMLInputElement | null>(null);
   const importMessageTimer = useRef<number | null>(null);
@@ -165,6 +166,7 @@ export default function Review() {
     Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
 
   function updateFilter(key: FilterName, value: string) {
+    setDateAdjustment(null);
     const next = new URLSearchParams(searchParams);
     if (!value || (key === 'sort' && value === 'newest')) next.delete(key);
     else next.set(key, value);
@@ -181,11 +183,17 @@ export default function Review() {
     // boundary rather than sending an invalid range to the server.
     const other = key === 'from_date' ? 'to_date' : 'from_date';
     const otherValue = validCalendarDate(next.get(other));
+    let removed: 'start' | 'end' | null = null;
     if (value && otherValue &&
-        (key === 'from_date' ? value > otherValue : value < otherValue)) next.delete(other);
+        (key === 'from_date' ? value > otherValue : value < otherValue)) {
+      next.delete(other);
+      removed = other === 'to_date' ? 'end' : 'start';
+    }
+    setDateAdjustment(removed);
     setSearchParams(next);
   }
   function clearLibraryFilters() {
+    setDateAdjustment(null);
     const next = new URLSearchParams(searchParams);
     for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q', 'from_date', 'to_date', 'opening', 'opponent']) next.delete(key);
     setSearchDraft('');
@@ -845,6 +853,11 @@ export default function Review() {
               onChange={(e) => updateDateFilter('to_date', e.target.value)}
               className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
+          {dateAdjustment && <p role="status" className="col-span-2 text-xs leading-relaxed text-chesscom-600 dark:text-chesscom-300 sm:max-w-64">
+            {dateAdjustment === 'end'
+              ? t('review.libraryEndDateCleared', {defaultValue:'End date cleared because it is before the new start date.'})
+              : t('review.libraryStartDateCleared', {defaultValue:'Start date cleared because it is after the new end date.'})}
+          </p>}
         </div>
         {(activeFilters || bookmarkedOnly || q) && !emptyFilteredResults && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}

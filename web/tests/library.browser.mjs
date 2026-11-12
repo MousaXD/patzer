@@ -701,13 +701,33 @@ try {
     await page.waitForURL(href=>new URL(href).searchParams.get('from_date')==='2026-11-09' &&
       !new URL(href).searchParams.has('to_date'));
     assert.equal(await end.inputValue(),'');
+    const rangeStatus=page.getByRole('group',{name:'Game date range'}).getByRole('status');
+    await rangeStatus.getByText('End date cleared because it is before the new start date.').waitFor();
     await end.fill('2026-11-07');
     await page.waitForURL(href=>new URL(href).searchParams.get('to_date')==='2026-11-07' &&
       !new URL(href).searchParams.has('from_date'));
     assert.equal(await start.inputValue(),'');
+    await rangeStatus.getByText('Start date cleared because it is after the new end date.').waitFor();
     assert.deepEqual(pageErrors,[],'Editing cross-boundary date filters caused a browser error');
     console.log('PASS both native date controls can cross an old boundary and clear the incompatible URL filter');
   } finally {await editableDates.context.close();}
+
+  const germanDateNotice=await newPage('dark',320,700,{locale:'de'});
+  try {
+    const {page,pageErrors}=germanDateNotice;
+    await page.goto(`${url}/review?from_date=2026-11-01&to_date=2026-11-08`);
+    await page.getByLabel('Partien ab Datum').fill('2026-11-09');
+    const notice=page.getByRole('group',{name:'Datumsbereich für Partien'}).getByRole('status');
+    await notice.getByText('Das Enddatum wurde entfernt, weil es vor dem neuen Startdatum liegt.').waitFor();
+    await notice.scrollIntoViewIfNeeded();
+    const bounds=await notice.boundingBox();
+    assert.ok(bounds && bounds.x>=0 && bounds.x+bounds.width<=322,
+      `German date adjustment status must not overflow mobile viewport: ${JSON.stringify(bounds)}`);
+    assert.ok((await metrics(page)).overflow<=2,'German date adjustment status caused horizontal overflow');
+    await page.screenshot({path:join(output,'library-german-date-adjustment-dark-320.png')});
+    assert.deepEqual(pageErrors,[],'German date adjustment announcement caused browser error');
+    console.log('PASS German mobile date adjustment is translated, announced and unclipped');
+  } finally {await germanDateNotice.context.close();}
 
   const emptyGerman=await newPage('light',390,844,{locale:'de'});
   try {

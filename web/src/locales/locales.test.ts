@@ -116,6 +116,12 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       expect(locale.review.noMatches?.trim().length,lang).toBeGreaterThan(0);
       if (lang !== 'en') expect(locale.review.noMatches).not.toEqual(en.review.noMatches);
     });
+    it('explains when changing a date boundary removes the incompatible date', () => {
+      for (const key of ['libraryStartDateCleared','libraryEndDateCleared'] as const) {
+        expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+    });
     it('names the Library-specific clear-search action in the selected language', () => {
       expect(locale.review.libraryClearSearch?.trim().length,lang).toBeGreaterThan(0);
       if (lang !== 'en') {

@@ -305,6 +305,8 @@
     "gamesFromDate": "Partidas desde la fecha",
     "throughDate": "Hasta",
     "gamesThroughDate": "Partidas hasta la fecha",
+    "libraryStartDateCleared": "Se borró la fecha inicial porque es posterior a la nueva fecha final.",
+    "libraryEndDateCleared": "Se borró la fecha final porque es anterior a la nueva fecha inicial.",
     "unavailableHeading": "Análisis de partida no disponible",
     "unavailableReason": {
       "invalid": "Este enlace a la partida no es válido.",

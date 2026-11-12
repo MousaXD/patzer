@@ -314,6 +314,8 @@
     "gamesFromDate": "Games from date",
     "throughDate": "Through date",
     "gamesThroughDate": "Games through date",
+    "libraryStartDateCleared": "Start date cleared because it is after the new end date.",
+    "libraryEndDateCleared": "End date cleared because it is before the new start date.",
     "unavailableHeading": "Game review unavailable",
     "unavailableReason": {
       "invalid": "This game link is invalid.",
