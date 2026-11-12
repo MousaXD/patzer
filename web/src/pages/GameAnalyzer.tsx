@@ -1380,27 +1380,31 @@ function GameAnalyzerView() {
               <ThreatPanel fen={currentFen} currentCpWhite={currentEvalCp} />
 
               <ExplorerPanel fen={currentFen} onPreview={setExplorerHover} />
-
-              <GameMetaToolbar
-                key={gameId}
-                gameId={gameId}
-                bookmarked={!!data.game.bookmarked}
-                notes={data.game.notes ?? ''}
-                flipped={flipped}
-                onFlip={() => setFlipped((f) => !f)}
-                linkCopied={linkCopied}
-                shareCopyFailed={shareCopyFailed}
-                sharingVariation={isVariation}
-                shareUrl={shareCurrentPosition()}
-                onShare={copySharePosition}
-              />
-
-              <ExportRow
-                pgn={data.game.pgn}
-                fen={currentFen}
-                fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
-              />
             </>
+          )}
+          {/* Notes are private game data, not an engine-analysis feature.
+              Keep this component mounted when a changed source invalidates
+              the analysis; unmounting it would discard an unsaved draft and
+              bypass the existing Notes navigation/recovery protections. */}
+          <GameMetaToolbar
+            key={gameId}
+            gameId={gameId}
+            bookmarked={!!data.game.bookmarked}
+            notes={data.game.notes ?? ''}
+            flipped={flipped}
+            onFlip={() => setFlipped((f) => !f)}
+            linkCopied={linkCopied}
+            shareCopyFailed={shareCopyFailed}
+            sharingVariation={isVariation}
+            shareUrl={shareCurrentPosition()}
+            onShare={copySharePosition}
+          />
+          {analysis && (
+            <ExportRow
+              pgn={data.game.pgn}
+              fen={currentFen}
+              fileBase={`${(data.game.white || 'white').replace(/[^A-Za-z0-9]+/g, '_')}_vs_${(data.game.black || 'black').replace(/[^A-Za-z0-9]+/g, '_')}`}
+            />
           )}
         </div>
       </div>

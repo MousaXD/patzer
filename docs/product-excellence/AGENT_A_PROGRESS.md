@@ -1576,3 +1576,22 @@
 ### Next high-value source/trust audit
 
 - Review the **saved-game source update while the Notes editor remains open and edited**, especially when a new `notes` prop arrives during an in-flight PATCH. Confirm that reconciliation keeps local unsaved text, that an older acknowledged success cannot erase newer edits, and that a real source revision does not leave a misleading stale analysis heading visible. Use a disposable source change and isolated Chromium before adjusting data flow.
+
+## 2026-11-13: keep private Notes mounted when the saved analysis becomes stale
+
+### Actual browser failure and narrowly scoped correction
+
+- Resumed from clean, pushed `29dc92d`. Added a **separate completed, source-attested** saved-game fixture with an existing private note and valid scored mistake. The first attempt correctly failed at fixture eligibility because it reused the ongoing `*` game; rebuilt the synthetic fixture as a genuinely completed game with matching `1-0` PGN/result and analysis fingerprint. No real saved games or source analyses were edited.
+- Opened Notes at ply 17 and initiated a **real app-driven game refetch** from Star; held the GET, typed a new private draft, then changed both `result` (which increments `source_revision`) and server-side `notes` in the disposable database. Released the authoritative GET returning `analysis_stale=true` and `analysis=null`. **Before the product fix**, Chromium could not find the editable Notes/Unsaved status because `GameMetaToolbar` was rendered *inside* the `analysis && (...)` branch. The failed source caused the entire toolbar and locally edited draft to unmount without a save or recovery path.
+- Moved `GameMetaToolbar` outside the conditional scored-analysis section, **retaining its stable `key={gameId}`** and original position relative to the scored Export row. It now stays mounted during source invalidation and when engine analysis is unavailable. This preserves the existing draft reconciliation, Notes navigation guard and retry controls without changing the backend, PGN, score calculations or save mutation logic. The old scored mistake, classifications and coaching panels remain correctly gated by source-attested analysis.
+- After correction, Chromium verified that the active textarea and focus persist through the game GET, that its local text wins over the different remote `notes` prop, that **zero** Notes PATCHes occur from the source change itself, and that the old `Retry this mistake` action disappears. Only a deliberate blur sends the one latest private draft, which persists successfully with the original PGN unchanged. Inspected `qa-artifacts/agent-a/source-notes-preserved-after-20261113/review-notes-kept-on-source-change-390.png`: unscored move replay remains available while the previously hidden Notes toolbar is still accessible in a narrow dark viewport.
+
+### Verification and isolation
+
+- Focused Notes/locale tests **54/54**, `node --check scripts/review-polish-capture.mjs`, `git diff --check`, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive, locale, game-source, Notes, keyboard, engine, variation, bookmark, blind-practice and PGN matrix: **PASS (exit 0)** on port 9009. No merge, deployment, production service/data, or edits to other agents' branches/worktrees.
+
+### Next independent Game Review usability audit
+
+- **Export PGN/FEN** is still placed inside `analysis && (...)` while the preserved Notes toolbar and unscored move replay remain available. A valid saved game should be exportable even if Stockfish is unavailable or its source analysis has become stale. Verify the missing export in Chromium, then move source-safe export controls outside analysis only if it is a genuine UX gap. Check downloaded PGN remains byte-for-byte original and FEN follows the currently selected saved position.

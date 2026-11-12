@@ -816,6 +816,91 @@ try {
     await unstarResponse;
     assert.equal(db.prepare('SELECT bookmarked FROM games WHERE id=?').get(id).bookmarked,0);
   }finally{releaseStaleGameGet();await staleNotesContext.close();}
+  // A source-changing server response can also contain newer remote Notes.
+  // When someone is actively editing, those fetched Notes must not erase the
+  // local draft, and a stale analysis must not remain visible after refetch.
+  // Use a separate source-attested game to avoid altering any other fixture.
+  const sourceNotesGame=new Chess();
+  sourceNotesGame.loadPgn(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn);
+  sourceNotesGame.setHeader('Result','1-0');
+  const sourceNotesPgn=sourceNotesGame.pgn();
+  const sourceNotesId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color,notes)
+    VALUES (?,'imported','polish-source-notes-refresh',?,'Source White','Source Black','1-0','600',datetime('now'),'white',?)`)
+    .run(user.id,sourceNotesPgn,'Previously saved note').lastInsertRowid);
+  const sourceNotesSource=loadAnalysisGameSource(db,sourceNotesId);
+  assert.ok(sourceNotesSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,81.3,76.8,?,?,?,1)`)
+    .run(sourceNotesId,db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json,
+      SCORING_VERSION,analysisSourceHash(sourceNotesSource),sourceNotesSource.source_revision);
+  const sourceNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseSourceNotesGet=()=>{};
+  try{
+    await sourceNotesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await sourceNotesContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.goto(`${base}/review/${sourceNotesId}?ply=17`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    assert.equal(await editor.inputValue(),'Previously saved note');
+    await page.locator('#learn-from-mistake').waitFor({state:'visible',timeout:5000});
+    const heldSourceNotesGet=new Promise(resolve=>{releaseSourceNotesGet=resolve;});
+    const notePatchTexts=[];
+    await page.route(`**/api/games/${sourceNotesId}`,async route=>{
+      if(route.request().method()==='GET') await heldSourceNotesGet;
+      await route.continue();
+    });
+    await page.route(`**/api/games/${sourceNotesId}/notes`,async route=>{
+      notePatchTexts.push(route.request().postDataJSON().notes);
+      await route.continue();
+    });
+    // Automatic reanalysis after the changed source is outside this Notes
+    // audit: fail it deterministically instead of calling any engine service.
+    await page.route('**/api/analyze',async route=>{
+      await route.fulfill({status:503,contentType:'application/json',body:'{"error":"busy"}'});
+    });
+    const pendingRefresh=page.waitForRequest(req=>req.url().endsWith(`/api/games/${sourceNotesId}`)
+      && req.method()==='GET');
+    await page.getByRole('button',{name:'Star',exact:true}).click();
+    await pendingRefresh;
+    const localDraft='Local notes written while a new game source arrived';
+    const remoteDraft='Remote notes fetched from the changed source';
+    await editor.fill(localDraft);
+    const oldRevision=db.prepare('SELECT source_revision FROM games WHERE id=?').get(sourceNotesId).source_revision;
+    db.prepare('UPDATE games SET result=?, notes=? WHERE id=?').run('*',remoteDraft,sourceNotesId);
+    assert.ok(db.prepare('SELECT source_revision FROM games WHERE id=?').get(sourceNotesId).source_revision>oldRevision);
+    const sourceResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${sourceNotesId}`)
+      && res.request().method()==='GET' && res.status()===200,{timeout:5000});
+    releaseSourceNotesGet();
+    const refreshed=await (await sourceResponse).json();
+    assert.equal(refreshed.game.notes,remoteDraft);
+    assert.equal(refreshed.analysis_stale,true);
+    assert.equal(refreshed.analysis,null,
+      'The backend must not return old classifications for a changed game source');
+    await page.locator('[data-review-meta-toolbar]').getByText(enNotes.review.notesUnsaved,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.equal(await editor.inputValue(),localDraft,
+      'Incoming Notes from a changed source must not overwrite an actively edited local draft');
+    assert.ok(await editor.evaluate(el=>document.activeElement===el),
+      'A source revision must not unmount or blur the active Notes editor');
+    assert.deepEqual(notePatchTexts,[],
+      'A background source update must not prematurely save or discard an active local draft');
+    assert.equal(await page.locator('#learn-from-mistake').count(),0,
+      'The old classified mistake must disappear when its source revision is invalid');
+    await page.screenshot({path:join(output,'review-notes-kept-on-source-change-390.png')});
+    const savedLocal=page.waitForResponse(res=>res.url().endsWith(`/api/games/${sourceNotesId}/notes`)
+      && res.status()===200 && res.request().postDataJSON().notes===localDraft);
+    await editor.press('Tab');
+    await savedLocal;
+    assert.deepEqual(notePatchTexts,[localDraft],
+      'Only the final user-owned draft must be sent to the Notes endpoint');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(sourceNotesId).notes,localDraft);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(sourceNotesId).pgn,sourceNotesPgn);
+  }finally{releaseSourceNotesGet();await sourceNotesContext.close();}
   // Closing Notes blurs its editor and starts an asynchronous autosave. If
   // that PATCH fails *after* the editor collapses, the error cannot be left
   // inside its now-hidden content: the user must see and recover the draft.
