@@ -560,3 +560,28 @@
 ### Next high-impact audit
 
 - Investigate palette recent-game **account isolation**. Its query key currently does not include the signed-in account, which may reuse cached game results after switching users in the same browser session. Reproduce with an isolated test before changing the shared cache key.
+
+## 2026-11-12: Account isolation for private command-palette game search
+
+### Verified failure
+
+- Resumed from the clean pushed Agent B commit `07356f6` and investigated the exact pending cache-isolation concern without restarting previously finished UI investigations.
+- A real Chromium session loaded a game against **FirstAccountOpponent**, then switched the authenticated Zustand user from account 1 to account 2 without reloading the page. **Before the fix, the old opponent remained visible in the command palette** instead of the second account's game. This was a genuine cross-account recent-game cache disclosure in the shared global search.
+
+### Correction
+
+1. Scoped the React Query key to `['palette-games', user?.id]` so every authenticated account receives independent cached recent-game results. Disabled requests when the palette is closed or the account is missing; retained abortable in-flight requests, existing loading/empty/error states, navigation and actions.
+2. Extended the real Chromium fixture with user-specific game data and a direct account switch in the running SPA (not a browser reload). The test now verifies old account game results disappear and **SecondAccountOpponent** becomes visible.
+3. Added a focused unit test checking the query key changes between two signed-in accounts and fetching is disabled while the palette is closed.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **410/410 passed across 70 test files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the previously failing account-switch isolation check and all earlier 320/390/1440 modal checks.
+- `git diff --check`: **passed**.
+- Only the shared command palette, local Chromium/unit fixtures and durable progress report were edited. No real accounts, user data, other agent worktrees or production deployments were involved.
+
+### Next investigation
+
+- Inspect the shared shell's logout action feedback when the logout endpoint fails or authentication refresh remains unavailable. Confirm actual behavior with an isolated local fixture before touching the global logout flow.

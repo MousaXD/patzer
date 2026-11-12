@@ -16,6 +16,7 @@ let theme = 'light';
 let profilePatchMode = 'success';
 let patchAttempts = 0;
 let recentGamesMode = 'ok';
+let activeUserId = 1;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '',
@@ -96,6 +97,16 @@ try {
       await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
       return;
     }
+    if (path === '/api/games' && recentGamesMode === 'accounts') {
+      const opponent = activeUserId === 1 ? 'FirstAccountOpponent' : 'SecondAccountOpponent';
+      await route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ games: [{
+          id: activeUserId, white: 'sample-player', black: opponent,
+          user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
+          result: 'win', time_control: '600', opening_name: 'Italian Game',
+        }] }) });
+      return;
+    }
     if (path === '/api/settings/profile' && route.request().method() === 'PATCH') {
       patchAttempts += 1;
       if (profilePatchMode === 'error') {
@@ -111,8 +122,8 @@ try {
       return;
     }
     const result = path === '/api/setup/status' ? { setup_required: false }
-      : path === '/api/auth/me' ? { user: { id: 1, username: 'sample-player', role: 'user', created_at: '2026-01-01',
-        profile: { ...profile, site_theme: theme } } }
+      : path === '/api/auth/me' ? { user: { id: activeUserId, username: 'sample-player', role: 'user', created_at: '2026-01-01',
+        profile: { ...profile, user_id: activeUserId, site_theme: theme } } }
       : path === '/api/games' ? { games: [] }
       : path === '/api/stats/me' ? { total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null }
       : path === '/api/meta' ? { version: '7.19.0' }
@@ -383,6 +394,30 @@ try {
   await recentPalette.getByText('No recent games yet.').waitFor();
   await page.screenshot({ path: resolve(output, 'palette-recent-games-empty-390.png') });
   await assertNoOverflow(page, 'recent game search recovery at 390px');
+
+  // Game search data is personal. A user switch inside the SPA must never
+  // display games cached for the previous account, even for one frame.
+  recentGamesMode = 'accounts';
+  activeUserId = 1;
+  await visit(page, 390, 844);
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  const accountPalette = page.getByRole('dialog', { name: 'Search' });
+  await accountPalette.getByRole('option', { name: /FirstAccountOpponent/ }).waitFor();
+  activeUserId = 2;
+  await page.evaluate(async () => {
+    const { useAuth } = await import('/src/state/auth.ts');
+    const previous = useAuth.getState().user;
+    if (!previous) throw new Error('Fixture session did not start');
+    useAuth.getState().setUser({
+      ...previous, id: 2, username: 'second-user',
+      profile: { ...previous.profile, user_id: 2, display_name: 'Second User' },
+    });
+  });
+  await page.waitForTimeout(150);
+  if (await accountPalette.getByRole('option', { name: /FirstAccountOpponent/ }).count()) {
+    throw new Error('Recent games from the previous account leaked into the new session');
+  }
+  await accountPalette.getByRole('option', { name: /SecondAccountOpponent/ }).waitFor();
 
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {

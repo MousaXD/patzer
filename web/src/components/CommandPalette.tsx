@@ -61,17 +61,18 @@ export default function CommandPalette({ open, onClose }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(open, dialogRef, onClose, inputRef);
 
-  // Recent games — only fetched while palette is open. Navigation and global
-  // actions stay usable even if the games endpoint is unavailable.
+  // Recent games are private to the signed-in account. Never reuse this
+  // query's cache across account switches in the same browser session.
+  // Navigation/actions stay usable even if the endpoint is unavailable.
   const { data: gamesData, isLoading: gamesLoading, isError: gamesError,
     isFetching: gamesFetching, refetch: refetchGames } = useQuery({
-    queryKey: ['palette-games'],
+    queryKey: ['palette-games', user?.id],
     queryFn: async ({ signal }) => {
       const response = await api.get<{ games: GameRow[] }>('/api/games?limit=30', { signal });
       if (!Array.isArray(response?.games)) throw new Error('Invalid recent games response');
       return response;
     },
-    enabled: open,
+    enabled: open && user?.id != null,
     staleTime: 30_000,
   });
 

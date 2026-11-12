@@ -2,11 +2,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { patch, refresh, navigate, saveLanguage, recentGamesQuery } = vi.hoisted(() => ({
+const { patch, refresh, navigate, saveLanguage, recentGamesQuery, account, queryCall } = vi.hoisted(() => ({
   patch: vi.fn(),
   refresh: vi.fn(),
   navigate: vi.fn(),
   saveLanguage: vi.fn(),
+  account: { id: 1 },
+  queryCall: vi.fn(),
   recentGamesQuery: {
     data: { games: [] } as { games: unknown[] } | undefined,
     isLoading: false,
@@ -19,12 +21,12 @@ const { patch, refresh, navigate, saveLanguage, recentGamesQuery } = vi.hoisted(
 vi.mock('../api', () => ({ api: { patch, get: vi.fn() } }));
 vi.mock('../state/auth', () => ({
   useAuth: () => ({
-    user: { id: 1, username: 'sample-player', role: 'user', profile: { display_name: 'Sample Player' } },
+    user: { id: account.id, username: 'sample-player', role: 'user', profile: { display_name: 'Sample Player' } },
     refresh,
   }),
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => recentGamesQuery }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: (options: unknown) => { queryCall(options); return recentGamesQuery; } }));
 vi.mock('../lib/logout', () => ({ endSession: vi.fn() }));
 vi.mock('../lib/saveInterfaceLanguage', () => ({ saveInterfaceLanguage: saveLanguage }));
 
@@ -43,11 +45,31 @@ beforeEach(async () => {
   recentGamesQuery.isError = false;
   recentGamesQuery.isFetching = false;
   recentGamesQuery.refetch.mockReset();
+  account.id = 1;
+  queryCall.mockReset();
   await i18n.changeLanguage('en');
 });
 afterEach(cleanup);
 
 describe('global command palette async actions', () => {
+  it('never shares the recent-game query key between different signed-in accounts', () => {
+    const view = render(<CommandPalette open onClose={vi.fn()} />);
+    expect(queryCall).toHaveBeenLastCalledWith(expect.objectContaining({
+      queryKey: ['palette-games', 1], enabled: true,
+    }));
+
+    account.id = 2;
+    view.rerender(<CommandPalette open onClose={vi.fn()} />);
+    expect(queryCall).toHaveBeenLastCalledWith(expect.objectContaining({
+      queryKey: ['palette-games', 2], enabled: true,
+    }));
+
+    view.rerender(<CommandPalette open={false} onClose={vi.fn()} />);
+    expect(queryCall).toHaveBeenLastCalledWith(expect.objectContaining({
+      queryKey: ['palette-games', 2], enabled: false,
+    }));
+  });
+
   it('distinguishes loading, unavailable and empty recent games without hiding navigation', async () => {
     recentGamesQuery.data = undefined;
     recentGamesQuery.isLoading = true;
