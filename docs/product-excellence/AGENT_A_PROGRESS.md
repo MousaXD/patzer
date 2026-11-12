@@ -343,3 +343,27 @@
 ### Next priority
 
 - Audit branch-selection keyboard focus and screen-reader announcement at multiple variation buttons, including nested branches and the difference between the active branch's cursor and saved PGN position. Existing source cancellation and transport counters are certified; target only uncovered real interaction failures, especially when the chosen variation is shorter or has a different fork.
+
+## 2026-11-12: reveal mobile chessboard when selecting exploratory branches
+
+### Reproduced usability defect
+
+- Continued from clean pushed Agent A commit `9d2c794` after the Return-to-game focus recovery was certified. On stacked mobile viewports, the variation selector lives *below* the chessboard. Selecting a different existing branch updated the position above the visible viewport, but left the keyboard user on the selector without seeing the new board.
+- Extended the authenticated 390px Chromium two-branch scenario: select a previously created branch and require keyboard focus on `.review-board-square` with the board visible beneath the fixed 56px app header. **Baseline failed** with the focus timeout.
+
+### Fix
+
+- The variation button now selects its branch and, only when the viewport is narrower than 960px, calls the existing `jumpToBoard` in the next animation frame. It uses the established scroll and focus behavior without creating additional React state or changing move legality, source revisions, current branch cursor, or PGN.
+- At desktop widths the selector retains focus for fast side-by-side review, avoiding unnecessary board scrolling.
+
+### Verification
+
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **979 passed / 12 skipped**, 107 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**, including mobile branch selection, Return-to-saved-board keyboard recovery, 320/390/1024px responsive checks, stale-variation source cancellation, localized controls, AI coach integrity and PGN invariance.
+- Captured and independently inspected actual 390px dark screenshot `qa-artifacts/agent-a/mobile-branch-selection-after-20261112/mobile-branch-selection-reveals-board-390.png`: the `d4` position, board, `Variation d4` analysis state and correct `Var 1 / 1` counter are visible immediately after selecting the branch.
+- No production SQLite changes, merges or deployments. All engine scores shown in browser fixtures are synthetic test UI values, not real Stockfish certification.
+
+### Next lane task
+
+- Audit nested variation-fork navigation on both 390px mobile and desktop: switching back to an ancestor or sibling branch should preserve the correct independent cursor, display the correct highlighted last move and never show the child's continuation as part of its parent. Existing legality/source checks are complete; investigate only uncovered visual or keyboard defects and add focused regression evidence before changing implementation.

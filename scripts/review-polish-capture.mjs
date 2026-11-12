@@ -1128,6 +1128,15 @@ try {
     const branchButton=index=>page.getByRole('button',{name:locale.review.variationOption
       .replace('{{number}}',String(index)).replace('{{moves}}','1')});
     await branchButton(1).click();
+    // On a narrow phone the branch picker is below the board. Clicking it
+    // must reveal the newly selected board instead of leaving the player
+    // below the fold looking at an unchanged-looking button list.
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('review-board-square'),
+      undefined,{timeout:1200});
+    const selectedBranchBoard=await page.locator('.review-board-square').boundingBox();
+    assert.ok(selectedBranchBoard && selectedBranchBoard.y>=40 && selectedBranchBoard.y<=96,
+      `Switching variations on a phone must reveal the playable board: ${JSON.stringify(selectedBranchBoard)}`);
+    await page.screenshot({path:join(output,'mobile-branch-selection-reveals-board-390.png')});
     await failure.waitFor({state:'visible'});
     const requestCount=requests.length;
     await branchButton(2).click();

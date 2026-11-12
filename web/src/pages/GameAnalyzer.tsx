@@ -971,7 +971,15 @@ function GameAnalyzerView() {
               {variations.variations.map((branch, index) => (
                 <button type="button" key={branch.id} aria-pressed={variations.activeVariationId === branch.id}
                   className={`inline-flex min-h-11 items-center rounded-md px-3 py-2 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.activeVariationId === branch.id ? 'bg-amber-500 text-chesscom-950' : 'bg-chesscom-100 text-chesscom-700 dark:bg-chesscom-700 dark:text-chesscom-100'}`}
-                  onClick={() => variations.selectVariation(branch.id)} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
+                  onClick={() => {
+                    variations.selectVariation(branch.id);
+                    // The branch picker sits below the board on phones. The
+                    // changed position would otherwise remain out of view;
+                    // preserve the in-place, side-by-side workflow on desktop.
+                    if (window.matchMedia('(max-width: 959px)').matches) {
+                      requestAnimationFrame(jumpToBoard);
+                    }
+                  }} title={t('review.variationOptionTitle', { number: index + 1, moves: branch.moves.length, ply: branch.basePly })}>
                   {t('review.variationOption', { number: index + 1, moves: branch.moves.length })}
                 </button>
               ))}
