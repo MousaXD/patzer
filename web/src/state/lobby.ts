@@ -20,7 +20,14 @@ export interface Challenge {
   to:   { id: number; username: string; display_name: string; avatar_emoji: string };
 }
 
-type AcceptedNav = { challenge_id: number; game_id: number; your_color: 'white' | 'black'; time_control: string };
+type AcceptedNav = {
+  challenge_id: number;
+  game_id: number;
+  your_color: 'white' | 'black';
+  time_control: string;
+  /** Do not automatically replace a currently active board. */
+  deferred: boolean;
+};
 type ListStatus = 'loading' | 'ready' | 'error';
 
 interface LobbyState {
@@ -110,7 +117,11 @@ export const useLobby = create<LobbyState>((set, get) => {
         // Reconciliation invalidates any older, still-pending REST snapshot.
         void get().refreshChallenges();
       } else if (msg.type === 'challenge_accepted') {
-        set({ pendingAcceptedNav: msg as unknown as AcceptedNav });
+        if (!Number.isSafeInteger(msg.game_id) || Number(msg.game_id) <= 0) return;
+        set({ pendingAcceptedNav: {
+          ...(msg as unknown as Omit<AcceptedNav, 'deferred'>),
+          deferred: get().activePlaySession,
+        } });
         set((s) => ({ outgoing: s.outgoing.filter((c) => c.id !== (msg as { challenge_id: number }).challenge_id) }));
         void get().refreshChallenges();
       } else if (msg.type === 'challenge_declined') {

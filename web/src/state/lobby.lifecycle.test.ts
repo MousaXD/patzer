@@ -41,6 +41,19 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('defers accepted challenge navigation when the user is playing an active game', () => {
+    useLobby.getState().connect(1);
+    const socket = FakeSocket.opened[0]!;
+    useLobby.getState().setActivePlaySession(true);
+    socket.emit({ type: 'challenge_accepted', challenge_id: 67, game_id: 222, your_color: 'white', time_control: 'rapid' });
+    expect(useLobby.getState().pendingAcceptedNav).toMatchObject({
+      game_id: 222, challenge_id: 67, deferred: true,
+    });
+    expect(useLobby.getState().activePlaySession).toBe(true);
+    useLobby.getState().disconnect();
+    expect(useLobby.getState().pendingAcceptedNav).toBeNull();
+  });
+
   it('rechecks pending invitations while connected and stops polling once they disappear or on sign-out', async () => {
     let shouldExpire = false;
     mocks.get.mockImplementation((url: string) => {
@@ -187,7 +200,7 @@ describe('lobby account and socket lifecycle', () => {
     useLobby.setState({
       users: [{ id: 3, username: 'other', display_name: 'Opponent', avatar_emoji: '♟', online: true }],
       outgoing: [invitation(12)],
-      pendingAcceptedNav: { challenge_id: 2, game_id: 9, your_color: 'white', time_control: 'rapid' },
+      pendingAcceptedNav: { challenge_id: 2, game_id: 9, your_color: 'white', time_control: 'rapid', deferred: false },
     });
     expect(useLobby.getState().incoming).toHaveLength(1);
 

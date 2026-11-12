@@ -12,6 +12,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
 import IncomingChallengeModal from './components/IncomingChallengeModal';
+import AcceptedChallengeNotice from './components/AcceptedChallengeNotice';
 import CommandPalette from './components/CommandPalette';
 import ShortcutsModal from './components/ShortcutsModal';
 import { LogoMark } from './components/Logo';
@@ -42,7 +43,6 @@ export default function App() {
   const nav = useNavigate();
   const connectLobby = useLobby((s) => s.connect);
   const disconnectLobby = useLobby((s) => s.disconnect);
-  const consumeAcceptedNav = useLobby((s) => s.consumeAcceptedNav);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -69,16 +69,6 @@ export default function App() {
     window.addEventListener('keydown', onInteract);
     return () => { window.removeEventListener('click', onInteract); window.removeEventListener('keydown', onInteract); };
   }, []);
-
-  // When the challenger gets "challenge_accepted" via lobby WS, navigate to game
-  useEffect(() => {
-    if (!user) return;
-    const id = setInterval(() => {
-      const nav$ = consumeAcceptedNav();
-      if (nav$) nav(`/play?game=${nav$.game_id}`);
-    }, 500);
-    return () => clearInterval(id);
-  }, [user?.id, consumeAcceptedNav, nav]);
 
   // Sync UI language with profile language whenever the user changes
   useEffect(() => {
@@ -223,6 +213,7 @@ export default function App() {
         </Route>
       </Routes>
       <IncomingChallengeModal />
+      <AcceptedChallengeNotice />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>

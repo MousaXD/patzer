@@ -13,6 +13,7 @@ export default function IncomingChallengeModal() {
   const nav = useNavigate();
   const incoming = useLobby((s) => s.incoming);
   const activePlaySession = useLobby((s) => s.activePlaySession);
+  const pendingAcceptedNav = useLobby((s) => s.pendingAcceptedNav);
   const refresh = useLobby((s) => s.refreshChallenges);
   const forgetChallenge = useLobby((s) => s.forgetChallenge);
   const [error, setError] = useState<'accept' | 'decline' | null>(null);
@@ -95,7 +96,7 @@ export default function IncomingChallengeModal() {
 
   return (
     <>
-      {c && activePlaySession && snoozedChallengeId !== c.id && (
+      {c && activePlaySession && !pendingAcceptedNav && snoozedChallengeId !== c.id && (
         <div role="status" className="pointer-events-none fixed bottom-28 right-4 z-[55] flex w-[min(90vw,20rem)] items-start gap-2 rounded-xl border border-ink-200 bg-white p-3 text-sm text-chesscom-800 shadow-lift sm:bottom-4 dark:border-ink-700 dark:bg-chesscom-900 dark:text-chesscom-100">
           <span className="flex-1">{t('challenge.whilePlaying', {
             name: c.from.display_name,

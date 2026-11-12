@@ -484,6 +484,9 @@
   "challenge": {
     "incoming": "Neue Herausforderung",
     "someoneChallenges": "Jemand möchte mit dir spielen.",
+    "acceptedWhilePlaying": "Deine Herausforderung wurde angenommen. Dein neues Spiel ist bereit, wenn du es bist.",
+    "joinLater": "Nicht jetzt",
+    "joinAccepted": "Spiel beitreten",
     "whilePlaying": "Neue Herausforderung von {{name}}. Schau nach deiner Partie nach, ob sie noch verfügbar ist.",
     "noLongerAvailable": "Diese Einladung ist abgelaufen oder nicht mehr verfügbar.",
     "incomingList": "Eingehende Herausforderungen",
