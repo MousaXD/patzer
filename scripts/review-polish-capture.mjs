@@ -1020,6 +1020,39 @@ try {
     assert.equal(engineRequests,2);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
+  // A malformed HTTP MultiPV result can supply two individually legal moves
+  // with duplicate rank 1, or the same move at multiple ranks. Do not render
+  // two conflicting "best" rows; surface the existing safe Retry state.
+  const duplicateRankContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await duplicateRankContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await duplicateRankContext.newPage();
+    const initialFen=new Chess().fen();
+    const originalRankPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let requests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      assert.equal(route.request().postDataJSON().fen,initialFen);
+      requests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:initialFen,depth:18,lines:[
+          {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:55,mate:null,multipv:1},
+          {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:70,mate:null,multipv:1},
+        ],
+      })});
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.getByRole('button',{name:/^(Try engine move|Follow played move) (e4|d4)$/}).count(),0,
+      'Malformed duplicate-best engine evidence must not appear as playable recommendations');
+    const retry=page.getByRole('button',{name:'Retry',exact:true});
+    assert.ok(await retry.isEnabled(),'Malformed MultiPV response must retain the real Retry recovery path');
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-duplicate-rank-rejected-390.png')});
+    assert.equal(requests,1);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalRankPgn);
+  }finally{await duplicateRankContext.close();}
   // Stockfish and the hosted adapter both return live MultiPV scores from
   // the side to move's perspective. When Black is to move a positive live
   // score means Black is better; the rest of Review reports White's POV.

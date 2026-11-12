@@ -936,3 +936,23 @@
 ### Next higher-impact issue
 
 - The FEN/legality validator for live MultiPV `verifiedPositionEngineLines` validates each line individually but does not enforce distinct `multipv` rank or first UCI across the response. If a malformed provider returns repeated rank 1 or the same move under multiple ranks, the review may render multiple misleading "best" rows with conflicting scores and duplicate React keys. Inspect backend rank policy and add isolated adversarial tests before deciding whether to reject or safely deduplicate malformed lines, without ever inventing a replacement best move.
+
+## 2026-11-12: reject malformed live MultiPV ranks and duplicate best moves
+
+### Reproduction and source contract
+
+- Continued from clean pushed `7f5c614`. Review's `verifiedPositionEngineLines` already ensured each candidate matches the exact requested FEN, a legal first UCI, matching SAN and a replayable continuation. It did **not** enforce unique/consecutive MultiPV ranks or first moves across the response. An otherwise legal HTTP payload could claim *two different rank-one best moves*, repeat the same move at two ranks, or skip the actual best rank, creating contradictory recommendations.
+- Inspected engine source: the local Stockfish adapter emits candidates with ascending, contiguous ranks and unique first moves; the hosted adapter emits only rank one. Added adversarial source-specific unit tests for duplicate ranks, duplicate UCI across ranks, a missing rank one, gaps (1 then 3), and reordered ranks. **Before fix the rank-one duplicate test failed**: the malformed response was accepted.
+
+### Narrow fail-safe change and verification
+
+- Within Agent A's existing Review position validator, require each candidate's `multipv` to equal its 1-based array position and its validated first UCI to be unique. The existing legality, FEN, SAN, PV and score checks remain mandatory. Reject the entire inconsistent response and use the existing localized Engine Lines unavailable/Retry UI rather than choosing an arbitrary winning move or modifying scores. Zero-line responses remain valid as before.
+- Focused position/source-score tests: **13 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **1001 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**. New intercepted HTTP result contained legal, source-matched `e4` and `d4`, each marked `multipv:1`. The Review correctly displayed the safe unavailable state with an enabled Retry instead of either false best move button; persisted PGN remained unchanged. All existing real-browser move navigation, source integrity, score, variation, localization, responsive and error/retry cases passed.
+- Independently opened `qa-artifacts/agent-a/multipv-ranks-safe-20261112/engine-lines-duplicate-rank-rejected-390.png`: the 390px Engine Lines rail shows clear error/Retry and no misleading recommendations while preserving the board, move history and report layout.
+- Adversarial MultiPV scores are browser fixtures, not actual Stockfish certification. No merge, deployment, production SQLite change, or other-agent edits.
+
+### Next Game Review interaction audit
+
+- Engine-line mouse hover calls `onHover` to preview a live candidate on the board, but the same focusable line button does not call `onHover` on keyboard focus or clear it on blur. Investigate the real board-preview arrow/line reaction with keyboard Tab/Shift+Tab on a source-valid live line. If confirmed, make keyboard focus preview equivalent to pointer hover without changing selection, PGN or accessible description.

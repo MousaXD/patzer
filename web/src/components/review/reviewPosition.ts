@@ -86,7 +86,8 @@ export function verifiedPositionEngineLines<T>(
   requestedFen: string,
 ): T[] | null {
   if (!requestedFen || payload.fen !== requestedFen || !Array.isArray(payload.lines)) return null;
-  if (!payload.lines.every((line: unknown) => {
+  const seenFirstMoves = new Set<string>();
+  if (!payload.lines.every((line: unknown, index: number) => {
     if (!line || typeof line !== 'object' || Array.isArray(line)) return false;
     const record = line as Record<string, unknown>;
     const first = typeof record.uci === 'string' ? legalAnalysisMove(requestedFen, record.uci) : null;
@@ -96,7 +97,8 @@ export function verifiedPositionEngineLines<T>(
       || (record.cp !== null && (typeof record.cp !== 'number' || !Number.isFinite(record.cp)))
       || (record.mate !== null && (typeof record.mate !== 'number' || !Number.isFinite(record.mate)))
       || (record.cp === null && record.mate === null)
-      || !Number.isSafeInteger(record.multipv) || (record.multipv as number) < 1) return false;
+      || !Number.isSafeInteger(record.multipv) || record.multipv !== index + 1
+      || seenFirstMoves.has(first.uci)) return false;
     try {
       const replay = new Chess(requestedFen);
       for (const [index, san] of record.pv_san.entries()) {
@@ -104,6 +106,7 @@ export function verifiedPositionEngineLines<T>(
         if (!actual || actual.san !== san) return false;
         if (index === 0 && actual.from + actual.to + (actual.promotion || '') !== first.uci) return false;
       }
+      seenFirstMoves.add(first.uci);
       return true;
     } catch {
       return false;

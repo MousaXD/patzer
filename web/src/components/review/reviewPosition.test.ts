@@ -103,4 +103,20 @@ describe('review position-safe suggestions', () => {
       expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, ...changes }] }, fen), JSON.stringify(changes)).toBeNull();
     }
   });
+
+  it('rejects duplicate, missing or reordered MultiPV ranks instead of claiming false best moves', () => {
+    const fen = new Chess().fen();
+    const e4 = { uci: 'e2e4', san: 'e4', pv_san: ['e4','e5'], cp: 45, mate: null, multipv: 1 };
+    const d4 = { uci: 'd2d4', san: 'd4', pv_san: ['d4','d5'], cp: 30, mate: null, multipv: 2 };
+    expect(verifiedPositionEngineLines({ fen, lines: [e4,d4] }, fen)).toEqual([e4,d4]);
+    for (const lines of [
+      [e4,{ ...d4, multipv: 1 }], // two competing rank-one best moves
+      [e4,{ ...e4, multipv: 2 }], // same move with two conflicting ranks
+      [{ ...d4, multipv: 2 }], // missing actual best-ranked line
+      [e4,{ ...d4, multipv: 3 }], // an absent rank two must not imply rank three
+      [d4,e4], // order mismatch changes the implied best recommendation
+    ]) {
+      expect(verifiedPositionEngineLines({ fen, lines }, fen), JSON.stringify(lines)).toBeNull();
+    }
+  });
 });
