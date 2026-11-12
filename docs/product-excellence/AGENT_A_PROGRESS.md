@@ -1474,3 +1474,25 @@
 ### Next independent, higher-value Game Review audit
 
 - A normal `?ply=` change must not block exploration, but switching between *Saved game* and *Blind practice* can replace the analysis workspace. Audit how an unsaved Notes draft behaves when selecting practice from the current game and returning with browser Back. Verify the guard distinguishes a destructive route transition from a harmless move selection, and preserve the saved PGN and pending note state.
+
+## 2026-11-13: protect private Notes when entering in-review blind practice
+
+### Independently reproduced unguarded workspace transition
+
+- Continued from clean pushed `baeec2f` and examined the in-review **Retry this mistake** action. Unlike an ordinary `?ply=` step, it used `setReviewPracticePly()` local state and immediately returned `<MistakePractice>` from `GameAnalyzerView`, unmounting `GameMetaToolbar` while a Notes PATCH could still fail. The URL-driven Notes blocker could never intercept this transition, so a private draft had no visible recovery path after an HTTP 503.
+- The source-backed sample game intentionally had result `*` and could not offer blind practice; an initial fixture at ply 8 also selected an opponent move. Preserved that shared synthetic game's identity and created a **separate, completed (`1-0`), source-attested** copy of its legal PGN, scored moves and analysis fingerprint, then selected the player's own genuine mistake at ply 17. On that fixture, the authenticated Chromium regression **failed before the fix**: selecting Retry with a held Notes PATCH unmounted the editor and never displayed the `Notes not saved yet` saving dialog.
+
+### Smallest scope correction
+
+- Route in-review practice through a **replace-mode `?practicePly=<ply>` state transition** instead of an unguarded local-state switch. Game Review's existing Notes blocker already treats this parameter as a workspace replacement and can wait for saving, display failed-save recovery, or continue automatically once the latest note is safely stored. The dedicated blind-practice picker retains its original separate Back-history entry, while ordinary in-review practice adds no extra browser history entry. Returning to the saved game removes the transient practice parameter and restores the selected move. The PGN and source-bound practice eligibility rules are unchanged.
+- Browser proof on the completed fixture: the private draft remains mounted during the held PATCH, an injected 503 yields the accessible saving/error recovery dialog, Retry saves the original draft once, blind practice then opens, Return to saved game works, reopening Notes displays the recovered text, and the saved PGN stays byte-for-byte unchanged.
+
+### Verification and boundaries
+
+- `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium viewport, locale, saved source, keyboard, navigation, engine, blind-practice and PGN matrix: **PASS (exit 0)** on port 8998. No production database/service modification, merge, deployment or changes to the other agents' branches.
+
+### Next scoped audit
+
+- Independently verify a **normal, already-saved in-review practice entry** and its Return-to-review keyboard focus and URL history without a pending Notes request. Also validate that direct practice URLs cannot expose the original saved move before the learner chooses to exit. Keep any change within Agent A's game-review/practice boundary.
