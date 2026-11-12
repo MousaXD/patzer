@@ -1082,6 +1082,64 @@ try {
       'Initial request, explicit retry, and reopening the on-demand panel each fetch the displayed FEN');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
+  // Engine Lines can be collapsed while an HTTP search is still in flight.
+  // Opening the same FEN again starts a fresh request; a late response from
+  // the abandoned request must not replace the new legal recommendation.
+  const cancelLinesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseOldLineRequest;
+  try{
+    await cancelLinesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await cancelLinesContext.newPage();
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const fen=new Chess().fen();
+    let requests=0;
+    let signalOldRequest;
+    let signalOldSettled;
+    const oldRequestStarted=new Promise(resolve=>{signalOldRequest=resolve;});
+    const oldRequestSettled=new Promise(resolve=>{signalOldSettled=resolve;});
+    const oldRequestGate=new Promise(resolve=>{releaseOldLineRequest=resolve;});
+    await page.route('**/api/analyze/position',async route=>{
+      assert.equal(route.request().postDataJSON().fen,fen);
+      requests++;
+      if(requests===1){
+        signalOldRequest();
+        await oldRequestGate;
+        try{
+          await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+            fen,depth:18,lines:[{uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:20,mate:null,multipv:1}],
+          })});
+        }catch{
+          // An AbortController may already have terminated the first fetch.
+        }finally{
+          signalOldSettled();
+        }
+      }else{
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+          fen,depth:18,lines:[{uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:40,mate:null,multipv:1}],
+        })});
+      }
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    const header=page.getByRole('button',{name:'Engine lines',exact:true});
+    await header.click();
+    await Promise.race([oldRequestStarted,sleep(5000).then(()=>{throw new Error('First engine request never started');})]);
+    await header.click();
+    assert.equal(await header.getAttribute('aria-expanded'),'false');
+    await header.click();
+    await page.getByRole('button',{name:'Follow played move e4'}).waitFor({state:'visible',timeout:5000});
+    releaseOldLineRequest();
+    await Promise.race([oldRequestSettled,sleep(5000).then(()=>{throw new Error('Abandoned engine response never settled');})]);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(requests,2,'Reopening a cancelled engine panel should initiate only one fresh request');
+    assert.ok(await page.getByRole('button',{name:'Follow played move e4'}).isEnabled(),
+      'The newer on-demand engine line must survive a delayed abandoned response');
+    assert.equal(await page.getByRole('button',{name:'Try engine move d4'}).count(),0,
+      'An abandoned engine search must not overwrite newer recommendations for the same FEN');
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-reopened-stale-response-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{releaseOldLineRequest?.();await cancelLinesContext.close();}
   // A malformed HTTP MultiPV result can supply two individually legal moves
   // with duplicate rank 1, or the same move at multiple ranks. Do not render
   // two conflicting "best" rows; surface the existing safe Retry state.

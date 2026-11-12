@@ -1084,3 +1084,18 @@
 ### Next independent review investigation
 
 - Audit on-demand Engine Lines when its disclosure is closed/reopened rapidly while an HTTP request is in flight. The effect aborts old requests and checks request-local cancellation, but the browser matrix has not explicitly proven a delayed stale success cannot replace the new FEN's valid suggestions. Exercise genuine delayed intercepted responses, focus, visible loading/error state, and original PGN integrity before changing code.
+
+## 2026-11-12: independently certify cancelled/reopened engine-line requests
+
+### Recovered checkpoint and real asynchronous audit
+
+- Continued from clean pushed `6a89a3e` without changing already-correct engine cancellation code. The existing GameAnalyzer effect uses request-local `cancelled`, `AbortController`, and a cleanup on `linesEnabled`, FEN or Retry changes. The previously untested race was an old delayed success for the **same FEN** arriving after the user closed and reopened the panel and got a newer, different suggestion.
+- Extended only the isolated Chromium capture script with an intercepted request gate: first on-demand request for the original position deliberately waits with a legal d4 response; user closes panel, reopens it, and receives a newer legal e4 response; test then releases the abandoned d4 response and waits for the old route to settle. This exercises an actual in-browser request lifecycle rather than a pure mock of React state.
+- Assertions prove **two requests total**, newer e4 still focusable/visible, stale d4 absent, correct board FEN, and byte-for-byte identical saved PGN. Viewed `qa-artifacts/agent-a/engine-lines-aborted-request-20261112/engine-lines-reopened-stale-response-390.png`: e4 +0.40 remains the only recommendation in the dark 390px interface. Original engine effect was already safe; no unnecessary product fix was introduced.
+
+### Verification and next lane task
+
+- `node --check scripts/review-polish-capture.mjs`: PASS; `git diff --check`: PASS.
+- Full authenticated disposable Chromium source, viewport/theme, locale, scoring, keyboard, variation and PGN matrix: **PASS (exit 0)** on port 8948, including the new deterministic delayed-result challenge. Previous production-code checkpoint had **1004 unit tests passed / 12 skipped**, typecheck/build PASS; this change is QA harness only.
+- No merge, deploy, active database/service, or modifications outside Agent A's worktree.
+- **Next investigation:** At a terminal checkmate/stalemate board FEN, Engine Lines' source-valid zero-line response currently appears as a bare `—`. Verify in the real browser if Review can distinguish a legitimately finished position from a provider failure, and if a localized terminal-state explanation is more useful than an unexplained empty panel. Do not invent a legal move or numerical evaluation.
