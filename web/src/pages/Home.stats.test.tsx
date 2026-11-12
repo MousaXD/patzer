@@ -124,7 +124,32 @@ describe('Home statistics failure', () => {
     const viewAll = await screen.findByRole('link', { name: /View all/ });
     expect(viewAll.getAttribute('href')).toBe('/review');
     expect(viewAll.className).toContain('min-h-11');
-    expect(screen.getByRole('link', { name: /OpponentWithALongName/ }).getAttribute('href')).toBe('/review/103');
+    const recentGame = screen.getByRole('link', { name: /OpponentWithALongName/ });
+    expect(recentGame.getAttribute('href')).toBe('/review/103');
+    expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
+    expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('line-clamp-2');
+    expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex');
+    expect(recentGame.querySelector('.hidden.sm\\:block')?.textContent).toContain('sample-player');
+  });
+
+  it('shows the white opponent, not the signed-in player, when the recent game was played as black', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 0, losses: 1, draws: 0, avg_accuracy: null, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [{
+        id: 104, white: 'OpponentWithALongName', black: 'sample-player',
+        user_color: 'black', end_time: '2026-11-12T12:00:00Z',
+        result: 'loss', time_control: '600', analyzed: false,
+      }] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    const recentGame = await screen.findByRole('link', { name: /OpponentWithALongName/ });
+    expect(recentGame.getAttribute('href')).toBe('/review/104');
+    expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
+    expect(within(recentGame).getByRole('img', { name: 'Loss' })).toBeTruthy();
   });
 
   it('shows a retryable error instead of the no-games tagline after a failed stats request', async () => {

@@ -21,6 +21,7 @@ let homeGamesMode = 'empty';
 let homeFailureMode = false;
 let fixtureUsername = 'sample-player';
 let fixtureGameResult = 'win';
+let fixtureUserColor = 'white';
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -39,8 +40,9 @@ const fixtures = (pathname) => {
   if (pathname === '/api/meta') return { version: '7.19.0' };
   if (pathname === '/api/meta/update') return { enabled: false, updateAvailable: false, current: '7.19.0', latest: null };
   if (pathname === '/api/games') return { games: homeGamesMode === 'recent' ? [{
-    id: 103, white: 'sample-player', black: 'OpponentWithALongName',
-    user_color: 'white', end_time: '2026-11-12T12:00:00.000Z',
+    id: 103, white: fixtureUserColor === 'white' ? 'sample-player' : 'OpponentWithALongName',
+    black: fixtureUserColor === 'white' ? 'OpponentWithALongName' : 'sample-player',
+    user_color: fixtureUserColor, end_time: '2026-11-12T12:00:00.000Z',
     result: fixtureGameResult, time_control: '600', opening_name: 'Italian Game', analyzed: false,
   }] : [] };
   if (pathname === '/api/stats/me') return homeGamesMode === 'recent'
@@ -291,6 +293,64 @@ try {
   if (!(await outcomeBadge.count())) {
     throw new Error('Recent-game W result badge does not announce the Win outcome accessibly');
   }
+  // Check the full returning-player layout across both themes, both player
+  // colors, narrow phones, tablet and desktop. The mobile opponent must stay
+  // beside the "vs" prefix rather than orphaning its first line.
+  for (const recentTheme of ['light', 'dark']) {
+    theme = recentTheme;
+    for (const color of ['white', 'black']) {
+      fixtureUserColor = color;
+      for (const viewport of [
+        { width: 320, height: 700 }, { width: 390, height: 844 },
+        { width: 768, height: 1024 }, { width: 1440, height: 900 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        const row = page.locator('main a[href="/review/103"]');
+        await row.waitFor();
+        await page.waitForFunction((expected) =>
+          document.documentElement.classList.contains('dark') === expected, recentTheme === 'dark');
+        await page.evaluate(() => document.fonts.ready);
+        if (viewport.width < 640) {
+          const opponent = row.locator('[data-home-recent-opponent]');
+          await opponent.waitFor({ state: 'visible' });
+          const result = await opponent.evaluate((element) => {
+            const label = element.previousElementSibling;
+            const box = element.getBoundingClientRect();
+            const labelBox = label?.getBoundingClientRect();
+            const containerBox = element.parentElement?.getBoundingClientRect();
+            return {
+              name: element.textContent?.trim(),
+              width: Math.min(box.width, containerBox?.width ?? box.width),
+              height: box.height,
+              labelY: labelBox?.y,
+              opponentY: box.y,
+              clamp: getComputedStyle(element).webkitLineClamp,
+            };
+          });
+          if (result.name !== 'OpponentWithALongName' || result.width < 44 ||
+              result.height > 42 || result.clamp !== '2' ||
+              Math.abs((result.labelY ?? -100) - result.opponentY) > 4) {
+            throw new Error(`Recent games ${recentTheme}/${color}/${viewport.width}px: opponent not legible beside vs: ${JSON.stringify(result)}`);
+          }
+        } else {
+          const names = row.locator('.hidden.sm\\:block');
+          await names.waitFor({ state: 'visible' });
+          const value = await names.innerText();
+          if (!value.includes('sample-player') || !value.includes('OpponentWithALongName')) {
+            throw new Error(`Recent games ${recentTheme}/${color}/${viewport.width}px: desktop matchup incomplete: ${value}`);
+          }
+        }
+        await checkNoHorizontalOverflow(page, `recent games ${recentTheme}/${color}/${viewport.width}px`);
+        await page.screenshot({ path: resolve(output, `home-recent-${recentTheme}-${color}-${viewport.width}.png`) });
+      }
+    }
+  }
+  theme = 'light';
+  fixtureUserColor = 'white';
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.locator('main a[href="/review/103"] [data-home-recent-opponent]').waitFor();
   await checkNoHorizontalOverflow(page, 'recent games at 320px');
   await page.screenshot({ path: resolve(output, 'home-recent-games-mobile-320.png') });
   for (const { result, label } of [

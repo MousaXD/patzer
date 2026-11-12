@@ -605,25 +605,42 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
             >
               <ResultGlyph r={g.result} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {g.user_color === 'white' ? (
-                    <>
-                      <span className="text-chesscom-900 dark:text-chesscom-100">{g.white}</span>
-                      <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                      <span className="text-ui-mutedText">{g.black}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-ui-mutedText">{g.white}</span>
-                      <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                      <span className="text-chesscom-900 dark:text-chesscom-100">{g.black}</span>
-                    </>
-                  )}
+                <div className="min-w-0 text-sm font-medium">
+                  {/* The account name is repeated on every Home row. Leading
+                      with it on 320px phones hides the one detail that lets
+                      people distinguish their games: the opponent. */}
+                  <div data-home-recent-name className="flex min-w-0 items-start gap-1 sm:hidden">
+                    <span className="shrink-0 text-ui-mutedText">{t('players.vs')}</span>
+                    <span data-home-recent-opponent className="line-clamp-2 min-w-0 break-words font-semibold text-ui-foreground">
+                      {g.user_color === 'white' ? g.black : g.white}
+                    </span>
+                  </div>
+                  <div className="hidden truncate sm:block">
+                    {g.user_color === 'white' ? (
+                      <>
+                        <span className="text-chesscom-900 dark:text-chesscom-100">{g.white}</span>
+                        <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
+                        <span className="text-ui-mutedText">{g.black}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-ui-mutedText">{g.white}</span>
+                        <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
+                        <span className="text-chesscom-900 dark:text-chesscom-100">{g.black}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-ui-mutedText">
                   <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
                   <span className="mx-1.5 text-chesscom-400">·</span>
                   <span>{fmtTimeControl(g.time_control, t)}</span>
+                  {!g.analyzed && (
+                    <span className="sm:hidden">
+                      <span className="mx-1.5 text-chesscom-400">·</span>
+                      {t('home.unreviewed', { defaultValue: 'unreviewed' })}
+                    </span>
+                  )}
                   {g.opening_name && (
                     <span className="hidden sm:inline">
                       <span className="mx-1.5 text-chesscom-400">·</span>
@@ -644,7 +661,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[11px] uppercase tracking-wider text-chesscom-400">
+                  <span className="hidden text-[11px] uppercase tracking-wider text-chesscom-400 sm:inline">
                     {t('home.unreviewed', { defaultValue: 'unreviewed' })}
                   </span>
                 )}

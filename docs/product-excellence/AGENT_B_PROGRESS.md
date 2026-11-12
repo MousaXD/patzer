@@ -1024,3 +1024,31 @@
 ### Next audit
 
 - In the **320px returning-player recent-game row**, check whether the player's own name pushes the opponent completely out of view. If verified, prioritize the opponent identifier on narrow screens while retaining full white-vs-black names on larger screens and preserving accessibility.
+
+## 2026-11-12: Keep opponents identifiable in narrow Home recent-game rows
+
+### Verified issue and unfinished-work recovery
+
+- Recovered the three uncommitted files on `agent/patzer-design-system-shell-20261112` at `68920cd` without discarding or replaying completed work.
+- Pre-fix Chromium measured just **18.5px** of visible opponent name at **320px**: the repeated account-owner name pushed the opponent out of view.
+- The initial unfinished improvement solved the ordering, but its saved screenshot placed `vs` alone on the first line. New 390px screenshots exposed a second layout defect: the single-letter tail of a long opponent name wrapped because the right-aligned `Unreviewed` label competed for width.
+
+### Implementation
+
+1. Narrow rows prioritize the opponent in both White and Black games and clamp the opponent name at two lines, beside—not below—the localized `vs` prefix.
+2. On small screens, `Unreviewed` moves into the secondary game metadata instead of consuming the opponent's name area. On `sm`+ screens the original full White-versus-Black matchup and right-aligned status remain intact.
+3. Preserve game destinations, accessible localized W/L/D/ongoing outcome glyphs, dates and time controls.
+4. Extend unit tests for both player colors and correct game links; extend the actual Chromium responsive fixture to inspect light/dark modes, White/Black games, no horizontal overflow and opponent text at **320, 390, 768, 1440px**.
+
+### Verification and evidence
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** after final layout adjustment, including the full prior responsive, localization, keyboard and error-state fixture plus the new opponent-specific matrix.
+- `npx vitest run web/src --maxWorkers=2`: **439/439 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Inspected `artifacts/agent-02/home-recent-light-white-320.png`, `home-recent-dark-white-320.png`, `home-recent-light-black-390.png` and `home-recent-dark-black-768.png`. The final 390px screenshot fits the complete opponent name on one line and puts `Unreviewed` below it.
+- Scope limited to Home and its unit/browser tests; no deployment, main merge, production data change, or interference with feature agents.
+
+### Next audit
+
+- Investigate extremely long, unbroken player names and translated status text at **320px** to confirm the responsive opponent presentation remains legible, then audit first-use Home navigation accessibility or onboarding if the row is sound. Require Chromium reproduction before making further changes.
