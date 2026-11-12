@@ -390,6 +390,9 @@
     "libraryClearSearch": "Clear search",
     "libraryVisibleCount": "{{visible}} of {{total}} games",
     "libraryUpdating": "Updating",
+    "loadMore": "Load more games",
+    "moreFailed": "Could not load more games. Your loaded games are still available.",
+    "retryMore": "Retry",
     "libraryFilterOptions": {
       "source": {
         "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",

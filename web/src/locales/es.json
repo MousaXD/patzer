@@ -385,6 +385,9 @@
     "libraryClearSearch": "Borrar búsqueda",
     "libraryVisibleCount": "Partidas: {{visible}} de {{total}}",
     "libraryUpdating": "Actualizando",
+    "loadMore": "Cargar más partidas",
+    "moreFailed": "No se pudieron cargar más partidas. Las partidas ya cargadas siguen disponibles.",
+    "retryMore": "Reintentar",
     "libraryFilterOptions": {
       "source": {
         "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",

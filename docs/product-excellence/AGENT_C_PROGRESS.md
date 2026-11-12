@@ -740,3 +740,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit the **retry experience for a failed Load more on a 320px mobile Library**, including preserving the already-loaded cards, visible localized error messaging, a reachable 44px retry action and restoring subsequent pagination without duplicated cards. Reproduce in Chromium with a one-time continuation failure; fix a genuine Library-local problem if present, otherwise retain the browser regression as protection.
+
+## 2026-11-12 — Localize and verify 320px Load-more failure recovery
+
+- Recovered clean pushed `a7c09d9` and added a German 320px isolated Chromium fixture that keeps a continuation request returning HTTP 503 until the user explicitly retries. The initial locale regression failed in **all five languages**: Library `review.loadMore`, `review.moreFailed`, and the generic `common.retry` were missing from the shipped locale dictionaries, leaving English fallback copy in non-English interfaces. Before the fix, the German browser test could not find the expected **Weitere Partien laden** button.
+- Added Library-specific **Load more**, continuation-failure guidance, and **Retry** translations in English, German, Spanish, Russian and Bulgarian. Reused the existing `review.loadMore` / `review.moreFailed` keys and introduced `review.retryMore` rather than modifying global retry labels. Applied a Library-local `min-h-11` to the retry button so its real touch target is at least 44px.
+- The new Chromium journey forces all automatic retries to fail while preserving the initial 40 saved games, verifies the translated German alert and button at 320px, then allows manual Retry to succeed. Asserted **80 of 620** games afterward, exactly **80 unique primary card links**, no remaining error alert, and zero JavaScript exceptions. Corrected one malformed selector in this new acceptance test during verification; the underlying retry behavior was already passing. Inspected `qa-artifacts/agent-c-library/library-load-more-error-dark-320.png`: the error wraps clearly and Retry is accessible in a compact mobile card.
+
+### Verification
+
+- Focused Library+locales tests: **120/120 passed**. Full repository suite: **109 passed files, 2 skipped; 1,092 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Full isolated Chromium desktop/mobile light/dark, German, PGN, Unicode, bookmarks, cursor paging, pending-page success/failure and manual continuation recovery: passed. No horizontal overflow or JS errors.
+- Only Agent C's Library view, five locale files, locale and Chromium regression tests, and durable progress report modified. No provider imports, production data, other-agent worktrees, merge or deploy touched.
+
+### Next independent audit
+
+- Audit **Library card analysis-status translation in German and other supported languages**. The 320px recovery screenshot still displays the English fallback **Not reviewed yet** on unanalyzed cards while the rest of the interface is German. Check localized analysis-available status as well; reproduce and fix the specific Library card strings with focused locale and real-browser tests, preserving the existing analyzed-state semantics.

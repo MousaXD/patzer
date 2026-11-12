@@ -820,8 +820,8 @@ export default function Review() {
       {!isLoading && !initialError && isFetchNextPageError && (
         <div role="alert" className="card flex flex-wrap items-center justify-center gap-3 border-bad/30 p-3">
           <span className="text-sm text-bad">{t('review.moreFailed', { defaultValue: 'Could not load more games. Your loaded games are still available.' })}</span>
-          <button type="button" className="btn-secondary text-sm" onClick={() => void fetchNextPage()}>
-            {t('common.retry', { defaultValue: 'Retry' })}
+          <button type="button" className="btn-secondary min-h-11 shrink-0 text-sm" onClick={() => void fetchNextPage()}>
+            {t('review.retryMore', { defaultValue: 'Retry' })}
           </button>
         </div>
       )}

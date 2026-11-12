@@ -112,7 +112,7 @@ async function newPage(theme, width, height,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
-    delayedContinuation = null} = {}) {
+    delayedContinuation = null, failContinuationUntilRetry = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -120,6 +120,7 @@ async function newPage(theme, width, height,
   let hasPgnImports = false;
   let latestGameInserted = false;
   let longPlayerBookmarked = false;
+  let continuationFailureActive=failContinuationUntilRetry;
   let releaseContinuation;
   const continuationGate=new Promise(resolve=>{releaseContinuation=resolve;});
   const removedStars = new Set();
@@ -232,6 +233,10 @@ async function newPage(theme, width, height,
         status=503; json={error:'delayed_previous_filter_failure'};
       }
     }
+    if (continuationFailureActive && path === '/api/games' && request.method() === 'GET' &&
+      parsed.searchParams.get('offset') === '40') {
+      status=503; json={error:'fixture_continuation_unavailable'};
+    }
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
@@ -257,7 +262,8 @@ async function newPage(theme, width, height,
       await page.getByText('40 of 620 games').waitFor();
     }
   }
-  return {page,context,pageErrors,seenPgnFiles,releaseContinuation};
+  return {page,context,pageErrors,seenPgnFiles,releaseContinuation,
+    allowContinuationRetry:()=>{continuationFailureActive=false;}};
 }
 function metrics(page) {
   return page.evaluate(() => ({
@@ -837,6 +843,30 @@ try {
       console.log(`PASS late ${delayedContinuation} continuation cannot contaminate another Library filter`);
     } finally {lagged.releaseContinuation(); await lagged.context.close();}
   }
+
+  const failedPage=await newPage('dark',320,700,{locale:'de',failContinuationUntilRetry:true});
+  try {
+    const {page,pageErrors,allowContinuationRetry}=failedPage;
+    await page.getByRole('button',{name:'Weitere Partien laden'}).click();
+    await page.getByRole('alert').getByText('Weitere Partien konnten nicht geladen werden. Deine bereits geladenen Partien bleiben verfügbar.').waitFor({timeout:40000});
+    assert.equal(await page.locator('a[href="/review/1"]').count(),1,
+      'A failed continuation must preserve the first page of saved games');
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
+    const retry=page.getByRole('button',{name:'Erneut versuchen'});
+    const rect=await retry.boundingBox();
+    assert.ok(rect && rect.height>=44 && rect.x>=0 && rect.x+rect.width<=322,
+      `Failed continuation needs a 44px unclipped mobile Retry target: ${JSON.stringify(rect)}`);
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-load-more-error-dark-320.png')});
+    allowContinuationRetry();
+    await retry.click();
+    await page.getByText('Partien: 80 von 620',{exact:true}).waitFor();
+    assert.equal(await page.locator('a[href^="/review/"]:not([href*="?"])').count(),80,
+      'Continuation retry must append exactly 40 distinct game cards');
+    assert.equal(await page.getByRole('alert').count(),0);
+    assert.deepEqual(pageErrors,[], 'Mobile continuation failure/recovery caused a JS exception');
+    console.log('PASS German 320px continuation failure keeps existing games and retries without duplication');
+  } finally {await failedPage.context.close();}
 
   const starred = await newPage('dark',390,844,{starredOnlyScenario:true});
   try {

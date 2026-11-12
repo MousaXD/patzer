@@ -390,6 +390,9 @@
     "libraryClearSearch": "Очистить поиск",
     "libraryVisibleCount": "Партии: {{visible}} из {{total}}",
     "libraryUpdating": "Обновляется",
+    "loadMore": "Загрузить ещё партии",
+    "moreFailed": "Не удалось загрузить остальные партии. Уже загруженные партии остаются доступны.",
+    "retryMore": "Повторить",
     "libraryFilterOptions": {
       "source": {
         "all": "Все источники", "chesscom": "Chess.com", "lichess": "Lichess",

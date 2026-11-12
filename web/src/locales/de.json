@@ -390,6 +390,9 @@
     "libraryClearSearch": "Suche löschen",
     "libraryVisibleCount": "Partien: {{visible}} von {{total}}",
     "libraryUpdating": "Wird aktualisiert",
+    "loadMore": "Weitere Partien laden",
+    "moreFailed": "Weitere Partien konnten nicht geladen werden. Deine bereits geladenen Partien bleiben verfügbar.",
+    "retryMore": "Erneut versuchen",
     "libraryFilterOptions": {
       "source": {
         "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",
