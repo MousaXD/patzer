@@ -1,19 +1,16 @@
 // Shortcuts modal — opened by ?
 import { useTranslation } from 'react-i18next';
-import { useEffect } from 'react';
+import { useRef } from 'react';
 import { X } from 'lucide-react';
+import { useDialogFocus } from './useDialogFocus';
 
 interface Props { open: boolean; onClose: () => void }
 
 export default function ShortcutsModal({ open, onClose }: Props) {
   const { t } = useTranslation();
-
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useDialogFocus(open, dialogRef, onClose, closeRef);
 
   if (!open) return null;
 
@@ -23,13 +20,23 @@ export default function ShortcutsModal({ open, onClose }: Props) {
       rows: [
         ['⌘ K · Ctrl K', t('shortcuts.openPalette', { defaultValue: 'Command palette' })],
         ['?', t('shortcuts.openShortcuts', { defaultValue: 'Show this dialog' })],
+        ['Esc', t('shortcuts.closeDialog', { defaultValue: 'Close any dialog' })],
+      ],
+    },
+    {
+      title: t('shortcuts.navigation', { defaultValue: 'Navigation' }),
+      rows: [
         ['G H', t('shortcuts.goHome', { defaultValue: 'Go to Home' })],
         ['G P', t('shortcuts.goPlay', { defaultValue: 'Go to Play' })],
         ['G R', t('shortcuts.goReview', { defaultValue: 'Go to Review' })],
         ['G I', t('shortcuts.goInsights', { defaultValue: 'Go to Insights' })],
         ['G T', t('shortcuts.goTrain', { defaultValue: 'Go to Tactic Trainer' })],
-        ['G E', t('shortcuts.goLearn')],
-        ['Esc', t('shortcuts.closeDialog', { defaultValue: 'Close any dialog' })],
+        ['G E', t('shortcuts.goLearn', { defaultValue: 'Go to Learn' })],
+        ['G S', t('shortcuts.goSettings', { defaultValue: 'Go to Settings' })],
+        ['G O', t('shortcuts.goOpenings', { defaultValue: 'Go to Openings' })],
+        ['G N', t('shortcuts.goPlan', { defaultValue: 'Go to Improvement Plan' })],
+        ['G L', t('shortcuts.goLab', { defaultValue: 'Go to Lab' })],
+        ['G U', t('shortcuts.goPlayers', { defaultValue: 'Go to Players' })],
       ],
     },
     {
@@ -45,24 +52,26 @@ export default function ShortcutsModal({ open, onClose }: Props) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <button aria-label={t('common.close')} onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-chesscom-200 bg-white shadow-lift dark:border-chesscom-700 dark:bg-chesscom-800 animate-fade-in">
-        <div className="flex items-center justify-between border-b border-chesscom-200 px-4 py-3 dark:border-chesscom-700">
-          <h2 className="text-sm font-semibold">{t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}</h2>
-          <button onClick={onClose} className="rounded-md p-1 text-chesscom-400 hover:bg-chesscom-100 dark:hover:bg-chesscom-700">
-            <X className="h-4 w-4" />
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
+      <button type="button" tabIndex={-1} aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="patzer-shortcuts-title" tabIndex={-1}
+        className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-ui-foreground shadow-lift motion-safe:animate-fade-in">
+        <div className="flex items-center justify-between border-b border-ui-border px-4 py-3">
+          <h2 id="patzer-shortcuts-title" className="text-sm font-semibold">{t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}</h2>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label={t('common.close', { defaultValue: 'Close' })}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ui-mutedText hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+            <X aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4 space-y-5">
           {groups.map((g) => (
             <section key={g.title}>
-              <div className="mb-2 text-[11px] uppercase tracking-wider text-chesscom-500">{g.title}</div>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ui-mutedText">{g.title}</h3>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {g.rows.map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between gap-3 rounded-md bg-chesscom-50/70 px-3 py-1.5 text-xs dark:bg-chesscom-900/40">
-                    <span className="text-chesscom-600 dark:text-chesscom-200">{v}</span>
-                    <kbd className="font-mono text-xs text-chesscom-700 dark:text-chesscom-200">{k}</kbd>
+                  <div key={k} className="flex items-center justify-between gap-3 rounded-md bg-ui-muted px-3 py-1.5 text-xs">
+                    <span className="text-ui-foreground">{v}</span>
+                    <kbd className="shrink-0 font-mono text-xs text-ui-mutedText">{k}</kbd>
                   </div>
                 ))}
               </div>

@@ -1,8 +1,61 @@
 {
   "app": {
     "name": "Patzer",
-    "tagline": "Dein privates Chess.com.",
+    "tagline": "Deine Partien. Dein Fortschritt. Dein nächster Zug.",
     "home": "Start"
+  },
+  "navigation": {
+    "primary": "Hauptnavigation",
+    "mobile": "Mobile Navigation",
+    "open": "Menü öffnen",
+    "close": "Menü schließen",
+    "language": "Sprache",
+    "versionChangelog": "Patzer-Version {{version}}: Änderungsprotokoll anzeigen",
+    "languageSaveFailed": "Die Sprache konnte nicht gespeichert werden. Überprüfe die Verbindung und versuche es erneut.",
+    "logoutBusy": "Abmeldung läuft…",
+    "logoutFailed": "Abmeldung fehlgeschlagen. Überprüfe die Verbindung und versuche es erneut.",
+    "skip": "Zum Hauptinhalt springen",
+    "loading": "Seite wird geladen…",
+    "breadcrumb": "Navigationspfad",
+    "gameAnalysis": "Partiedetails",
+    "playerProfile": "Spielerprofil"
+  },
+  "changelog": {
+    "title": "Versionshinweise",
+    "loading": "Versionshinweise werden geladen…",
+    "error": "Die Versionshinweise können derzeit nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "empty": "Es sind noch keine Versionshinweise verfügbar."
+  },
+  "bootstrap": {
+    "loading": "Patzer wird gestartet…",
+    "title": "Server nicht erreichbar",
+    "subtitle": "Patzer konnte den Server nicht erreichen.",
+    "alertLabel": "Server nicht erreichbar",
+    "help": "Prüfe, ob Patzer läuft, und versuche die Verbindung erneut.",
+    "retry": "Erneut versuchen",
+    "reconnecting": "Verbindung wird wiederhergestellt…"
+  },
+  "routerError": {
+    "alertLabel": "Seite nicht verfügbar",
+    "title": "Diese Seite konnte nicht geladen werden",
+    "description": "Bei Patzer ist ein Fehler aufgetreten. Lade die Seite neu oder gehe zur Startseite.",
+    "reload": "Seite neu laden",
+    "home": "Zur Startseite"
+  },
+  "authShell": {
+    "intro": "Über Patzer",
+    "eyebrow": "Ein Ort, um besser Schach zu spielen",
+    "headline": "Mach deinen nächsten Zug zum Fortschritt.",
+    "description": "Spiele, analysiere deine Partien und verbessere dein Schach in deinem eigenen Tempo.",
+    "play": "Spiele in deinem Tempo",
+    "review": "Verstehe deine Entscheidungen",
+    "progress": "Erkenne deine Fortschritte",
+    "footer": "Dein Schach. Dein Weg.",
+    "loadingAuth": "Anmeldeoptionen werden geladen…",
+    "optionsUnavailable": "Anmeldeoptionen nicht verfügbar",
+    "optionsHelp": "Patzer konnte die verfügbaren Anmeldemethoden nicht überprüfen. Bitte versuche es erneut.",
+    "optionsRetry": "Erneut versuchen"
   },
   "common": {
     "save": "Speichern",
@@ -11,6 +64,7 @@
     "create": "Erstellen",
     "edit": "Bearbeiten",
     "back": "Zurück",
+    "retry": "Erneut versuchen",
     "loading": "Wird geladen…",
     "yes": "Ja",
     "no": "Nein",
@@ -766,11 +820,18 @@
     "navGroup": "Navigation",
     "actionGroup": "Aktionen",
     "gameGroup": "Letzte Partien",
-    "esc": "Esc"
+    "esc": "Esc",
+    "actionBusy": "Änderung wird angewendet…",
+    "actionFailed": "Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.",
+    "recentGamesLoading": "Letzte Partien werden geladen…",
+    "recentGamesUnavailable": "Letzte Partien nicht verfügbar",
+    "recentGamesRetry": "Erneut versuchen",
+    "recentGamesEmpty": "Noch keine Partien vorhanden."
   },
   "shortcuts": {
     "title": "Tastenkürzel",
     "global": "Überall",
+    "navigation": "Navigation",
     "openPalette": "Befehlspalette",
     "openShortcuts": "Diesen Dialog anzeigen",
     "goHome": "Zur Startseite",
@@ -779,6 +840,11 @@
     "goInsights": "Zu Statistiken",
     "goTrain": "Zum Taktiktrainer",
     "goLearn": "Zum Lernbereich",
+    "goSettings": "Zu den Einstellungen",
+    "goOpenings": "Zu den Eröffnungen",
+    "goPlan": "Zum Verbesserungsplan",
+    "goLab": "Zum Labor",
+    "goPlayers": "Zu den Spielern",
     "closeDialog": "Dialog schließen",
     "review": "Partieanalyse",
     "prevNext": "Vorheriger / nächster Zug",
@@ -1328,6 +1394,8 @@
     "settingsDesc": "Sprache, Coach, Brett und mehr",
     "firstRunTitle": "Spiel deine erste Partie",
     "firstRunReady": "Alles bereit. Ab zu „Spielen“ — oder importiere deine Chess.com-Partien zur Analyse.",
+    "gettingStarted": "Dein Startpunkt",
+    "firstRunFooter": "Deine letzten Partien erscheinen hier, sobald du eine spielst oder importierst.",
     "firstRunNoUsername": "Wähle einen Gegner und eine Bedenkzeit, oder trage in den Einstellungen deinen Chess.com-Benutzernamen ein, um bestehende Partien zu importieren.",
     "importGames": "Partien importieren",
     "setUsername": "Benutzernamen eintragen",
@@ -1356,6 +1424,18 @@
     "achievementsEmpty": "Spiel eine Partie und verdiene dein erstes Abzeichen",
     "achievementsEmptyDesc": "0 von {{n}} freigeschaltet",
     "whatsNew": "Neu: Pläne, Erfolge und die drei besten Varianten in der Analyse.",
+    "loadingStats": "Deine Statistiken werden geladen",
+    "statsUnavailable": "Deine Statistiken konnten nicht geladen werden.",
+    "continue": "Weiter trainieren",
+    "tileLoading": "Dein Fortschritt wird geladen…",
+    "tileUnavailable": "Fortschritt derzeit nicht verfügbar",
+    "loadingGames": "Letzte Partien werden geladen…",
+    "gamesUnavailable": "Deine letzten Partien konnten nicht geladen werden.",
+    "outcome": {
+      "win": "Sieg",
+      "loss": "Niederlage",
+      "draw": "Remis"
+    },
     "greet": {
       "morning": "Guten Morgen",
       "afternoon": "Guten Tag",
@@ -1367,6 +1447,7 @@
       "draw": "Remisserie"
     },
     "unreviewed": "nicht analysiert",
+    "opponent": "Gegner",
     "learnNext": "Deine nächste Lektion",
     "learnResume": "Mach weiter, wo du aufgehört hast",
     "learnDesc": "Interaktive Lektionen mit Sternen und Levels."

@@ -15,6 +15,13 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('endSession', () => {
+  it('rejects a 200 response that does not confirm logout instead of navigating', async () => {
+    post.mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({});
+    await expect(endSession()).rejects.toThrow('Logout was not confirmed');
+    await expect(endSession()).rejects.toThrow('Logout was not confirmed');
+    expect(assign).not.toHaveBeenCalled();
+  });
   it('a password session just ends: the caller navigates', async () => {
     post.mockResolvedValue({ ok: true });
     expect(await endSession()).toBe(false);

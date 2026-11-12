@@ -16,6 +16,7 @@ import AcceptedChallengeNotice from './components/AcceptedChallengeNotice';
 import CommandPalette from './components/CommandPalette';
 import ShortcutsModal from './components/ShortcutsModal';
 import { LogoMark } from './components/Logo';
+import ServerUnavailable from './components/ServerUnavailable';
 
 // Route-level splitting keeps Stockfish review, PvP, charts and admin pages out
 // of the initial login/dashboard bundle. Layout remains mounted during loads.
@@ -95,38 +96,68 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        gPrefixRef.current = 0;
+        // Only one global overlay may be modal at a time. Otherwise their
+        // competing focus traps can leave keyboard users unable to proceed.
+        setShortcutsOpen(false);
         setPaletteOpen((v) => !v);
         return;
       }
-      if (isTextField(e.target)) return;
-      if (e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); setShortcutsOpen(true); return; }
+      // Let the active dialog own keys instead of triggering page shortcuts
+      // behind it (including the "g X" route navigation prefix).
+      if (paletteOpen || shortcutsOpen) { gPrefixRef.current = 0; return; }
+      if (isTextField(e.target)) { gPrefixRef.current = 0; return; }
+      // Never override native browser/system shortcuts such as Ctrl+R, Alt+R
+      // or Cmd+P with a pending G prefix. They also cancel the sequence.
+      if (e.ctrlKey || e.metaKey || e.altKey) { gPrefixRef.current = 0; return; }
+      if (e.key === '?') {
+        gPrefixRef.current = 0;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setShortcutsOpen(true);
+        return;
+      }
+      // The mobile drawer is modal. Ignore G+letter routing while it owns
+      // focus; Ctrl+K and ? above may still open a global overlay, which
+      // closes the drawer before the new dialog takes focus.
+      if (document.getElementById('patzer-mobile-drawer')) {
+        gPrefixRef.current = 0;
+        return;
+      }
       // "g X" prefix navigation
       if (e.key === 'g' || e.key === 'G') {
         gPrefixRef.current = Date.now();
         return;
       }
       const since = Date.now() - gPrefixRef.current;
+      // Prefixes are one-shot: an unrecognized key terminates the sequence
+      // instead of leaving it armed for another unrelated keystroke.
+      gPrefixRef.current = 0;
       if (since < 1200) {
         const map: Record<string, string> = { h: '/', p: '/play', r: '/review', i: '/insights', t: '/train', e: '/learn', s: '/settings', o: '/openings', n: '/plan', l: '/lab', u: '/players' };
         const target = map[e.key.toLowerCase()];
         if (target) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          gPrefixRef.current = 0;
           nav(target);
         }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [user, nav]);
+  }, [user, nav, paletteOpen, shortcutsOpen]);
 
-  // Reconcile the saved profile with the pre-paint bootstrap. The explicit
-  // legacy "auto" setting continues to follow OS changes.
+  // Reconcile the signed-in profile with the pre-paint bootstrap. On sign-out,
+  // keep the last theme choice for the public/auth shell; on a first visit,
+  // follow the system preference instead of forcing a light login screen.
   useEffect(() => {
     if (loading) return;
     const saved = user?.profile?.site_theme;
-    const choice = saved === 'light' || saved === 'dark' || saved === 'auto' ? saved : 'light';
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem('patzer-site-theme'); } catch { /* private browsing */ }
+    const remembered = stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'auto';
+    const choice = saved === 'light' || saved === 'dark' || saved === 'auto'
+      ? saved : user ? 'light' : remembered;
     const query = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       const dark = choice === 'dark' || (choice === 'auto' && query.matches);
@@ -139,7 +170,6 @@ export default function App() {
     };
     try {
       if (user) window.localStorage.setItem('patzer-site-theme', choice);
-      else window.localStorage.removeItem('patzer-site-theme');
     } catch { /* storage may be unavailable */ }
     apply();
     if (choice === 'auto') {
@@ -151,16 +181,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 text-ink-500">
-        <div className="animate-pulse-soft">
+      <div role="status" aria-label={i18n.t('bootstrap.loading', { defaultValue: 'Starting Patzer…' })}
+        aria-live="polite" className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-ui-bg text-ui-mutedText">
+        <div className="animate-pulse-soft motion-reduce:animate-none">
           <LogoMark size={56} />
         </div>
-        <div className="h-1 w-32 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
-          <div className="h-full w-1/3 animate-loader-slide bg-amber-500" />
+        <div aria-hidden="true" className="h-1 w-32 overflow-hidden rounded-full bg-ui-border">
+          <div className="h-full w-1/3 animate-loader-slide bg-ui-primary motion-reduce:animate-none" />
         </div>
+        <span className="text-sm">{i18n.t('bootstrap.loading', { defaultValue: 'Starting Patzer…' })}</span>
       </div>
     );
   }
+
+  // An unreachable server is not the same thing as a logged-out account.
+  // Auth refresh deliberately leaves setupRequired=null on API failures.
+  if (setupRequired === null) return <ServerUnavailable onRetry={refresh} />;
 
   if (setupRequired) {
     if (location.pathname !== '/setup') return <Navigate to="/setup" replace />;
@@ -192,7 +228,11 @@ export default function App() {
         {/* Email links still resolve even if the user happens to be logged in. */}
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route element={<Layout onOpenPalette={() => setPaletteOpen(true)} onOpenShortcuts={() => setShortcutsOpen(true)} />}>
+        <Route element={<Layout
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          globalOverlayOpen={paletteOpen || shortcutsOpen}
+        />}>
           <Route path="/" element={<Home />} />
           <Route path="/play" element={<Play />} />
           <Route path="/review" element={<Review />} />

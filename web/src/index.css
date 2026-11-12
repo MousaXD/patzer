@@ -269,11 +269,11 @@ cg-board square.last-move.premove-dest {
 
 
 /* Patzer design contract v1. Preserve existing Chessground / legacy selectors. */
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-regular.woff2') format('woff2'); font-weight:400 500; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-semibold.woff2') format('woff2'); font-weight:600; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-bold.woff2') format('woff2'); font-weight:700 900; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-italic.woff2') format('woff2'); font-weight:400 500; font-style:italic; font-display:block; }
-@font-face { font-family:'Patzer Mono'; src:url('/fonts/patzer-mono-regular.woff2') format('woff2'); font-weight:400 900; font-style:normal; font-display:block; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-regular.woff2') format('woff2'); font-weight:400 500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-semibold.woff2') format('woff2'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-bold.woff2') format('woff2'); font-weight:700 900; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-italic.woff2') format('woff2'); font-weight:400 500; font-style:italic; font-display:swap; }
+@font-face { font-family:'Patzer Mono'; src:url('/fonts/patzer-mono-regular.woff2') format('woff2'); font-weight:400 900; font-style:normal; font-display:swap; }
 
 :root {
  --ui-bg:#ffffff; --ui-surface:#ffffff; --ui-surface-raised:#ffffff;
@@ -446,6 +446,33 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 .label,.section-desc,.page-sub { color:var(--ui-foreground-muted); }
 .section-header { background:var(--ui-surface-muted); border-color:var(--ui-border); }
 .dark body { background:var(--ui-bg); color:var(--ui-foreground); }
+
+/* Legacy auth forms predate the semantic UI palette. Limit the readability
+   bridge to the shared auth frame so chess boards/charts are unaffected. */
+/* Legacy input rules carry five :not() selectors, so their 38px minimum
+   outranks ordinary utility classes. Keep the exception scoped to auth. */
+.auth-shell .input { min-height:2.75rem!important; }
+.setup-shell .input { min-height:2.75rem!important; } /* Owner wizard only; other workspace forms unchanged. */
+/* Shell selects already supply a dedicated ChevronDown. The generic high-
+   specificity form rule adds a second arrow and font-scaled side padding,
+   concealing the language name on 200%-text tablets. */
+select[data-shell-language] { background-image:none; }
+@media (min-width:768px) {
+ select[data-shell-language] { padding:2px 28px 2px 12px!important; }
+}
+.auth-shell .text-ink-400 { color:var(--ui-foreground-subtle); }
+.auth-shell .text-ink-500,.auth-shell .text-ink-600 { color:var(--ui-foreground-muted); }
+.auth-shell .text-accent-600 { color:var(--ui-primary); }
+.auth-shell .text-bad { color:var(--ui-danger); }
+
+/* Release notes use the shared Markdown renderer. Scope readable link/focus
+   styles here rather than changing chess coach prose elsewhere. */
+.release-notes-content a { color:var(--ui-primary); text-decoration:underline; text-underline-offset:3px; }
+.release-notes-content a:focus-visible { outline:2px solid var(--ui-focus); outline-offset:2px; border-radius:2px; }
+
+/* The emergency route heading receives focus for screen readers, but is not
+   keyboard-actionable. Keep visible focus rings on its actual recovery controls. */
+.router-error-heading:focus-visible { outline:none!important; }
 
 @media (prefers-reduced-motion:reduce) {
  :root { --ui-duration:0ms; }

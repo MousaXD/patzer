@@ -7,7 +7,7 @@ import {
   Swords, BookOpen, ChevronRight, Target, Sparkles,
   ListChecks, Award, ArrowRight, GraduationCap, Star, Flame,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../state/auth';
 import { api } from '../api';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -84,10 +84,10 @@ export default function Home() {
   const games = gamesData?.games ?? [];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
+    <div className="mx-auto w-full max-w-7xl space-y-5">
       <Hero
-        displayName={user?.profile.display_name ?? ''}
-        avatar={user?.profile.avatar_emoji ?? '♟'}
+        displayName={user?.profile.display_name?.trim() || user?.username || t('app.name')}
+        avatar={user?.profile.avatar_emoji?.trim() || '♟'}
         stats={stats ?? null}
         loading={statsLoading}
         error={statsError}
@@ -95,8 +95,11 @@ export default function Home() {
         tagline={t('app.tagline')}
       />
 
-      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,1fr)]">
-        <div className="min-w-0 lg:order-2">
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
+        <div className="min-w-0">
+          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
+        </div>
+        <div className="min-w-0">
           <ContinueRow
             goals={planData?.goals ?? null}
             achievements={achievementsData?.achievements ?? null}
@@ -107,9 +110,6 @@ export default function Home() {
             achievementsError={achievementsError}
             retryAchievements={() => void refetchAchievements()}
           />
-        </div>
-        <div className="min-w-0 lg:order-1">
-          <RecentGames games={games} loading={gamesLoading} error={gamesError} retry={() => void refetchGames()} />
         </div>
       </div>
     </div>
@@ -123,6 +123,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
   error: boolean; retry: () => void;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   const hour = new Date().getHours();
   const greetingKey = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const greeting = t(`home.greet.${greetingKey}`, {
@@ -135,7 +136,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 6 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
       className="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-chesscom-900 via-[#3b4c2f] to-board-dark text-white shadow-lift"
@@ -152,16 +153,16 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
         }}
       />
 
-      <div className="relative grid gap-6 p-6 sm:p-8 md:grid-cols-[1fr_auto] md:items-end">
+      {/* At 768px a two-column hero gives the name <60px at 200% text
+          scaling. Keep identity above actions until there is actual room. */}
+      <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-[20px] p-[24px] sm:gap-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-[12px] gap-y-1 sm:gap-x-3">
+            <div data-home-hero-avatar className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur sm:row-span-2">
               {avatar}
             </div>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.18em] text-white/55">{greeting}</div>
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{displayName}</h1>
-            </div>
+            <div className="min-w-0 break-words text-xs uppercase tracking-[0.08em] text-white/55 sm:tracking-[0.18em]">{greeting}</div>
+            <h1 title={displayName} className="col-span-2 line-clamp-2 min-w-0 break-words text-2xl font-bold tracking-tight sm:col-span-1 sm:text-3xl">{displayName}</h1>
           </div>
 
           {loading ? (
@@ -172,7 +173,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
             <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 text-sm text-white/85">
               <span>{t('home.statsUnavailable', { defaultValue: 'Your statistics could not be loaded.' })}</span>
               <button type="button" onClick={retry}
-                className="rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/40 px-3 py-1.5 font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
                 {t('common.retry', { defaultValue: 'Retry' })}
               </button>
             </div>
@@ -192,25 +193,25 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
               )}
             </div>
           ) : (
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/75">{tagline}</p>
+            <p className="mt-[16px] max-w-xl text-sm leading-relaxed text-white/75">{tagline}</p>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 md:flex-col md:items-end">
+        <div className="flex min-w-0 flex-wrap gap-2 lg:flex-col lg:items-end">
           <Link
             to="/play"
-            className="group inline-flex items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900"
+            className="group inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md bg-green-500 px-[14px] py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none lg:px-5"
           >
-            <Swords className="h-4 w-4" />
-            {t('home.playTitle')}
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            <Swords className="h-[18px] w-[18px] shrink-0 lg:h-4 lg:w-4" />
+            <span className="min-w-0 break-words">{t('home.playTitle')}</span>
+            <ArrowRight className="h-[14px] w-[14px] shrink-0 transition-transform group-hover:translate-x-0.5 lg:h-3.5 lg:w-3.5" />
           </Link>
           <Link
             to="/review"
-            className="inline-flex items-center gap-2 rounded-md bg-white/10 px-4 py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white"
+            className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md bg-white/10 px-[14px] py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none lg:px-4"
           >
-            <BookOpen className="h-3.5 w-3.5" />
-            {t('home.reviewTitle')}
+            <BookOpen className="h-[16px] w-[16px] shrink-0 lg:h-3.5 lg:w-3.5" />
+            <span className="min-w-0 break-words">{t('home.reviewTitle')}</span>
           </Link>
         </div>
       </div>
@@ -220,11 +221,11 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
 function StatInline({ value, label, glow }: { value: string; label: string; glow?: boolean }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className={`font-mono text-xl font-semibold tabular-nums ${glow ? 'text-gold-300' : 'text-white'}`}>
+    <span data-home-stat className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-[6px] gap-y-0 sm:gap-x-1.5">
+      <span data-home-stat-value className={`max-w-full break-words font-mono text-xl font-semibold tabular-nums ${glow ? 'text-gold-300' : 'text-white'}`}>
         {value}
       </span>
-      <span className="text-xs uppercase tracking-wider text-white/55">{label}</span>
+      <span data-home-stat-label className="min-w-0 max-w-full break-words text-xs uppercase tracking-wider text-white/55">{label}</span>
     </span>
   );
 }
@@ -242,6 +243,7 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
   retryAchievements: () => void;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   // Stagger entrance — modest. 60ms between cards, no scale or rotate gimmicks.
   const variants = {
     hidden: { opacity: 0, y: 8 },
@@ -251,17 +253,17 @@ function ContinueRow({ goals, achievements, planLoading, planError, retryPlan, a
   return (
     <section aria-label={t('home.continue', { defaultValue: 'Continue improving' })}>
       <h2 className="mb-2 text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">{t('home.continue', { defaultValue: 'Continue improving' })}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-        <motion.div initial="hidden" animate="show" custom={0} variants={variants}>
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={0} variants={variants}>
           <LearnTile />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={1} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={1} variants={variants}>
           <DailyPuzzleTile />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={2} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={2} variants={variants}>
           <PlanTile goals={goals} loading={planLoading} error={planError} retry={retryPlan} />
         </motion.div>
-        <motion.div initial="hidden" animate="show" custom={3} variants={variants}>
+        <motion.div initial={reduceMotion ? false : 'hidden'} animate="show" custom={3} variants={variants}>
           <AchievementsTile achievements={achievements} loading={achievementsLoading} error={achievementsError} retry={retryAchievements} />
         </motion.div>
       </div>
@@ -289,19 +291,19 @@ function LearnTile() {
   const next = cur ? suggestedLesson(cur, progress) : null;
   const started = next ? canResumeLesson(next, progress.get(next.lesson.id)) : false;
   return (
-    <Link to={next ? `/learn?lesson=${next.lesson.id}` : '/learn'} className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="board" Icon={GraduationCap} />
+    <Link to={next ? `/learn?lesson=${next.lesson.id}` : '/learn'} className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="board" Icon={GraduationCap} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('learn.nav')}</Kicker>
-          <span className="flex items-center gap-0.5 font-mono text-[11px] tabular-nums text-chesscom-500">
+          <span className="flex items-center gap-0.5 font-mono text-[11px] tabular-nums text-ui-mutedText">
             {t('learn.levelShort', { n: levelOf(stars).level })} · <Star className="h-3 w-3 fill-gold-500 text-gold-600" />{stars}
           </span>
         </div>
         <Title>{next ? tl(`${next.lesson.id}.title`) : cur ? t('learn.allDone') : t('learn.nav')}</Title>
         <Sub>{next ? (started ? t('home.learnResume') : t('home.learnNext')) : t('home.learnDesc')}</Sub>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -317,8 +319,8 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
 }) {
   const { t } = useTranslation();
   return (
-    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-3 p-4">
-      <Pill tone="muted" Icon={Icon} />
+    <div role={loading ? 'status' : 'alert'} className="card flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="muted" Icon={Icon} compact />
       <div className="min-w-0 flex-1">
         <Kicker>{label}</Kicker>
         <Title>{loading
@@ -327,7 +329,7 @@ function ActivityStatusTile({ label, loading, retry, Icon }: {
         {!loading && (
           <button type="button" onClick={retry}
             aria-label={`${t('common.retry', { defaultValue: 'Retry' })} ${label}`}
-            className="mt-2 rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400">
+            className="mt-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md px-2 py-1 text-xs font-semibold text-board-dark underline-offset-2 hover:bg-ui-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-board-dark dark:text-gold-400 sm:min-h-11 sm:min-w-11">
             {t('common.retry', { defaultValue: 'Retry' })}
           </button>
         )}
@@ -375,21 +377,21 @@ function DailyPuzzleTile() {
     : done ? (done.solved ? t('home.dailySolved') : t('home.dailyDone'))
     : t('home.dailyOpen');
   return (
-    <Link to="/train?tab=puzzles&daily=1" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone={done ? 'board' : 'gold'} Icon={Target} />
+    <Link to="/train?tab=puzzles&daily=1" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone={done ? 'board' : 'gold'} Icon={Target} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.todayPuzzle')}</Kicker>
-          {data?.puzzle && <span className="font-mono text-[11px] tabular-nums text-chesscom-500">{data.puzzle.rating}</span>}
+          {data?.puzzle && <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">{data.puzzle.rating}</span>}
         </div>
         <Title>{title}</Title>
         <Sub>
           {data && data.streak > 0 ? (
-            <span className="inline-flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-gold-600" />{t('home.dailyStreak', { count: data.streak })}</span>
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-[4px]"><Flame className="h-[14px] w-[14px] shrink-0 text-gold-600 sm:h-3.5 sm:w-3.5" />{t('home.dailyStreak', { count: data.streak })}</span>
           ) : t('home.dailyStart')}
         </Sub>
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -410,26 +412,26 @@ function PlanTile({ goals, loading, error, retry }: {
 
   if (active.length === 0) {
     return (
-      <Link to="/plan" className="card-hover flex h-full items-start gap-3 p-4">
-        <Pill tone="board" Icon={ListChecks} />
+      <Link to="/plan" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+        <Pill tone="board" Icon={ListChecks} compact />
         <div className="min-w-0 flex-1">
           <Kicker>{t('home.planLabel', { defaultValue: "This week's plan" })}</Kicker>
           <Title>{t('home.planEmpty', { defaultValue: 'Build your first improvement plan' })}</Title>
           <Sub>{t('home.planEmptyDesc', { defaultValue: 'Pick a few weekly goals — puzzles, openings, accuracy.' })}</Sub>
         </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+        <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
       </Link>
     );
   }
 
   const pct = imminent ? Math.min(100, Math.round((imminent.progress / Math.max(1, imminent.target)) * 100)) : 0;
   return (
-    <Link to="/plan" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="board" Icon={ListChecks} />
+    <Link to="/plan" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="board" Icon={ListChecks} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.planLabel', { defaultValue: "This week's plan" })}</Kicker>
-          <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+            <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {active.length} {t('home.planActive', { defaultValue: 'active' })}
           </span>
         </div>
@@ -445,14 +447,14 @@ function PlanTile({ goals, loading, error, retry }: {
                   className="h-full bg-board-dark"
                 />
               </div>
-              <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+              <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
                 {imminent.progress}/{imminent.target}
               </span>
             </div>
           </>
         )}
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -472,33 +474,33 @@ function AchievementsTile({ achievements, loading, error, retry }: {
     .slice(0, 3);
 
   return (
-    <Link to="/insights#achievements" className="card-hover flex h-full items-start gap-3 p-4">
-      <Pill tone="gold" Icon={Award} />
+    <Link to="/insights#achievements" className="card-hover flex h-full items-start gap-[8px] p-[12px] sm:gap-3 sm:p-4">
+      <Pill tone="gold" Icon={Award} compact />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-[8px] gap-y-[4px]">
           <Kicker>{t('home.achievementsLabel', { defaultValue: 'Achievements' })}</Kicker>
-          <span className="font-mono text-[11px] tabular-nums text-chesscom-500">
+          <span className="font-mono text-[11px] tabular-nums text-ui-mutedText">
             {unlocked.length}/{list.length || '—'}
           </span>
         </div>
         {recent.length > 0 ? (
           <>
             <Title>{t(`achievements.${recent[0]!.id}.title`, { defaultValue: recent[0]!.title })}</Title>
-            <div className="mt-2 flex items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-[6px] sm:gap-1.5">
               {recent.map((a) => {
                 const Icon = resolveIcon(a.icon);
                 return (
                   <span
                     key={a.id}
                     title={t(`achievements.${a.id}.title`, { defaultValue: a.title })}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gold-500/15 text-gold-600 ring-1 ring-gold-500/30"
+                    className="inline-flex h-[28px] w-[28px] items-center justify-center rounded-full bg-gold-500/15 text-gold-600 ring-1 ring-gold-500/30 sm:h-7 sm:w-7"
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-[14px] w-[14px] sm:h-3.5 sm:w-3.5" />
                   </span>
                 );
               })}
               {unlocked.length > 3 && (
-                <span className="text-[11px] text-chesscom-500">+{unlocked.length - 3}</span>
+                <span className="text-[11px] text-ui-mutedText">+{unlocked.length - 3}</span>
               )}
             </div>
           </>
@@ -509,7 +511,7 @@ function AchievementsTile({ achievements, loading, error, retry }: {
           </>
         )}
       </div>
-      <ChevronRight className="h-4 w-4 shrink-0 text-chesscom-400" />
+      <ChevronRight className="h-[16px] w-[16px] shrink-0 text-chesscom-400 sm:h-4 sm:w-4" />
     </Link>
   );
 }
@@ -517,10 +519,11 @@ function AchievementsTile({ achievements, loading, error, retry }: {
 /* ─────────────────────────────  RECENT GAMES  ──────────────────────────── */
 
 function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loading: boolean; error: boolean; retry: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const reduceMotion = useReducedMotion();
   if (loading) return (
     <section className="card p-5" role="status" aria-live="polite">
-      <p className="text-sm text-chesscom-500">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
+      <p className="text-sm text-ui-mutedText">{t('home.loadingGames', { defaultValue: 'Loading recent games…' })}</p>
       <div className="mt-4 space-y-2" aria-hidden="true">
         {[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-md bg-chesscom-100 dark:bg-chesscom-700" />)}
       </div>
@@ -529,34 +532,67 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
   if (error) return (
     <section className="card flex flex-wrap items-center justify-between gap-3 p-5" role="alert">
       <p className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('home.gamesUnavailable', { defaultValue: 'Recent games could not be loaded.' })}</p>
-      <button type="button" onClick={retry} className="btn-secondary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+      <button type="button" onClick={retry} className="btn-secondary min-h-11 min-w-11 text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
     </section>
   );
   if (games.length === 0) {
     return (
       <motion.section
-        initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25, duration: 0.3 }}
-        className="card flex items-start gap-3 p-5"
+        className="card overflow-hidden"
+        aria-labelledby="home-first-game-heading"
+        data-home-onboarding
       >
-        <Pill tone="board" Icon={Sparkles} />
-        <div className="min-w-0 flex-1">
-          <Title>{t('home.firstRunTitle', { defaultValue: 'Play your first game' })}</Title>
-          <Sub>{t('home.firstRunReady', { defaultValue: 'Hop into Play vs Bot — or import your Chess.com games to review.' })}</Sub>
+        <div className="p-[20px] sm:p-6">
+          <div className="flex items-start gap-[12px] sm:gap-3">
+            <Pill tone="board" Icon={Sparkles} compact />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-mutedText">
+                {t('home.gettingStarted', { defaultValue: 'Your starting point' })}
+              </p>
+              <h2 id="home-first-game-heading" className="mt-1 text-lg font-bold tracking-tight text-ui-foreground">
+                {t('home.firstRunTitle', { defaultValue: 'Play your first game' })}
+              </h2>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-ui-mutedText">
+                {t('home.firstRunReady', { defaultValue: 'Play a game here or import one to review.' })}
+              </p>
+            </div>
+          </div>
+          <div className="mt-[20px] grid gap-[12px] sm:mt-5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-1 xl:grid-cols-2">
+            {[
+              { to: '/play', icon: Swords, title: t('home.playTitle'), description: t('home.playDesc') },
+              { to: '/review', icon: BookOpen, title: t('home.importGames'), description: t('home.reviewDesc') },
+            ].map(({ to, icon: Icon, title, description }) => (
+              <Link key={to} to={to} data-home-onboarding-action
+                className="group flex min-w-0 items-start gap-[8px] rounded-xl border border-ui-border bg-ui-muted p-[12px] transition-colors hover:border-ui-strong hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus sm:gap-3 sm:p-3.5"
+              >
+                <Icon aria-hidden="true" className="mt-0.5 h-[20px] w-[20px] shrink-0 text-ui-primary sm:h-5 sm:w-5" />
+                <span className="min-w-0 flex-1">
+                  <span data-home-onboarding-action-title className="block min-w-0 break-words text-sm font-semibold text-ui-foreground">{title}</span>
+                  <span className="mt-1 block min-w-0 break-words text-xs leading-relaxed text-ui-mutedText">{description}</span>
+                </span>
+                <ChevronRight aria-hidden="true" className="mt-1 h-[16px] w-[16px] shrink-0 text-ui-mutedText transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none sm:h-4 sm:w-4" />
+              </Link>
+            ))}
+          </div>
         </div>
+        <p className="border-t border-ui-border bg-ui-muted px-[20px] py-[12px] text-xs text-ui-mutedText sm:px-6 sm:py-3">
+          {t('home.firstRunFooter', { defaultValue: 'Your recent games will appear here after you play or import one.' })}
+        </p>
       </motion.section>
     );
   }
   return (
     <motion.section
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.18, duration: 0.3 }}
     >
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold tracking-tight text-chesscom-900 dark:text-chesscom-100">
           {t('home.recentGames', { defaultValue: 'Recent games' })}
         </h2>
-        <Link to="/review" className="text-xs font-medium text-board-dark hover:underline">
+        <Link to="/review" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-semibold text-board-dark hover:bg-ui-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus dark:text-gold-400">
           {t('home.viewAll', { defaultValue: 'View all →' })}
         </Link>
       </div>
@@ -565,29 +601,51 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
           <li key={g.id}>
             <Link
               to={`/review/${g.id}`}
-              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-chesscom-50 dark:hover:bg-chesscom-900/40 sm:px-4 sm:py-3"
+              className="flex items-start gap-[12px] px-[12px] py-[10px] transition-colors hover:bg-chesscom-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus dark:hover:bg-chesscom-900/40 sm:items-center sm:gap-3 sm:px-4 sm:py-3"
             >
               <ResultGlyph r={g.result} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {g.user_color === 'white' ? (
-                    <>
-                      <span className="text-chesscom-900 dark:text-chesscom-100">{g.white}</span>
-                      <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                      <span className="text-chesscom-500">{g.black}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-chesscom-500">{g.white}</span>
-                      <span className="mx-1.5 text-chesscom-400">{t('players.vs')}</span>
-                      <span className="text-chesscom-900 dark:text-chesscom-100">{g.black}</span>
-                    </>
-                  )}
+                <div className="min-w-0 text-sm font-medium">
+                  {/* The account name is repeated on every Home row. Leading
+                      with it on 320px phones hides the one detail that lets
+                      people distinguish their games: the opponent. */}
+                  <div data-home-recent-name className="flex min-w-0 flex-wrap items-start gap-x-[4px] sm:hidden">
+                    <span className="shrink-0 text-ui-mutedText">{t('players.vs')}</span>
+                    <span data-home-recent-opponent className="line-clamp-2 min-w-[120px] flex-1 break-words font-semibold text-ui-foreground">
+                      {g.user_color === 'white' ? g.black : g.white}
+                    </span>
+                  </div>
+                  <div data-home-recent-desktop-matchup className="hidden min-w-0 items-center gap-1.5 sm:flex">
+                    <span
+                      data-home-recent-desktop-opponent={g.user_color === 'black' ? '' : undefined}
+                      title={g.white}
+                      className={g.user_color === 'white'
+                        ? 'max-w-[40%] shrink-0 truncate text-chesscom-900 dark:text-chesscom-100'
+                        : 'min-w-0 flex-1 truncate text-ui-mutedText'}
+                    >
+                      {g.white}
+                    </span>
+                    <span className="shrink-0 text-chesscom-400">{t('players.vs')}</span>
+                    <span
+                      data-home-recent-desktop-opponent={g.user_color === 'white' ? '' : undefined}
+                      title={g.black}
+                      className={g.user_color === 'black'
+                        ? 'max-w-[40%] shrink-0 truncate text-chesscom-900 dark:text-chesscom-100'
+                        : 'min-w-0 flex-1 truncate text-ui-mutedText'}
+                    >
+                      {g.black}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-xs text-chesscom-500">
-                  <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
-                  <span className="mx-1.5 text-chesscom-400">·</span>
-                  <span>{fmtTimeControl(g.time_control, t)}</span>
+                <div data-home-recent-metadata className="mt-[4px] flex min-w-0 flex-wrap items-baseline gap-x-[8px] gap-y-[2px] text-xs text-ui-mutedText sm:mt-0 sm:block">
+                  <span data-home-recent-date className="max-w-full break-words">{g.end_time ? new Date(g.end_time).toLocaleDateString(i18n.language) : t('review.inProgress', { defaultValue: 'In progress' })}</span>
+                  <span className="mx-1.5 hidden text-chesscom-400 sm:inline">·</span>
+                  <span data-home-recent-time-control className="max-w-full break-words">{fmtTimeControl(g.time_control, t)}</span>
+                  {!g.analyzed && (
+                    <span data-home-recent-unreviewed className="min-w-0 max-w-full break-words sm:hidden">
+                      {t('home.unreviewed', { defaultValue: 'unreviewed' })}
+                    </span>
+                  )}
                   {g.opening_name && (
                     <span className="hidden sm:inline">
                       <span className="mx-1.5 text-chesscom-400">·</span>
@@ -595,20 +653,36 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     </span>
                   )}
                 </div>
+                {g.analyzed && (
+                  <div data-home-mobile-accuracy className="mt-[4px] flex min-w-0 flex-wrap gap-x-[8px] gap-y-[2px] text-xs text-ui-mutedText sm:hidden">
+                    <span className="min-w-0 max-w-full break-words">
+                      {t('players.you', { defaultValue: 'You' })}: {' '}
+                      <span data-home-accuracy-self className="font-mono font-semibold text-ui-foreground">
+                        {fmtAccuracy(g.user_color === 'white' ? g.accuracy_white : g.accuracy_black)}
+                      </span>
+                    </span>
+                    <span className="min-w-0 max-w-full break-words">
+                      {t('home.opponent', { defaultValue: 'Opponent' })}: {' '}
+                      <span data-home-accuracy-opponent className="font-mono text-ui-mutedText">
+                        {fmtAccuracy(g.user_color === 'white' ? g.accuracy_black : g.accuracy_white)}
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="shrink-0 text-right">
+              <div className="hidden shrink-0 text-right sm:block">
                 {g.analyzed ? (
                   <div className="font-mono text-xs tabular-nums">
-                    <span className={g.user_color === 'white' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500'}>
+                    <span className={g.user_color === 'white' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_white)}
                     </span>
-                    <span className="mx-1 text-chesscom-400">/</span>
-                    <span className={g.user_color === 'black' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-500'}>
+                    <span className="mx-1 text-ui-mutedText">/</span>
+                    <span className={g.user_color === 'black' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_black)}
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[11px] uppercase tracking-wider text-chesscom-400">
+                  <span className="hidden text-[11px] uppercase tracking-wider text-ui-mutedText sm:inline">
                     {t('home.unreviewed', { defaultValue: 'unreviewed' })}
                   </span>
                 )}
@@ -625,23 +699,25 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
 
 function Kicker({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-chesscom-500">{children}</div>
+    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-mutedText">{children}</div>
   );
 }
 
 function Title({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-0.5 line-clamp-2 text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">{children}</div>
+    <div data-home-continue-title className="mt-0.5 min-w-0 break-words text-sm font-semibold text-chesscom-900 dark:text-chesscom-100 sm:line-clamp-2">{children}</div>
   );
 }
 
 function Sub({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 line-clamp-2 text-xs text-chesscom-500">{children}</div>
+    <div data-home-continue-description className="mt-1 min-w-0 break-words text-xs text-ui-mutedText sm:line-clamp-2">{children}</div>
   );
 }
 
-function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' | 'mistake' | 'muted' }) {
+function Pill({ Icon, tone, compact = false }: {
+  Icon: React.ElementType; tone: 'gold' | 'board' | 'mistake' | 'muted'; compact?: boolean;
+}) {
   const toneCls: Record<typeof tone, string> = {
     gold: 'bg-gold-500/15 text-gold-600',
     board: 'bg-board-dark/15 text-board-dark',
@@ -653,8 +729,8 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
     ? 'bg-[#ffa459]/15 text-[#ffa459]'
     : toneCls[tone];
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${cls}`}>
-      <Icon className="h-4 w-4" />
+    <div className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-[44px] w-[44px] sm:h-10 sm:w-10' : 'h-10 w-10'} ${cls}`}>
+      <Icon className={compact ? 'h-[18px] w-[18px] sm:h-4 sm:w-4' : 'h-4 w-4'} />
     </div>
   );
 }
@@ -662,26 +738,36 @@ function Pill({ Icon, tone }: { Icon: React.ElementType; tone: 'gold' | 'board' 
 function ResultGlyph({ r }: { r: string }) {
   const { t } = useTranslation();
   if (r === 'win') {
+    const label = t('home.outcome.win', { defaultValue: 'Win' });
     return (
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-green-500/15 text-xs font-bold text-green-500">
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-green-500/15 text-[12px] font-bold text-ui-success sm:h-7 sm:w-7 sm:text-xs">
         W
       </span>
     );
   }
   if (r === 'loss') {
+    const label = t('home.outcome.loss', { defaultValue: 'Loss' });
     return (
-      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bad/15 text-xs font-bold text-bad">
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-bad/15 text-[12px] font-bold text-ui-danger sm:h-7 sm:w-7 sm:text-xs">
         L
       </span>
     );
   }
-  if (r !== 'draw') return (
-    <span aria-label={t('review.inProgress', { defaultValue: 'In progress' })} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
-      •
-    </span>
-  );
+  if (r !== 'draw') {
+    const label = t('review.inProgress', { defaultValue: 'In progress' });
+    return (
+      <span role="img" aria-label={label} title={label}
+        className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-[12px] text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText sm:h-7 sm:w-7 sm:text-xs">
+        •
+      </span>
+    );
+  }
+  const label = t('home.outcome.draw', { defaultValue: 'Draw' });
   return (
-    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-xs font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+    <span role="img" aria-label={label} title={label}
+      className="inline-flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-md bg-chesscom-100 text-[12px] font-bold text-chesscom-500 dark:bg-chesscom-700 dark:text-ui-mutedText sm:h-7 sm:w-7 sm:text-xs">
       D
     </span>
   );

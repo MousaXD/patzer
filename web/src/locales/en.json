@@ -1,8 +1,61 @@
 {
   "app": {
     "name": "Patzer",
-    "tagline": "Your private Chess.com.",
+    "tagline": "Your games. Your progress. Your next move.",
     "home": "Home"
+  },
+  "navigation": {
+    "primary": "Primary navigation",
+    "mobile": "Mobile navigation",
+    "open": "Open menu",
+    "close": "Close menu",
+    "language": "Language",
+    "versionChangelog": "Patzer version {{version}}, view changelog",
+    "languageSaveFailed": "Could not save your language. Check your connection and try again.",
+    "logoutBusy": "Signing out…",
+    "logoutFailed": "Could not sign out. Check your connection and try again.",
+    "skip": "Skip to main content",
+    "loading": "Loading page…",
+    "breadcrumb": "Breadcrumb",
+    "gameAnalysis": "Game analysis",
+    "playerProfile": "Player profile"
+  },
+  "changelog": {
+    "title": "Release notes",
+    "loading": "Loading release notes…",
+    "error": "Release notes could not be loaded right now.",
+    "retry": "Try again",
+    "empty": "No release notes are available yet."
+  },
+  "bootstrap": {
+    "loading": "Starting Patzer…",
+    "title": "Server unavailable",
+    "subtitle": "Patzer could not reach its server.",
+    "alertLabel": "Server unavailable",
+    "help": "Check that Patzer is running and try connecting again.",
+    "retry": "Try again",
+    "reconnecting": "Reconnecting…"
+  },
+  "routerError": {
+    "alertLabel": "Page unavailable",
+    "title": "This page could not load",
+    "description": "Something interrupted Patzer. Try reloading the page or returning home.",
+    "reload": "Reload page",
+    "home": "Go home"
+  },
+  "authShell": {
+    "intro": "About Patzer",
+    "eyebrow": "A place to sharpen your chess",
+    "headline": "Make your next move count.",
+    "description": "Play, revisit your games, and grow your skills in a space built for chess.",
+    "play": "Play at your pace",
+    "review": "Understand your decisions",
+    "progress": "See how you improve",
+    "footer": "Your chess. Your journey.",
+    "loadingAuth": "Checking sign-in options…",
+    "optionsUnavailable": "Sign-in options unavailable",
+    "optionsHelp": "Patzer could not check the sign-in methods supported by this server. Try again to continue.",
+    "optionsRetry": "Try again"
   },
   "common": {
     "save": "Save",
@@ -11,6 +64,7 @@
     "create": "Create",
     "edit": "Edit",
     "back": "Back",
+    "retry": "Retry",
     "loading": "Loading…",
     "yes": "Yes",
     "no": "No",
@@ -766,11 +820,18 @@
     "navGroup": "Navigate",
     "actionGroup": "Actions",
     "gameGroup": "Recent games",
-    "esc": "esc"
+    "esc": "esc",
+    "actionBusy": "Applying change…",
+    "actionFailed": "That action could not be completed. Please try again.",
+    "recentGamesLoading": "Loading recent games…",
+    "recentGamesUnavailable": "Recent games unavailable",
+    "recentGamesRetry": "Retry recent games",
+    "recentGamesEmpty": "No recent games yet."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
     "global": "Global",
+    "navigation": "Navigation",
     "openPalette": "Command palette",
     "openShortcuts": "Show this dialog",
     "goHome": "Go to Home",
@@ -779,6 +840,11 @@
     "goInsights": "Go to Insights",
     "goTrain": "Go to Tactic Trainer",
     "goLearn": "Go to Learn",
+    "goSettings": "Go to Settings",
+    "goOpenings": "Go to Openings",
+    "goPlan": "Go to Improvement Plan",
+    "goLab": "Go to Lab",
+    "goPlayers": "Go to Players",
     "closeDialog": "Close any dialog",
     "review": "Game Review",
     "prevNext": "Previous / Next move",
@@ -1328,6 +1394,8 @@
     "settingsDesc": "Language, coach, board, and more",
     "firstRunTitle": "Play your first game",
     "firstRunReady": "Ready to go. Hop into Play — or import your Chess.com games to review.",
+    "gettingStarted": "Your starting point",
+    "firstRunFooter": "Your recent games will appear here after you play or import one.",
     "firstRunNoUsername": "Pick an opponent and a time control, or set your Chess.com username in Settings to import existing games.",
     "importGames": "Import games",
     "setUsername": "Set username",
@@ -1356,6 +1424,18 @@
     "achievementsEmpty": "Earn your first badge by playing a game",
     "achievementsEmptyDesc": "0 of {{n}} unlocked",
     "whatsNew": "What's new: plans, achievements, and a top-3 lines panel in Review.",
+    "loadingStats": "Loading your statistics",
+    "statsUnavailable": "Your statistics could not be loaded.",
+    "continue": "Continue improving",
+    "tileLoading": "Loading your progress…",
+    "tileUnavailable": "Progress temporarily unavailable",
+    "loadingGames": "Loading recent games…",
+    "gamesUnavailable": "Recent games could not be loaded.",
+    "outcome": {
+      "win": "Win",
+      "loss": "Loss",
+      "draw": "Draw"
+    },
     "greet": {
       "morning": "Good morning",
       "afternoon": "Good afternoon",
@@ -1367,6 +1447,7 @@
       "draw": "draw streak"
     },
     "unreviewed": "unreviewed",
+    "opponent": "Opponent",
     "learnNext": "Your next lesson",
     "learnResume": "Continue where you left off",
     "learnDesc": "Interactive lessons with stars and levels."

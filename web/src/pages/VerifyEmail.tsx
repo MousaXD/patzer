@@ -27,29 +27,29 @@ export default function VerifyEmail() {
 
   if (token) {
     return (
-      <AuthShell title={t('auth.verifyTitle')}>
+      <AuthShell title={t('auth.verifyTitle')} focusTitle={state !== 'verifying'}>
         {state === 'verifying' && (
-          <div className="flex flex-col items-center gap-3 py-4 text-ink-500">
-            <Loader2 className="h-8 w-8 animate-spin" />
+          <div role="status" className="flex flex-col items-center gap-3 py-4 text-ink-500">
+            <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin motion-reduce:animate-none" />
             <p className="text-sm">{t('auth.verifying')}</p>
           </div>
         )}
         {state === 'ok' && (
           <>
-            <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
               <CheckCircle2 className="h-10 w-10 text-accent-600" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyOk')}</p>
             </div>
-            <Link to="/login" className="btn-primary w-full justify-center">{t('login.submit')}</Link>
+            <Link to="/login" className="btn-primary min-h-11 w-full justify-center">{t('login.submit')}</Link>
           </>
         )}
         {state === 'fail' && (
           <>
-            <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div role="alert" className="flex flex-col items-center gap-3 py-2 text-center">
               <AlertCircle className="h-10 w-10 text-bad" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyFail')}</p>
             </div>
-            <Link to="/verify-email" className="btn-secondary w-full justify-center">{t('auth.resendVerification')}</Link>
+            <Link to="/verify-email" className="btn-secondary min-h-11 w-full justify-center">{t('auth.resendVerification')}</Link>
           </>
         )}
       </AuthShell>
@@ -79,12 +79,12 @@ function ResendForm() {
 
   if (sent) {
     return (
-      <AuthShell title={t('auth.resendSentTitle')}>
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <AuthShell title={t('auth.resendSentTitle')} focusTitle>
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.resendSentBody')}</p>
         </div>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -93,15 +93,15 @@ function ResendForm() {
     <AuthShell title={t('auth.resendTitle')} subtitle={t('auth.resendSubtitle')}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label mb-1 block">{t('common.email')}</label>
-          <input className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="label mb-1 block" htmlFor="verify-email-address">{t('common.email')}</label>
+          <input id="verify-email-address" className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <button type="submit" disabled={!valid || busy} className="btn-primary w-full">
+        <button type="submit" disabled={!valid || busy} className="btn-primary min-h-11 w-full">
           <Mail className="h-4 w-4" />
           {busy ? t('auth.sending') : t('auth.resendVerification')}
         </button>
         <div className="pt-1 text-center text-sm">
-          <Link to="/login" className="text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
+          <Link to="/login" className="inline-flex min-h-11 max-w-full items-center justify-center text-ink-500 hover:underline">{t('auth.backToLogin')}</Link>
         </div>
       </form>
     </AuthShell>

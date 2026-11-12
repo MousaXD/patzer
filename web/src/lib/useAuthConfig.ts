@@ -12,27 +12,73 @@ export interface AuthConfig {
   oidc_button_text: string | null;
 }
 
-// Public capability probe (GET /api/auth/config). Drives whether the login page
-// shows "Sign up" / "Forgot password?" and whether signup asks for an email.
-// Fails closed (both false) so a probe error never advertises a route the
-// server would reject anyway.
-export function useAuthConfig(): { config: AuthConfig; loaded: boolean } {
-  const [config, setConfig] = useState<AuthConfig>({
-    signup_enabled: false,
-    signup_mode: 'closed',
-    email_enabled: false,
-    oidc_enabled: false,
-    oidc_only: false,
-    oidc_button_text: null,
-  });
-  const [loaded, setLoaded] = useState(false);
+type ConfigStatus = 'loading' | 'ready' | 'error';
+const CAPABILITY_TIMEOUT_MS = 8_000;
+
+const FALLBACK_CONFIG: AuthConfig = {
+  signup_enabled: false,
+  signup_mode: 'closed',
+  email_enabled: false,
+  oidc_enabled: false,
+  oidc_only: false,
+  oidc_button_text: null,
+};
+
+function isAuthConfig(value: unknown): value is AuthConfig {
+  if (typeof value !== 'object' || value === null) return false;
+  const config = value as Record<string, unknown>;
+  return typeof config.signup_enabled === 'boolean'
+    && (config.signup_mode === 'open' || config.signup_mode === 'invite' || config.signup_mode === 'closed')
+    && typeof config.email_enabled === 'boolean'
+    && typeof config.oidc_enabled === 'boolean'
+    && typeof config.oidc_only === 'boolean'
+    && (config.oidc_button_text === null || typeof config.oidc_button_text === 'string');
+}
+
+// Public capability probe (GET /api/auth/config). A failed/invalid response
+// must never become a guessed password form: SSO-only installations cannot
+// authenticate with passwords. Keep controls hidden until capabilities are
+// authoritative, and offer an in-place retry on transient failures.
+export function useAuthConfig(): {
+  config: AuthConfig;
+  loaded: boolean;
+  error: boolean;
+  retry: () => void;
+} {
+  const [config, setConfig] = useState<AuthConfig>(FALLBACK_CONFIG);
+  const [status, setStatus] = useState<ConfigStatus>('loading');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    api.get<AuthConfig>('/api/auth/config')
-      .then((c) => { if (alive) setConfig(c); })
-      .catch(() => { /* keep fail-closed defaults */ })
-      .finally(() => { if (alive) setLoaded(true); });
-    return () => { alive = false; };
-  }, []);
-  return { config, loaded };
+    let expired = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      expired = true;
+      controller.abort();
+      if (alive) setStatus('error');
+    }, CAPABILITY_TIMEOUT_MS);
+    setStatus('loading');
+    api.get<unknown>('/api/auth/config', { signal: controller.signal })
+      .then((response) => {
+        if (!alive || expired) return;
+        if (!isAuthConfig(response)) throw new Error('Invalid auth capabilities');
+        setConfig(response);
+        setStatus('ready');
+      })
+      .catch(() => {
+        if (alive && !expired) setStatus('error');
+      })
+      .finally(() => window.clearTimeout(timeoutId));
+    return () => {
+      alive = false;
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [attempt]);
+  return {
+    config,
+    loaded: status !== 'loading',
+    error: status === 'error',
+    retry: () => { setStatus('loading'); setAttempt((current) => current + 1); },
+  };
 }

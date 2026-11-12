@@ -7,6 +7,9 @@ import { api } from '../api';
 // caller should not navigate itself.
 export async function endSession(): Promise<boolean> {
   const res = await api.post<{ ok: boolean; logout_url?: string }>('/api/auth/logout');
+  if (res?.ok !== true) {
+    throw new Error('Logout was not confirmed by the server');
+  }
   if (res.logout_url) {
     window.location.assign(res.logout_url);
     return true;

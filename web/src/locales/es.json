@@ -1,8 +1,61 @@
 {
   "app": {
     "name": "Patzer",
-    "tagline": "Tu propio Chess.com privado.",
+    "tagline": "Tus partidas. Tu progreso. Tu próxima jugada.",
     "home": "Inicio"
+  },
+  "navigation": {
+    "primary": "Navegación principal",
+    "mobile": "Navegación móvil",
+    "open": "Abrir menú",
+    "close": "Cerrar menú",
+    "language": "Idioma",
+    "versionChangelog": "Patzer versión {{version}}: ver novedades",
+    "languageSaveFailed": "No se pudo guardar el idioma. Comprueba la conexión e inténtalo de nuevo.",
+    "logoutBusy": "Cerrando sesión…",
+    "logoutFailed": "No se pudo cerrar la sesión. Comprueba la conexión e inténtalo de nuevo.",
+    "skip": "Ir al contenido principal",
+    "loading": "Cargando página…",
+    "breadcrumb": "Ruta de navegación",
+    "gameAnalysis": "Detalles de la partida",
+    "playerProfile": "Perfil de jugador"
+  },
+  "changelog": {
+    "title": "Notas de la versión",
+    "loading": "Cargando notas de la versión…",
+    "error": "No se pueden cargar las notas de la versión ahora mismo.",
+    "retry": "Reintentar",
+    "empty": "Todavía no hay notas de la versión disponibles."
+  },
+  "bootstrap": {
+    "loading": "Iniciando Patzer…",
+    "title": "Servidor no disponible",
+    "subtitle": "Patzer no pudo conectarse al servidor.",
+    "alertLabel": "Servidor no disponible",
+    "help": "Comprueba que Patzer esté en funcionamiento y vuelve a intentarlo.",
+    "retry": "Reintentar",
+    "reconnecting": "Reconectando…"
+  },
+  "routerError": {
+    "alertLabel": "Página no disponible",
+    "title": "No se pudo cargar esta página",
+    "description": "Algo interrumpió Patzer. Intenta recargar la página o volver al inicio.",
+    "reload": "Recargar página",
+    "home": "Ir al inicio"
+  },
+  "authShell": {
+    "intro": "Acerca de Patzer",
+    "eyebrow": "Un lugar para mejorar tu ajedrez",
+    "headline": "Haz que tu próxima jugada cuente.",
+    "description": "Juega, revisa tus partidas y mejora tus habilidades en un espacio dedicado al ajedrez.",
+    "play": "Juega a tu ritmo",
+    "review": "Comprende tus decisiones",
+    "progress": "Descubre tu progreso",
+    "footer": "Tu ajedrez. Tu camino.",
+    "loadingAuth": "Comprobando las opciones de acceso…",
+    "optionsUnavailable": "Opciones de acceso no disponibles",
+    "optionsHelp": "Patzer no pudo comprobar los métodos de acceso admitidos por este servidor. Inténtalo de nuevo.",
+    "optionsRetry": "Reintentar"
   },
   "common": {
     "save": "Guardar",
@@ -11,6 +64,7 @@
     "create": "Crear",
     "edit": "Editar",
     "back": "Atrás",
+    "retry": "Reintentar",
     "loading": "Cargando…",
     "yes": "Sí",
     "no": "No",
@@ -32,7 +86,8 @@
     "download": "Descargar",
     "saved": "Guardado",
     "email": "Correo electrónico",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "viewChangelog": "Ver novedades"
   },
   "setup": {
     "title": "Bienvenido a Patzer",
@@ -598,11 +653,18 @@
     "tip": "⌘K / Ctrl+K para abrir · ? para atajos",
     "bookmarks": "Partidas destacadas",
     "themeLight": "Tema claro",
-    "themeDark": "Tema oscuro"
+    "themeDark": "Tema oscuro",
+    "actionBusy": "Aplicando cambio…",
+    "actionFailed": "No se pudo completar la acción. Inténtalo de nuevo.",
+    "recentGamesLoading": "Cargando partidas recientes…",
+    "recentGamesUnavailable": "Partidas recientes no disponibles",
+    "recentGamesRetry": "Reintentar carga de partidas",
+    "recentGamesEmpty": "Todavía no hay partidas recientes."
   },
   "shortcuts": {
     "title": "Atajos de teclado",
     "global": "Global",
+    "navigation": "Navegación",
     "openPalette": "Paleta de comandos",
     "openShortcuts": "Mostrar este diálogo",
     "goHome": "Ir a Inicio",
@@ -610,6 +672,12 @@
     "goReview": "Ir a Análisis",
     "goInsights": "Ir a Estadísticas",
     "goTrain": "Ir al Entrenador de táctica",
+    "goLearn": "Ir a Aprender",
+    "goSettings": "Ir a Configuración",
+    "goOpenings": "Ir a Aperturas",
+    "goPlan": "Ir al plan de mejora",
+    "goLab": "Ir al laboratorio",
+    "goPlayers": "Ir a Jugadores",
     "closeDialog": "Cerrar ventana emergente",
     "review": "Análisis de partida",
     "prevNext": "Anterior / Siguiente movimiento",
@@ -617,6 +685,9 @@
     "flipBoard": "Girar tablero",
     "bookmark": "Marcar / desmarcar destacada",
     "share": "Copiar enlace a la posición"
+  },
+  "learn": {
+    "nav": "Aprender"
   },
   "train": {
     "nav": "Entrenar",
@@ -792,6 +863,8 @@
     "settingsDesc": "Idioma, entrenador, tablero y más",
     "firstRunTitle": "Juega tu primera partida",
     "firstRunReady": "Todo listo. Entra a Jugar — o importa tus partidas de Chess.com para analizarlas.",
+    "gettingStarted": "Tu punto de partida",
+    "firstRunFooter": "Tus partidas recientes aparecerán aquí cuando juegues o importes una.",
     "firstRunNoUsername": "Elige un rival y un ritmo de juego, o ingresa tu usuario de Chess.com en Ajustes para importar tus partidas.",
     "importGames": "Importar partidas",
     "setUsername": "Guardar usuario",
@@ -819,7 +892,34 @@
     "achievementsRecent": "Desbloqueados recientemente",
     "achievementsEmpty": "Consigue tu primera insignia jugando una partida",
     "achievementsEmptyDesc": "0 de {{n}} desbloqueados",
-    "whatsNew": "Novedades: planes, logros y panel con las 3 mejores variantes en Análisis."
+    "whatsNew": "Novedades: planes, logros y panel con las 3 mejores variantes en Análisis.",
+    "loadingStats": "Cargando tus estadísticas",
+    "statsUnavailable": "No se pudieron cargar tus estadísticas.",
+    "continue": "Sigue mejorando",
+    "tileLoading": "Cargando tu progreso…",
+    "tileUnavailable": "Progreso no disponible temporalmente",
+    "loadingGames": "Cargando partidas recientes…",
+    "gamesUnavailable": "No se pudieron cargar tus partidas recientes.",
+    "outcome": {
+      "win": "Victoria",
+      "loss": "Derrota",
+      "draw": "Tablas"
+    },
+    "greet": {
+      "morning": "Buenos días",
+      "afternoon": "Buenas tardes",
+      "evening": "Buenas noches"
+    },
+    "streak": {
+      "win": "racha de victorias",
+      "loss": "racha de derrotas",
+      "draw": "racha de tablas"
+    },
+    "unreviewed": "sin analizar",
+    "opponent": "Rival",
+    "learnNext": "Tu próxima lección",
+    "learnResume": "Continúa donde lo dejaste",
+    "learnDesc": "Lecciones interactivas con estrellas y niveles."
   },
   "auth": {
     "passwordHint": "Mínimo 10 caracteres.",

@@ -7,6 +7,7 @@ import { useAuth } from '../state/auth';
 import { useAuthConfig } from '../lib/useAuthConfig';
 import { humanizeError } from '../lib/errors';
 import AuthShell from '../components/AuthShell';
+import AuthOptionsUnavailable from '../components/AuthOptionsUnavailable';
 import { isLanguage, normalizeLanguage } from '../lib/languages';
 
 type InviteProblem = 'invalid' | 'revoked' | 'expired' | 'used_up';
@@ -27,7 +28,7 @@ const CODE_LENGTH = 12;
 export default function Signup() {
   const { t, i18n } = useTranslation();
   const { refresh } = useAuth();
-  const { config, loaded } = useAuthConfig();
+  const { config, loaded, error: configError, retry: retryConfig } = useAuthConfig();
   const nav = useNavigate();
   const [params] = useSearchParams();
   const linkCode = params.get('invite') ?? '';
@@ -46,7 +47,9 @@ export default function Signup() {
 
   // Check the code as soon as it is complete — straight away when it came in
   // the link — so a dead invite is reported before anyone fills in the form.
+  // Never probe invites until the server confirms signup is enabled.
   useEffect(() => {
+    if (!loaded || configError || !config.signup_enabled) { setCheck(null); return; }
     if (code.length !== CODE_LENGTH) { setCheck(null); return; }
     let alive = true;
     setCheck({ state: 'checking' });
@@ -62,7 +65,7 @@ export default function Signup() {
       // The server checks again on submit; a failed probe just shows nothing.
       .catch(() => { if (alive) setCheck(null); });
     return () => { alive = false; };
-  }, [code, i18n]);
+  }, [code, i18n, loaded, configError, config.signup_enabled]);
 
   const inviteOk = !inviteOnly || (code.length === CODE_LENGTH && check?.state !== 'invalid');
 
@@ -101,24 +104,47 @@ export default function Signup() {
     }
   }
 
+  // Never flash a registration form on a server that may forbid signup.
+  // Capabilities are authoritative and may enable invite-only or SSO-only mode.
+  if (!loaded) {
+    return (
+      <AuthShell title={t('auth.signupTitle')}>
+        <div role="status" aria-live="polite" className="space-y-3" data-auth-config-loading>
+          <div aria-hidden="true" className="ui-skeleton h-10 w-full motion-reduce:animate-none" />
+          <div aria-hidden="true" className="ui-skeleton h-10 w-full motion-reduce:animate-none" />
+          <p className="text-sm text-ui-mutedText">{t('authShell.loadingAuth', { defaultValue: 'Checking sign-in options…' })}</p>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (configError) {
+    return (
+      <AuthShell title={t('auth.signupTitle')}>
+        <AuthOptionsUnavailable onRetry={retryConfig} />
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
+      </AuthShell>
+    );
+  }
+
   // Signup turned off server-side: don't show a form that will only 403.
   if (loaded && !config.signup_enabled) {
     return (
       <AuthShell title={t('auth.signupTitle')}>
         <p className="text-sm text-ink-500">{t('auth.signupDisabledNotice')}</p>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
 
   if (done) {
     return (
-      <AuthShell title={t('auth.checkInboxTitle')}>
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <AuthShell title={t('auth.checkInboxTitle')} focusTitle>
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.checkInboxBody', { email: form.email })}</p>
         </div>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -148,32 +174,32 @@ export default function Signup() {
           </div>
         )}
         <div>
-          <label className="label mb-1 block">{t('common.username')}</label>
-          <input className="input" autoComplete="username" autoFocus={!showInvite || !!linkCode} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-username">{t('common.username')}</label>
+          <input id="signup-username" className="input" autoComplete="username" autoFocus={!showInvite || !!linkCode} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         </div>
         <div>
-          <label className="label mb-1 block">{t('common.displayName')}</label>
-          <input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-display-name">{t('common.displayName')}</label>
+          <input id="signup-display-name" className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
         </div>
         <div>
-          <label className="label mb-1 block">
+          <label className="label mb-1 block" htmlFor="signup-email">
             {t('common.email')} <span className="text-ink-400">{config.email_enabled ? t('auth.emailRecommended') : t('common.optional')}</span>
           </label>
-          <input className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input id="signup-email" className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           {config.email_enabled && <p className="mt-1 text-xs text-ink-400">{t('auth.emailWhy')}</p>}
         </div>
         <div>
-          <label className="label mb-1 block">{t('common.password')}</label>
-          <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-password">{t('common.password')}</label>
+          <input id="signup-password" className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <p className={`mt-1 text-xs ${form.password.length > 0 && form.password.length < 10 ? 'text-bad' : 'text-ink-400'}`}>{t('auth.passwordHint')}</p>
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
-        <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
+        <button type="submit" disabled={!canSubmit} className="btn-primary min-h-11 w-full">
           <UserPlus className="h-4 w-4" />
           {busy ? t('auth.creating') : t('auth.createAccount')}
         </button>
-        <div className="pt-1 text-center text-sm text-ink-500">
-          {t('auth.haveAccount')} <Link to="/login" className="font-medium text-accent-600 hover:underline">{t('login.submit')}</Link>
+        <div className="flex flex-wrap items-center justify-center gap-x-1 pt-1 text-center text-sm text-ink-500">
+          {t('auth.haveAccount')} <Link to="/login" className="inline-flex min-h-11 min-w-11 max-w-full items-center justify-center font-medium text-accent-600 hover:underline">{t('login.submit')}</Link>
         </div>
       </form>
     </AuthShell>

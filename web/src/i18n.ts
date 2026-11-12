@@ -6,7 +6,16 @@ import bg from './locales/bg.json';
 import es from './locales/es.json';
 import de from './locales/de.json';
 import ru from './locales/ru.json';
-import { LANGUAGE_CODES } from './lib/languages';
+import { LANGUAGE_CODES, normalizeLanguage } from './lib/languages';
+
+// A translated interface must also announce its language to assistive
+// technology. index.html defaults to English; i18next owns the live language
+// for signed-in profiles and for setup/sign-in before authentication.
+i18n.on('languageChanged', (language) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = normalizeLanguage(language);
+  }
+});
 
 void i18n
   .use(LanguageDetector)

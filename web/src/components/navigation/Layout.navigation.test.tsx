@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
 const harness = vi.hoisted(() => ({
   role: 'user' as 'user' | 'admin',
@@ -35,10 +35,11 @@ const labels: Record<string, string> = {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) =>
-      harness.longLabels && key === 'players.nav'
+    t: (key: string, options?: { defaultValue?: string; version?: string | number }) =>
+      (harness.longLabels && key === 'players.nav'
         ? 'Spieler und ausführliche Langbezeichnungen für die Navigation'
-        : labels[key] ?? options?.defaultValue ?? key,
+        : labels[key] ?? options?.defaultValue ?? key)
+        .replace(/\{\{\s*version\s*\}\}/g, String(options?.version ?? '')),
     i18n: { language: harness.language, changeLanguage: harness.changeLanguage },
   }),
 }));
@@ -57,6 +58,9 @@ vi.mock('../../api', () => ({
   api: { get: vi.fn(async () => ({ version: '7.19.0' })) },
 }));
 vi.mock('../../lib/logout', () => ({ endSession: harness.endSession }));
+vi.mock('../../lib/saveInterfaceLanguage', () => ({
+  saveInterfaceLanguage: (language: string) => harness.changeLanguage(language),
+}));
 vi.mock('../UpdateNotice', () => ({ default: () => null }));
 vi.mock('../ChangelogModal', () => ({ default: () => null }));
 vi.mock('../GitHubStar', () => ({ default: () => null }));
@@ -96,6 +100,40 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Patzer navigation rail', () => {
+  it('keeps independent failures dismissible inside one shared notification area', async () => {
+    harness.changeLanguage.mockRejectedValueOnce(new Error('Profile unavailable'));
+    harness.endSession.mockRejectedValueOnce(new Error('Logout unavailable'));
+    mount();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Language' }), { target: { value: 'de' } });
+    await waitFor(() => expect(document.querySelector('[data-language-save-error]')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(document.querySelectorAll('[data-shell-feedback] [role="alert"]')).toHaveLength(2));
+    const stack = document.querySelector('[data-shell-feedback]');
+    expect(stack?.className).toContain('flex-col');
+    fireEvent.click(within(document.querySelector('[data-language-save-error]') as HTMLElement)
+      .getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('[data-language-save-error]')).toBeNull();
+    expect(document.querySelector('[data-logout-error]')).toBeTruthy();
+    fireEvent.click(within(document.querySelector('[data-logout-error]') as HTMLElement)
+      .getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('[data-shell-feedback]')).toBeNull();
+  });
+
+  it('reports failed sign-out and permits retry without navigating on the error', async () => {
+    harness.endSession.mockRejectedValueOnce(new Error('HTTP 503'))
+      .mockResolvedValueOnce(false);
+    mount();
+    const signout = screen.getByRole('button', { name: 'Log out' });
+    fireEvent.click(signout);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('Could not sign out. Check your connection and try again.')).toBeTruthy();
+    expect(harness.refresh).not.toHaveBeenCalled();
+    expect(screen.getByTestId('route-content').textContent).toBe('/');
+    fireEvent.click(signout);
+    await waitFor(() => expect(harness.refresh).toHaveBeenCalledTimes(1));
+    expect(harness.endSession).toHaveBeenCalledTimes(2);
+  });
+
   it('retains all ten destinations, settings and functional route changes', () => {
     mount();
     const rail = screen.getByRole('navigation', { name: 'Primary navigation' });
@@ -112,24 +150,117 @@ describe('Patzer navigation rail', () => {
 
   it('marks parent destinations active on nested review and player pages', () => {
     const { unmount } = mount('/review/42');
-    expect(screen.getByRole('link', { name: 'Review' }).getAttribute('aria-current')).toBe('page');
+    expect(within(screen.getByRole('navigation', { name: 'Primary navigation' })).getByRole('link', { name: 'Review' }).getAttribute('aria-current')).toBe('page');
+    const reviewBreadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(reviewBreadcrumb).getByRole('link', { name: 'Review' }).getAttribute('href')).toBe('/review');
+    expect(within(reviewBreadcrumb).getByRole('link', { name: 'Review' }).getAttribute('aria-current')).toBeNull();
+    expect(reviewBreadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(within(reviewBreadcrumb).getByText('Game analysis').getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('[data-workspace]')?.getAttribute('data-workspace')).toBe('analysis');
     expect(document.querySelector('[data-workspace-content]')?.className).toContain('max-w-none');
     expect(document.querySelector('[data-shell-main]')?.className).toContain('min-w-0');
     unmount();
     mount('/players/42');
-    expect(screen.getByRole('link', { name: 'Players' }).getAttribute('aria-current')).toBe('page');
+    expect(within(screen.getByRole('navigation', { name: 'Primary navigation' })).getByRole('link', { name: 'Players' }).getAttribute('aria-current')).toBe('page');
+    const playerBreadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(playerBreadcrumb).getByRole('link', { name: 'Players' }).getAttribute('href')).toBe('/players');
+    expect(within(playerBreadcrumb).getByRole('link', { name: 'Players' }).getAttribute('aria-current')).toBeNull();
+    expect(playerBreadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(within(playerBreadcrumb).getByText('Player profile').getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('[data-workspace]')?.getAttribute('data-workspace')).toBe('default');
   });
 
   it('is stable-width and exposes distinct desktop/mobile navigation semantics', () => {
     mount();
-    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
+    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-[80px]');
     expect(document.querySelector('[data-navigation-rail]')?.className).toContain('md:flex');
     expect(document.querySelector('[data-app-shell]')?.className).toContain('min-w-0');
     expect(document.querySelector('[data-workspace-content]')?.className).toContain('max-w-[1440px]');
     expect(screen.getByRole('button', { name: 'Open menu' }).className).toContain('md:hidden');
     expect(screen.queryByText('old-avatar-value')).toBeNull();
+  });
+
+  it('keeps keyboard skip navigation clear of the sticky header at every responsive breakpoint', () => {
+    mount();
+    const skip = screen.getByRole('link', { name: 'Skip to main content' });
+    const main = document.getElementById('patzer-main');
+    expect(skip.getAttribute('href')).toBe('#patzer-main');
+    expect(main?.getAttribute('tabindex')).toBe('-1');
+    expect(main?.className).toContain('scroll-mt-[56px]');
+    expect(main?.className).toContain('sm:scroll-mt-[56px]');
+    expect(main?.className).toContain('md:scroll-mt-[56px]');
+    expect(main?.className).toContain('xl:scroll-mt-14');
+    expect(skip.className).toContain('focus:z-[70]');
+  });
+
+  it('keeps tablet utility controls compact and the selected language discoverable', () => {
+    mount();
+    const rail = document.querySelector('[data-navigation-rail]');
+    const nav = document.querySelector('[data-primary-navigation]');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(rail?.className).toContain('w-[80px]');
+    expect(nav?.className).toContain('px-[2px]');
+    expect(header?.className).toContain('md:h-[56px]');
+    expect(header?.className).toContain('md:gap-[8px]');
+    const select = within(header as HTMLElement).getByRole('combobox', { name: 'Language' });
+    expect(select.hasAttribute('data-shell-language')).toBe(true);
+    expect(select.getAttribute('value')).toBeNull();
+    expect((select as HTMLSelectElement).selectedOptions[0].text).toBe('English');
+    expect(select.className).toContain('md:h-[44px]');
+    for (const name of ['Open command palette', 'Keyboard shortcuts', 'Log out']) {
+      const control = within(header as HTMLElement).getByRole('button', { name });
+      expect(control.className).toContain('md:h-[44px]');
+    }
+    expect(within(header as HTMLElement).getByRole('link', { name: 'Settings' }).className)
+      .toContain('md:h-[44px]');
+    expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
+  });
+
+  it('retains room for the current page at 200% text scaling on narrow phones', () => {
+    mount('/');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(header?.className).toContain('h-[56px]');
+    expect(header?.className).toContain('sm:h-[56px]');
+    expect(header?.className).toContain('px-[12px]');
+    const logo = header?.querySelector('a[aria-label="Patzer"]');
+    expect(logo?.className).toContain('w-[44px]');
+    const search = screen.getByRole('button', { name: 'Open command palette' });
+    const menu = screen.getByRole('button', { name: 'Open menu' });
+    for (const control of [search, menu]) {
+      expect(control.className).toContain('h-[44px]');
+      expect(control.className).toMatch(/min-w-\[44px\]|w-\[44px\]/);
+    }
+    expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
+  });
+
+  it('preserves physical 44px controls and 56px header across the 640-767px breakpoint', () => {
+    mount('/');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(header?.className).toContain('sm:h-[56px]');
+    expect(header?.className).toContain('sm:gap-[8px]');
+    expect(header?.className).toContain('sm:px-[20px]');
+    const logo = header?.querySelector('a[aria-label="Patzer"]');
+    expect(logo?.className).toContain('sm:w-[44px]');
+    for (const name of ['Open command palette', 'Keyboard shortcuts', 'Open menu']) {
+      const control = within(header as HTMLElement).getByRole('button', { name });
+      expect(control.className).toContain('sm:h-[44px]');
+    }
+    expect(within(header as HTMLElement).getByRole('link', { name: 'Settings' }).className)
+      .toContain('sm:min-w-[44px]');
+    expect(document.getElementById('patzer-main')?.className).toContain('sm:scroll-mt-[56px]');
+  });
+
+  it.each([
+    ['/review/42', '/review', 'Review', 'Game analysis'],
+    ['/players/42', '/players', 'Players', 'Player profile'],
+  ])('keeps the nested %s breadcrumb back target touch-sized and correctly routed', (route, parent, parentLabel, title) => {
+    mount(route);
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const back = within(breadcrumb).getByRole('link', { name: parentLabel });
+    expect(back.getAttribute('href')).toBe(parent);
+    expect(back.className).toContain('h-[44px]');
+    expect(back.className).toContain('w-[44px]');
+    expect(within(breadcrumb).getByText(title).getAttribute('aria-current')).toBe('page');
   });
 
   it('does not leak administrator destinations to ordinary users', () => {
@@ -166,6 +297,29 @@ describe('Patzer navigation rail', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  it('dismisses the mobile drawer when a global dialog opens and returns focus to its trigger', async () => {
+    function Fixture({ overlayOpen }: { overlayOpen: boolean }) {
+      return (
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<Layout globalOverlayOpen={overlayOpen} />}>
+              <Route path="/" element={<div data-testid="route-content">Home</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      );
+    }
+    const view = render(<Fixture overlayOpen={false} />);
+    const trigger = screen.getByRole('button', { name: 'Open menu' });
+    fireEvent.click(trigger);
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' });
+    await waitFor(() => expect(document.activeElement).toBe(within(drawer).getByRole('button', { name: 'Close menu' })));
+    view.rerender(<Fixture overlayOpen />);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+    expect(document.documentElement.style.overflow).toBe('');
+  });
+
   it('releases mobile focus containment when resized to the desktop breakpoint', () => {
     const listeners = new Set<(event: MediaQueryListEvent) => void>();
     vi.stubGlobal('matchMedia', vi.fn(() => ({
@@ -198,6 +352,44 @@ describe('Patzer navigation rail', () => {
     expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
   });
 
+  it('focuses the named workspace after a route change without stealing initial-page focus', async () => {
+    mount();
+    const initialMain = screen.getByRole('main', { name: 'Home' });
+    expect(document.activeElement).not.toBe(initialMain);
+    const rail = screen.getByRole('navigation', { name: 'Primary navigation' });
+    fireEvent.click(within(rail).getByRole('link', { name: 'Review' }));
+    const reviewMain = screen.getByRole('main', { name: 'Review' });
+    await waitFor(() => expect(document.activeElement).toBe(reviewMain));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Mobile navigation' }))
+      .getByRole('link', { name: 'Training' }));
+    const trainingMain = screen.getByRole('main', { name: 'Training' });
+    await waitFor(() => expect(document.activeElement).toBe(trainingMain));
+    expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
+  });
+
+  it('does not steal focus from a feature control when only URL search parameters change', async () => {
+    function QueryChange() {
+      const nav = useNavigate();
+      return <button type="button" onClick={() => nav('/play?game=fixture')}>Change active game</button>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/play']}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/play" element={<QueryChange />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const action = screen.getByRole('button', { name: 'Change active game' });
+    action.focus();
+    fireEvent.click(action);
+    await waitFor(() => expect(document.activeElement).toBe(action));
+    expect(document.activeElement).not.toBe(screen.getByRole('main', { name: 'Play' }));
+  });
+
   it('preserves both global controls, language switching, profile, logout and changelog', async () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Open command palette' }));
@@ -226,7 +418,23 @@ describe('Patzer navigation rail', () => {
     const link = screen.getByRole('link', { name: translated });
     expect(link.getAttribute('title')).toBe(translated);
     expect(link.querySelector('span:last-child')?.className).toContain('line-clamp-2');
-    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
+    expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-[80px]');
+  });
+
+  it('allows long mobile navigation and changelog labels to wrap at enlarged text sizes', async () => {
+    harness.role = 'admin';
+    harness.longLabels = true;
+    mount('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' });
+    const labels = within(drawer).getByRole('navigation', { name: 'Mobile navigation' });
+    for (const link of within(labels).getAllByRole('link')) {
+      expect(link.querySelector('span:last-child')?.className).toContain('break-words');
+    }
+    const changelog = await within(drawer).findByRole('button', { name: /Patzer version 7.19.0/i });
+    expect(changelog.className).toContain('min-w-0');
+    expect(changelog.querySelector('span')?.className).toContain('break-words');
+    expect(changelog.getAttribute('aria-label')).toContain('Patzer version 7.19.0');
   });
 
   it('styles the same accessible shell in either theme without inline color overrides', () => {
@@ -242,12 +450,12 @@ describe('Patzer navigation rail', () => {
   it('identifies Settings in the workspace header and locks scroll behind the mobile menu', () => {
     mount('/settings');
     expect(document.querySelector('[data-current-section]')?.textContent).toBe('Settings');
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Mobile navigation' }))
       .getByRole('button', { name: 'Close menu' }));
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
 });

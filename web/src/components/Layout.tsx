@@ -1,8 +1,8 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  BarChart3, BookMarked, BookOpen, ChevronDown, GraduationCap, Home, Keyboard,
+  ArrowLeft, BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
   ListChecks, LogOut, Menu, Microscope, Search, Server, Link2, Settings as SettingsIcon,
   Swords, Target, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
@@ -12,12 +12,14 @@ import { useAuth } from '../state/auth';
 import { cn } from '../lib/utils';
 import ChangelogModal from './ChangelogModal';
 import { LogoMark, LogoLockup } from './Logo';
-import { LANGUAGES, normalizeLanguage } from '../lib/languages';
+import { LANGUAGES, isLanguage, normalizeLanguage } from '../lib/languages';
 import { endSession } from '../lib/logout';
+import { saveInterfaceLanguage } from '../lib/saveInterfaceLanguage';
 
 interface LayoutProps {
   onOpenPalette?: () => void;
   onOpenShortcuts?: () => void;
+  globalOverlayOpen?: boolean;
 }
 
 type Destination = {
@@ -76,7 +78,7 @@ function NavigationItem({
         'dark:focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none',
         mobile
           ? 'min-h-11 w-full gap-3 px-3 py-2.5 text-sm'
-          : 'mx-auto min-h-[53px] w-[64px] flex-col justify-center gap-1 px-1.5 py-1.5 text-[10px] select-none',
+          : 'mx-auto min-h-[53px] w-[76px] flex-col justify-center gap-1 px-1 py-1.5 text-[10px] select-none',
         isActive
           ? 'bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-100'
           : 'text-chesscom-600 hover:bg-chesscom-100 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white',
@@ -85,30 +87,34 @@ function NavigationItem({
       {({ isActive }) => (
         <>
           {!mobile && isActive && (
-            <span aria-hidden="true" className="absolute -left-2 h-7 w-[3px] rounded-r-full bg-green-500" />
+            <span aria-hidden="true" className="absolute -left-0.5 h-7 w-[3px] rounded-r-full bg-green-500" />
           )}
           <Icon aria-hidden="true" className={cn('shrink-0', mobile ? 'h-[19px] w-[19px]' : 'h-[20px] w-[20px]')} />
-          <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
+          <span className={cn('min-w-0', mobile ? 'flex-1 break-words' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
         </>
       )}
     </NavLink>
   );
 }
 
-function LanguageSelector({ value, label, onChange, mobile = false }: {
+function LanguageSelector({ value, label, onChange, mobile = false, disabled = false }: {
   value: string;
   label: string;
   onChange: (value: string) => void;
   mobile?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <div className={cn('relative min-w-0', mobile ? 'w-full' : 'w-[108px] shrink-0')}>
+    <div className={cn('relative min-w-0', mobile ? 'w-full' : 'w-[clamp(108px,7rem,180px)] shrink-0')}>
       <select
+        data-shell-language
         aria-label={label}
         value={value}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
         className={cn(
-          'h-9 w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700',
+          'w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700 disabled:cursor-wait disabled:opacity-60',
+          mobile ? 'h-11' : 'h-11 md:h-[44px] xl:h-9',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-100',
         )}
       >
@@ -116,22 +122,39 @@ function LanguageSelector({ value, label, onChange, mobile = false }: {
           <option value={language.code} key={language.code}>{language.native}</option>
         ))}
       </select>
-      <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-chesscom-500" />
+      <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-chesscom-500 md:h-[14px] md:w-[14px]" />
     </div>
   );
 }
 
-export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) {
+export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOpen = false }: LayoutProps) {
   const { t, i18n } = useTranslation();
   const uiLang = normalizeLanguage(i18n.language);
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const [version, setVersion] = useState('');
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const lastFocusedPathRef = useRef(location.pathname);
+  // Hardware shortcuts may launch a global dialog while the mobile drawer
+  // owns focus. Dismiss the drawer and hand the return target to the menu
+  // trigger before the new dialog's focus trap captures its previous focus.
+  useLayoutEffect(() => {
+    if (globalOverlayOpen && drawerOpen) {
+      setDrawerOpen(false);
+      menuTriggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [globalOverlayOpen, drawerOpen]);
 
   const primaryLabel = t('navigation.primary', { defaultValue: 'Primary navigation' });
   const mobileLabel = t('navigation.mobile', { defaultValue: 'Mobile navigation' });
@@ -139,10 +162,23 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const closeMenuLabel = t('navigation.close', { defaultValue: 'Close menu' });
   const openMenuLabel = t('navigation.open', { defaultValue: 'Open menu' });
   const languageLabel = t('navigation.language', { defaultValue: 'Language' });
+  const versionChangelogLabel = t('navigation.versionChangelog', {
+    version, defaultValue: 'Patzer version {{version}}, view changelog',
+  });
   const isAnalysis = isDestinationActive(location.pathname, '/review') && location.pathname !== '/review';
   const activeItem = [...PRIMARY_DESTINATIONS, SETTINGS_DESTINATION, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
     .find((item) => isDestinationActive(location.pathname, item.to));
   const pageTitle = activeItem ? t(activeItem.key, { defaultValue: activeItem.fallback }) : t('app.name');
+  const nestedSection = location.pathname.startsWith('/review/')
+    ? t('home.reviewTitle', { defaultValue: 'Review' })
+    : location.pathname.startsWith('/players/')
+      ? t('players.nav', { defaultValue: 'Players' })
+      : null;
+  const nestedTitle = location.pathname.startsWith('/review/')
+    ? t('navigation.gameAnalysis', { defaultValue: 'Game analysis' })
+    : location.pathname.startsWith('/players/')
+      ? t('navigation.playerProfile', { defaultValue: 'Player profile' })
+      : null;
 
   useEffect(() => {
     api.get<{ version: string }>('/api/meta')
@@ -152,6 +188,22 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
 
   // Navigation never leaves a stale drawer over the newly selected route.
   useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+
+  // In an SPA the old navigation link remains focused after a pathname
+  // change. From the mobile drawer its focus trap even restores focus to
+  // "Open menu". Move focus to the new named main landmark *after* the drawer
+  // is dismissed, so keyboard and screen-reader users know where they landed.
+  // Preserve query-only state changes within Play/Review and browser back
+  // scroll positions; only fresh navigations start at the top.
+  useEffect(() => {
+    if (lastFocusedPathRef.current === location.pathname || drawerOpen) return;
+    lastFocusedPathRef.current = location.pathname;
+    const frame = window.requestAnimationFrame(() => {
+      if (navigationType !== 'POP') window.scrollTo(0, 0);
+      mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, drawerOpen, navigationType]);
 
   // A drawer opened on mobile must release focus when the viewport becomes
   // desktop-sized. Otherwise a CSS-hidden dialog could keep trapping Tab.
@@ -166,11 +218,14 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   }, []);
 
   // Prevent background scrolling while the mobile navigation is modal.
+  // Lock the root scrollport: locking body collapses document scroll height
+  // to the viewport in Chromium and throws scrolled users back to the top.
   useEffect(() => {
     if (!drawerOpen) return;
-    const oldOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = oldOverflow; };
+    const root = document.documentElement;
+    const oldOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => { root.style.overflow = oldOverflow; };
   }, [drawerOpen]);
 
   // The mobile drawer behaves as a modal: Escape closes, Tab stays inside,
@@ -208,9 +263,33 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   }, [drawerOpen]);
 
   async function logout() {
-    if (await endSession()) return;
-    await refresh();
-    navigate('/login');
+    if (logoutPending) return;
+    setLogoutPending(true);
+    setLogoutError(false);
+    try {
+      if (await endSession()) return;
+      await refresh();
+      navigate('/login');
+    } catch {
+      // The logout request might have failed entirely. Never claim sign-out
+      // or navigate away from the authenticated shell on a rejected request.
+      setLogoutError(true);
+    } finally {
+      setLogoutPending(false);
+    }
+  }
+
+  async function changeLanguage(value: string) {
+    if (languageSaving || !isLanguage(value)) return;
+    setLanguageError(false);
+    setLanguageSaving(true);
+    try {
+      await saveInterfaceLanguage(value);
+    } catch {
+      setLanguageError(true);
+    } finally {
+      setLanguageSaving(false);
+    }
   }
 
   const searchLabel = t('palette.open', { defaultValue: 'Open command palette' });
@@ -225,7 +304,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
       </a>
       {/* Width is stable: no collapsed/expanded rail resizing the chessboard. */}
       <aside
-        className="sticky top-0 hidden h-dvh w-20 shrink-0 flex-col border-r border-chesscom-200 bg-white dark:border-chesscom-700 dark:bg-chesscom-900 md:flex"
+        className="sticky top-0 hidden h-dvh w-[80px] shrink-0 flex-col border-r border-chesscom-200 bg-white dark:border-chesscom-700 dark:bg-chesscom-900 md:flex"
         aria-label={primaryLabel}
         data-navigation-rail
       >
@@ -237,7 +316,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
         >
           <LogoMark size={33} />
         </NavLink>
-        <nav aria-label={primaryLabel} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2" data-primary-navigation>
+        <nav aria-label={primaryLabel} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden overscroll-contain px-[2px] py-2" data-primary-navigation>
           {PRIMARY_DESTINATIONS.map((item) => (
             <NavigationItem key={item.to} item={item} label={t(item.key, { defaultValue: item.fallback })} />
           ))}
@@ -250,15 +329,15 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             </div>
           )}
         </nav>
-        <div className="shrink-0 border-t border-chesscom-200 px-2 py-2 dark:border-chesscom-700">
+        <div className="shrink-0 border-t border-chesscom-200 px-[2px] py-2 dark:border-chesscom-700">
           <NavigationItem
             item={SETTINGS_DESTINATION}
             label={profileLabel}
           />
           {version && (
             <button type="button" onClick={() => setShowChangelog(true)}
-              className="mt-1 w-full rounded-md px-1 py-1 text-center text-[10px] text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:text-white"
-              title={t('common.viewChangelog')} aria-label={`Patzer version ${version}, view changelog`}>
+              className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md px-1 py-1 text-center text-[10px] text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800 dark:hover:text-white"
+              title={versionChangelogLabel} aria-label={versionChangelogLabel}>
               v{version}
             </button>
           )}
@@ -266,19 +345,38 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col" data-workspace={isAnalysis ? 'analysis' : 'default'}>
-        <UpdateNotice />
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-chesscom-200 bg-white/95 px-3 shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:px-5" data-workspace-header>
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <NavLink to="/" className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 md:hidden" aria-label={t('app.name')}>
+        <UpdateNotice onKeyboardDismiss={() => {
+          if (searchTriggerRef.current) searchTriggerRef.current.focus({ preventScroll: true });
+          else mainRef.current?.focus({ preventScroll: true });
+        }} />
+        <header className="sticky top-0 z-30 flex h-[56px] shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-[12px] shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:h-[56px] sm:gap-[8px] sm:px-[20px] md:h-[56px] md:gap-[8px] md:px-[20px] xl:h-14 xl:gap-2 xl:px-5" data-workspace-header>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
+            <NavLink to="/" className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:h-[44px] sm:w-[44px] md:hidden" aria-label={t('app.name')}>
               <LogoMark size={27} />
             </NavLink>
-            <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>
+            {nestedSection && nestedTitle ? (
+              <nav aria-label={t('navigation.breadcrumb', { defaultValue: 'Breadcrumb' })} className="flex min-w-0 items-center gap-1 text-sm sm:text-base" data-current-section>
+                <Link
+                  to={location.pathname.startsWith('/review/') ? '/review' : '/players'}
+                  className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded px-1 font-medium text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white md:h-auto md:w-auto md:py-1"
+                  title={nestedSection}
+                >
+                  <ArrowLeft aria-hidden="true" className="h-4 w-4 md:hidden" />
+                  <span className="sr-only md:not-sr-only">{nestedSection}</span>
+                </Link>
+                <ChevronRight aria-hidden="true" className="hidden h-4 w-4 shrink-0 text-chesscom-400 md:block" />
+                <span className="min-w-0 truncate font-semibold" aria-current="page" title={nestedTitle}>{nestedTitle}</span>
+              </nav>
+            ) : (
+              <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>
+            )}
           </div>
           {onOpenPalette && (
             <button
+              ref={searchTriggerRef}
               type="button"
               onClick={onOpenPalette}
-              className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:px-3"
+              className="flex h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:h-[44px] sm:min-w-[44px] sm:px-[12px] md:h-[44px] md:min-w-[44px] md:px-0 lg:min-w-11 lg:px-3 xl:h-9 xl:min-w-9"
               aria-label={searchLabel}
               title={searchLabel}
             >
@@ -293,15 +391,15 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               onClick={onOpenShortcuts}
               aria-label={shortcutsLabel}
               title={shortcutsLabel}
-              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex"
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex sm:h-[44px] sm:w-[44px] md:h-[44px] md:w-[44px] xl:h-9 xl:w-9"
             >
               <Keyboard aria-hidden="true" className="h-[18px] w-[18px]" />
             </button>
           )}
-          <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} /></div>
+          <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} /></div>
           <NavLink
             to="/settings"
-            className="hidden h-9 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex"
+            className="hidden h-11 min-w-11 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex sm:h-[44px] sm:min-w-[44px] sm:px-[8px] md:h-[44px] md:min-w-[44px] md:px-0 xl:h-9 xl:min-w-0 xl:px-2"
             aria-label={profileLabel}
             title={profileLabel}
           >
@@ -310,10 +408,11 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
           </NavLink>
           <button
             type="button"
+            disabled={logoutPending}
             onClick={() => { void logout(); }}
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex"
-            title={logoutLabel}
-            aria-label={logoutLabel}
+            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex md:h-[44px] md:w-[44px] xl:h-9 xl:w-9"
+            title={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
+            aria-label={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
           >
             <LogOut aria-hidden="true" className="h-[18px] w-[18px]" />
           </button>
@@ -321,7 +420,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             type="button"
             ref={menuTriggerRef}
             onClick={() => setDrawerOpen(true)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 md:hidden"
+            className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 sm:h-[44px] sm:w-[44px] md:hidden"
             aria-label={openMenuLabel}
             aria-expanded={drawerOpen}
             aria-controls="patzer-mobile-drawer"
@@ -329,17 +428,47 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             <Menu aria-hidden="true" className="h-5 w-5" />
           </button>
         </header>
+        {(languageError || logoutError) && (
+          <div data-shell-feedback
+            className="fixed right-3 top-[4.25rem] z-[60] flex max-h-[calc(100dvh-5rem)] w-96 max-w-[calc(100vw-1.5rem)] flex-col gap-2 overflow-y-auto">
+            {languageError && (
+              <div role="alert" className="flex shrink-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-language-save-error>
+                <span className="min-w-0 flex-1">{t('navigation.languageSaveFailed', { defaultValue: 'Could not save your language. Check your connection and try again.' })}</span>
+                <button type="button" onClick={() => setLanguageError(false)}
+                  aria-label={t('common.close', { defaultValue: 'Close' })}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            {logoutError && (
+              <div role="alert" className="flex shrink-0 items-start gap-3 rounded-xl border border-ui-border bg-ui-surface p-3 text-sm text-ui-foreground shadow-ui-soft" data-logout-error>
+                <span className="min-w-0 flex-1">{t('navigation.logoutFailed', { defaultValue: 'Could not sign out. Check your connection and try again.' })}</span>
+                <button type="button" onClick={() => setLogoutError(false)}
+                  aria-label={t('common.close', { defaultValue: 'Close' })}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* No global max-width on the analysis route. This is Agent 03's
             predictable full-width, min-w-0 flex workspace contract. */}
-        <main id="patzer-main" tabIndex={-1} className="flex min-h-0 min-w-0 w-full flex-1 flex-col" data-shell-main>
+        <main ref={mainRef} id="patzer-main" tabIndex={-1} aria-label={nestedTitle ?? pageTitle}
+          className="flex min-h-0 min-w-0 w-full flex-1 flex-col scroll-mt-[56px] sm:scroll-mt-[56px] md:scroll-mt-[56px] xl:scroll-mt-14" data-shell-main>
           <div className={cn(
             'mx-auto flex w-full min-h-0 min-w-0 flex-1 flex-col px-3 py-4 sm:px-5 sm:py-5',
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',
           )} data-workspace-content>
             <Suspense fallback={
-              <div role="status" aria-live="polite" className="flex min-h-60 items-center justify-center text-sm text-chesscom-500 dark:text-chesscom-300">
-                Loading page…
+              <div role="status" aria-live="polite" className="flex min-h-60 flex-col items-center justify-center gap-4 text-sm text-chesscom-600 dark:text-chesscom-300" data-page-loading>
+                <LogoMark size={36} />
+                <span className="flex items-center gap-2">
+                  <span aria-hidden="true" className="h-3 w-3 animate-pulse rounded-full bg-green-500 motion-reduce:animate-none" />
+                  {t('navigation.loading', { defaultValue: 'Loading page…' })}
+                </span>
               </div>
             }>
               <Outlet />
@@ -372,7 +501,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
                 type="button"
                 data-close-menu
                 onClick={() => setDrawerOpen(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+                className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
                 aria-label={closeMenuLabel}
               >
                 <X aria-hidden="true" className="h-5 w-5" />
@@ -415,12 +544,12 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               )}
             </nav>
             <div className="mt-auto space-y-3 border-t border-chesscom-200 pt-4 dark:border-chesscom-700">
-              <LanguageSelector mobile value={uiLang} label={languageLabel} onChange={(value) => { void i18n.changeLanguage(value); }} />
+              <LanguageSelector mobile value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} />
               {version && (
                 <button type="button" onClick={() => { setDrawerOpen(false); setShowChangelog(true); }}
-                  className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
-                  title={t('common.viewChangelog')}>
-                  Patzer v{version} · {t('common.viewChangelog')}
+                  className="flex min-h-11 min-w-0 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
+                  title={t('common.viewChangelog')} aria-label={versionChangelogLabel}>
+                  <span className="min-w-0 break-words">Patzer v{version} · {t('common.viewChangelog')}</span>
                 </button>
               )}
               {onOpenShortcuts && (
@@ -434,10 +563,11 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
               )}
               <button
                 type="button"
+                disabled={logoutPending}
                 onClick={() => { setDrawerOpen(false); void logout(); }}
-                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800"
+                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-chesscom-800"
               >
-                <LogOut aria-hidden="true" className="h-5 w-5" />{logoutLabel}
+                <LogOut aria-hidden="true" className="h-5 w-5" />{logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
               </button>
             </div>
           </aside>
