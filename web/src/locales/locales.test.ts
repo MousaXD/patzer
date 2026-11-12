@@ -68,6 +68,121 @@ describe('de locale', () => {
 // the midst of an otherwise translated analysis workspace.
 describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as const)(
   '%s Game Review board guidance', (lang, locale) => {
+    it('gives all five Library filters a meaningful translated screen-reader label', () => {
+      for (const filter of ['source','time_class','result','analyzed','sort'] as const) {
+        const localized = locale.review.libraryFilterLabel[filter];
+        expect(localized.trim().length, `${lang}: ${filter}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(localized).not.toEqual(en.review.libraryFilterLabel[filter]);
+      }
+    });
+    it('translates the compact mobile filter disclosure and its active count', () => {
+      expect(locale.review.libraryMobileFilters?.trim().length,lang).toBeGreaterThan(0);
+      expect(placeholders(locale.review.libraryMobileFilterCount ?? ''),lang).toEqual(['{{count}}']);
+      if (lang !== 'en') {
+        expect(locale.review.libraryMobileFilters).not.toEqual(en.review.libraryMobileFilters);
+        expect(locale.review.libraryMobileFilterCount).not.toEqual(en.review.libraryMobileFilterCount);
+      }
+    });
+    it('localizes Library filter options, group and clear action without changing filter values', () => {
+      const options: Record<string, Record<string, string>> = locale.review.libraryFilterOptions;
+      const englishOptions: Record<string, Record<string, string>> = en.review.libraryFilterOptions;
+      const expected = {
+        source: ['', 'chesscom', 'lichess', 'played', 'pvp', 'imported'],
+        time_class: ['', 'bullet', 'blitz', 'rapid', 'daily'],
+        result: ['', 'win', 'draw', 'loss'],
+        analyzed: ['', '1', '0'],
+        sort: ['newest', 'oldest'],
+      };
+      expect(locale.review.libraryFilterGroup?.trim().length).toBeGreaterThan(0);
+      expect(locale.review.clearLibraryFilters?.trim().length).toBeGreaterThan(0);
+      for (const [filter, values] of Object.entries(expected)) {
+        for (const value of values) {
+          const key = value || 'all';
+          const actual = options[filter]?.[key];
+          expect(actual?.trim().length, `${lang}: ${filter}.${key}`).toBeGreaterThan(0);
+          // Chess.com and Lichess are names; Bullet and Blitz are also the
+          // conventional German chess terms, not untranslated UI copy.
+          if (lang !== 'en' && key !== 'chesscom' && key !== 'lichess' &&
+            !(lang === 'de' && (key === 'bullet' || key === 'blitz'))) {
+            expect(actual, `${lang}: ${filter}.${key}`).not.toEqual(englishOptions[filter]?.[key]);
+          }
+        }
+      }
+    });
+    it('provides a localizable Library count and non-English refresh announcement', () => {
+      expect(locale.review.libraryVisibleCount?.trim().length,lang).toBeGreaterThan(0);
+      expect(placeholders(locale.review.libraryVisibleCount ?? ''),lang).toEqual([
+        '{{total}}','{{visible}}',
+      ]);
+      expect(locale.review.libraryUpdating?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.libraryVisibleCount).not.toBe(en.review.libraryVisibleCount);
+        expect(locale.review.libraryUpdating).not.toBe(en.review.libraryUpdating);
+      }
+    });
+    it('provides a translated no-match explanation for filter recovery', () => {
+      expect(locale.review.noMatches?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.noMatches).not.toEqual(en.review.noMatches);
+    });
+    it('explains when changing a date boundary removes the incompatible date', () => {
+      for (const key of ['libraryStartDateCleared','libraryEndDateCleared'] as const) {
+        expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
+      }
+    });
+    it('names the Library-specific clear-search action in the selected language', () => {
+      expect(locale.review.libraryClearSearch?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.libraryClearSearch).not.toEqual(en.review.libraryClearSearch);
+      }
+    });
+    it('provides localized Load more, continuation failure and retry text', () => {
+      for (const key of ['loadMore','moreFailed','retryMore'] as const) {
+        expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+    });
+    it('localizes mobile Library analysis and bookmark failure states', () => {
+      for (const key of ['notAnalyzed','analysisReady','bookmarkFailed'] as const) {
+        expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+    });
+    it('offers a localized direct recovery link when a failed bookmarked game is hidden', () => {
+      expect(locale.review.bookmarkFailureOpenGame?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.bookmarkFailureOpenGame).not.toBe(en.review.bookmarkFailureOpenGame);
+    });
+    it('explains bounded recent-game imports in the selected language', () => {
+      for (const key of ['libraryRecentImportTitle','libraryRecentImportHelp','libraryRecentImportLimit'] as const) {
+        expect(locale.review[key]?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
+      }
+    });
+    it('provides localized feedback before a PGN file has been selected', () => {
+      expect(locale.review.pgnNoFileSelected?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.pgnNoFileSelected).not.toEqual(en.review.pgnNoFileSelected);
+    });
+    it('translates the complete provider import result without losing optional counts', () => {
+      const expected: Record<string,string[]> = {
+        providerImportSaved: ['{{imported}}','{{total}}'],
+        providerImportDuplicates: ['{{count}}'],
+        providerImportSkipped: ['{{count}}'],
+        providerImportEnriched: ['{{count}}'],
+        providerImportRecentOnly: [],
+      };
+      for (const [key, params] of Object.entries(expected)) {
+        const text = (locale.review as Record<string,unknown>)[key] as string | undefined;
+        const english = (en.review as Record<string,unknown>)[key] as string | undefined;
+        expect(text?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        expect(placeholders(text ?? ''),`${lang}: ${key}`).toEqual(params);
+        if (lang !== 'en') expect(text,`${lang}: ${key}`).not.toBe(english);
+      }
+    });
+    it('provides a translated, non-misleading response to an unverifiable provider import summary', () => {
+      const text=locale.review.importError.import_invalid_summary;
+      expect(text?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(text).not.toEqual(en.review.importError.import_invalid_summary);
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);

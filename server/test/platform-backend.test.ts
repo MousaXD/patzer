@@ -30,7 +30,7 @@ beforeAll(async () => {
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (3,'Empty')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (4,'Calendar')").run();
   db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (5,'Unknown side')").run();
-  db.prepare("INSERT INTO profiles (user_id,display_name) VALUES (6,'Importer')").run();
+  db.prepare("INSERT INTO profiles (user_id,display_name,chesscom_username,lichess_username) VALUES (6,'Importer','importer','importer')").run();
   cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(1))}`;
 
   const game = db.prepare(`INSERT INTO games (
@@ -86,6 +86,120 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect((await oldest.json() as typeof data).games[0]?.id).toBe(1);
   });
 
+  it('continues a stable history after a newer import without repeating or skipping saved games', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const request = (params:string) => gamesRoute.request(`/?${params}`, {headers:{Cookie:ownCookie}});
+    const insert = db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. e4 e5 *','Alice','Bob',?)`);
+    const ids:number[]=[];
+    try {
+      for (let i=0; i<7; i++) ids.push(Number(insert.run(`agentc-cursor-${i}`,`2026-10-${String(i+1).padStart(2,'0')}T12:00:00.000Z`).lastInsertRowid));
+      const first = await (await request('limit=3')).json() as {games:{id:number}[];next_cursor?:string;total:number};
+      expect(first.games.map(g=>g.id)).toEqual(ids.slice(4).reverse());
+      expect(first.total).toBe(7);
+      expect(first.next_cursor).toEqual(expect.any(String));
+      ids.push(Number(insert.run('agentc-cursor-late','2026-11-01T12:00:00.000Z').lastInsertRowid));
+      const offset = await (await request('limit=3&offset=3')).json() as {games:{id:number}[]};
+      expect(offset.games[0]?.id).toBe(first.games.at(-1)?.id); // reproduced legacy overlap
+      const second = await (await request(`limit=3&cursor=${encodeURIComponent(first.next_cursor!)}`)).json() as typeof first;
+      expect(second.games.map(g=>g.id)).toEqual(ids.slice(1,4).reverse());
+      expect(second.total).toBe(7); // snapshot excludes later imports
+      expect(second.next_cursor).toEqual(expect.any(String));
+      const third = await (await request(`limit=3&cursor=${encodeURIComponent(second.next_cursor!)}`)).json() as typeof first;
+      expect(third.games.map(g=>g.id)).toEqual([ids[0]]);
+      expect(third.next_cursor).toBeNull();
+      expect([...first.games,...second.games,...third.games].map(g=>g.id)).toEqual(ids.slice(0,7).reverse());
+      const fresh = await (await request('limit=1')).json() as typeof first;
+      expect(fresh.games[0]?.id).toBe(ids[7]);
+      expect(fresh.total).toBe(8);
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
+  it('keeps oldest-first and undated game boundaries stable after earlier games are removed', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const request = (params:string) => gamesRoute.request(`/?${params}`, {headers:{Cookie:ownCookie}});
+    const insert=db.prepare(`INSERT INTO games(user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. d4 d5 *','Alice','Bob',?)`);
+    const ids:number[]=[];
+    try {
+      for(let i=0;i<4;i++) ids.push(Number(insert.run(`agentc-oldest-${i}`,`2026-08-0${i+1}T00:00:00Z`).lastInsertRowid));
+      ids.push(Number(insert.run('agentc-undated-1',null).lastInsertRowid));
+      ids.push(Number(insert.run('agentc-undated-2',null).lastInsertRowid));
+      const first=await (await request('limit=2&sort=oldest')).json() as {games:{id:number}[];next_cursor?:string};
+      expect(first.games.map(g=>g.id)).toEqual(ids.slice(0,2));
+      db.prepare('DELETE FROM games WHERE id=?').run(ids[0]);
+      const next=await (await request(`limit=2&sort=oldest&cursor=${encodeURIComponent(first.next_cursor!)}`)).json() as typeof first;
+      expect(next.games.map(g=>g.id)).toEqual(ids.slice(2,4));
+      const undated=await (await request(`limit=2&sort=oldest&cursor=${encodeURIComponent(next.next_cursor!)}`)).json() as typeof first;
+      expect(undated.games.map(g=>g.id)).toEqual(ids.slice(4));
+      expect(undated.next_cursor).toBeNull();
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
+  it('binds continuation cursors to account, filters and sort, rejecting malformed or replayed tokens', async () => {
+    const first=await (await get('/?limit=2&source=chesscom')).json() as {next_cursor:string};
+    const cursor=encodeURIComponent(first.next_cursor);
+    expect(first.next_cursor).toEqual(expect.any(String));
+    const valid=await get(`/?limit=2&source=chesscom&cursor=${cursor}`);
+    expect(valid.status).toBe(200);
+    for(const path of [
+      `/?limit=2&cursor=${cursor}`,
+      `/?limit=2&source=lichess&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&sort=oldest&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&q=opponent&cursor=${cursor}`,
+      `/?limit=2&source=chesscom&offset=0&cursor=${cursor}`,
+      `/?cursor=${cursor}&cursor=${cursor}`,
+      '/?cursor=bogus',
+      `/?cursor=${'x'.repeat(401)}`,
+    ]) {
+      const response=await get(path);
+      expect(response.status,`Invalid cursor accepted: ${path.slice(0,90)}`).toBe(400);
+    }
+    const {createSession, SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const otherCookie=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(2))}`;
+    expect((await gamesRoute.request(`/?source=chesscom&cursor=${cursor}`,
+      {headers:{Cookie:otherCookie}})).status).toBe(400);
+    expect((await gamesRoute.request(`/?source=chesscom&cursor=${cursor}`)).status).toBe(401);
+  });
+
+  it('continues newest-first across equal timestamps and NULL dates without overlapping pages', async () => {
+    const {createSession, SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const ownCookie=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games(user_id,source,external_id,pgn,white,black,end_time)
+      VALUES(3,'imported',?,'1. e4 e5 *','A','B',?)`);
+    const ids:number[]=[];
+    try {
+      for(let i=0;i<3;i++) ids.push(Number(insert.run(`agentc-tie-${i}`,'2026-10-01T00:00:00Z').lastInsertRowid));
+      for(let i=0;i<3;i++) ids.push(Number(insert.run(`agentc-null-${i}`,null).lastInsertRowid));
+      const result:number[]=[];
+      let cursor:string|null=null;
+      for(let n=0;n<4;n++) {
+        const response=await gamesRoute.request(`/?limit=2${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`,
+          {headers:{Cookie:ownCookie}});
+        expect(response.status).toBe(200);
+        const body=await response.json() as {games:{id:number}[];next_cursor:string|null;has_more:boolean};
+        result.push(...body.games.map(g=>g.id));
+        cursor=body.next_cursor;
+        if(!body.has_more) break;
+        expect(cursor).toEqual(expect.any(String));
+      }
+      expect(result).toEqual([...ids.slice(0,3).reverse(),...ids.slice(3).reverse()]);
+      expect(new Set(result).size).toBe(6);
+      expect(cursor).toBeNull();
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      for(const id of ids) remove.run(id);
+    }
+  });
+
   it('applies structured filters and current-version analysis coverage', async () => {
     const response = await get('/?source=chesscom&time_class=rapid&result=win&analyzed=1&limit=200');
     const data = await response.json() as { total: number; games: { analyzed: number }[] };
@@ -98,11 +212,109 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect((await literal.json() as typeof data).total).toBe(1);
   });
 
+  it('searches Unicode player names case-insensitively without treating percent or underscores as wildcards', async () => {
+    const {createSession,SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const session=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,opening_name,notes)
+      VALUES (?, 'imported', ?, '1. e4 e5 *', ?, 'Opponent', ?, ?)`);
+    const fixtures=[
+      ['JOSÉ',null,''],
+      ['БОРИС',null,''],
+      ['Cafe\u0301',null,''],
+      ['JOSE','ÉCHEC','ПОБЕДА / 100%'],
+      ['Under_score',null,''],
+    ] as const;
+    const ids:number[]=[];
+    try {
+      fixtures.forEach(([white,opening,notes],i)=>ids.push(Number(
+        insert.run(3,`agentc-unicode-search-${i}`,white,opening,notes).lastInsertRowid)));
+      ids.push(Number(insert.run(2,'agentc-unicode-other','ÉCLAIR',null,'').lastInsertRowid));
+      const cases:[string,number[]][]=[
+        ['josé',[ids[0]]],
+        ['борис',[ids[1]]],
+        ['café',[ids[2]]],
+        ['JOSE',[ids[3]]],
+        ['échec',[ids[3]]],
+        ['победа',[ids[3]]],
+        ['100%',[ids[3]]],
+        ['%', [ids[3]]],
+        ['under_score',[ids[4]]],
+        ['_', [ids[4]]],
+        ['éclair',[]],
+      ];
+      for(const [term,expected] of cases) {
+        const response=await gamesRoute.request(`/?q=${encodeURIComponent(term)}&source=imported`,
+          {headers:{Cookie:session}});
+        expect(response.status).toBe(200);
+        const result=await response.json() as {total:number;games:{id:number}[]};
+        expect(result.games.map(g=>g.id),`Incorrect Unicode/literal search for ${term}`).toEqual(expected);
+        expect(result.total).toBe(expected.length);
+      }
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      ids.forEach(id=>remove.run(id));
+    }
+  });
+
+  it('paginates Unicode search results consistently when a new matching game arrives mid-browse', async () => {
+    const {createSession,SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const cookieForUser=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. e4 e5 *',?,'Other',?)`);
+    const ids:number[]=[];
+    const request=async (cursor:string|null) => {
+      const params=new URLSearchParams({q:'блиц',source:'imported',limit:'17'});
+      if(cursor) params.set('cursor',cursor);
+      const response=await gamesRoute.request(`/?${params.toString()}`,{headers:{Cookie:cookieForUser}});
+      expect(response.status).toBe(200);
+      return response.json() as Promise<{games:{id:number}[];total:number;has_more:boolean;next_cursor:string|null}>;
+    };
+    try {
+      for(let i=0;i<93;i++) ids.push(Number(insert.run(`agentc-unicode-paging-${i}`,
+        `БЛИЦ ${i}`,new Date(Date.UTC(2026,5,1)+i*60_000).toISOString()).lastInsertRowid));
+      const first=await request(null);
+      expect(first.total).toBe(93);
+      expect(first.games).toHaveLength(17);
+      expect(first.next_cursor).toEqual(expect.any(String));
+      ids.push(Number(insert.run('agentc-unicode-paging-new','БЛИЦ NEW','2027-01-01T00:00:00Z').lastInsertRowid));
+      const seen=first.games.map(g=>g.id);
+      let cursor=first.next_cursor;
+      let hasMore=first.has_more;
+      while(hasMore) {
+        const page=await request(cursor);
+        expect(page.total).toBe(93);
+        seen.push(...page.games.map(g=>g.id));
+        hasMore=page.has_more;
+        cursor=page.next_cursor;
+      }
+      expect(cursor).toBeNull();
+      expect(seen).toEqual(ids.slice(0,93).reverse());
+      expect(new Set(seen).size).toBe(93);
+      const fresh=await request(null);
+      expect(fresh.total).toBe(94);
+      expect(fresh.games[0]?.id).toBe(ids[93]);
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      ids.forEach(id=>remove.run(id));
+    }
+  });
+
   it('rejects negative, non-finite, ambiguous and unbounded query parameters', async () => {
     for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',
       'source=other', 'limit=Infinity', 'limit=1&limit=2',
-      'sort=newest&sort=oldest', 'bookmarked=1&bookmarked=0']) {
+      'sort=newest&sort=oldest', 'bookmarked=1&bookmarked=0',
+      'from_date=2026-02-30', 'to_date=2026-13-01', 'from_date=2026-1-01',
+      'from_date=2026-01-02&to_date=2026-01-01',
+      'to_date=2026-01-01&to_date=2026-01-02',
+      'from_date=2026-01-01&from_date=2026-01-03',
+      'from_date=9999-12-31', 'to_date=garbage',
+      'opening=', 'opening=%20%20', `opening=${'A'.repeat(201)}`,
+      'opening=Italian&opening=French',
+      'opponent=Nepo', 'source=played&opponent=Nepo',
+      'source=chesscom&opponent=', 'source=lichess&opponent=%20',
+      `source=chesscom&opponent=${'a'.repeat(41)}`,
+      'source=chesscom&opponent=Nepo&opponent=Hikaru']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
@@ -122,6 +334,119 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect(parseGameId('0')).toBeNull();
     expect(parseGameId('99999999999999999')).toBeNull();
     expect(parseGameListQuery(new URLSearchParams('limit=NaN'))).toBeNull();
+  });
+
+  it('filters by inclusive UTC calendar dates without leaking other users or dropping end-of-day games', async () => {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    const ownCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const add = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, end_time, user_color)
+      VALUES (3, 'imported', ?, '1. e4 e5 *', 'empty', 'opponent', 'win', ?, 'white')`);
+    const ids: number[] = [];
+    const dates = [
+      '2025-12-31T23:59:59.999Z',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T23:59:59.999Z',
+      '2026-01-02T00:00:00.000Z',
+      null,
+    ];
+    try {
+      for (const [i, ended] of dates.entries()) {
+        ids.push(Number(add.run(`date-range-fixture-${i}`, ended).lastInsertRowid));
+      }
+      const search = (params: string) => gamesRoute.request(`/?${params}`, { headers: { Cookie: ownCookie } });
+      const selected = await search('from_date=2026-01-01&to_date=2026-01-01&sort=oldest');
+      expect(selected.status).toBe(200);
+      const selectedData = await selected.json() as { total: number; games: {id:number}[] };
+      expect(selectedData.total).toBe(2);
+      expect(selectedData.games.map(game => game.id)).toEqual(ids.slice(1,3));
+      expect((await (await search('from_date=2026-01-02')).json() as {total:number}).total).toBe(1);
+      expect((await (await search('to_date=2025-12-31')).json() as {total:number}).total).toBe(1);
+      expect((await (await search('from_date=2026-01-03')).json() as {total:number}).total).toBe(0);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ? AND user_id = 3');
+      for (const id of ids) remove.run(id);
+    }
+  });
+
+  it('discovers only saved named openings and navigates to their exact matching games', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const asUser = (id: number) => `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(id))}`;
+    const insert = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, opening_name)
+      VALUES (?, 'imported', ?, '1. e4 e5 *', 'Fixture', 'Opponent', 'win', ?)`);
+    const ids: number[] = [];
+    try {
+      for (const [i,name] of [
+        'Italian Game', 'Italian Game', 'French Defense', null, '  ', 'Queen\'s Gambit',
+      ].entries()) ids.push(Number(insert.run(3, `agentc-explorer-${i}`, name).lastInsertRowid));
+      // Another user's game cannot affect opening counts or search results.
+      ids.push(Number(insert.run(2, 'agentc-explorer-foreign', 'Italian Game').lastInsertRowid));
+      const response = await gamesRoute.request('/openings', {headers:{Cookie: asUser(3)}});
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        total: 6, classified: 4, unclassified: 2,
+        openings: [
+          {name:'Italian Game', games:2},
+          {name:'French Defense', games:1},
+          {name:"Queen's Gambit", games:1},
+        ],
+      });
+      const matching = await gamesRoute.request('/?opening=Italian%20Game&limit=40',
+        {headers:{Cookie:asUser(3)}});
+      expect(matching.status).toBe(200);
+      const data = await matching.json() as {total:number;games:{opening_name:string;id:number}[]};
+      expect(data.total).toBe(2);
+      expect(data.games.map(row => row.opening_name)).toEqual(['Italian Game','Italian Game']);
+      expect(data.games.every(row => ids.slice(0,2).includes(row.id))).toBe(true);
+      const similar = await gamesRoute.request('/?opening=Italian', {headers:{Cookie:asUser(3)}});
+      expect((await similar.json() as {total:number}).total).toBe(0);
+      expect((await gamesRoute.request('/openings')).status).toBe(401);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ?');
+      for (const id of ids) remove.run(id);
+    }
+  });
+
+  it('groups verifiable online opponents by provider and normalized username without mixing account identities', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownerCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const add = db.prepare(`INSERT INTO games (user_id, source, external_id, pgn, white, black, user_color, result)
+      VALUES (?, ?, ?, '1. e4 e5 *', ?, ?, ?, 'win')`);
+    const fixtures: Array<[number,string,string,string,string,string|null]> = [
+      [3,'chesscom','agentc-rival-1','Owner','Nepo','white'],
+      [3,'chesscom','agentc-rival-2','nepo ','Owner','black'],
+      [3,'lichess','agentc-rival-3','Owner','Nepo','white'],
+      [3,'chesscom','agentc-rival-4','Owner','Magnus','white'],
+      [3,'chesscom','agentc-rival-5','Owner','Nepo',null],
+      [3,'lichess','agentc-rival-6','','Owner','black'],
+      [3,'pvp','agentc-rival-7','Owner','Nepo','white'],
+      [2,'chesscom','agentc-rival-8','Owner','Nepo','white'],
+    ];
+    const ids: number[] = [];
+    try {
+      for (const row of fixtures) ids.push(Number(add.run(...row).lastInsertRowid));
+      const response = await gamesRoute.request('/opponents', {headers:{Cookie: ownerCookie}});
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        total:6, identified:4, unidentified:2,
+        opponents:[
+          {source:'chesscom', name:'Nepo', games:2},
+          {source:'chesscom', name:'Magnus', games:1},
+          {source:'lichess', name:'Nepo', games:1},
+        ],
+      });
+      const fromChesscom = await gamesRoute.request('/?source=chesscom&opponent=NEPO', {headers:{Cookie:ownerCookie}});
+      expect(fromChesscom.status).toBe(200);
+      expect((await fromChesscom.json() as {total:number;games:{id:number}[]}).games.map(g => g.id).sort())
+        .toEqual(ids.slice(0,2).sort());
+      const fromLichess = await gamesRoute.request('/?source=lichess&opponent=Nepo', {headers:{Cookie:ownerCookie}});
+      expect((await fromLichess.json() as {total:number}).total).toBe(1);
+      expect((await gamesRoute.request('/opponents')).status).toBe(401);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ?');
+      for (const id of ids) remove.run(id);
+    }
   });
 
   it('never reveals or edits games from another user', async () => {
@@ -147,6 +472,9 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect(await emptyGames.json()).toMatchObject({
       total: 0, games: [], limit: 50, offset: 0, has_more: false,
     });
+    const opponents = await gamesRoute.request('/opponents', { headers: {Cookie: emptyCookie} });
+    expect(opponents.status).toBe(200);
+    expect(await opponents.json()).toEqual({total: 0, identified: 0, unidentified: 0, opponents: []});
     const emptyInsights = await insightsRoute.request('/', { headers: { Cookie: emptyCookie } });
     expect(emptyInsights.status).toBe(200);
     expect(await emptyInsights.json()).toMatchObject({
@@ -166,6 +494,109 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect(data).toMatchObject({ games_total: 1200, games_eligible: 1200, games_analyzed: 300 });
     expect(data.time_class_stats.rapid).toMatchObject({ games: 600, analyzed_games: 300, avg_accuracy: 80 });
     expect(data.time_class_stats.blitz).toMatchObject({ games: 600, analyzed_games: 0, avg_accuracy: null });
+  });
+});
+
+describe('authenticated PGN archive upload', () => {
+  const one = '[Event "First"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0';
+  const two = '[Event "Second"]\n[White "Carl"]\n[Black "Dani"]\n[Result "0-1"]\n\n1. d4 d5 0-1';
+  const broken = '[Event "Broken"]\n\n1. e4 e9 *';
+
+  async function requestUpload(userId: number, pgn: string) {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    return gamesRoute.request('/import/pgn', {method:'POST', headers:{
+      Cookie:`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(userId))}`,
+      'Content-Type':'application/json',
+    }, body:JSON.stringify({pgn})});
+  }
+  function cleanup() {
+    db.prepare("DELETE FROM games WHERE source = 'imported' AND external_id LIKE 'sha256:%'").run();
+  }
+
+  it('imports two saved games without inferred outcomes and isolates them to the authenticated owner', async () => {
+    cleanup();
+    try {
+      const imported = await requestUpload(3, `${one}\n\n${two}`);
+      expect(imported.status).toBe(200);
+      expect(await imported.json()).toEqual({total:2, imported:2, duplicates:0});
+      const saved = db.prepare("SELECT user_id,white,black,pgn,result,user_color,end_time FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all();
+      expect(saved).toEqual([
+        {user_id:3, white:'Alice', black:'Bob', pgn:one, result:null,user_color:null,end_time:null},
+        {user_id:3, white:'Carl', black:'Dani', pgn:two, result:null,user_color:null,end_time:null},
+      ]);
+      expect(await (await requestUpload(3,`${one}\n\n${two}`)).json())
+        .toEqual({total:2,imported:0,duplicates:2});
+      expect((await (await gamesRoute.request('/?source=imported', {headers:{Cookie:cookie}})).json() as {total:number}).total).toBe(0);
+      expect(await (await requestUpload(2, one)).json()).toEqual({total:1,imported:1,duplicates:0});
+      expect((await (await gamesRoute.request('/?source=imported', {headers:{Cookie:cookie}})).json() as {total:number}).total).toBe(0);
+    } finally { cleanup(); }
+  });
+
+  it('imports annotated PGNs without treating quoted Event tags in comments as extra games', async () => {
+    cleanup();
+    const annotated = '[Event "Annotated"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 {Notes include this literal line:\n[Event "Not another game"]\nStill the same game.} e5 1-0';
+    try {
+      const result = await requestUpload(3,`${annotated}\n\n${two}`);
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT pgn FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([{pgn:annotated},{pgn:two}]);
+    } finally {cleanup();}
+  });
+
+  it('imports an authenticated standard PGN archive with reordered or missing Event headers', async () => {
+    cleanup();
+    const reordered = '[Site "Online"]\n[Event "Rated Rapid"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0';
+    const withoutEvent = '[White "Carl"]\n[Black "Dani"]\n\n1. d4 d5 0-1';
+    try {
+      const uploaded=await requestUpload(3,`${reordered}\n\n${withoutEvent}`);
+      expect(uploaded.status).toBe(200);
+      expect(await uploaded.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT white,black,pgn,result,user_color FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([
+          {white:'Alice',black:'Bob',pgn:reordered,result:null,user_color:null},
+          {white:'Carl',black:'Dani',pgn:withoutEvent,result:null,user_color:null},
+        ]);
+      expect(await (await requestUpload(3,`${reordered}\n\n${withoutEvent}`)).json())
+        .toEqual({total:2,imported:0,duplicates:2});
+    } finally {cleanup();}
+  });
+
+  it('accepts explicit standard setups and annotations without bypassing custom-position restrictions', async () => {
+    cleanup();
+    const standard='[Event "Standard"]\n[SetUp "0"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const annotated='[Event "Note"]\n[White "Carl"]\n[Black "Dani"]\n\n1. d4 {Not a real header:\n[FEN "8/8/8/8/8/8/8/8 w - - 0 1"]\n} d5 *';
+    const fromPosition='[Event "Unsafe"]\n[SetUp "1"]\n\n1. e4 e5 *';
+    try {
+      const accepted=await requestUpload(3,`${standard}\n\n${annotated}`);
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT pgn FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([{pgn:standard},{pgn:annotated}]);
+      const rejected=await requestUpload(3,fromPosition);
+      expect(rejected.status).toBe(422);
+      expect(await rejected.json()).toEqual({error:'unsupported_pgn_position',game_index:1});
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:2});
+    } finally {cleanup();}
+  });
+
+  it('refuses malformed second games, unsafe positions and oversized uploads with no partial commits', async () => {
+    cleanup();
+    try {
+      const brokenResponse = await requestUpload(3,`${one}\n\n${broken}`);
+      expect(brokenResponse.status).toBe(422);
+      expect(await brokenResponse.json()).toEqual({error:'invalid_pgn',game_index:2});
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:0});
+      const oversized = await requestUpload(3, 'e'.repeat(4*1024*1024+1));
+      expect(oversized.status).toBe(413);
+      expect((await oversized.json() as {error:string}).error).toMatch(/pgn_too_large|invalid_input/);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:0});
+      const anonymous = await gamesRoute.request('/import/pgn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pgn:one})});
+      expect(anonymous.status).toBe(401);
+    } finally { cleanup(); }
   });
 });
 
@@ -264,13 +695,70 @@ describe('manual Chess.com import resilience', () => {
       return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }));
   }
-  async function postImport() {
+  async function postImport(username = 'importer') {
     const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
     return gamesRoute.request('/import/chesscom', {
       method: 'POST', headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'importer', limit: 20 }),
+      body: JSON.stringify({ username, limit: 20 }),
     });
   }
+
+  it.each([
+    [404, 404, 'player_not_found'],
+    [429, 429, 'chesscom_rate_limited'],
+    [503, 502, 'chesscom_unavailable'],
+  ])('distinguishes a Chess.com profile HTTP %i from genuine missing players', async (upstream, responseStatus, code) => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ error: 'provider_error' }), { status: upstream }));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(responseStatus);
+      expect(await response.json()).toEqual({ error: code });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('does not mistake network failure or a malformed profile reply for an absent player', async () => {
+    for (const provider of [
+      async () => { throw new TypeError('fetch failed'); },
+      async () => new Response(JSON.stringify({ unrelated: 'value' }), { status: 200 }),
+      async () => new Response(JSON.stringify({ username: 'different_account' }), { status: 200 }),
+      async () => new Response('not valid json', { status: 200 }),
+    ]) {
+      vi.stubGlobal('fetch', vi.fn(provider));
+      try {
+        const response = await postImport();
+        expect(response.status).toBe(502);
+        expect(await response.json()).toEqual({ error: 'chesscom_unavailable' });
+      } finally { vi.unstubAllGlobals(); }
+    }
+  });
+
+  it.each(['archive_list', 'monthly_games'])('fails a malformed %s response without claiming a successful import', async (failure) => {
+    const fetchSpy = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === 'https://api.chess.com/pub/player/importer') {
+        return new Response(JSON.stringify({username:'importer'}), {status:200});
+      }
+      if (url === 'https://api.chess.com/pub/player/importer/games/archives') {
+        return new Response(JSON.stringify({archives: failure === 'archive_list'
+          ? [monthUrl, 'https://untrusted.example/pub/player/importer/games/2026/02'] : [monthUrl]}), {status:200});
+      }
+      if (url === monthUrl && failure === 'monthly_games') {
+        return new Response(JSON.stringify({unexpected:'truncated'}), {status:200});
+      }
+      throw new Error(`unexpected_mock_request:${url}`);
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const before = db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'chesscom'").get() as {n:number};
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({error:'chesscom_unavailable'});
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'chesscom'").get()).toEqual(before);
+      expect(fetchSpy).toHaveBeenCalledTimes(failure === 'archive_list' ? 2 : 3);
+    } finally { vi.unstubAllGlobals(); }
+  });
 
   it('preserves unknown results without recording false losses and skips malformed or cross-user games', async () => {
     mockFetch([
@@ -283,12 +771,78 @@ describe('manual Chess.com import resilience', () => {
     try {
       const response = await postImport();
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ imported: 2, total: 5 });
+      expect(await response.json()).toMatchObject({ imported: 2, total: 5, skipped: 3, duplicates: 0 });
       expect(db.prepare('SELECT external_id, result FROM games WHERE user_id = 6 ORDER BY external_id').all()).toEqual([
         { external_id: 'https://www.chess.com/game/live/99001', result: 'win' },
         { external_id: 'https://www.chess.com/game/live/99002', result: null },
       ]);
+      const repeat = await postImport();
+      expect(repeat.status).toBe(200);
+      expect(await repeat.json()).toMatchObject({ imported: 0, total: 5, skipped: 3, duplicates: 2 });
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6').get()).toEqual({ n: 2 });
     } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('makes a recent Chess.com game searchable by its actual opening before analysis', async () => {
+    const sampleId = 99521;
+    const expectedUrl = sample(sampleId).url;
+    mockFetch([sample(sampleId)]);
+    try {
+      expect((await (await postImport()).json())).toMatchObject({imported:1, total:1});
+      const row = db.prepare("SELECT eco, opening_name, pgn FROM games WHERE user_id = 6 AND source = 'chesscom' AND external_id = ?")
+        .get(expectedUrl) as {eco: string|null; opening_name: string|null; pgn: string};
+      expect(row).toMatchObject({eco:'C20', opening_name:"King's Pawn Game", pgn:sample(sampleId).pgn});
+      const {createSession,SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+      const found = await gamesRoute.request(`/?q=${encodeURIComponent("King's Pawn")}&source=chesscom`, {
+        headers:{Cookie:`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`},
+      });
+      expect(found.status).toBe(200);
+      expect((await found.json() as {games:{external_id:string}[]}).games.map(g => g.external_id)).toContain(expectedUrl);
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'chesscom' AND external_id = ?").run(expectedUrl);
+    }
+  });
+
+  it('enriches identical pre-existing Chess.com PGNs without changing any source or user data', async () => {
+    const game = sample(99522);
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, eco, opening_name, bookmarked, notes, source_revision)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', NULL, NULL, 1, 'Keep this note', 7)`)
+      .run(game.url, game.pgn).lastInsertRowid);
+    mockFetch([game]);
+    try {
+      expect(await (await postImport()).json()).toMatchObject({imported:0,duplicates:1,enriched:1});
+      expect(db.prepare(`SELECT pgn, eco, opening_name, bookmarked, notes, source_revision, result, user_color
+        FROM games WHERE id = ?`).get(id)).toMatchObject({
+          pgn: game.pgn, eco: 'C20', opening_name: "King's Pawn Game",
+          bookmarked: 1, notes: 'Keep this note', source_revision: 7, result: 'win', user_color: 'white',
+        });
+      expect(await (await postImport()).json()).toMatchObject({imported:0,duplicates:1,enriched:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
+  });
+
+  it('does not enrich mismatched PGNs or override a conflicting stored Chess.com ECO', async () => {
+    const game = sample(99523);
+    const wrongPgn = '[White "importer"]\n[Black "opponent"]\n\n1. d4 d5 *';
+    const insert = db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, eco, opening_name)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', ?, NULL)`);
+    const id1 = Number(insert.run(game.url, wrongPgn, null).lastInsertRowid);
+    const other = sample(99524);
+    const id2 = Number(insert.run(other.url, other.pgn, 'A00').lastInsertRowid);
+    mockFetch([game, other]);
+    try {
+      expect(await (await postImport()).json()).toMatchObject({imported:0, duplicates:2, enriched:0});
+      expect(db.prepare('SELECT pgn,eco,opening_name FROM games WHERE id = ?').get(id1)).toEqual({pgn:wrongPgn, eco:null, opening_name:null});
+      expect(db.prepare('SELECT pgn,eco,opening_name FROM games WHERE id = ?').get(id2)).toEqual({pgn:other.pgn, eco:'A00', opening_name:null});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id IN (?, ?)').run(id1,id2);
+    }
   });
 
   it('bounds concurrent manual imports per user and releases the slot after completion', async () => {
@@ -307,6 +861,228 @@ describe('manual Chess.com import resilience', () => {
       expect((await first).status).toBe(200);
       expect((await postImport()).status).toBe(200);
     } finally { release(); vi.unstubAllGlobals(); }
+  });
+
+  it('refuses cross-account overrides without calling external providers', async () => {
+    const fetchSpy = vi.fn(async () => { throw new Error('must-not-fetch'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const mismatch = await postImport('somebody_else');
+      expect(mismatch.status).toBe(403);
+      expect(await mismatch.json()).toEqual({ error: 'linked_account_mismatch' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('aborts stale in-flight downloads after the account link changes', async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    mockFetch([sample(99898)], async () => { started(); await held; });
+    try {
+      const pending = postImport();
+      await entered;
+      db.prepare("UPDATE profiles SET chesscom_username = 'different_account' WHERE user_id = 6").run();
+      release();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'linked_account_changed' });
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?')
+        .get(sample(99898).url)).toEqual({ n: 0 });
+    } finally {
+      release(); vi.unstubAllGlobals();
+      db.prepare("UPDATE profiles SET chesscom_username = 'importer' WHERE user_id = 6").run();
+    }
+  });
+
+  it('rolls back the whole Chess.com batch on a database insertion failure', async () => {
+    const badId = 99897;
+    mockFetch([sample(99896), sample(badId)]);
+    db.exec(`CREATE TRIGGER agentc_chesscom_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${sample(badId).url}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(500);
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id IN (?, ?)')
+        .get(sample(99896).url, sample(badId).url)).toEqual({ n: 0 });
+    } finally { db.exec('DROP TRIGGER agentc_chesscom_failure'); vi.unstubAllGlobals(); }
+  });
+
+  it('rolls back duplicate opening enrichment if another game in the batch fails', async () => {
+    const first = sample(99895);
+    const second = sample(99894);
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, source_revision)
+      VALUES (6, 'chesscom', ?, ?, 'importer', 'opponent', 'win', 'white', 11)`)
+      .run(first.url, first.pgn).lastInsertRowid);
+    db.exec(`CREATE TRIGGER agentc_chesscom_metadata_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${second.url}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    mockFetch([first, second]);
+    try {
+      expect((await postImport()).status).toBe(500);
+      expect(db.prepare('SELECT eco,opening_name,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({eco:null,opening_name:null,source_revision:11});
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?').get(second.url))
+        .toEqual({n:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.exec('DROP TRIGGER agentc_chesscom_metadata_failure');
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
+  });
+});
+
+describe('manual Lichess import integrity', () => {
+  const savedId = 'agentc_lc_test';
+  const lichessGame = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id, rated: true, variant: 'standard', speed: 'blitz', createdAt: 1760000000000,
+    lastMoveAt: 1760000050000, status: 'mate', winner: 'white',
+    players: {
+      white: { user: { name: 'importer', id: 'importer' }, rating: 1300 },
+      black: { user: { name: 'opponent', id: 'opponent' }, rating: 1270 },
+    },
+    clock: { initial: 300, increment: 0 },
+    pgn: '[Event "Lichess game"]\n[White "importer"]\n[Black "opponent"]\n\n1. e4 e5 1-0',
+    ...overrides,
+  });
+  async function importLichess(username = 'importer') {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    return gamesRoute.request('/import/lichess', {
+      method: 'POST',
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, limit: 20 }),
+    });
+  }
+  it('only inserts valid owned games and counts repeated imports as duplicates', async () => {
+    const rows = [
+      lichessGame(savedId),
+      lichessGame('foreign_1234', { players: { white: { user: { id: 'foreign', name: 'foreign' } }, black: { user: { id: 'not_importer', name: 'not_importer' } } } }),
+      lichessGame('corrupt_1234', { pgn: '1. e4 e5 2. nope' }),
+      lichessGame('ambiguous_12', { status: 'resign', winner: undefined }),
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rows.map(row => JSON.stringify(row)).join('\n'), {status: 200})));
+    try {
+      expect((await (await importLichess()).json())).toMatchObject({ imported: 1, total: 4, skipped: 3, duplicates: 0 });
+      expect((await (await importLichess()).json())).toMatchObject({ imported: 0, total: 4, skipped: 3, duplicates: 1 });
+      expect(db.prepare("SELECT external_id, user_color, result, rated FROM games WHERE user_id = 6 AND source = 'lichess'").all())
+        .toEqual([{ external_id: savedId, user_color: 'white', result: 'win', rated: 0 }]);
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess'").run();
+    }
+  });
+  it('preserves a Lichess PGN while making its opening searchable without analysis', async () => {
+    const game = lichessGame('agentc_lc_opening_1');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(game),{status:200})));
+    try {
+      expect((await (await importLichess()).json())).toMatchObject({imported:1,total:1});
+      const saved = db.prepare("SELECT eco, opening_name, pgn FROM games WHERE user_id = 6 AND source = 'lichess' AND external_id = ?")
+        .get(game.id) as {eco:string|null;opening_name:string|null;pgn:string};
+      expect(saved).toMatchObject({eco:'C20', opening_name:"King's Pawn Game", pgn:game.pgn.trim()});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess' AND external_id = ?").run(game.id);
+    }
+  });
+
+  it('enriches a duplicate Lichess game only when its original PGN matches', async () => {
+    const original = lichessGame('agentc_lc_duplicate_opening');
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, bookmarked, notes, source_revision)
+      VALUES (6, 'lichess', ?, ?, 'importer', 'opponent', 'win', 'white', 1, 'Keep note', 4)`)
+      .run(original.id, original.pgn).lastInsertRowid);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(original), {status:200})));
+    try {
+      expect(await (await importLichess()).json()).toMatchObject({imported:0,duplicates:1,enriched:1});
+      expect(db.prepare('SELECT pgn,eco,opening_name,bookmarked,notes,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({pgn:original.pgn,eco:'C20',opening_name:"King's Pawn Game",bookmarked:1,notes:'Keep note',source_revision:4});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
+  });
+  it('rejects truncated export responses before committing any game', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`${JSON.stringify(lichessGame('partial_12'))}\n{"id":"truncated`, {status: 200})));
+    try {
+      const response = await importLichess();
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: 'lichess_unavailable' });
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('refuses cross-account overrides and does not call Lichess', async () => {
+    const fetchSpy = vi.fn(async () => { throw new Error('must-not-fetch'); });
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const response = await importLichess('foreign');
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'linked_account_mismatch' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('aborts an in-flight Lichess download when the linked account changes', async () => {
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async () => { started(); await held;
+      return new Response(JSON.stringify(lichessGame('account_switched_123')), { status: 200 });
+    }));
+    try {
+      const pending = importLichess();
+      await entered;
+      db.prepare("UPDATE profiles SET lichess_username = 'new_lichess' WHERE user_id = 6").run();
+      release();
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'linked_account_changed' });
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally {
+      release(); vi.unstubAllGlobals();
+      db.prepare("UPDATE profiles SET lichess_username = 'importer' WHERE user_id = 6").run();
+    }
+  });
+
+  it('rolls back all new Lichess games when an insertion fails', async () => {
+    const rows = [lichessGame('agentc_good_123'), lichessGame('agentc_bad_123')];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rows.map(row => JSON.stringify(row)).join('\n'), { status: 200 })));
+    db.exec(`CREATE TRIGGER agentc_lichess_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = 'agentc_bad_123'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    try {
+      const response = await importLichess();
+      expect(response.status).toBe(500);
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally { db.exec('DROP TRIGGER agentc_lichess_failure'); vi.unstubAllGlobals(); }
+  });
+
+  it('rolls back duplicate Lichess opening enrichment when a later insertion fails', async () => {
+    const first = lichessGame('agentc_lc_metadata_original');
+    const second = lichessGame('agentc_lc_metadata_failure');
+    const id = Number(db.prepare(`INSERT INTO games
+      (user_id, source, external_id, pgn, white, black, result, user_color, source_revision)
+      VALUES (6, 'lichess', ?, ?, 'importer', 'opponent', 'win', 'white', 12)`)
+      .run(first.id, first.pgn).lastInsertRowid);
+    db.exec(`CREATE TRIGGER agentc_lichess_metadata_failure BEFORE INSERT ON games
+      WHEN NEW.user_id = 6 AND NEW.external_id = '${second.id}'
+      BEGIN SELECT RAISE(ABORT, 'synthetic_import_failure'); END;`);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response([first,second].map(x => JSON.stringify(x)).join('\n'), {status:200})));
+    try {
+      expect((await importLichess()).status).toBe(500);
+      expect(db.prepare('SELECT eco,opening_name,source_revision FROM games WHERE id = ?').get(id))
+        .toEqual({eco:null,opening_name:null,source_revision:12});
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6 AND external_id = ?').get(second.id))
+        .toEqual({n:0});
+    } finally {
+      vi.unstubAllGlobals();
+      db.exec('DROP TRIGGER agentc_lichess_metadata_failure');
+      db.prepare('DELETE FROM games WHERE id = ?').run(id);
+    }
   });
 });
 

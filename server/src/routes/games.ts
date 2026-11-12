@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import { parseGameId, parseGameListQuery } from './platformQueries.js';
+import { decodeGameListCursor, encodeGameListCursor } from './gameListCursor.js';
 import { z } from 'zod';
 import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
+import { prepareImportedOpeningEnrichment } from '../chess/importOpening.js';
+import { importPgnArchive, MAX_PGN_ARCHIVE_BYTES, PgnImportError } from '../chess/pgnImport.js';
 import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
 import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
@@ -14,10 +17,20 @@ import { clearLiveBotGame, loadLiveBotGame, resumableSummary } from '../chess/li
 const router = new Hono();
 router.use('*', requireAuth);
 
+// SQLite's built-in LOWER() only folds ASCII. A chess username or PGN player
+// may be written as JOSÉ, БОРИС, or in decomposed Unicode. Keep the Library's
+// substring search literal (not LIKE wildcards), while matching canonical
+// Unicode equivalents and upper/lower case on the authenticated user's rows.
+const searchFold = (value: string) => value.normalize('NFC').toLowerCase();
+db.function('patzer_unicode_search_fold', {deterministic:true},
+  (value: unknown) => searchFold(String(value ?? '')));
+
 router.get('/', (c) => {
   const user = c.get('user');
   const query = parseGameListQuery(new URL(c.req.url).searchParams);
   if (!query) return c.json({ error: 'invalid_input' }, 400);
+  const anchor = query.cursor ? decodeGameListCursor(user.id,query) : null;
+  if (query.cursor && !anchor) return c.json({error:'invalid_cursor'},400);
 
   // Both queries enforce user ownership. Stale analyses are not "analyzed".
   const filters: string[] = ['g.user_id = ?'];
@@ -32,6 +45,23 @@ router.get('/', (c) => {
   if (query.source !== null) { filters.push('g.source = ?'); params.push(query.source); }
   if (query.timeClass !== null) { filters.push('g.time_class = ?'); params.push(query.timeClass); }
   if (query.result !== null) { filters.push('g.result = ?'); params.push(query.result); }
+  if (query.opening !== null) {
+    // Exact opening selection; a text query could accidentally find a player
+    // or note with the same name. Always restrict to this user's saved games.
+    filters.push('g.opening_name = ?'); params.push(query.opening);
+  }
+  if (query.opponent !== null) {
+    // A username is only evidence of an opponent in a provider-scoped game
+    // where the linked account's color is known. The paired source predicate
+    // is required by the parser to avoid Chess.com/Lichess name collisions.
+    filters.push("g.user_color IN ('white','black')");
+    filters.push(`LOWER(TRIM(CASE WHEN g.user_color = 'white' THEN g.black ELSE g.white END)) = ?`);
+    params.push(query.opponent.trim().toLowerCase());
+  }
+  // end_time is a UTC ISO-like string. Comparing against a calendar-day
+  // boundary preserves its index and includes the entire selected final day.
+  if (query.fromDate !== null) { filters.push('g.end_time >= ?'); params.push(query.fromDate); }
+  if (query.toDate !== null) { filters.push("g.end_time < date(?, '+1 day')"); params.push(query.toDate); }
   if (query.analyzed !== null) {
     // Keep the positive predicates visible to SQLite's join planner. Wrapping
     // both cases in COALESCE forces a full games-side LEFT JOIN for the count.
@@ -40,21 +70,45 @@ router.get('/', (c) => {
   }
   if (query.q) {
     // Literal substring search: percent and underscore are not wildcards.
+    // The registered deterministic SQLite function does Unicode-aware case
+    // normalization without materializing the user's entire library in JS.
     filters.push(`(
-      instr(LOWER(COALESCE(g.white, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.black, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.opening_name, '')), ?) > 0 OR
-      instr(LOWER(COALESCE(g.notes, '')), ?) > 0
+      instr(patzer_unicode_search_fold(COALESCE(g.white, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.black, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.opening_name, '')), ?) > 0 OR
+      instr(patzer_unicode_search_fold(COALESCE(g.notes, '')), ?) > 0
     )`);
-    params.push(query.q, query.q, query.q, query.q);
+    const needle = searchFold(query.q);
+    params.push(needle, needle, needle, needle);
   }
   const joined = 'FROM games g LEFT JOIN analyses a ON a.game_id = g.id';
-  const where = `WHERE ${filters.join(' AND ')}`;
+  // Freeze the upper auto-increment ID at the first request. Later imports do
+  // not alter the remaining pages of an in-progress browsing session.
+  const snapshotWhere = `WHERE ${[...filters, ...(anchor ? ['g.id <= ?'] : [])].join(' AND ')}`;
+  const snapshotParams = [...params, ...(anchor ? [anchor.maxId] : [])];
   // The common unfiltered-by-analysis count needs only the user_id index;
   // avoid an unnecessary analyses lookup for every saved game.
   const countFrom = query.analyzed === null ? 'FROM games g' : joined;
-  const total = db.prepare(`SELECT COUNT(*) AS n ${countFrom} ${where}`)
-    .get(...params) as { n: number };
+  const total = db.prepare(`SELECT COUNT(*) AS n, MAX(g.id) AS max_id ${countFrom} ${snapshotWhere}`)
+    .get(...snapshotParams) as {n:number;max_id:number|null};
+  const maxId = anchor?.maxId ?? total.max_id ?? 0;
+  const pageFilters = [...filters];
+  const pageParams: (string|number)[] = [...params];
+  if (anchor) {
+    pageFilters.push('g.id <= ?');
+    pageParams.push(anchor.maxId);
+    const idComparator = query.sort === 'newest' ? '<' : '>';
+    if (anchor.endTime === null) {
+      pageFilters.push(`(g.end_time IS NULL AND g.id ${idComparator} ?)`);
+      pageParams.push(anchor.id);
+    } else {
+      const timeComparator = query.sort === 'newest' ? '<' : '>';
+      pageFilters.push(`(g.end_time IS NULL OR g.end_time ${timeComparator} ?
+        OR (g.end_time = ? AND g.id ${idComparator} ?))`);
+      pageParams.push(anchor.endTime,anchor.endTime,anchor.id);
+    }
+  }
+  const where = `WHERE ${pageFilters.join(' AND ')}`;
   // Never interpolate raw query parameters into ORDER BY.
   const order = query.sort === 'oldest'
     ? 'g.end_time ASC NULLS LAST, g.id ASC'
@@ -73,12 +127,77 @@ router.get('/', (c) => {
     ORDER BY ${order}
     LIMIT ? OFFSET ?
   `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION,
-    ...params, query.limit, query.offset) as { id: number }[];
+    ...pageParams, query.limit + 1, anchor ? 0 : query.offset) as {id:number;end_time:string|null}[];
+  const visible = rows.slice(0, query.limit);
+  const hasMore = rows.length > query.limit;
+  const last = visible.at(-1);
   return c.json({
-    games: rows, total: total.n,
+    games: visible, total: total.n,
     limit: query.limit, offset: query.offset,
-    has_more: query.offset + rows.length < total.n,
+    has_more: hasMore,
+    next_cursor: hasMore && last ? encodeGameListCursor(user.id,query,
+      {endTime:last.end_time,id:last.id,maxId}) : null,
   });
+});
+
+// Compact, account-scoped opening discovery for the Game Library. Query only
+// stored classifications, never infer an opening or a result from a PGN here.
+// This is intentionally independent of the user's current filters: counts
+// describe the full saved library, including older unseen pages.
+router.get('/openings', (c) => {
+  const user = c.get('user');
+  const coverage = db.prepare(`
+    SELECT COUNT(*) AS total,
+      COUNT(CASE WHEN opening_name IS NOT NULL AND TRIM(opening_name) <> ''
+        AND LENGTH(opening_name) <= 200 THEN 1 END) AS classified
+    FROM games WHERE user_id = ?
+  `).get(user.id) as {total: number; classified: number};
+  const openings = db.prepare(`
+    SELECT opening_name AS name, COUNT(*) AS games
+    FROM games
+    WHERE user_id = ? AND opening_name IS NOT NULL AND TRIM(opening_name) <> ''
+      AND LENGTH(opening_name) <= 200
+    GROUP BY opening_name
+    ORDER BY games DESC, opening_name COLLATE NOCASE ASC
+    LIMIT 5
+  `).all(user.id) as {name: string; games: number}[];
+  return c.json({
+    total: coverage.total, classified: coverage.classified,
+    unclassified: coverage.total - coverage.classified, openings,
+  });
+});
+
+// Only imported online games have a reliable public-provider opponent name.
+// Keep Chess.com and Lichess identities separate even when usernames match.
+// Local PGNs and PvP games are deliberately excluded: their free-text name
+// does not prove a provider identity. No inferred results or fake profiles.
+router.get('/opponents', (c) => {
+  const user = c.get('user');
+  const coverage = db.prepare(`
+    SELECT COUNT(*) AS total,
+      SUM(CASE WHEN user_color IN ('white','black') AND
+        LENGTH(TRIM(COALESCE(CASE WHEN user_color = 'white' THEN black ELSE white END, '')))
+        BETWEEN 2 AND 40 THEN 1 ELSE 0 END) AS identified
+    FROM games
+    WHERE user_id = ? AND source IN ('chesscom','lichess')
+  `).get(user.id) as {total:number; identified:number|null};
+  const opponents = db.prepare(`
+    SELECT source, MIN(TRIM(opponent)) AS name, COUNT(*) AS games
+    FROM (
+      SELECT source,
+        CASE WHEN user_color = 'white' THEN black ELSE white END AS opponent
+      FROM games
+      WHERE user_id = ? AND source IN ('chesscom','lichess')
+        AND user_color IN ('white','black')
+    )
+    WHERE LENGTH(TRIM(COALESCE(opponent,''))) BETWEEN 2 AND 40
+    GROUP BY source, LOWER(TRIM(opponent))
+    ORDER BY games DESC, source ASC, name COLLATE NOCASE ASC
+    LIMIT 5
+  `).all(user.id) as {source:'chesscom'|'lichess'; name:string; games:number}[];
+  const identified = coverage.identified ?? 0;
+  return c.json({total:coverage.total, identified,
+    unidentified:coverage.total - identified, opponents});
 });
 
 // Games you can walk back into: the bot game you left mid-move, and any PvP
@@ -225,8 +344,10 @@ router.post('/import/chesscom', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = importSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
-  const username = parsed.data.username ?? user.profile.chesscom_username;
-  if (!username) return c.json({ error: 'no_chesscom_username' }, 400);
+  const linkedUsername = user.profile.chesscom_username?.trim();
+  if (!linkedUsername) return c.json({ error: 'no_chesscom_username' }, 400);
+  const username = parsed.data.username ?? linkedUsername;
+  if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
 
   if (chesscomImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
   chesscomImportsRunning.add(user.id);
@@ -234,6 +355,17 @@ router.post('/import/chesscom', async (c) => {
     const player = await getPlayer(username);
     if (!player) return c.json({ error: 'player_not_found' }, 404);
     return c.json(await importChessComGames(user.id, username, parsed.data.limit));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    if (message === 'chesscom_429') return c.json({ error: 'chesscom_rate_limited' }, 429);
+    if (message === 'invalid_username') return c.json({ error: 'invalid_input' }, 400);
+    if (message === 'not_found' || message.startsWith('chesscom_') ||
+        /fetch failed|network|timed out|timeout|abort|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT/i.test(message) ||
+        (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))) {
+      return c.json({ error: 'chesscom_unavailable' }, 502);
+    }
+    throw error;
   } finally {
     chesscomImportsRunning.delete(user.id);
   }
@@ -256,8 +388,10 @@ router.post('/import/lichess', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = lichessImportSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid_input' }, 400);
-  const username = parsed.data.username ?? user.profile.lichess_username;
-  if (!username) return c.json({ error: 'no_lichess_username' }, 400);
+  const linkedUsername = user.profile.lichess_username?.trim();
+  if (!linkedUsername) return c.json({ error: 'no_lichess_username' }, 400);
+  const username = parsed.data.username ?? linkedUsername;
+  if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
   if (lichessImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
 
   let games;
@@ -277,21 +411,97 @@ router.post('/import/lichess', async (c) => {
   // Same rules as the chess.com importer: never rated in Patzer's pool, and
   // the (user, source, external_id) key makes a re-import a no-op.
   const stmt = db.prepare(`
-    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated)
-    VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated, eco, opening_name)
+    VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
-  let imported = 0;
-  let skipped = 0;
+  const enrichOpening = prepareImportedOpeningEnrichment(db);
+  const rows: NonNullable<ReturnType<typeof toImportRow>>[] = [];
   for (const g of games) {
     const row = toImportRow(g, username);
-    if (!row) { skipped++; continue; }
-    const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
-      row.time_control, row.time_class, row.end_time, row.user_color);
-    if (r.changes > 0) imported++;
+    if (row) rows.push(row);
   }
+  const skipped = games.length - rows.length;
+  try {
+    const result = db.transaction(() => {
+      const linked = db.prepare('SELECT lichess_username AS username FROM profiles WHERE user_id = ?')
+        .get(user.id) as { username: string | null } | undefined;
+      if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
+      let imported = 0;
+      let duplicates = 0;
+      let enriched = 0;
+      for (const row of rows) {
+        const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
+          row.time_control, row.time_class, row.end_time, row.user_color, row.eco, row.opening_name);
+        if (r.changes > 0) imported++;
+        else {
+          duplicates++;
+          if (enrichOpening(user.id, 'lichess', row.external_id, row.pgn,
+            {eco: row.eco, openingName: row.opening_name})) enriched++;
+        }
+      }
+      return { imported, total: games.length, skipped, duplicates, enriched };
+    })();
+    return c.json(result);
+  } catch (error) {
+    if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
+    throw error;
+  }
+});
 
-  return c.json({ imported, total: games.length, skipped });
+const pgnImportSchema = z.object({pgn: z.string().min(1)}).strict();
+const MAX_PGN_JSON_BYTES = MAX_PGN_ARCHIVE_BYTES * 4 + 16_384;
+
+async function readBoundedPgnJson(request: Request): Promise<unknown> {
+  // Limit actual streamed bytes even when Content-Length is omitted or forged.
+  // JSON escaping can make a valid 4 MiB PGN larger than its decoded text.
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_PGN_JSON_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new PgnImportError('pgn_too_large');
+      }
+      parts.push(value);
+    }
+    try { return JSON.parse(Buffer.concat(parts).toString('utf8')) as unknown; }
+    catch { return null; }
+  } finally { reader.releaseLock(); }
+}
+
+// Explicit, no-provider PGN upload. Validate every game before a single
+// transaction so a broken later game cannot silently leave half a file saved.
+router.post('/import/pgn', async (c) => {
+  const user = c.get('user');
+  const declaredBytes = Number(c.req.header('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > MAX_PGN_JSON_BYTES) {
+    return c.json({error: 'pgn_too_large'}, 413);
+  }
+  let body: unknown;
+  try { body = await readBoundedPgnJson(c.req.raw); }
+  catch (e) {
+    if (e instanceof PgnImportError && e.code === 'pgn_too_large') return c.json({error: e.code}, 413);
+    return c.json({error: 'invalid_input'}, 400);
+  }
+  const parsed = pgnImportSchema.safeParse(body);
+  if (!parsed.success) return c.json({error: 'invalid_input'}, 400);
+  if (Buffer.byteLength(parsed.data.pgn, 'utf8') > MAX_PGN_ARCHIVE_BYTES) {
+    return c.json({error:'pgn_too_large'}, 413);
+  }
+  try {
+    return c.json(importPgnArchive(db, user.id, parsed.data.pgn));
+  } catch (e) {
+    if (!(e instanceof PgnImportError)) throw e;
+    const error = {error:e.code, ...(e.gameIndex ? {game_index:e.gameIndex} : {})};
+    return e.code === 'pgn_too_large' || e.code === 'pgn_too_many_games'
+      ? c.json(error, 413) : c.json(error, 422);
+  }
 });
 
 export default router;

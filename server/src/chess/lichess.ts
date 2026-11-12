@@ -5,6 +5,8 @@
 // a 429 is surfaced to the user instead of retried.
 
 import { classifyTimeControl, type TimeClass } from './timeClass.js';
+import { Chess } from 'chess.js';
+import { importOpeningMetadata } from './importOpening.js';
 
 const UA = 'patzer (+https://github.com/SikamikanikoBG/patzer)';
 const BASE = 'https://lichess.org';
@@ -50,11 +52,15 @@ export interface ImportRow {
   time_class: TimeClass | null;
   end_time: string;
   user_color: 'white' | 'black' | null;
+  eco: string | null;
+  opening_name: string | null;
 }
 
 // Statuses of games that never really happened or never finished — nothing
 // to review, and several of them come without moves.
 const UNPLAYED = new Set(['created', 'started', 'aborted', 'noStart', 'unknownFinish']);
+const DRAW_STATUSES = new Set(['draw', 'stalemate', 'outoftime']);
+const DECISIVE_STATUSES = new Set(['mate', 'resign', 'timeout', 'outoftime', 'cheat', 'variantEnd']);
 
 function playerName(p: LichessPlayer): string {
   if (typeof p.user?.name === 'string' && p.user.name) return p.user.name;
@@ -68,26 +74,34 @@ export function toImportRow(g: LichessGame, username: string): ImportRow | null 
   // Standard chess only — the classifier and coach assume it. "fromPosition"
   // is standard rules from a custom start; the PGN carries its FEN, but the
   // analyzer starts from the initial position, so it's skipped too.
-  if (g.variant !== 'standard') return null;
-  if (UNPLAYED.has(g.status) || typeof g.pgn !== 'string' || !g.pgn.trim()) return null;
+  if (!g || g.variant !== 'standard') return null;
+  if (UNPLAYED.has(g.status) || typeof g.pgn !== 'string' || !g.pgn.trim() || g.pgn.length > 1_000_000) return null;
   // A line that isn't a whole game (the export changed, or got cut off) is
   // skipped rather than failing the import.
-  if (typeof g.id !== 'string' || !g.players?.white || !g.players?.black) return null;
+  if (typeof g.id !== 'string' || !g.id || !g.players?.white || !g.players?.black) return null;
+  // A malformed or truncated upstream PGN must not be stored as a reviewable
+  // game. This matches Chess.com's importer and protects later engine replay.
+  try { new Chess().loadPgn(g.pgn, { strict: false }); } catch { return null; }
   const endedAt = Number(g.lastMoveAt || g.createdAt);
   // Beyond 8.64e15 ms a Date can't be formatted, which would throw below.
   if (!Number.isFinite(endedAt) || endedAt <= 0 || endedAt > 8.64e15) return null;
 
   const lc = username.toLowerCase();
+  const whiteId = g.players.white.user?.id;
+  const blackId = g.players.black.user?.id;
   const userColor: 'white' | 'black' | null =
-    g.players.white.user?.id === lc ? 'white' :
-    g.players.black.user?.id === lc ? 'black' : null;
+    typeof whiteId === 'string' && whiteId.toLowerCase() === lc ? 'white' :
+    typeof blackId === 'string' && blackId.toLowerCase() === lc ? 'black' : null;
+  // The export endpoint is normally account-scoped. If it ever returns a
+  // foreign game, don't invent an owner or score it for White by default.
+  if (!userColor) return null;
 
-  // No winner on a finished game means a draw (agreement, stalemate,
-  // repetition, insufficient material, timeout vs. insufficient material).
-  // Like the chess.com importer, a game the user isn't in is scored from
-  // White's side.
-  const side = userColor ?? 'white';
-  const result = !g.winner ? 'draw' : g.winner === side ? 'win' : 'loss';
+  // A missing winner is only a draw for known draw statuses. A missing winner
+  // on a resignation or an unknown status is ambiguous, not proof of a draw.
+  const result = g.winner === 'white' || g.winner === 'black'
+    ? DECISIVE_STATUSES.has(g.status) ? (g.winner === userColor ? 'win' : 'loss') : null
+    : DRAW_STATUSES.has(g.status) ? 'draw' : null;
+  if (result === null) return null;
 
   let timeControl: string;
   let timeClass: TimeClass | null;
@@ -102,6 +116,7 @@ export function toImportRow(g: LichessGame, username: string): ImportRow | null 
     timeControl = 'untimed';
     timeClass = null;
   }
+  const opening = importOpeningMetadata(g.pgn);
 
   return {
     external_id: g.id,
@@ -113,19 +128,23 @@ export function toImportRow(g: LichessGame, username: string): ImportRow | null 
     time_class: timeClass,
     end_time: new Date(endedAt).toISOString(),
     user_color: userColor,
+    eco: opening.eco,
+    opening_name: opening.openingName,
   };
 }
 
-/** Parse Lichess's NDJSON export — one JSON game per line, blank lines allowed. */
+/** Parse Lichess's NDJSON export — one JSON game per line, blank lines allowed.
+ * Reject corrupt/truncated responses rather than returning a misleading
+ * successfully-imported subset of the requested games. */
 export function parseNdjson(body: string): LichessGame[] {
   const out: LichessGame[] = [];
   for (const line of body.split('\n')) {
     const s = line.trim();
     if (!s) continue;
-    try {
-      const v: unknown = JSON.parse(s);
-      if (v && typeof v === 'object' && !Array.isArray(v)) out.push(v as LichessGame);
-    } catch { /* skip a torn line */ }
+    let v: unknown;
+    try { v = JSON.parse(s); } catch { throw new Error('invalid_export'); }
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('invalid_export');
+    out.push(v as LichessGame);
   }
   return out;
 }
