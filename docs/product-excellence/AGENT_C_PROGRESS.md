@@ -1010,3 +1010,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Test **bookmark save while switching immediately to the Starred-only Library**. Existing coverage checks pending unstar inside Starred-only, but a newly starred game might be missing from the filtered result until a late server response and subsequent refresh. Exercise rapid toggling, server success and rejection, visible card/count consistency, and keyboard interaction in synthetic Chromium before changing optimistic update or filter logic.
+
+## 2026-11-13 — Keep failed bookmark saves discoverable across Starred-only navigation
+
+- Recovered clean pushed `9947c80` and added isolated Chromium fixtures that hold a new bookmark PATCH for an unstarred game while the player switches to **Starred-only**, then resolve it as either success or HTTP 503. The pending game correctly stayed out of the starred list, and a successful save updated the result count from **56 to 57** and displayed the newly starred game. The rejected save exposed a real issue: its originating card had been unmounted by the filter, so its inline error was lost and **no error was announced**.
+- Added a Library-level fallback bookmark error keyed by the failing game id. A visible card still owns its existing inline alert, but when that card is hidden by the active filters the Library shows **exactly one** translated `role=alert`, with a 44px **Show all games** recovery action (or Clear filters in another filtered view). The warning clears on a new bookmark attempt or when the signed-in account changes, without changing the optimistic cache write, pending removal behavior, source API, or other agents' components.
+- Real Chromium verified both late success and rejection after the filter transition, count/card consistency, a single failure announcement, and return to an enabled retryable bookmark on the original card. Existing Starred-only unbookmark success/failure, keyboard, import, pagination, search and responsive suites passed.
+
+### Verification
+
+- Focused Library suite: **57/57 passed**. Full repository suite: **109 passed files, 2 skipped; 1,130 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full synthetic Chromium 1440px desktop, 390/320px light/dark, Starred-only late-success/failure, German copy, import/PGN, search, pagination and keyboard flows: passed with no browser exceptions or horizontal overflow.
+- Only Agent C's Library page, its isolated Chromium fixture and progress report changed. No real provider, production data, other-agent code, merge or deployment touched.
+
+### Next independent audit
+
+- Check **a bookmark failure in a source or search filter whose game disappears after the subsequent server refresh**, including whether the recovery warning offers a meaningful route back to the failed game and never leaks across account switches. Reproduce in Chromium with a changing server result and keyboard activation; avoid introducing a second alert when the game card is already visible.

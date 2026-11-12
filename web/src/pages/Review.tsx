@@ -97,6 +97,7 @@ export default function Review() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
+  const [bookmarkFailureId, setBookmarkFailureId] = useState<number | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
   const [dateAdjustment, setDateAdjustment] = useState<'start' | 'end' | null>(null);
@@ -112,6 +113,7 @@ export default function Review() {
     // A previously signed-in account's import result must not remain visible
     // when another account begins using this browser.
     setImportMsg(null);
+    setBookmarkFailureId(null);
     setPgnFile(null);
     if (pgnInputRef.current) pgnInputRef.current.value = '';
     return () => {
@@ -870,6 +872,18 @@ export default function Review() {
           onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}
       </div>
 
+      {bookmarkFailureId != null && !games.some(game => game.id === bookmarkFailureId) && (
+        <div role="alert" className="card flex flex-wrap items-center justify-between gap-2 border-bad/30 p-3">
+          <p className="text-sm text-bad">{t('review.bookmarkFailed', {defaultValue:'Bookmark could not be saved. Try again.'})}</p>
+          <button type="button" className="btn-secondary min-h-11 text-xs" onClick={() => {
+            if (bookmarkedOnly) toggleBookmarkedOnly(); else clearLibraryFilters();
+          }}>
+            {bookmarkedOnly ? t('review.showAll', {defaultValue:'Show all games'})
+              : t('review.clearLibraryFilters', {defaultValue:'Clear filters'})}
+          </button>
+        </div>
+      )}
+
       {selectedOpening && (
         <p className="text-xs text-chesscom-500 dark:text-chesscom-300" role="status">
           {t('review.libraryFilteredOpening', {name: selectedOpening, defaultValue: `Showing games in ${selectedOpening}`})}
@@ -908,7 +922,11 @@ export default function Review() {
 
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
-          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly} />)}
+          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
+            onBookmarkAttempt={() => setBookmarkFailureId(null)}
+            onBookmarkFailure={(gameId) => {
+              if (accountIdRef.current === user?.id) setBookmarkFailureId(gameId);
+            }} />)}
         </div>
       )}
       {!isLoading && !initialError && isFetchNextPageError && (
@@ -936,7 +954,10 @@ export default function Review() {
   );
 }
 
-function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number | undefined; starredOnly: boolean }) {
+function GameCard({ g, accountId, starredOnly, onBookmarkAttempt, onBookmarkFailure }: {
+  g: GameRow; accountId: number | undefined; starredOnly: boolean;
+  onBookmarkAttempt: () => void; onBookmarkFailure: (id: number) => void;
+}) {
   const { t, i18n } = useTranslation();
   // The same display identities must be announced by the Practice action:
   // imported PGNs can have missing or whitespace-only White/Black headers.
@@ -949,6 +970,7 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
     mutationFn: (next: boolean) => api.patch(`/api/games/${g.id}/bookmark`, { bookmarked: next }),
     onMutate: async (next: boolean) => {
       setBookmarkError(false);
+      onBookmarkAttempt();
       await qc.cancelQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) });
       // A pending removal in Starred only must not display an unstarred card
       // inside the filtered list. Keep it visible and starred until the
@@ -964,6 +986,7 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
           (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
       }
       setBookmarkError(true);
+      onBookmarkFailure(g.id);
     },
     onSettled: () => qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) }),
   });

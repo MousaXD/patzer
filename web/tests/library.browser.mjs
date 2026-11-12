@@ -108,7 +108,7 @@ async function awaitUp() {
 
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
-    changingHistory = false, starredOnlyScenario = false,
+    changingHistory = false, starredOnlyScenario = false, pendingStarResult = null,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
@@ -123,6 +123,9 @@ async function newPage(theme, width, height,
   let longPlayerBookmarked = false;
   let invalidProviderSummary = providerImportInvalidSummary;
   let continuationFailureActive=failContinuationUntilRetry;
+  let addedBookmark = false;
+  let releaseStarSave;
+  const starSaveGate = new Promise(resolve=>{releaseStarSave=resolve;});
   let releaseContinuation;
   const continuationGate=new Promise(resolve=>{releaseContinuation=resolve;});
   const removedStars = new Set();
@@ -193,7 +196,9 @@ async function newPage(theme, width, height,
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
-      } else json = noStarredGames
+      } else json = pendingStarResult
+        ? list(parsed.searchParams,games.map(g=>g.id===1 ? {...g,bookmarked:Number(addedBookmark)} : g))
+        : noStarredGames
         ? list(parsed.searchParams, games.map(g=>({...g, bookmarked:0})))
         : starredOnlyScenario
         ? list(parsed.searchParams, games.map(g=>removedStars.has(g.id) ? {...g,bookmarked:0} : g))
@@ -201,6 +206,10 @@ async function newPage(theme, width, height,
     } else if (longPlayerNames && path === '/api/games/9003/bookmark' && request.method() === 'PATCH') {
       longPlayerBookmarked = !!request.postDataJSON().bookmarked;
       json = {bookmarked:Number(longPlayerBookmarked)};
+    } else if (pendingStarResult && path === '/api/games/1/bookmark' && request.method() === 'PATCH') {
+      await starSaveGate;
+      if (pendingStarResult === 'failure') { status=503; json={error:'synthetic_bookmark_failure'}; }
+      else { addedBookmark=true; json={bookmarked:1}; }
     } else if (starredOnlyScenario && /^\/api\/games\/\d+\/bookmark$/.test(path) && request.method() === 'PATCH') {
       const id = Number(path.split('/')[3]);
       await sleep(450);
@@ -270,7 +279,7 @@ async function newPage(theme, width, height,
       await page.getByText('40 of 620 games').waitFor();
     }
   }
-  return {page,context,pageErrors,seenPgnFiles,releaseContinuation,
+  return {page,context,pageErrors,seenPgnFiles,releaseContinuation,releaseStarSave,
     allowValidProviderSummary:()=>{invalidProviderSummary=false;},
     allowContinuationRetry:()=>{continuationFailureActive=false;}};
 }
@@ -1263,6 +1272,44 @@ try {
     assert.deepEqual(pageErrors,[], 'Starred-only bookmark retry caused a JS error');
     console.log('PASS Starred-only pending bookmark removal, server success and retryable failure');
   } finally {await starred.context.close();}
+
+  for (const pendingStarResult of ['success','failure']) {
+    const transition=await newPage('light',390,844,{pendingStarResult});
+    try {
+      const {page,pageErrors,releaseStarSave}=transition;
+      const pending=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/games/1/bookmark' &&
+        req.method()==='PATCH');
+      await page.locator('a[href="/review/1"]').locator('..')
+        .getByRole('button',{name:'Bookmark game'}).click();
+      await pending;
+      await page.getByRole('button',{name:'All games',exact:true}).click();
+      await page.getByText('40 of 56 games').waitFor();
+      assert.equal(await page.locator('a[href="/review/1"]').count(),0,
+        'A not-yet-confirmed bookmark must not be represented as saved in Starred-only');
+      const completion=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/games/1/bookmark');
+      releaseStarSave();
+      await completion;
+      if (pendingStarResult === 'success') {
+        await page.getByText('40 of 57 games').waitFor();
+        await page.locator('a[href="/review/1"]').waitFor();
+        assert.equal(await page.getByRole('alert').count(),0);
+      } else {
+        await page.getByRole('alert').getByText('Bookmark could not be saved. Try again.').waitFor({timeout:5000});
+        await page.getByText('40 of 56 games').waitFor();
+        assert.equal(await page.locator('a[href="/review/1"]').count(),0);
+        assert.equal(await page.getByRole('alert').count(),1,
+          'Bookmark failure should have exactly one visible announcement');
+        await page.getByRole('button',{name:'Show all games'}).click();
+        await page.getByText('40 of 620 games').waitFor();
+        const retry=page.locator('a[href="/review/1"]').locator('..')
+          .getByRole('button',{name:'Bookmark game'});
+        assert.equal(await retry.isEnabled(),true,
+          'The failed bookmark must be available to retry from All games');
+      }
+      assert.deepEqual(pageErrors,[], 'Switching to Starred-only during a pending bookmark threw a JS exception');
+      console.log(`PASS pending bookmark ${pendingStarResult} stays consistent after switching to Starred-only`);
+    } finally {transition.releaseStarSave(); await transition.context.close();}
+  }
 
   const germanBookmarkError=await newPage('dark',390,844,{locale:'de',starredOnlyScenario:true});
   try {
