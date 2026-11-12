@@ -269,6 +269,26 @@ async function newPage(theme, width, height,
   return {page,context,pageErrors,seenPgnFiles,releaseContinuation,
     allowContinuationRetry:()=>{continuationFailureActive=false;}};
 }
+async function measureStatusContrast(node) {
+  return node.evaluate(element => {
+    const style=getComputedStyle(element);
+    const rgb=value=>(value.match(/[\d.]+/g) || []).map(Number);
+    const fg=rgb(style.color), tint=rgb(style.backgroundColor);
+    const pageColor=rgb(getComputedStyle(document.body).backgroundColor);
+    const alpha=tint[3] ?? 1;
+    const bg=[0,1,2].map(i=>tint[i]*alpha+pageColor[i]*(1-alpha));
+    const luma=values=>{
+      const linear=values.slice(0,3).map(v=>{
+        const s=v/255;
+        return s<=0.04045?s/12.92:((s+0.055)/1.055)**2.4;
+      });
+      return linear[0]*0.2126+linear[1]*0.7152+linear[2]*0.0722;
+    };
+    const ratio=(Math.max(luma(fg),luma(bg))+0.05)/(Math.min(luma(fg),luma(bg))+0.05);
+    return {ratio,foreground:style.color,background:style.backgroundColor,page:getComputedStyle(document.body).backgroundColor};
+  });
+}
+
 function metrics(page) {
   return page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -435,11 +455,31 @@ try {
       assert.ok((await success.textContent()).includes(detail),
         `German provider result omitted ${detail}`);
     }
+    const contrast=await measureStatusContrast(success);
+    assert.ok(contrast.ratio>=4.5,
+      `Small Library success text must meet 4.5:1 WCAG AA contrast: ${JSON.stringify(contrast)}`);
     await success.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'library-german-provider-import-result-light-390.png')});
     assert.deepEqual(pageErrors,[],'German provider result caused a JS exception');
-    console.log('PASS German provider result describes imported, duplicate, skipped and enriched games');
+    console.log(`PASS German provider result counts and light WCAG AA contrast ${contrast.ratio.toFixed(2)}:1`);
   } finally {await germanResult.context.close();}
+
+  const darkSuccess=await newPage('dark',390,844,{locale:'de',providerImportBreakdown:true});
+  try {
+    const {page,pageErrors}=darkSuccess;
+    await page.locator('button[aria-controls="library-import-controls"]').click();
+    await page.getByRole('region',{name:'Letzte Partien importieren'})
+      .getByRole('button',{name:/Von Chess.com importieren/}).click();
+    const success=page.getByRole('status').getByText(/100 neue Partien aus 200 abgerufenen Partien gespeichert/);
+    await success.waitFor();
+    const contrast=await measureStatusContrast(success);
+    assert.ok(contrast.ratio>=4.5,
+      `Dark Library success text must meet 4.5:1 WCAG AA contrast: ${JSON.stringify(contrast)}`);
+    await success.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-german-provider-import-result-dark-390.png')});
+    assert.deepEqual(pageErrors,[],'Dark German provider result caused a JS exception');
+    console.log(`PASS German dark success WCAG AA contrast ${contrast.ratio.toFixed(2)}:1`);
+  } finally {await darkSuccess.context.close();}
 
   const germanDesktop=await newPage('dark',1440,900,{locale:'de'});
   try {

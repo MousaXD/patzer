@@ -804,3 +804,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Measure **WCAG contrast for the Library import success status**, especially the small green text on a pale green background in light mode. The newly captured 390px screenshot suggests the status may be hard to read. Reproduce with computed styles and contrast calculations from real Chromium; if below WCAG AA 4.5:1 for small text, apply an in-scope color/token fix with light and dark browser checks, preserving success/error differentiation and the shared design system.
+
+## 2026-11-12 — Restore WCAG AA contrast to import success messages
+
+- Recovered clean pushed `5b55b23` and measured the actual CSS used by the successful Library import result in Chromium. The existing `text-board-dark` foreground (`rgb(118,150,86)`) against a 10%-green tint over a white page had a **3.03:1** contrast ratio, below WCAG AA's **4.5:1** requirement for 14px regular text. Added a failing real-browser color and alpha-compositing assertion before changing runtime code.
+- Updated only the Library success status from `text-board-dark dark:text-chesscom-100` to the theme-aware existing `text-ui-success` semantic token; preserved the green-tinted surface and border, error contrast styling, accessible `role=status`, and all import data semantics. No global CSS or shared design tokens changed.
+- Replaced the one-off color check with a reusable Chromium helper that reads computed foreground/background/body colors, composites alpha, converts to relative luminance and asserts 4.5:1. Added a second synthetic German provider-import fixture in **dark mode**. Final measured contrast: **6.24:1 light** and **9.27:1 dark**, both passing. Visually inspected `qa-artifacts/agent-c-library/library-german-provider-import-result-light-390.png` for legibility and no layout change.
+
+### Verification
+
+- Focused Library React tests: **49/49 passed**. Full repository suite: **109 passed files, 2 skipped; 1,107 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full synthetic Chromium 1440px desktop and 390/320px mobile light/dark, German import outcomes and contrast, source filters, imports, pagination and keyboard flows: passed, with no JS exceptions or horizontal overflow.
+- Only Agent C's Library status class, isolated Chromium tests and durable progress report changed. No shared styling, provider API, production data, other agents, merge or deploy touched.
+
+### Next independent audit
+
+- Inspect **PGN picker and Import PGN action's true 320px mobile touch geometry**. The linked-account German screenshot shows a native file input and an Import PGN button that may remain below 44px. Measure them in actual Chromium with a selectable synthetic PGN; preserve file selection, error recovery, native keyboard access and the first-use CTA while applying only Library-local sizing corrections if required.

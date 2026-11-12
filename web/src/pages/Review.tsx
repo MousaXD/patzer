@@ -519,7 +519,7 @@ export default function Review() {
       {importMsg && (
         <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
           ? 'border-bad/30 bg-bad/10 text-bad'
-          : 'border-board-dark/30 bg-board-dark/10 text-board-dark dark:text-chesscom-100')}>
+          : 'border-board-dark/30 bg-board-dark/10 text-ui-success')}>
           {importMsg.text}
         </div>
       )}
