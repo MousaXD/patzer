@@ -76,6 +76,20 @@ export function visibleEngineLines<T>(lines: T[], resultFen: string, displayedFe
   return resultFen === displayedFen ? lines : [];
 }
 
+/** A legal position's terminal state comes from the board, not an absent
+ * engine evaluation. Other drawn states can depend on game history, so do
+ * not infer them from a standalone FEN. */
+export function reviewTerminalPosition(fen: string): 'checkmate' | 'stalemate' | null {
+  try {
+    const position = new Chess(fen);
+    if (position.isCheckmate()) return 'checkmate';
+    if (position.isStalemate()) return 'stalemate';
+  } catch {
+    // A malformed FEN must not be described as a finished game.
+  }
+  return null;
+}
+
 /** Reject a mismatched or malformed engine response before presenting arrows.
  * A matching position and legal UCI are not enough: the visible SAN and PV
  * must also describe that exact move and a legal continuation. Otherwise the

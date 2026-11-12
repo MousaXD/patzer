@@ -6,7 +6,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Ar
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation, reviewTerminalPosition } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -1341,6 +1341,7 @@ function GameAnalyzerView() {
                 enabled={linesEnabled}
                 onToggle={() => setLinesEnabled((s) => !s)}
                 lines={freshLines}
+                terminalPosition={reviewTerminalPosition(currentFen)}
                 scoreTurn={currentFen.split(' ')[1] === 'b' ? 'b' : 'w'}
                 loading={linesLoading}
                 error={linesError}
@@ -1630,10 +1631,11 @@ function ClipboardManualFallback({ label, value }: { label: string; value: strin
   );
 }
 
-function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
+function LinesPanel({ enabled, onToggle, lines, terminalPosition, scoreTurn, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
   enabled: boolean;
   onToggle: () => void;
   lines: EngineLine[];
+  terminalPosition: 'checkmate' | 'stalemate' | null;
   scoreTurn: 'w' | 'b';
   loading: boolean;
   error: 'busy' | 'unavailable' | null;
@@ -1691,7 +1693,10 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
             </div>
           )}
           {!loading && !error && lines.length === 0 && (
-            <div className="px-2 py-3 text-xs text-chesscom-500 dark:text-chesscom-200">—</div>
+            <div role="status" className="px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
+              {t(terminalPosition === 'checkmate' ? 'review.linesCheckmate'
+                : terminalPosition === 'stalemate' ? 'review.linesStalemate' : 'review.linesNoMoves')}
+            </div>
           )}
           {error && (
             <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">

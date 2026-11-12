@@ -169,6 +169,91 @@ try {
   const user=db.prepare('SELECT id FROM users WHERE username = ?').get('polishaudit');
   const id=seed(user.id,SCORING_VERSION,analysisSourceHash,loadAnalysisGameSource);
   browser=await chromium.launch({headless:true});
+  // A legitimate terminal position returns zero candidate PVs. Distinguish
+  // it from a provider returning no suggestions for an otherwise playable
+  // position; a bare dash provides neither guidance nor a useful Retry.
+  const finishedGame=new Chess();
+  for(const san of ['f3','e5','g4','Qh4#']) assert.ok(finishedGame.move(san));
+  assert.ok(finishedGame.isCheckmate());
+  const terminalId=Number(db.prepare(`INSERT INTO games
+    (user_id,source,external_id,pgn,white,black,result,time_control,end_time,user_color)
+    VALUES (?,'imported','polish-terminal-mate',?,'Mate White','Mate Black','0-1','600',datetime('now'),'white')`)
+    .run(user.id,finishedGame.pgn()).lastInsertRowid);
+  // The Engine Lines disclosure currently lives inside the scored review
+  // rail. Supply a genuine source-matched *test-only* analyzed move list so
+  // this fixture exercises that mounted UI instead of the unscored replay.
+  const terminalReplay=new Chess();
+  const terminalMoves=finishedGame.history({verbose:true}).map((move,index)=>{
+    const fen_before=terminalReplay.fen();
+    const played=terminalReplay.move(move.san);
+    assert.ok(played);
+    return {ply:index+1,san:played.san,uci:played.from+played.to+(played.promotion||''),
+      fen_before,fen_after:terminalReplay.fen(),eval_before_cp:0,eval_after_cp:0,
+      best_move_uci:played.from+played.to+(played.promotion||''),best_move_san:played.san,
+      best_pv:[],centipawn_loss:0,classification:'best'};
+  });
+  assert.equal(terminalReplay.fen(),finishedGame.fen());
+  const terminalSource=loadAnalysisGameSource(db,terminalId);
+  assert.ok(terminalSource);
+  db.prepare(`INSERT INTO analyses
+    (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
+    source_hash,source_revision,analysis_generation)
+    VALUES (?,12,?,80,80,?,?,?,1)`)
+    .run(terminalId,JSON.stringify(terminalMoves),SCORING_VERSION,
+      analysisSourceHash(terminalSource),terminalSource.source_revision);
+  const terminalSavedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(terminalId).pgn;
+  const terminalContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await terminalContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await terminalContext.newPage();
+    let candidateRequests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      const request=route.request().postDataJSON();
+      assert.equal(request.fen,finishedGame.fen());
+      candidateRequests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:finishedGame.fen(),depth:0,lines:[],
+      })});
+    });
+    await page.goto(`${base}/review/${terminalId}?ply=4`,{waitUntil:'domcontentloaded'});
+    const terminalRequest=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position') && response.status()===200);
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await terminalRequest;
+    await page.getByText('Checkmate. No legal moves remain.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(candidateRequests,1);
+    assert.equal(await page.getByRole('button',{name:'Retry',exact:true}).count(),0,
+      'A finished checkmate must not imply that retrying the engine will generate a legal move');
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-terminal-checkmate-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(terminalId).pgn,terminalSavedPgn);
+  }finally{await terminalContext.close();}
+  const emptyNonterminalContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await emptyNonterminalContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await emptyNonterminalContext.newPage();
+    const initialFen=new Chess().fen();
+    let requests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      assert.equal(route.request().postDataJSON().fen,initialFen);
+      requests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:initialFen,depth:12,lines:[],
+      })});
+    });
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await page.getByText('The engine returned no continuations for this position.',{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    assert.equal(requests,1);
+    assert.equal(await page.getByText('Checkmate. No legal moves remain.',{exact:true}).count(),0,
+      'An ordinary playable position with no engine PV must never be announced as checkmate');
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-empty-nonterminal-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await emptyNonterminalContext.close();}
   for(const theme of ['light','dark']){
     const setting=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,body:{site_theme:theme}});
     assert.equal(setting.status,200,JSON.stringify(setting.json));

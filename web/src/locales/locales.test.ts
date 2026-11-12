@@ -143,7 +143,8 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       }
     });
     it('localizes Engine Lines recovery and safe move-action names', () => {
-      for (const key of ['linesBusy', 'linesUnavailable', 'linesRetry', 'linesFollowMove', 'linesTryMove'] as const) {
+      for (const key of ['linesBusy', 'linesUnavailable', 'linesRetry', 'linesFollowMove', 'linesTryMove',
+        'linesCheckmate', 'linesStalemate', 'linesNoMoves'] as const) {
         expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
         expect(placeholders(locale.review[key]), `${lang}: ${key}`).toEqual(placeholders(en.review[key]));
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);

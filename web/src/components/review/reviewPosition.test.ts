@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
-import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation } from './reviewPosition';
+import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation, reviewTerminalPosition } from './reviewPosition';
 
 const chess = new Chess();
 const savedMoves = ['e4','e5','Nf3'].map((san) => {
@@ -10,6 +10,14 @@ const savedMoves = ['e4','e5','Nf3'].map((san) => {
 });
 
 describe('review position-safe suggestions', () => {
+  it('distinguishes terminal checkmate and stalemate from an ordinary unscored position', () => {
+    const mated=new Chess();
+    for(const san of ['f3','e5','g4','Qh4#']) expect(mated.move(san)).toBeTruthy();
+    expect(reviewTerminalPosition(mated.fen())).toBe('checkmate');
+    expect(reviewTerminalPosition('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1')).toBe('stalemate');
+    expect(reviewTerminalPosition(new Chess().fen())).toBeNull();
+    expect(reviewTerminalPosition('not a FEN')).toBeNull();
+  });
   it('only permits a legal, correctly named alternative from the same analyzed pre-move FEN', () => {
     const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 12';
     const scored = { uci: 'e7e5', fen_before: fen, best_move_uci: 'c7c5', best_move_san: 'c5' };
