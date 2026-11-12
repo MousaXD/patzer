@@ -101,9 +101,19 @@ function originalMove(position: OriginalGamePosition | undefined): AnalysisVaria
   return { from: position.from, to: position.to, san: position.san, uci: position.uci };
 }
 
-/** Inherit each ancestor's played prefix, never its future/undone tail. */
-function variationPrefix(branch: AnalysisVariation, variations: AnalysisVariation[]): AnalysisVariationMove[] {
-  const segments: AnalysisVariationMove[][] = [];
+export interface AnalysisVariationTrailStep {
+  branchId: string;
+  cursor: number;
+  move: AnalysisVariationMove;
+}
+
+/** Legal replay positions for each clickable SAN move, including ancestor
+ * prefixes through the fork. Never expose an ancestor's future/undone tail. */
+export function analysisVariationTrail(
+  branch: AnalysisVariation,
+  variations: AnalysisVariation[],
+): AnalysisVariationTrailStep[] {
+  const chain: AnalysisVariation[] = [branch];
   const seen = new Set<string>([branch.id]);
   let current = branch;
   while (current.parentId) {
@@ -111,10 +121,22 @@ function variationPrefix(branch: AnalysisVariation, variations: AnalysisVariatio
     seen.add(current.parentId);
     const parent = variations.find((v) => v.id === current.parentId);
     if (!parent) break;
-    segments.unshift(parent.moves.slice(0, current.parentCursor ?? 0));
+    chain.unshift(parent);
     current = parent;
   }
-  return segments.flat();
+  return chain.flatMap((segment, index) => {
+    const child = chain[index + 1];
+    const length = child ? clampVariationCursor(child.parentCursor ?? 0, segment.moves.length) : segment.moves.length;
+    return segment.moves.slice(0, length).map((move, moveIndex) => ({
+      branchId: segment.id, cursor: moveIndex + 1, move,
+    }));
+  });
+}
+
+/** Inherit each ancestor's played prefix, never its future/undone tail. */
+function variationPrefix(branch: AnalysisVariation, variations: AnalysisVariation[]): AnalysisVariationMove[] {
+  return analysisVariationTrail(branch, variations)
+    .filter(step => step.branchId !== branch.id).map(step => step.move);
 }
 
 /** Compact, legal SAN preview for the branch picker, including ancestor

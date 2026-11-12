@@ -414,3 +414,25 @@
 ### Next priority
 
 - Review usability of **longer variations**: a short SAN preview is useful, but after exploring several moves, the branch timeline still presents a single truncated text string. Audit whether a player can navigate individual moves in the exploratory line without repeatedly pressing transport controls. Reproduce in Chromium and prioritize a compact, keyboard-accessible clickable variation move trail within Agent A's rail.
+
+## 2026-11-12: clickable, source-backed variation move trail
+
+### Reproduction and design
+
+- Continued from clean pushed `1e82d39`. The next recorded issue was a long, plain-text variation trace: there was no direct way to return to the specific SAN move a learner wanted to compare without repeated Previous/Next presses. Added a failing unit test for legal SAN positions in a nested `c5 Nf3` / `c5 d4` branch; the helper did not exist beforehand.
+- `analysisVariationTrail` derives clickable immutable move/FEN targets from the already verified branch move records and each ancestor prefix through its actual fork cursor. It never adds undone ancestor moves or synthetic evaluations. Each target identifies the correct branch ID and local cursor, keeping PGN identity and existing per-branch cursor memory intact.
+- Replaced the static Game Review trace with a compact horizontal, scrollable navigation of accessible 44px+ SAN move buttons and the branch-fork position. `aria-current="step"` highlights the selected local cursor. An ancestral SAN goes to its source parent branch/cursor; a child SAN returns to the child branch; narrow viewports reveal the board after selection while desktop keeps the rail accessible.
+- Added localized trail, fork-jump and SAN jump labels across English, German, Spanish, Russian and Bulgarian, with placeholder parity tests.
+
+### Self-audit, Chromium and test evidence
+
+- Focused variation/locale suite: **67 passed**. First localization run exposed a test expectation with unsorted placeholder order; corrected that test to match the existing canonical sorting helper, without changing translations.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **982 passed / 12 skipped**, 107 passed test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**, including clickable c5 ancestor jump, child d4 return, rendered SAN buttons and 44px+ touch targets, nested cursor and chessground last-move position checks, responsive/keyboard, engine-source and saved PGN invariants. The first pass caught a snapshot timing issue (React counter ahead of chessground's last-move styles); the final test waits for actual rendered highlight change instead of changing correct product state.
+- Opened actual 390px and 1024px dark screenshots `qa-artifacts/agent-a/variation-move-trail-fixed-20261112/nested-variation-cursors-{390,1024}.png`: the trail clearly shows `Branch point`, `c5`, `d4`, with active `d4`, no horizontal overflow, alongside the source-safe board and evaluation state.
+- All browser scoring values are disposable synthetic UI fixtures; this is no real Stockfish accuracy certification. No merge, deployment, production SQLite or other-agent changes.
+
+### Next high-value audit
+
+- In a longer variation the active SAN trail move can be *outside the initial horizontal scroll viewport*. Confirm whether selecting a later move via transport or a variation branch keeps its active SAN button visible without a horizontal hunt, then add minimal reduced-motion/accessibility-friendly auto-reveal if reproduced. Do not invent artificial scores or alter the other agents' shell.

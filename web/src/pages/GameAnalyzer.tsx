@@ -33,7 +33,7 @@ import ThreatPanel from '../components/ThreatPanel';
 import ExplorerPanel from '../components/ExplorerPanel';
 import { soundForMove, inferMoveFlagsFromSan } from '../lib/sounds';
 import { useAnalysisVariations } from '../lib/useAnalysisVariations';
-import { legalAnalysisMove, analysisVariationPreview } from '../lib/analysisVariations';
+import { legalAnalysisMove, analysisVariationPreview, analysisVariationTrail } from '../lib/analysisVariations';
 import { qualityMatchesVariationMove, type VariationMoveQuality } from '../lib/classification';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -377,6 +377,7 @@ function GameAnalyzerView() {
   const activeBranch = isVariation
     ? variations.variations.find((branch) => branch.id === variations.activeVariationId)
     : null;
+  const activeTrail = activeBranch ? analysisVariationTrail(activeBranch, variations.variations) : [];
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
@@ -997,8 +998,35 @@ function GameAnalyzerView() {
                 </button>;
               })}
             </div>}
-            {isVariation && <div className="mt-2 text-sm">
-              <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
+            {isVariation && activeBranch && <div className="mt-3 min-w-0" data-review-variation-trail>
+              <p className="mb-1 text-xs font-semibold text-chesscom-600 dark:text-chesscom-300">
+                {t('review.variationMoveTrail')}
+              </p>
+              <nav aria-label={t('review.variationMoveTrail')} className="flex max-w-full gap-1.5 overflow-x-auto pb-2">
+                <button type="button" aria-current={variations.variationCursor === 0 ? 'step' : undefined}
+                  aria-label={t('review.variationJumpFork')}
+                  onClick={() => {
+                    variations.selectVariation(activeBranch.id, 0);
+                    if (window.matchMedia('(max-width: 959px)').matches) requestAnimationFrame(jumpToBoard);
+                  }}
+                  className={`min-h-11 shrink-0 rounded-md border px-2.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${variations.variationCursor === 0 ? 'border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'border-chesscom-300 text-chesscom-600 hover:bg-chesscom-100 dark:border-chesscom-600 dark:text-chesscom-200 dark:hover:bg-chesscom-700'}`}>
+                  {t('review.variationBranchPoint')}
+                </button>
+                {activeTrail.map((step) => {
+                  const number = variations.variations.findIndex((v) => v.id === step.branchId) + 1;
+                  const current = step.branchId === activeBranch.id && step.cursor === variations.variationCursor;
+                  return <button type="button" key={`${step.branchId}-${step.cursor}`}
+                    data-review-trail-move aria-current={current ? 'step' : undefined}
+                    aria-label={t('review.variationJumpMove', { san: step.move.san, number })}
+                    onClick={() => {
+                      variations.selectVariation(step.branchId, step.cursor);
+                      if (window.matchMedia('(max-width: 959px)').matches) requestAnimationFrame(jumpToBoard);
+                    }}
+                    className={`min-h-11 min-w-11 shrink-0 rounded-md border px-2.5 font-mono text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${current ? 'border-amber-500 bg-amber-500 text-chesscom-950' : 'border-chesscom-300 text-chesscom-700 hover:bg-chesscom-100 dark:border-chesscom-600 dark:text-chesscom-100 dark:hover:bg-chesscom-700'}`}>
+                    {step.move.san}
+                  </button>;
+                })}
+              </nav>
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>

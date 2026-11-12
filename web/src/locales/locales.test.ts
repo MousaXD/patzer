@@ -121,10 +121,16 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
     it('describes variation-local progress instead of the saved PGN move count', () => {
       expect(placeholders(locale.review.variationProgress), lang).toEqual(['{{current}}', '{{total}}']);
       expect(placeholders(locale.review.variationForkOf), lang).toEqual(['{{number}}']);
+      expect(placeholders(locale.review.variationJumpMove), lang).toEqual(['{{number}}', '{{san}}']);
+      expect(locale.review.variationMoveTrail?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.variationJumpFork?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.variationMoveNavigation?.trim().length, lang).toBeGreaterThan(0);
       if (lang !== 'en') {
         expect(locale.review.variationProgress).not.toEqual(en.review.variationProgress);
         expect(locale.review.variationForkOf).not.toEqual(en.review.variationForkOf);
+        expect(locale.review.variationJumpMove).not.toEqual(en.review.variationJumpMove);
+        expect(locale.review.variationMoveTrail).not.toEqual(en.review.variationMoveTrail);
+        expect(locale.review.variationJumpFork).not.toEqual(en.review.variationJumpFork);
         expect(locale.review.variationMoveNavigation).not.toEqual(en.review.variationMoveNavigation);
       }
     });
