@@ -644,7 +644,15 @@ export default function Play() {
   const mine = (by: string | undefined): Offer => (by ? (by === userColorRef.current ? 'me' : 'them') : null);
 
   function handleMessage(ev: MessageEvent) {
-    const msg = JSON.parse(ev.data) as ServerMsg;
+    let msg: ServerMsg;
+    try {
+      // JSON-valid null/arrays/primitives are not chess messages. Ignore
+      // malformed envelopes without interrupting the current board or the
+      // next authoritative game snapshot from this connection.
+      const parsed: unknown = JSON.parse(ev.data);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      msg = parsed as ServerMsg;
+    } catch { return; }
     switch (msg.type) {
       case 'game_started':
       case 'pvp_hello': {

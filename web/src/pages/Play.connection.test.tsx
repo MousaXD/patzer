@@ -14,6 +14,7 @@ const socketHarness = vi.hoisted(() => ({
     accept(): void;
     drop(): void;
     receive(message: Record<string, unknown>): void;
+    receiveRaw(data: string): void;
   },
 }));
 const lobbyHarness = vi.hoisted(() => ({
@@ -92,6 +93,7 @@ vi.mock('../lib/reconnectingSocket', () => ({
     accept() { this.connected = true; this.opts.onStatusChange(true); }
     drop() { this.connected = false; this.opts.onStatusChange(false); }
     receive(message: Record<string, unknown>) { this.opts.onMessage({ data: JSON.stringify(message) } as MessageEvent); }
+    receiveRaw(data: string) { this.opts.onMessage({ data } as MessageEvent); }
   },
 }));
 
@@ -129,6 +131,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('ignores malformed game-socket envelopes without breaking the next authoritative board snapshot', async () => {
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => ws.accept());
+    for (const raw of ['null', '[]', 'false', '"unexpected"', '{bad json']) {
+      expect(() => act(() => ws.receiveRaw(raw))).not.toThrow();
+    }
+    act(() => ws.receive(snapshot));
+    const board = screen.getByTestId('chess-board') as HTMLButtonElement;
+    expect(board.disabled).toBe(false);
+    expect(board.dataset.fen).toBe(START);
+    expect(() => act(() => ws.receiveRaw('null'))).not.toThrow();
+    expect(board.disabled).toBe(false);
+    expect(board.dataset.fen).toBe(START);
+    expect(ws.disconnectCalls).toBe(0);
+  });
+
   it.each(['Infinity', 'abc', '-1', '1.5', '0', '9999999999999999999999'])(
     'rejects malformed direct PvP game ID %s without creating a reconnecting socket', async (value) => {
       render(<MemoryRouter initialEntries={[`/play?game=${value}`]}>
