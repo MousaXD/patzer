@@ -387,6 +387,7 @@
     },
     "libraryFilterGroup": "Фильтры и сортировка партий",
     "clearLibraryFilters": "Сбросить фильтры",
+    "libraryClearSearch": "Очистить поиск",
     "libraryVisibleCount": "Партии: {{visible}} из {{total}}",
     "libraryUpdating": "Обновляется",
     "libraryFilterOptions": {

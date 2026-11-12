@@ -387,6 +387,7 @@
     },
     "libraryFilterGroup": "Partien filtern und sortieren",
     "clearLibraryFilters": "Filter zurücksetzen",
+    "libraryClearSearch": "Suche löschen",
     "libraryVisibleCount": "Partien: {{visible}} von {{total}}",
     "libraryUpdating": "Wird aktualisiert",
     "libraryFilterOptions": {

@@ -441,6 +441,36 @@ try {
     console.log('PASS German no-match recovery restores the saved Library and URL');
   } finally {await emptyGerman.context.close();}
 
+  const clearSearchMobile=await newPage('light',320,700,{locale:'de'});
+  try {
+    const {page,pageErrors}=clearSearchMobile;
+    const search=page.getByRole('searchbox');
+    await search.fill('Opponent 501');
+    await page.waitForURL(href=>new URL(href).searchParams.get('q')==='Opponent 501');
+    await page.getByText('Partien: 1 von 1',{exact:true}).waitFor();
+    const clear=page.getByRole('button',{name:/^(Suche löschen|Leeren)$/});
+    const rect=await clear.boundingBox();
+    assert.ok(rect && rect.width>=44 && rect.height>=44 && rect.x>=0 && rect.x+rect.width<=322,
+      `Mobile search X needs a fully visible 44px touch target: ${JSON.stringify(rect)}`);
+    assert.equal(await clear.getAttribute('aria-label'),'Suche löschen',
+      'Search clear button should describe its action, not generic Clear');
+    await page.screenshot({path:join(output,'library-search-clear-touch-light-320.png')});
+    await clear.click();
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('q'));
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
+    assert.ok(await search.evaluate(el=>document.activeElement===el),
+      'Clearing committed search should restore the search field keyboard focus');
+    await search.fill('Opponent 502');
+    await page.waitForURL(href=>new URL(href).searchParams.get('q')==='Opponent 502');
+    await search.focus();
+    await page.keyboard.press('ControlOrMeta+A');
+    await page.keyboard.press('Backspace');
+    await page.waitForURL(href=>!(new URL(href)).searchParams.has('q'));
+    await page.getByText('Partien: 40 von 620',{exact:true}).waitFor();
+    assert.deepEqual(pageErrors,[],'Clearing German mobile search caused a JS exception');
+    console.log('PASS mobile search clear X and keyboard restore complete Library without stale URL query');
+  } finally {await clearSearchMobile.context.close();}
+
   const noStarsGerman=await newPage('dark',390,844,{locale:'de',noStarredGames:true});
   try {
     const {page,pageErrors}=noStarsGerman;

@@ -762,6 +762,23 @@ describe('Review library with large histories', () => {
       new URLSearchParams(String(url).split('?')[1] ?? '').get('q')?.length === 120)).toBe(true);
   });
 
+  it('offers a spacious keyboard-labeled clear-search target and clears a committed URL query', async () => {
+    mount('/review?q=Alekhine&sort=oldest');
+    await screen.findByText('40 of 1,000 games');
+    const search=screen.getByRole('searchbox') as HTMLInputElement;
+    expect(search.value).toBe('Alekhine');
+    const clear=screen.getByRole('button',{name:'Clear search'});
+    expect(clear.className).toContain('h-11');
+    expect(clear.className).toContain('w-11');
+    fireEvent.click(clear);
+    await waitFor(()=>expect(search.value).toBe(''));
+    expect(screen.queryByRole('button',{name:'Clear search'})).toBeNull();
+    await waitFor(()=>expect(mocks.get.mock.calls.some(([url]) => {
+      const p=new URLSearchParams(String(url).split('?')[1] ?? '');
+      return !p.has('q') && p.get('sort')==='oldest';
+    })).toBe(true));
+  });
+
   it('shows a recoverable error, never the no-games onboarding state', async () => {
     mocks.get.mockRejectedValue(new Error('offline'));
     mount();

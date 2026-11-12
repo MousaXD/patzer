@@ -382,6 +382,7 @@
     },
     "libraryFilterGroup": "Filtrar y ordenar partidas",
     "clearLibraryFilters": "Borrar filtros",
+    "libraryClearSearch": "Borrar búsqueda",
     "libraryVisibleCount": "Partidas: {{visible}} de {{total}}",
     "libraryUpdating": "Actualizando",
     "libraryFilterOptions": {

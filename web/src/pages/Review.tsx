@@ -92,6 +92,7 @@ export default function Review() {
   accountIdRef.current = user?.id;
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
@@ -170,6 +171,15 @@ export default function Review() {
     for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q', 'from_date', 'to_date', 'opening', 'opponent']) next.delete(key);
     setSearchDraft('');
     setSearchParams(next);
+  }
+  function clearLibrarySearch() {
+    // The in-field X is a committed clear, unlike keystrokes that are debounced.
+    // Preserve every other filter while removing the current server query now.
+    const next = new URLSearchParams(searchParams);
+    next.delete('q');
+    setSearchDraft('');
+    setSearchParams(next, { replace: true });
+    searchInputRef.current?.focus();
   }
   function browseOpening(name: string) {
     // The opening pill promises *all* games of that opening, not just games
@@ -660,24 +670,25 @@ export default function Review() {
       {/* Filter bar — search + starred-only toggle. */}
       <div className="flex flex-wrap items-center gap-2" role="search" aria-label={t('review.searchPlaceholder', { defaultValue: 'Search saved games' })}>
         <div className="relative min-w-[12rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-chesscom-400" />
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-chesscom-400" />
           <input
+            ref={searchInputRef}
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             type="search"
             maxLength={MAX_SEARCH_LENGTH}
             aria-label={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
             placeholder={t('review.searchPlaceholder', { defaultValue: 'Search players, opening, notes…' })}
-            className="input pl-8 pr-8 text-sm"
+            className="input min-h-11 pl-8 pr-12 text-sm"
           />
           {searchDraft && (
             <button
               type="button"
-              onClick={() => setSearchDraft('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-chesscom-400 hover:bg-chesscom-100 dark:hover:bg-chesscom-700"
-              aria-label={t('review.clearSearch')}
+              onClick={clearLibrarySearch}
+              className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md text-chesscom-500 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-700"
+              aria-label={t('review.libraryClearSearch', {defaultValue: 'Clear search'})}
             >
-              <X className="h-3 w-3" />
+              <X aria-hidden="true" className="h-4 w-4" />
             </button>
           )}
         </div>

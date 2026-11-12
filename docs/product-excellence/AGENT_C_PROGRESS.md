@@ -678,3 +678,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Examine **Library quick-search clear affordance and stale query behavior**. Search may be debounced and URL-backed, while the in-field `X` only sets the draft state. Reproduce clearing a committed query with the browser's keyboard and the in-field X, inspect whether the `q` parameter and results reliably clear and whether target sizes are usable on touch. Keep the fix within the Library and preserve debounced server search semantics.
+
+## 2026-11-12 — Make Library search clearing accessible, immediate and touch-safe
+
+- Recovered clean pushed `39435a3` and the outstanding search-clear audit. Added a real 320px German Chromium fixture with a committed search for `Opponent 501`, then intentionally required a 44px touch target before clearing. **Reproduced the old X at 16×16px** (`x=284`, `y=461`). The focused component test also failed on the absent **Clear search** accessible name and minimum target sizing. Checked the translation catalog: `review.clearSearch` was generic and missing in Spanish.
+- Enlarged only this Library input and its clear action: a 44×44px absolutely positioned X target with focus-visible ring, a 44px-minimum input and enough right text padding to avoid overlap. Added explicit `review.libraryClearSearch` labels in **all five languages** (German: **Suche löschen**), plus locale regression coverage. Decorative search/X icons are now hidden from assistive technology. Clicking X removes the committed `q` URL parameter **immediately** instead of waiting for the keystroke debounce, preserves all other search/source/sort filters, and restores focus to the search field; ordinary typed edits retain the existing 300ms debounce.
+- Verified in Chromium that the 320px target is fully visible, clicking X clears a committed search, restores 40 of 620 games and search focus, and the keyboard Control/Command+A plus Backspace path also clears the URL and results without stale query state. Inspected `qa-artifacts/agent-c-library/library-search-clear-touch-light-320.png`; the clear icon fits next to the typed text without visual overlap. No horizontal overflow or browser JavaScript exception.
+
+### Verification
+
+- Focused Library + locales: **113/113 tests passed**. Full suite: **109 passed files, 2 skipped; 1,085 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Complete isolated Chromium 1440px desktop and 390/320px light/dark mobile matrix, German profiles, import/retry, dates, paginated searching, bookmarks, first-use recovery and both search-clear methods passed. No provider calls, production databases, Game Review internals, merges, deploys or other agents' worktrees modified.
+
+### Next independent audit
+
+- Audit **mobile starred-only toggle and Library filter touch target sizes**. The adjacent bookmark and clear-search controls now meet 44px, but the starred-only toggle and native filter selects may still have shorter hit areas on 320px screens. Measure their real Chromium geometry first, then make narrowly scoped changes that preserve compact 2-column layout and visible first-fold recovery.

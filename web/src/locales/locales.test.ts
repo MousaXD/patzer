@@ -116,6 +116,12 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       expect(locale.review.noMatches?.trim().length,lang).toBeGreaterThan(0);
       if (lang !== 'en') expect(locale.review.noMatches).not.toEqual(en.review.noMatches);
     });
+    it('names the Library-specific clear-search action in the selected language', () => {
+      expect(locale.review.libraryClearSearch?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') {
+        expect(locale.review.libraryClearSearch).not.toEqual(en.review.libraryClearSearch);
+      }
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);

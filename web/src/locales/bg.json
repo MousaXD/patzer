@@ -378,6 +378,7 @@
     },
     "libraryFilterGroup": "Филтриране и сортиране на партии",
     "clearLibraryFilters": "Изчисти филтрите",
+    "libraryClearSearch": "Изчисти търсенето",
     "libraryVisibleCount": "Партии: {{visible}} от {{total}}",
     "libraryUpdating": "Обновяване",
     "libraryFilterOptions": {
