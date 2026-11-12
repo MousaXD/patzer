@@ -69,6 +69,10 @@ function mount(initial = '/review') {
   return { ...result, queryClient, rerenderReview: () => result.rerender(view()) };
 }
 
+function openImportOptions() {
+  fireEvent.click(screen.getByRole('button',{name:'Import more games'}));
+}
+
 beforeEach(() => {
   // Clear queued mockResolvedValueOnce/rejectedValueOnce implementations too;
   // a failed upload test must not affect another test's provider import.
@@ -85,6 +89,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('prioritizes game exploration and exposes import controls on demand in a populated library', async () => {
+    mocks.user.profile.chesscom_username = 'linked';
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    const toggle = screen.getByRole('button',{name:'Import more games'});
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button',{name:'Import PGN file'})).toBeNull();
+    expect(screen.queryByRole('button',{name:/review\.import \(@linked\)/})).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button',{name:'Import PGN file'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:/review\.import \(@linked\)/})).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button',{name:'Import PGN file'})).toBeNull();
+  });
   it('shows the known opening in mobile card metadata without removing its review link', async () => {
     const opening='King’s Indian Defense: Fianchetto Variation, Panno Variation';
     mocks.get.mockImplementation(async (url:string)=>url==='/api/games/openings'
@@ -169,6 +190,7 @@ describe('Review library with large histories', () => {
     mocks.post.mockResolvedValue({total:2,imported:1,duplicates:1});
     mount();
     await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
     const button = screen.getByRole('button', {name:'Import PGN file'});
     expect(button.hasAttribute('disabled')).toBe(true);
     const pgn='[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
@@ -191,6 +213,7 @@ describe('Review library with large histories', () => {
     const error = Object.assign(new Error('invalid_pgn'),{data:{game_index:2}});
     mocks.post.mockRejectedValueOnce(error).mockResolvedValueOnce({total:2,imported:2,duplicates:0});
     mount();
+    openImportOptions();
     const pgn='[Event "One"]\n\n1. e4 e5 *\n\n[Event "Second"]\n\n1. d4 d5 *';
     const file=new File([pgn],'fix-this.pgn',{type:'text/plain'});
     Object.defineProperty(file,'text',{value:async()=>pgn});
@@ -209,6 +232,7 @@ describe('Review library with large histories', () => {
   it('refuses to claim a successful PGN import when the API summary does not reconcile', async () => {
     mocks.post.mockResolvedValueOnce({total:2,imported:1,duplicates:0});
     mount();
+    openImportOptions();
     const pgn='[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
     const file=new File([pgn],'archive.pgn',{type:'text/plain'});
     Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode(pgn).buffer});
@@ -226,6 +250,7 @@ describe('Review library with large histories', () => {
 
   it('rejects non-PGN file types and oversized uploads before making a request', async () => {
     mount();
+    openImportOptions();
     const input=screen.getByLabelText('Choose a PGN file');
     const upload=screen.getByRole('button',{name:'Import PGN file'});
     const other=new File(['not pgn'],'picture.jpg',{type:'image/jpeg'});
@@ -244,6 +269,7 @@ describe('Review library with large histories', () => {
   it('refuses invalid UTF-8 bytes before uploading a PGN so player names cannot be silently corrupted', async () => {
     mocks.post.mockResolvedValue({total:1,imported:1,duplicates:0});
     mount();
+    openImportOptions();
     const prefix = new TextEncoder().encode('[Event "Archive"]\n[White "Jos');
     const suffix = new TextEncoder().encode('"]\n[Black "Bob"]\n\n1. e4 e5 *');
     const bytes = new Uint8Array([...prefix,0xe9,...suffix]);
@@ -259,6 +285,7 @@ describe('Review library with large histories', () => {
   it('does not send a selected PGN under another account when file reading finishes after an account switch', async () => {
     mocks.post.mockResolvedValue({total:1,imported:1,duplicates:0});
     const {rerenderReview} = mount();
+    openImportOptions();
     const pgn = '[Event "Private Game"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
     const file = new File([pgn], 'private.pgn', {type:'text/plain'});
     let completeRead!: (bytes: ArrayBuffer) => void;
@@ -607,6 +634,7 @@ describe('Review library with large histories', () => {
     mocks.post.mockResolvedValue({ imported: 150, total: 200, duplicates: 42, skipped: 8, enriched: 12 });
     mount();
     await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
     expect((screen.getByRole('combobox', { name: 'Recent games to fetch' }) as HTMLSelectElement).value).toBe('200');
     fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
@@ -621,6 +649,7 @@ describe('Review library with large histories', () => {
     mocks.post.mockRejectedValue(new Error('linked_account_changed'));
     mount();
     await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
     fireEvent.click(screen.getByRole('button', { name: /review\.importLichess \(@tester\)/ }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/Your linked account changed during import/);
@@ -753,6 +782,7 @@ describe('Review library with large histories', () => {
     mocks.post.mockResolvedValue({ imported: 12, total: 20 });
     const { queryClient } = mount();
     await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
     const ownKeys = [
       ['stats', 'me', 7], ['insights-v2', 7], ['achievements', 7],
       ['achievements-home', 7], ['plan-home', 7],
@@ -772,6 +802,7 @@ describe('Review library with large histories', () => {
     mocks.post.mockReturnValue(new Promise((resolve) => { resolveImport = resolve; }));
     const { rerenderReview } = mount();
     await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
     fireEvent.click(screen.getByRole('button', { name: /review\.import \(@first\)/ }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
     mocks.user = { id: 101, profile: { chesscom_username: null, lichess_username: null } };

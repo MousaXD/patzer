@@ -225,13 +225,28 @@ async function verifyViewport(theme, width, height) {
     assert.equal(m.theme,theme);
     assert.ok(m.overflow <= 2, `Horizontal overflow on ${width}px ${theme}: ${m.overflow}px`);
     if(width<=390) console.log('Mobile geometry',width,JSON.stringify(m));
+    if(width<=390) {
+      const searchBox=await page.getByRole('searchbox').boundingBox();
+      assert.ok(searchBox && searchBox.y>=0 && searchBox.y+searchBox.height<=height,
+        `Search must appear in the first populated-Library mobile viewport: ${JSON.stringify(searchBox)}`);
+      const toggle=page.getByRole('button',{name:'Import more games'});
+      assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    }
     for (const item of [...m.selectSizes, ...m.dateSizes]) {
       assert.ok(item.right <= width + 2 && item.x >= -2,
         `Clipped select ${item.aria} on ${width}px ${theme}: ${JSON.stringify(item)}`);
     }
+    await page.getByRole('button',{name:'Import more games'}).click();
+    assert.equal(await page.getByRole('button',{name:'Hide import options'}).getAttribute('aria-expanded'),'true');
     const fileControl = await page.getByLabel('Choose a PGN file').boundingBox();
     assert.ok(fileControl && fileControl.x >= -2 && fileControl.x + fileControl.width <= width + 2,
       `PGN file picker clipped at ${width}px ${theme}: ${JSON.stringify(fileControl)}`);
+    const closeImports=page.getByRole('button',{name:'Hide import options'});
+    if(width===320) {
+      await closeImports.focus();
+      await page.keyboard.press('Enter');
+    } else await closeImports.click();
+    assert.equal(await page.getByRole('button',{name:'Import more games'}).getAttribute('aria-expanded'),'false');
     if (width <= 390) {
       const opening = page.locator('a[href="/review/1"] [title="Italian Game"]');
       assert.ok(await opening.isVisible(),
@@ -300,6 +315,7 @@ try {
   const pgnFixture = await newPage('dark', 390, 844);
   try {
     const {page, pageErrors, seenPgnFiles} = pgnFixture;
+    await page.getByRole('button',{name:'Import more games'}).click();
     const good = '[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *\n\n' +
       '[Event "Two"]\n[White "Chris"]\n[Black "Dana"]\n\n1. d4 d5 *';
     const input = page.getByLabel('Choose a PGN file');
@@ -539,6 +555,7 @@ try {
     assert.equal(await page.locator('a[href^="/review/"]:not([href*="?"])').count(),240);
     assert.equal(await page.locator('a[href="/review/240"]').count(),1);
     // Import shows the number *newly saved* vs *retrieved* — not "all history".
+    await page.getByRole('button',{name:'Import more games'}).click();
     await page.getByRole('button',{name:/@fixtureuser/}).first().click();
     await page.getByText(/100 new games saved from 200 retrieved/).waitFor();
     await page.getByText(/7 existing games gained opening details/).waitFor();

@@ -454,3 +454,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next audit
 
 - Continue testing actual multi-game PGN exports with comments and game termination markers that resemble headers. Explicitly confirm malformed or ambiguous archives never undercount real games, especially quoted header examples inside annotations. Only change behavior after a reproducible failing test and verify with the real browser.
+
+## 2026-11-12 — Prioritize browsing for returning Library users
+
+- Resumed clean pushed `28e41b2` after finishing the standard-SetUp parser fix, then independently reviewed 320px Library screenshots. A returning player with hundreds of games initially saw two tall import forms filling nearly the entire first viewport, while searching and exploring owned history required scrolling. This is an important first-screen product issue, not a backend missing-data problem.
+- Wrote a failing component regression requiring a discoverable, initially collapsed **Import more games** button on populated libraries and a Chromium viewport check requiring the game search box to be visible within the first 320×700 and 390×844 mobile viewport.
+- Grouped Chess.com/Lichess recent imports and local PGN upload under a single **accessible disclosure** that is collapsed for populated/filtered libraries, preserving the mounted native file input, selected file state, import progress and retry actions. The button advertises its live `aria-expanded` state and `aria-controls`, supports click and keyboard Enter, and reveals all previously available import options without changing their request/validation logic. First-time players with zero unfiltered games retain the visible import forms and their dedicated onboarding choice. The import-success/error status remains outside the disclosure so its feedback stays available.
+- Added short translations for the disclosure in all five UI languages. Updated earlier import tests to explicitly expand the panel before exercising the original workflows; kept every provider failure, PGN error, idempotency, account-switch and count-validation assertion. Did not loosen the import or history tests.
+
+### Verification
+
+- Focused Library component suite: **42/42 passed**, including the new disclosure regression. Full repository suite: **109 files passed, 2 skipped; 1,053 tests passed, 12 skipped**, no failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Real isolated Chromium passed desktop and 390px/320px layouts in light/dark; confirmed the search box remains within the initial viewport, `Import more games` opens the source/PGN form, keyboard Enter closes it, all import/retry journeys still work, and there are no horizontal overflows or browser JS errors.
+- Inspected the first 320×700 crop of the full mobile screenshot at `qa-artifacts/agent-c-library/library-populated-firstfold-light-320.png`: header, optional import action, opening exploration, saved-game search and first filters are now all visible without scrolling. No production access, external provider imports, Game Review edits, merges or deployments.
+
+### Next audit within Agent C
+
+- Check retained native PGN selection and stale error feedback when the disclosure is closed and reopened during a recoverable upload error. Ensure browser and keyboard paths remain accessible, especially on 320px mobile; reproduce and test before implementing changes.

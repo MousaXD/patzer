@@ -249,6 +249,8 @@
   "review": {
     "title": "Análisis de partida",
     "pgnImportHeading": "Importar archivo PGN",
+    "importMoreGames": "Importar más partidas",
+    "hideImportOptions": "Ocultar opciones de importación",
     "firstUseTitle": "Tu historial de partidas empieza aquí",
     "firstUseUnlinked": "Importa un PGN desde tu ordenador o vincula Chess.com/Lichess para traer partidas recientes.",
     "firstUseLinked": "Importa las partidas recientes arriba o elige un archivo PGN de tu ordenador.",

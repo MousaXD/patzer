@@ -258,6 +258,8 @@
   "review": {
     "title": "Game Review",
     "pgnImportHeading": "Import a PGN file",
+    "importMoreGames": "Import more games",
+    "hideImportOptions": "Hide import options",
     "firstUseTitle": "Your game history starts here",
     "firstUseUnlinked": "Import a PGN from your computer or link Chess.com/Lichess to bring in recent games.",
     "firstUseLinked": "Import recent games above, or choose a PGN file from your computer.",

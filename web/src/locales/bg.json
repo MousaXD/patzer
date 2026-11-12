@@ -249,6 +249,8 @@
   "review": {
     "title": "Анализ на партия",
     "pgnImportHeading": "Импорт на PGN файл",
+    "importMoreGames": "Импортирай още партии",
+    "hideImportOptions": "Скрий опциите за импорт",
     "firstUseTitle": "Историята на партиите ти започва тук",
     "firstUseUnlinked": "Импортирай PGN от компютъра си или свържи Chess.com/Lichess за последните си партии.",
     "firstUseLinked": "Импортирай скорошни партии по-горе или избери PGN файл от компютъра си.",

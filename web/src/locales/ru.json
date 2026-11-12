@@ -258,6 +258,8 @@
   "review": {
     "title": "Разбор партии",
     "pgnImportHeading": "Импорт файла PGN",
+    "importMoreGames": "Импортировать ещё партии",
+    "hideImportOptions": "Скрыть параметры импорта",
     "firstUseTitle": "Здесь начинается история ваших партий",
     "firstUseUnlinked": "Импортируйте PGN с компьютера или подключите Chess.com/Lichess, чтобы загрузить недавние партии.",
     "firstUseLinked": "Импортируйте недавние партии выше или выберите файл PGN с компьютера.",

@@ -95,6 +95,7 @@ export default function Review() {
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
+  const [importPanelOpen, setImportPanelOpen] = useState(false);
   const [pgnFile, setPgnFile] = useState<File | null>(null);
   const pgnInputRef = useRef<HTMLInputElement | null>(null);
   const importMessageTimer = useRef<number | null>(null);
@@ -392,6 +393,7 @@ export default function Review() {
   const initialError = isError && games.length === 0;
   const firstUseEmpty = !isLoading && !initialError && games.length === 0 &&
     !q && !activeFilters && !bookmarkedOnly;
+  const importControlsVisible = firstUseEmpty || importPanelOpen;
 
   function toggleBookmarkedOnly() {
     const next = new URLSearchParams(searchParams);
@@ -406,13 +408,25 @@ export default function Review() {
           <h1 className="page-h1">{t('review.title')}</h1>
           <p className="page-sub">{t('review.subtitle', { defaultValue: 'Browse, analyze and learn from your games.' })}</p>
         </div>
-        {linked.length === 0 && (total > 0 || !!q || activeFilters || bookmarkedOnly || initialError) && (
-          <Link to="/settings" className="btn-secondary text-sm">
-            <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
-          </Link>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {linked.length === 0 && (total > 0 || !!q || activeFilters || bookmarkedOnly || initialError) && (
+            <Link to="/settings" className="btn-secondary min-h-10 text-sm">
+              <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
+            </Link>
+          )}
+          {!firstUseEmpty && (
+            <button type="button" className="btn-secondary min-h-10 text-sm"
+              aria-controls="library-import-controls" aria-expanded={importControlsVisible}
+              onClick={() => setImportPanelOpen((open) => !open)}>
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              {importPanelOpen ? t('review.hideImportOptions', {defaultValue:'Hide import options'})
+                : t('review.importMoreGames', {defaultValue:'Import more games'})}
+            </button>
+          )}
+        </div>
       </header>
 
+      <div id="library-import-controls" hidden={!importControlsVisible} className="space-y-5">
       {linked.length > 0 && (
         <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Import recent games">
           <div className="min-w-0 sm:max-w-48">
@@ -466,6 +480,7 @@ export default function Review() {
           </button>
         </div>
       </section>
+      </div>
 
       {importMsg && (
         <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
