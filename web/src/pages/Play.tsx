@@ -219,6 +219,13 @@ export default function Play() {
   // the clock tick, which outlives the render it was created in.
   const [connected, setConnected] = useState(true);
   const connectedRef = useRef(true);
+  // An open WebSocket is not yet a playable chess game. In particular, after
+  // connecting or waking up we must receive the authoritative game snapshot
+  // before offering any moves, clocks or actions. A dropped connection may
+  // have reached the server just before it closed, so local pending state is
+  // invalid until the next snapshot arrives.
+  const [gameReady, setGameReady] = useState(false);
+  const [hasSyncedGame, setHasSyncedGame] = useState(false);
   const [live, setLive] = useState<LiveGames | null>(null);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
@@ -229,7 +236,24 @@ export default function Play() {
         // Via refs, so a message arriving after a reconnect never lands in the
         // closure from the render that happened to open the socket.
         onMessage: (ev) => handleMessageRef.current(ev),
-        onStatusChange: (up) => { setConnected(up); connectedRef.current = up; },
+        onStatusChange: (up) => {
+          setConnected(up);
+          connectedRef.current = up;
+          if (!up) {
+            setGameReady(false);
+            // The server may have accepted the optimistic move, or not. The
+            // next game_started/pvp_hello resolves this uncertainty.
+            setPending(null);
+            setPreviewing(false);
+            setBlunder(null);
+            setHintLoading(false);
+            setHint(null);
+            setPremoves([]);
+            premovesRef.current = [];
+            soundedRef.current = null;
+            setBoardKey((k) => k + 1);
+          }
+        },
       });
     }
     return socketRef.current;
@@ -309,7 +333,7 @@ export default function Play() {
   // is down: we have no idea what it's really doing until the server says so,
   // and a display that keeps counting a game you aren't connected to is a lie.
   useEffect(() => {
-    if (phase !== 'playing' || tc === 'untimed') return;
+    if (phase !== 'playing' || tc === 'untimed' || !gameReady) return;
     const turn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
     let last = Date.now();
     const id = window.setInterval(() => {
@@ -322,7 +346,7 @@ export default function Play() {
     }, 100);
     tickRef.current = id;
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
-  }, [phase, fen, tc]);
+  }, [phase, fen, tc, gameReady]);
 
   // Show suggested-move arrow when hint arrives
   useEffect(() => {
@@ -349,6 +373,8 @@ export default function Play() {
     setUserColor(finalColor);
     userColorRef.current = finalColor;
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     if (fromPos) {
       socket().connect(
@@ -373,12 +399,16 @@ export default function Play() {
     setUserColor(from.user_color);
     userColorRef.current = from.user_color;
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     socket().connect(wsUrl(null), { type: 'resume' });
   }
 
   function connectPvp(gameId: number) {
     resetGameState();
+    setConnected(false);
+    connectedRef.current = false;
     setPhase('playing');
     // PvP needs no opening message: the server hands the socket its whole
     // state in `pvp_hello`, on the first connection and on every one after.
@@ -397,7 +427,12 @@ export default function Play() {
 
   function resetGameState() {
     resultRef.current = null;
+    setGameReady(false);
+    setHasSyncedGame(false);
     setFen(START_FEN);
+    // New games have no clock snapshot until the server greets us. Never
+    // display a previous game's remaining time during this transition.
+    setWhiteMs(0); setBlackMs(0);
     setMoves([]); setResult(null); setHint(null); setLastClassifiedMove(null);
     setOpponent(null); setBoardArrows([]);
     setPositions([{ fen: START_FEN }]);
@@ -453,6 +488,8 @@ export default function Play() {
         if (msg.whiteTimeMs !== undefined) setWhiteMs(msg.whiteTimeMs);
         if (msg.blackTimeMs !== undefined) setBlackMs(msg.blackTimeMs);
         if (msg.time_control) setTc(msg.time_control as typeof TIME_CONTROLS[number]);
+        setGameReady(true);
+        setHasSyncedGame(true);
         if (msg.your_color) userColorRef.current = msg.your_color;
         // Rebuild the position list from the SAN history (PvP reconnect can land mid-game).
         loadHistory(msg.history, startFen, msg.start_fen);
@@ -635,6 +672,10 @@ export default function Play() {
   /** Board move handler. Plays immediately when it's our turn and nothing is
    *  queued; otherwise adds to the premove queue. */
   function onBoardMove(uci: string) {
+    if (!gameReady || !connected || !socketRef.current?.connected) {
+      forceBoardSync();
+      return;
+    }
     const myTurnNow = boardTurn === userColor && premoves.length === 0;
     if (myTurnNow) { attemptMove(uci); return; }
     if (phase !== 'playing' || isBrowsing || blunder || previewing) return;
@@ -653,13 +694,22 @@ export default function Play() {
   }
 
   function attemptMove(uci: string) {
+    if (!gameReady || !socketRef.current?.connected) {
+      setPending(null);
+      forceBoardSync();
+      return;
+    }
     const enableWarning = !!user?.profile.blunder_warning;
     fenBeforeMoveRef.current = fen;
     if (enableWarning) {
       // Shown, but not sounded: the warning may still take it back.
       playLocally(fen, uci, false);
       setPreviewing(true);
-      socket().send({ type: 'preview_move', uci });
+      if (!socket().send({ type: 'preview_move', uci })) {
+        setPreviewing(false);
+        setPending(null);
+        forceBoardSync();
+      }
     } else {
       playLocally(fen, uci, true);
       commitMove(uci);
@@ -680,7 +730,11 @@ export default function Play() {
 
   function commitMove(uci: string) {
     setBlunder(null);
-    socket().send({ type: 'move', uci });
+    if (!gameReady || !socket().send({ type: 'move', uci })) {
+      setPending(null);
+      soundedRef.current = null;
+      forceBoardSync();
+    }
   }
 
   function tryAnotherMove() {
@@ -689,8 +743,8 @@ export default function Play() {
     forceBoardSync(); // roll back the chessground visual to the authoritative FEN
   }
 
-  function resign() { socket().send({ type: 'resign' }); }
-  const sendType = (type: string) => socket().send({ type });
+  function resign() { if (gameReady) socket().send({ type: 'resign' }); }
+  const sendType = (type: string) => gameReady && socket().send({ type });
   const offerDraw = () => sendType('offer_draw');
   const acceptDraw = () => sendType('accept_draw');
   const declineDraw = () => sendType('decline_draw');
@@ -701,8 +755,9 @@ export default function Play() {
   const acceptRematch = () => sendType('accept_rematch');
   const declineRematch = () => sendType('decline_rematch');
   function requestHint() {
+    if (!gameReady || !socketRef.current?.connected) return;
     setHintLoading(true);
-    socket().send({ type: 'request_hint' });
+    if (!socket().send({ type: 'request_hint' })) setHintLoading(false);
   }
 
   function startSheetDrag(event: React.PointerEvent<HTMLElement>) {
@@ -747,7 +802,8 @@ export default function Play() {
   // move that gives check leaves a position chess.js won't continue from, and
   // guessing past that point is fiction.
   const canQueueMore = shadowTurn === userColor && premoves.length < MAX_PREMOVES;
-  const movable = phase === 'playing' && !blunder && !previewing && !isBrowsing
+  const canInteract = gameReady && connected && !!socketRef.current?.connected;
+  const movable = phase === 'playing' && canInteract && !blunder && !previewing && !isBrowsing
     && (boardTurn === userColor ? true : canQueueMore);
   const goToLive = () => setBrowseIndex(null);
   const stepBack = () => setBrowseIndex((b) => Math.max(0, (b ?? liveIndex) - 1));
@@ -783,7 +839,7 @@ export default function Play() {
   // ---- SETUP screen ----
   if (phase === 'setup' && !pvpGameId) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="mx-auto w-full min-w-0 max-w-3xl space-y-4">
         <header>
           <h1 className="page-h1">{t('play.newGame')}</h1>
           <p className="page-sub">{t('play.subtitle')}</p>
@@ -911,7 +967,7 @@ export default function Play() {
 
   if (phase === 'setup' && pvpGameId) {
     return (
-      <div className="mx-auto max-w-md py-12 text-center">
+      <div className="mx-auto w-full min-w-0 max-w-md py-12 text-center">
         <Spinner size="lg" label={t('play.connecting')} />
       </div>
     );
@@ -946,27 +1002,32 @@ export default function Play() {
   const isPvP = !!pvpGameId;
   const oppDisconnected = isPvP && opponent && !opponent.online;
 
-  const statusNode = isBrowsing ? <span className="font-medium text-amber-600">{t('play.browsingPast')}</span>
+  const statusNode = !canInteract ? <span className="font-medium text-amber-600">{hasSyncedGame
+    ? t('play.waitingForSync', { defaultValue: 'Waiting for the game to reconnect' })
+    : t('play.connecting', { defaultValue: 'Connecting to game…' })}</span>
+    : isBrowsing ? <span className="font-medium text-amber-600">{t('play.browsingPast')}</span>
     : previewing ? <Spinner inline label={t('play.checking')} />
     : turn === userColor ? <span className="font-medium text-accent-600">{t('play.yourTurn')}</span>
     : <span className="text-ink-500">{t('play.thinking')}</span>;
 
   return (
-    <div className="mx-auto max-w-7xl pb-24 lg:pb-0">
+    <div className="mx-auto w-full min-w-0 max-w-7xl pb-24 lg:pb-0">
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-        {/* BOARD COLUMN — full width on lg+ (max 760px). The BOARD ELEMENT
-            below uses aspect-square + a viewport-height-aware max-width so the
-            board shrinks vertically on short screens without making the
-            column itself narrow. */}
+        {/* BOARD COLUMN — full width on phones, capped at 760px on desktop.
+            The board itself has a viewport-height-aware limit so it remains
+            prominent without pushing clocks and primary controls far below
+            the fold on shorter desktop screens. */}
         <div className="mx-auto w-full lg:mx-0 lg:flex-1 lg:max-w-[760px]">
-          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={turn !== userColor} label={oppLabel} flip />
+          <ClockBar timeMs={userColor === 'white' ? blackMs : whiteMs} active={phase === 'playing' && canInteract && turn !== userColor} label={oppLabel} timed={tc !== 'untimed'} waiting={!hasSyncedGame} />
           {/* Say it plainly rather than letting a dead socket look like a live
               game. The clock is frozen behind this and the game is safe on the
               server — which is the reassurance worth giving. */}
-          {!connected && phase === 'playing' && (
+          {!canInteract && phase === 'playing' && (
             <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-              {t('play.reconnecting', { defaultValue: 'Reconnecting… your game is saved.' })}
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <span role="status">{hasSyncedGame
+                ? t('play.reconnecting', { defaultValue: 'Reconnecting… your game is saved.' })
+                : t('play.connecting', { defaultValue: 'Connecting to your game…' })}</span>
             </div>
           )}
           {oppDisconnected && (
@@ -982,8 +1043,8 @@ export default function Play() {
                   : takeback === 'them' ? t('play.takebackRequestedBy', { name: oppLabel })
                   : t('play.rematchOfferedBy', { name: oppLabel })}
               </span>
-              <button onClick={drawOffer === 'them' ? acceptDraw : takeback === 'them' ? acceptTakeback : acceptRematch} className="btn-primary h-9 px-3 text-sm"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
-              <button onClick={drawOffer === 'them' ? declineDraw : takeback === 'them' ? declineTakeback : declineRematch} className="btn-secondary h-9 px-3 text-sm"><X className="h-4 w-4" />{t('challenge.decline')}</button>
+              <button onClick={drawOffer === 'them' ? acceptDraw : takeback === 'them' ? acceptTakeback : acceptRematch} disabled={!canInteract} className="btn-primary h-9 px-3 text-sm"><Check className="h-4 w-4" />{t('challenge.accept')}</button>
+              <button onClick={drawOffer === 'them' ? declineDraw : takeback === 'them' ? declineTakeback : declineRematch} disabled={!canInteract} className="btn-secondary h-9 px-3 text-sm"><X className="h-4 w-4" />{t('challenge.decline')}</button>
             </div>
           )}
           {isPvP && phase === 'playing' && (drawOffer === 'me' || takeback === 'me') && (
@@ -996,13 +1057,12 @@ export default function Play() {
             <CapturedPieces fen={fen} side={userColor === 'white' ? 'black' : 'white'} />
           </div>
           <div className="my-2 flex justify-center">
-            {/* `aspect-square` + `lg:max-w-[calc(100vh-26rem)]` shrinks the
-                board to fit the viewport height (chrome ≈ 17rem inside column
-                + ≈ 9rem outside) without narrowing the surrounding column.
-                Position:relative here so the badge children are anchored to
-                the board, not the outer flex container. */}
+            {/* Reserve ~22rem for navigation, clocks and game controls. The
+                former 26rem reserve held a 900px-tall desktop board at ~484px
+                even though ~548px fits comfortably; on mobile, take the full
+                available width. Position:relative anchors badge overlays. */}
             <div
-              className={`relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'wood'} lg:max-w-[calc(100vh-26rem)]`}
+              className={`relative aspect-square w-full min-w-0 board-theme-${user?.profile.board_theme ?? 'wood'} lg:max-w-[calc(100vh-22rem)]`}
             >
               <ChessBoard
                 fen={displayedFen}
@@ -1042,7 +1102,7 @@ export default function Play() {
           <div className="my-1 flex items-center justify-between gap-2">
             <CapturedPieces fen={fen} side={userColor} />
           </div>
-          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} />
+          <ClockBar timeMs={userColor === 'white' ? whiteMs : blackMs} active={phase === 'playing' && canInteract && turn === userColor} label={user?.profile.display_name ?? (userColor === 'white' ? t('play.white') : t('play.black'))} timed={tc !== 'untimed'} waiting={!hasSyncedGame} />
 
           {/* Rewind nav — visible once at least one move has been played */}
           {phase !== 'setup' && positions.length > 1 && (
@@ -1068,19 +1128,19 @@ export default function Play() {
                 </button>
                 {isPvP && (
                   <>
-                    <button onClick={offerDraw} disabled={drawOffer !== null} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.offerDraw')}>
+                    <button onClick={offerDraw} disabled={!canInteract || drawOffer !== null} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.offerDraw')}>
                       <Handshake className="h-4 w-4" />{t('play.offerDraw')}
                     </button>
-                    <button onClick={requestTakeback} disabled={takeback !== null || moves.length === 0} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.takeback')}>
+                    <button onClick={requestTakeback} disabled={!canInteract || takeback !== null || moves.length === 0} className="btn-secondary h-11 px-3 text-sm sm:px-4" title={t('play.takeback')}>
                       <Undo2 className="h-4 w-4" />{t('play.takeback')}
                     </button>
                   </>
                 )}
-                <button onClick={requestHint} disabled={hintLoading || isBrowsing} className="btn-secondary h-11 px-3 text-sm sm:px-4">
+                <button onClick={requestHint} disabled={!canInteract || hintLoading || isBrowsing} className="btn-secondary h-11 px-3 text-sm sm:px-4">
                   {hintLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}
                   {t('play.hint')}
                 </button>
-                <button onClick={resign} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                <button onClick={resign} disabled={!canInteract} className="btn-danger h-11 px-3 text-sm sm:px-4"><Flag className="h-4 w-4" />{t('play.resign')}</button>
               </div>
             </div>
           )}
@@ -1165,7 +1225,7 @@ export default function Play() {
               <span className="ml-1 rounded-full bg-ink-100 px-1.5 text-[11px] tabular-nums dark:bg-ink-800">{moves.length}</span>
             </button>
             {phase === 'playing' && (
-              <button onClick={requestHint} disabled={hintLoading || isBrowsing} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.hint')}>
+              <button onClick={requestHint} disabled={!canInteract || hintLoading || isBrowsing} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.hint')}>
                 {hintLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lightbulb className="h-5 w-5" />}
               </button>
             )}
@@ -1177,9 +1237,9 @@ export default function Play() {
                     <div className="fixed inset-0 z-[41]" onClick={() => setMoreOpen(false)} />
                     <div className="absolute bottom-full right-0 z-[42] mb-2 w-52 space-y-1 rounded-xl border border-ink-200 bg-white p-1.5 shadow-lift dark:border-ink-700 dark:bg-ink-900">
                       <button onClick={() => { setMoreOpen(false); setFlipped((f) => !f); }} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><FlipVertical2 className="h-4 w-4" />{t('play.flip')}</button>
-                      <button onClick={() => { setMoreOpen(false); offerDraw(); }} disabled={drawOffer !== null} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Handshake className="h-4 w-4" />{t('play.offerDraw')}</button>
-                      <button onClick={() => { setMoreOpen(false); requestTakeback(); }} disabled={takeback !== null || moves.length === 0} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Undo2 className="h-4 w-4" />{t('play.takeback')}</button>
-                      <button onClick={() => { setMoreOpen(false); resign(); }} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
+                      <button onClick={() => { setMoreOpen(false); offerDraw(); }} disabled={!canInteract || drawOffer !== null} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Handshake className="h-4 w-4" />{t('play.offerDraw')}</button>
+                      <button onClick={() => { setMoreOpen(false); requestTakeback(); }} disabled={!canInteract || takeback !== null || moves.length === 0} className="btn-ghost h-10 w-full justify-start px-3 text-sm"><Undo2 className="h-4 w-4" />{t('play.takeback')}</button>
+                      <button onClick={() => { setMoreOpen(false); resign(); }} disabled={!canInteract} className="btn-ghost h-10 w-full justify-start px-3 text-sm text-bad"><Flag className="h-4 w-4" />{t('play.resign')}</button>
                     </div>
                   </>
                 )}
@@ -1188,7 +1248,7 @@ export default function Play() {
               <>
                 <button onClick={() => setFlipped((f) => !f)} className="btn-secondary h-11 w-11 shrink-0 p-0" title={t('play.flip', { defaultValue: 'Flip board' })}><FlipVertical2 className="h-5 w-5" /></button>
                 {phase === 'playing' && (
-                  <button onClick={resign} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
+                  <button onClick={resign} disabled={!canInteract} className="btn-danger h-11 w-11 shrink-0 p-0" title={t('play.resign')}><Flag className="h-5 w-5" /></button>
                 )}
               </>
             )}
@@ -1324,7 +1384,7 @@ export default function Play() {
                   <div className="flex flex-col gap-2 sm:flex-row">
                     {isPvP ? (
                       rematch === 'them' ? (
-                        <button onClick={acceptRematch} className="btn-primary flex-1">
+                        <button onClick={acceptRematch} disabled={!canInteract} className="btn-primary flex-1">
                           <RefreshCw className="h-4 w-4" />{t('play.acceptRematch')}
                         </button>
                       ) : rematch === 'me' ? (
@@ -1332,7 +1392,7 @@ export default function Play() {
                           <Loader2 className="h-4 w-4 animate-spin" />{t('play.rematchOffered')}
                         </button>
                       ) : (
-                        <button onClick={offerRematch} className="btn-primary flex-1" title={rematchDeclined ? t('play.rematchDeclined') : undefined}>
+                        <button onClick={offerRematch} disabled={!canInteract} className="btn-primary flex-1" title={rematchDeclined ? t('play.rematchDeclined') : undefined}>
                           <RefreshCw className="h-4 w-4" />{t('play.rematch')}
                         </button>
                       )
@@ -1530,26 +1590,28 @@ function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameId: numb
   );
 }
 
-function ClockBar({ timeMs, active, label, flip }: { timeMs: number; active: boolean; label: string; flip?: boolean }) {
+function ClockBar({ timeMs, active, label, timed, waiting }: { timeMs: number; active: boolean; label: string; timed: boolean; waiting: boolean }) {
+  const { t } = useTranslation();
   // Under 30s the clock is the thing you need to read at a glance, so it grows
   // and the row grows with it; under 10s it also goes red and pulses. Only for
   // the side actually on the clock — a big number on the idle side is noise.
-  const urgent = active && timeMs > 0 && timeMs <= 30_000;
-  const critical = active && timeMs > 0 && timeMs < 10_000;
+  const urgent = timed && !waiting && active && timeMs > 0 && timeMs <= 30_000;
+  const critical = timed && !waiting && active && timeMs > 0 && timeMs < 10_000;
+  const clockText = waiting ? '—' : timed ? fmtClock(timeMs) : t('play.tc.untimed', { defaultValue: 'Untimed' });
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 rounded-md px-3 sm:px-4 transition-colors
       ${urgent ? 'py-2.5' : 'py-2'}
       ${active
         ? (critical ? 'bg-bad text-white animate-pulse-soft' : 'bg-green-500 text-white')
-        : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'} ${flip ? '' : ''}`}>
+        : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800 dark:text-chesscom-300'}`}>
       <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide" title={label}>{label}</span>
       <span
-        role="timer"
-        aria-label={`${label}: ${fmtClock(timeMs)}`}
+        role={timed && !waiting ? 'timer' : 'status'}
+        aria-label={`${label}: ${clockText}`}
         className={`shrink-0 font-mono font-bold tabular-nums ${urgent ? 'text-2xl leading-none tracking-tight sm:text-3xl' : 'text-lg'}`}
         aria-live="off"
       >
-        {fmtClock(timeMs)}
+        {clockText}
       </span>
     </div>
   );

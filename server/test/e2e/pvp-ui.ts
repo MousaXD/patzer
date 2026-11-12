@@ -98,6 +98,9 @@ await A.waitForURL(/\/play\?game=/, { timeout: 20000 }).catch(async () => {
 });
 await A.waitForTimeout(2500); await B.waitForTimeout(1500);
 ok(A.url().includes('/play?game='), 'Alice was pulled into the game by the lobby socket');
+const desktopBoard = await A.locator('cg-container').first().boundingBox();
+ok(!!desktopBoard && desktopBoard.width >= 530,
+  `desktop: board remains prominent at 1440×900 (${Math.round(desktopBoard?.width ?? 0)}px)`);
 
 // who is white?
 const orientA: 'white' | 'black' = 'white';
@@ -184,6 +187,15 @@ await phone.addCookies(await ctxA.cookies());
 const P = await phone.newPage();
 await P.goto(A.url());
 await P.waitForTimeout(3000);
+// The full-page workspace is a flex column. A Play root with `mx-auto` but
+// without `w-full` shrank to its minimum content width on phones: the chess
+// board occupied only ~125px of a 390px viewport while the rest was blank.
+const boardBox = await P.locator('cg-container').first().boundingBox();
+const viewportWidth = P.viewportSize()!.width;
+ok(!!boardBox && boardBox.width >= viewportWidth * 0.78,
+  `phone: board uses the available width (${Math.round(boardBox?.width ?? 0)} of ${viewportWidth}px)`);
+const hasHorizontalOverflow = await P.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
+ok(!hasHorizontalOverflow, 'phone: board layout does not introduce horizontal scrolling');
 await P.screenshot({ path: `${SHOTS}/pvp-phone-board.png` });
 const movesBtn = P.getByRole('button', { name: /moves/i }).first();
 const hasBar = await movesBtn.isVisible().catch(() => false);

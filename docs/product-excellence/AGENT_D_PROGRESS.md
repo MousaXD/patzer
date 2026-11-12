@@ -44,3 +44,29 @@
 - API consumers that assumed `phase_accuracy.* === 0` meant bad performance should use `phase_samples` to distinguish missing data. The API change is additive.
 - Remaining in-lane opportunities: test a genuine live PvP/bot game with a locally provisioned account; verify screen-reader spoken chart summaries; inspect touch play board and timers; review large-history chart rendering and very long localized labels; add account-switch tests for general tactics using real fixture-based puzzle state.
 - Never merge, deploy, restart production or touch production SQLite from this branch.
+
+## Second pass — 2026-11-12 (continued from `ee6b012`)
+
+### Real browser findings and changes
+
+1. **Disconnected games accepted phantom local actions.** Play became interactive before `game_started` / `pvp_hello`, and could continue presenting a locally moved piece when a socket closed before the server acknowledged the move. Added a separate authoritative game-ready gate. A WebSocket opening is not enough: buttons, board moves, premoves, hints and clock ticks wait for the server's game snapshot. On socket loss, clear optimistic move state, unsent premoves and pending hint/preview state; after reconnect keep controls inactive until the replayed snapshot arrives. Failed sends revert rather than leaving the board hanging.
+2. **Mobile board width collapsed.** Actual Chrome at 390px showed a roughly 125px board and clock bar because the page's auto-margin root was a shrink-to-fit flex child. Added `w-full min-w-0` to Play setup/connecting/game roots. The browser now measures **364px of 390px** for the board, with no page-level horizontal overflow.
+3. **Desktop board was unnecessarily small.** At 1440×900, the 26rem height reserve held the board around 480px. A more accurate 22rem reserve yields **544px** while clocks, navigation and primary buttons remain visible in the 900px screenshot.
+4. **Misleading clock states.** Untimed play displayed `0:00` as if a timed game had expired. The label now says `Untimed`; a new game awaiting the server displays `—` rather than the previous game's clocks. Turn highlighting stops during disconnection and after game over.
+5. **Regression coverage.** Added `Play.connection.test.tsx` for early/late socket readiness, optimistic-board rollback and restored play. Extended scratch-database PvP browser test with desktop/mobile board-size and overflow assertions so a future layout regression is visible.
+
+### Verification
+
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- `npx vitest run --maxWorkers=4`: **970 passed, 12 skipped, 0 failures** across 111 test files.
+- Real Chrome browser PvP E2E, local scratch server **on throwaway `/tmp` SQLite only**: all assertions passed. Verified two authenticated players, legal move exchange, draw/decline, takeback/accept, replay, draw agreement, rematch, phone moves sheet and both board-width regressions. The temporary browser-run shim only pointed Playwright at installed local Chrome and was removed; canonical E2E test retains its usual invocation.
+- `qa/agent-d-browser/real-pvp/` contains screenshots from the real E2E of desktop, mobile, game over, rematch, and negotiation states.
+- Pixel inspection of final mobile and desktop screenshots confirmed square board, aligned clocks and visible primary controls.
+- No production SQLite, deployment, original product-excellence checkout or another agent's branch was modified.
+
+### Next in-lane investigation
+
+- Evaluate accidental resignation risk: game controls currently resign immediately on a single tap, with no confirm/recovery path.
+- Check remaining keyboard/touch focus and reduced-motion behavior on Play overlays.
+- Validate bot-game reconnection with a locally provisioned Stockfish engine when available; the current environment lacks a Stockfish executable, so PvP was the live-server/browser coverage.
