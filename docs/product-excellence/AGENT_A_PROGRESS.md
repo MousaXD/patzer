@@ -1085,6 +1085,23 @@
 
 - Audit on-demand Engine Lines when its disclosure is closed/reopened rapidly while an HTTP request is in flight. The effect aborts old requests and checks request-local cancellation, but the browser matrix has not explicitly proven a delayed stale success cannot replace the new FEN's valid suggestions. Exercise genuine delayed intercepted responses, focus, visible loading/error state, and original PGN integrity before changing code.
 
+## 2026-11-12: delayed abandoned engine-line response cannot replace reopened source
+
+### Recovered unfinished browser test
+
+- Resumed from clean pushed `6a89a3e`, with **one uncommitted browser test only** in `scripts/review-polish-capture.mjs`; no unfinished product code. Preserved the already-running isolated Chromium process rather than restarting completed work or launching competing QA on the shared machine.
+- The fixture uses two independent intercepted HTTP results for the *same* real starting FEN: a deliberately delayed first `d4` line, and a fresh `e4` line on reopening Engine Lines. It waits until the first request begins, collapses and reopens the disclosure, verifies the newer `e4` recommendation appears, then releases the old response and checks that it cannot overwrite the new data. Both legal move labels, score evidence and saved PGN remain source-matched; no fake alternative or stale result appears.
+
+### Verification and decision
+
+- The full authenticated, disposable SQLite + Chromium matrix ran to completion on port **8948** with no error/assertion in the captured log. New stale-response checks PASS: two requests, the fresh `e4` button remains enabled after the old response settles, and delayed `d4` never appears. Examined `qa-artifacts/agent-a/engine-lines-aborted-request-20261112/engine-lines-reopened-stale-response-390.png` in dark 390px; the fresh recommendation is visible and legible.
+- `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. Application code unchanged, so existing source cancellation guard is confirmed rather than rewritten. Previous implementation checkpoint `6a89a3e` had **1004 passed / 12 skipped**, typecheck and build green.
+- No changes to production data, running service, deployments, or other agent branches.
+
+### Next scoped Game Review audit
+
+- Inspect the **empty live Engine Lines** state on terminal saved positions and source-valid nonterminal positions that return no candidate PV. The current rail renders only an em dash in both cases. Establish whether that leaves players unable to tell a completed checkmate/stalemate from a temporary engine-result gap, then provide truthful localized guidance if confirmed, without inventing a score or engine move.
+
 ## 2026-11-12: independently certify cancelled/reopened engine-line requests
 
 ### Recovered checkpoint and real asynchronous audit
