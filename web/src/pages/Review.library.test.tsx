@@ -183,13 +183,14 @@ describe('Review library with large histories', () => {
 
   it('requests a clearly bounded recent import batch rather than silently fetching only 20', async () => {
     mocks.user.profile.chesscom_username = 'tester';
-    mocks.post.mockResolvedValue({ imported: 150, total: 200 });
+    mocks.post.mockResolvedValue({ imported: 150, total: 200, duplicates: 42, skipped: 8 });
     mount();
     await screen.findByText(/40 of 1,000 games/);
     expect((screen.getByRole('combobox', { name: 'Recent games to fetch' }) as HTMLSelectElement).value).toBe('200');
     fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
     expect(await screen.findByText(/150 new games saved from 200 retrieved/)).toBeTruthy();
+    expect(screen.getByText(/42 already saved, 8 unsupported or invalid/)).toBeTruthy();
     expect(screen.getByText(/not your entire history/)).toBeTruthy();
   });
 
@@ -228,6 +229,16 @@ describe('Review library with large histories', () => {
     mount();
     expect(await screen.findByText('In progress')).toBeTruthy();
     expect(screen.queryByText(/1970/)).toBeNull();
+  });
+
+  it('never attributes a Black-or-White accuracy score to a user with unknown side', async () => {
+    mocks.get.mockResolvedValue({
+      games: [{ ...makeGame(1), analyzed: 1, user_color: null,
+        accuracy_white: 91.5, accuracy_black: 32.2 }], total: 1,
+    });
+    mount();
+    expect(await screen.findByText('Analysis available')).toBeTruthy();
+    expect(screen.queryByText('review.accuracy: 91.5%')).toBeNull();
   });
 
   it('restores the bookmark and shows an actionable error after a failed save', async () => {

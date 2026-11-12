@@ -283,15 +283,17 @@ router.post('/import/lichess', async (c) => {
   `);
   let imported = 0;
   let skipped = 0;
+  let duplicates = 0;
   for (const g of games) {
     const row = toImportRow(g, username);
     if (!row) { skipped++; continue; }
     const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
       row.time_control, row.time_class, row.end_time, row.user_color);
     if (r.changes > 0) imported++;
+    else duplicates++;
   }
 
-  return c.json({ imported, total: games.length, skipped });
+  return c.json({ imported, total: games.length, skipped, duplicates });
 });
 
 export default router;

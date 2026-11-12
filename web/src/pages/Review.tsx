@@ -21,7 +21,7 @@ const FILTER_OPTIONS = {
   source: [['', 'All sources'], ['chesscom', 'Chess.com'], ['lichess', 'Lichess'], ['played', 'Played'], ['pvp', 'Friends'], ['imported', 'PGN import']],
   time_class: [['', 'All speeds'], ['bullet', 'Bullet'], ['blitz', 'Blitz'], ['rapid', 'Rapid'], ['daily', 'Daily']],
   result: [['', 'All results'], ['win', 'Wins'], ['draw', 'Draws'], ['loss', 'Losses']],
-  analyzed: [['', 'Any review status'], ['1', 'Analyzed'], ['0', 'Not analyzed']],
+  analyzed: [['', 'Any status'], ['1', 'Analyzed'], ['0', 'Not analyzed']],
   sort: [['newest', 'Newest first'], ['oldest', 'Oldest first']],
 } as const;
 type FilterName = keyof typeof FILTER_OPTIONS;
@@ -167,11 +167,13 @@ export default function Review() {
 
   const importMut = useMutation({
     mutationFn: ({ source, limit }: { source: ImportSource; accountId: number; limit: number }) =>
-      api.post<{ imported: number; total: number; skipped?: number }>(`/api/games/import/${source}`, { limit }),
+      api.post<{ imported: number; total: number; skipped?: number; duplicates?: number }>(`/api/games/import/${source}`, { limit }),
     onSuccess: (r, { accountId }) => {
       void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
       if (accountIdRef.current !== accountId) return;
-      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${r.skipped ? ` (${r.skipped} unsupported or invalid)` : ''}. This imports recent games only, not your entire history.` }, 9000);
+      const details = [r.duplicates ? `${r.duplicates} already saved` : '', r.skipped ? `${r.skipped} unsupported or invalid` : '']
+        .filter(Boolean).join(', ');
+      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${details ? ` (${details})` : ''}. This imports recent games only, not your entire history.` }, 9000);
     },
     onError: (e, { accountId }) => {
       if (accountIdRef.current !== accountId) return;
@@ -201,14 +203,26 @@ export default function Review() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="mx-auto w-full min-w-0 max-w-[calc(100vw-24px)] space-y-5 lg:max-w-5xl">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-h1">{t('review.title')}</h1>
           <p className="page-sub">{t('review.subtitle', { defaultValue: 'Browse, analyze and learn from your games.' })}</p>
         </div>
-        {linked.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        {linked.length === 0 && (
+          <Link to="/settings" className="btn-secondary text-sm">
+            <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
+          </Link>
+        )}
+      </header>
+
+      {linked.length > 0 && (
+        <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between" aria-label="Import recent games">
+          <div className="min-w-0 sm:max-w-48">
+            <p className="text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">Import recent games</p>
+            <p className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">Choose a batch size; existing games are not overwritten.</p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <label htmlFor="library-import-limit" className="text-xs text-chesscom-500">Recent games to fetch</label>
             <select id="library-import-limit" className="input w-auto text-sm" value={importLimit} disabled={importMut.isPending}
               onChange={(e) => setImportLimit(Number(e.target.value) as typeof importLimit)}>
@@ -221,12 +235,8 @@ export default function Review() {
               </button>
             ))}
           </div>
-        ) : (
-          <Link to="/settings" className="btn-secondary text-sm">
-            <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
-          </Link>
-        )}
-      </header>
+        </section>
+      )}
 
       {importMsg && (
         <div className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
@@ -282,18 +292,18 @@ export default function Review() {
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2" aria-label="Filter and sort games">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center" aria-label="Filter and sort games">
         {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => (
-          <label key={key} className="flex items-center gap-1 text-xs text-chesscom-500">
+          <label key={key} className="block min-w-0 text-xs text-chesscom-500 sm:w-auto">
             <span className="sr-only">{key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}</span>
             <select aria-label={key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}
-              className="input w-auto max-w-full text-xs" value={filters[key]}
+              className="input w-full min-w-0 text-xs sm:w-auto" value={filters[key]}
               onChange={(e) => updateFilter(key, e.target.value)}>
               {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
         ))}
-        {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary text-xs"
+        {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>Clear filters</button>}
       </div>
 
@@ -395,8 +405,8 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
   const isStarred = !!g.bookmarked;
 
   return (
-    <div className="card-hover group relative flex items-center gap-3 p-3 sm:gap-4 sm:p-4">
-      <Link to={`/review/${g.id}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:gap-4">
+    <div className="card-hover group relative flex flex-col items-stretch gap-2 p-3 sm:flex-row sm:items-center sm:gap-4 sm:p-4">
+      <Link to={`/review/${g.id}`} className="flex min-w-0 flex-1 items-start gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:items-center sm:gap-4">
         <ResultIcon r={g.result} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -406,7 +416,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
             <span className="text-xs text-chesscom-400">· {fmtTimeControl(g.time_control, t)}</span>
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-chesscom-500">
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-chesscom-500">
             <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
             <span>·</span>
             <span>{t(`review.source.${g.source}`, { defaultValue: g.source })}</span>
@@ -415,7 +425,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
           </div>
         </div>
         {g.analyzed ? (
-          <div className="text-right text-xs">
+          <div className="hidden shrink-0 text-right text-xs sm:block">
             <div className="text-[11px] uppercase tracking-wider text-chesscom-400" title="Stockfish-based Patzer accuracy estimate; not Chess.com CAPS2.">{t('review.accuracy')} <span className="normal-case tracking-normal">· Patzer</span></div>
             <div className="font-mono text-sm font-semibold tabular-nums">
               <span className="text-chesscom-700 dark:text-chesscom-200">{fmtAccuracy(g.accuracy_white)}</span>
@@ -424,11 +434,18 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
             </div>
           </div>
         ) : (
-          <span className="badge gap-1 bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300">
+          <span className="badge hidden shrink-0 gap-1 bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-700 dark:text-chesscom-300 sm:inline-flex">
             <BookOpen className="h-3 w-3" /> review
           </span>
         )}
       </Link>
+      <div className="flex min-w-0 items-center justify-between gap-2 border-t border-chesscom-200 pt-2 dark:border-chesscom-700 sm:contents sm:border-0 sm:pt-0">
+        <span className="min-w-0 truncate text-xs text-chesscom-500 dark:text-chesscom-300 sm:hidden">
+          {g.analyzed && g.user_color
+            ? `${t('review.accuracy')}: ${fmtAccuracy(g.user_color === 'black' ? g.accuracy_black : g.accuracy_white)}`
+            : g.analyzed ? t('review.analysisReady', { defaultValue: 'Analysis available' })
+              : t('review.notAnalyzed', { defaultValue: 'Not reviewed yet' })}
+        </span>
       {g.analyzed && g.end_time && g.result !== '*' && g.result !== 'ongoing' ? (
         <Link to={`/review/${g.id}?practice=1`}
           aria-label={t('practice.entryAria', { white: g.white, black: g.black })}
@@ -456,6 +473,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
           {t('review.bookmarkFailed', { defaultValue: 'Bookmark could not be saved. Try again.' })}
         </span>
       )}
+      </div>
     </div>
   );
 }

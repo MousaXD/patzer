@@ -283,11 +283,15 @@ describe('manual Chess.com import resilience', () => {
     try {
       const response = await postImport();
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ imported: 2, total: 5 });
+      expect(await response.json()).toMatchObject({ imported: 2, total: 5, skipped: 3, duplicates: 0 });
       expect(db.prepare('SELECT external_id, result FROM games WHERE user_id = 6 ORDER BY external_id').all()).toEqual([
         { external_id: 'https://www.chess.com/game/live/99001', result: 'win' },
         { external_id: 'https://www.chess.com/game/live/99002', result: null },
       ]);
+      const repeat = await postImport();
+      expect(repeat.status).toBe(200);
+      expect(await repeat.json()).toMatchObject({ imported: 0, total: 5, skipped: 3, duplicates: 2 });
+      expect(db.prepare('SELECT count(*) AS n FROM games WHERE user_id = 6').get()).toEqual({ n: 2 });
     } finally { vi.unstubAllGlobals(); }
   });
 
@@ -307,6 +311,56 @@ describe('manual Chess.com import resilience', () => {
       expect((await first).status).toBe(200);
       expect((await postImport()).status).toBe(200);
     } finally { release(); vi.unstubAllGlobals(); }
+  });
+});
+
+describe('manual Lichess import integrity', () => {
+  const savedId = 'agentc_lc_test';
+  const lichessGame = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id, rated: true, variant: 'standard', speed: 'blitz', createdAt: 1760000000000,
+    lastMoveAt: 1760000050000, status: 'mate', winner: 'white',
+    players: {
+      white: { user: { name: 'importer', id: 'importer' }, rating: 1300 },
+      black: { user: { name: 'opponent', id: 'opponent' }, rating: 1270 },
+    },
+    clock: { initial: 300, increment: 0 },
+    pgn: '[Event "Lichess game"]\n[White "importer"]\n[Black "opponent"]\n\n1. e4 e5 1-0',
+    ...overrides,
+  });
+  async function importLichess() {
+    const { createSession, SESSION_COOKIE_NAME } = await import('../src/auth/sessions.js');
+    return gamesRoute.request('/import/lichess', {
+      method: 'POST',
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'importer', limit: 20 }),
+    });
+  }
+  it('only inserts valid owned games and counts repeated imports as duplicates', async () => {
+    const rows = [
+      lichessGame(savedId),
+      lichessGame('foreign_1234', { players: { white: { user: { id: 'foreign', name: 'foreign' } }, black: { user: { id: 'not_importer', name: 'not_importer' } } } }),
+      lichessGame('corrupt_1234', { pgn: '1. e4 e5 2. nope' }),
+      lichessGame('ambiguous_12', { status: 'resign', winner: undefined }),
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(rows.map(row => JSON.stringify(row)).join('\n'), {status: 200})));
+    try {
+      expect((await (await importLichess()).json())).toMatchObject({ imported: 1, total: 4, skipped: 3, duplicates: 0 });
+      expect((await (await importLichess()).json())).toMatchObject({ imported: 0, total: 4, skipped: 3, duplicates: 1 });
+      expect(db.prepare("SELECT external_id, user_color, result, rated FROM games WHERE user_id = 6 AND source = 'lichess'").all())
+        .toEqual([{ external_id: savedId, user_color: 'white', result: 'win', rated: 0 }]);
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess'").run();
+    }
+  });
+  it('rejects truncated export responses before committing any game', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`${JSON.stringify(lichessGame('partial_12'))}\n{"id":"truncated`, {status: 200})));
+    try {
+      const response = await importLichess();
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: 'lichess_unavailable' });
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'lichess'").get()).toEqual({ n: 0 });
+    } finally { vi.unstubAllGlobals(); }
   });
 });
 

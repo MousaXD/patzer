@@ -44,16 +44,16 @@ describe('toImportRow', () => {
     expect(toImportRow(game({ winner: undefined, status: 'stalemate' }), 'drnykterstein')!.result).toBe('draw');
   });
 
-  it('scores a game the user is not in from White’s side, like the chess.com importer', () => {
-    expect(toImportRow(game(), 'someone_else')!).toMatchObject({ user_color: null, result: 'loss' });
+  it('refuses to attribute a foreign game to the requesting account', () => {
+    expect(toImportRow(game(), 'someone_else')).toBeNull();
   });
 
   it('classifies time controls with Patzer’s own rules', () => {
-    expect(toImportRow(game({ clock: { initial: 60, increment: 0 } }), 'x')!.time_class).toBe('bullet');
-    expect(toImportRow(game({ clock: { initial: 600, increment: 5 } }), 'x')!.time_class).toBe('rapid');
-    const corr = toImportRow(game({ clock: undefined, daysPerTurn: 3, speed: 'correspondence' }), 'x')!;
+    expect(toImportRow(game({ clock: { initial: 60, increment: 0 } }), 'drnykterstein')!.time_class).toBe('bullet');
+    expect(toImportRow(game({ clock: { initial: 600, increment: 5 } }), 'drnykterstein')!.time_class).toBe('rapid');
+    const corr = toImportRow(game({ clock: undefined, daysPerTurn: 3, speed: 'correspondence' }), 'drnykterstein')!;
     expect(corr).toMatchObject({ time_control: '1/259200', time_class: 'daily' });
-    const unlimited = toImportRow(game({ clock: undefined, speed: 'correspondence' }), 'x')!;
+    const unlimited = toImportRow(game({ clock: undefined, speed: 'correspondence' }), 'drnykterstein')!;
     expect(unlimited).toMatchObject({ time_control: 'untimed', time_class: null });
   });
 
@@ -88,19 +88,31 @@ describe('toImportRow', () => {
   it('never stores a player name that is not text', () => {
     const g = game();
     const odd = { ...g, players: { ...g.players, white: { ...g.players.white, user: { id: 'odd', name: {} } } } } as unknown as LichessGame;
-    expect(typeof toImportRow(odd, 'x')?.white).toBe('string');
+    expect(typeof toImportRow(odd, 'drnykterstein')?.white).toBe('string');
+  });
+
+  it('excludes illegal PGNs, missing winners for decisive statuses, and ambiguous results', () => {
+    expect(toImportRow(game({ pgn: 'not legal chess' }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ pgn: '1. e4 e5 2. Nonsense *' }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ pgn: 'a'.repeat(1_000_001) }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ winner: undefined, status: 'resign' }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ winner: undefined, status: 'futureStatus' }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ winner: 'white', status: 'draw' }), 'drnykterstein')).toBeNull();
+    expect(toImportRow(game({ winner: undefined, status: 'outoftime' }), 'drnykterstein')?.result).toBe('draw');
   });
 });
 
 describe('parseNdjson', () => {
-  it('reads one game per line and tolerates blank and torn lines', () => {
-    const body = `${JSON.stringify(game())}\n\n${JSON.stringify(game({ id: 'second' }))}\n{"id": "torn`;
+  it('reads one game per line and tolerates blank lines', () => {
+    const body = `${JSON.stringify(game())}\n\n${JSON.stringify(game({ id: 'second' }))}\n`;
     expect(parseNdjson(body).map((g) => g.id)).toEqual(['kAdOQKeh', 'second']);
   });
 
-  it('keeps only lines that are JSON objects', () => {
-    const body = `null\n42\n"text"\n[1,2]\n${JSON.stringify(game())}`;
-    expect(parseNdjson(body).map((g) => g.id)).toEqual(['kAdOQKeh']);
+  it('rejects a truncated or malformed upstream batch rather than silently dropping games', () => {
+    expect(() => parseNdjson(`${JSON.stringify(game())}\n{"id":"torn`)).toThrow('invalid_export');
+    for (const bad of ['null','42','"text"','[1,2]']) {
+      expect(() => parseNdjson(`${JSON.stringify(game())}\n${bad}`)).toThrow('invalid_export');
+    }
   });
 });
 
@@ -131,6 +143,11 @@ describe('fetchRecentGames', () => {
     await expect(fetchRecentGames('nobody_here', { max: 1 }, fakeFetch(404).fetch)).rejects.toThrow('not_found');
     await expect(fetchRecentGames('someone', { max: 1 }, fakeFetch(429).fetch)).rejects.toThrow('rate_limited');
     await expect(fetchRecentGames('someone', { max: 1 }, fakeFetch(503).fetch)).rejects.toThrow('lichess_503');
+  });
+
+  it('rejects an otherwise successful response with a truncated NDJSON game', async () => {
+    await expect(fetchRecentGames('drnykterstein', { max: 20 },
+      fakeFetch(200, `${JSON.stringify(game())}\n{"id":"torn`).fetch)).rejects.toThrow('invalid_export');
   });
 
   it('rejects an invalid username without calling Lichess', async () => {

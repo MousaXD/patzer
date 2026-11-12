@@ -5,7 +5,7 @@ import { db } from '../db.js';
 import { fetchRecentGames, type ChessComGame } from './chesscom.js';
 import { Chess } from 'chess.js';
 
-export async function importChessComGames(userId: number, username: string, limit: number): Promise<{ imported: number; total: number }> {
+export async function importChessComGames(userId: number, username: string, limit: number): Promise<{ imported: number; total: number; skipped: number; duplicates: number }> {
   const games = await fetchRecentGames(username, limit);
   // Imported chess.com games are NEVER rated in Patzer's pool — they have their
   // own chess.com rating that lives there. Only PvP games inside Patzer count.
@@ -16,16 +16,19 @@ export async function importChessComGames(userId: number, username: string, limi
   `);
 
   let imported = 0;
+  let skipped = 0;
+  let duplicates = 0;
   for (const game of games) {
     const row = validImportRow(game, username);
     // One malformed upstream game must never block the rest of this import,
     // invent a loss, or contaminate this user's game library.
-    if (!row) continue;
+    if (!row) { skipped++; continue; }
     const r = stmt.run(userId, row.url, row.pgn, row.white, row.black, row.result,
       row.timeControl, row.timeClass, row.endTime, row.userColor);
     if (r.changes > 0) imported++;
+    else duplicates++;
   }
-  return { imported, total: games.length };
+  return { imported, total: games.length, skipped, duplicates };
 }
 
 
