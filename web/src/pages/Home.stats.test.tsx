@@ -131,6 +131,7 @@ describe('Home statistics failure', () => {
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
     expect(recentGame.querySelector('[data-home-recent-opponent]')?.className).toContain('line-clamp-2');
     expect(recentGame.querySelector('[data-home-recent-name]')?.className).toContain('flex');
+    expect(recentGame.querySelector('.tracking-wider')?.className).toContain('text-ui-mutedText');
     expect(recentGame.querySelector('[data-home-recent-desktop-matchup]')?.textContent).toContain('sample-player');
     const desktopOpponent = recentGame.querySelector('[data-home-recent-desktop-opponent]');
     expect(desktopOpponent?.textContent?.trim()).toBe('OpponentWithALongName');

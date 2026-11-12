@@ -667,7 +667,7 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     </span>
                   </div>
                 ) : (
-                  <span className="hidden text-[11px] uppercase tracking-wider text-chesscom-400 sm:inline">
+                  <span className="hidden text-[11px] uppercase tracking-wider text-ui-mutedText sm:inline">
                     {t('home.unreviewed', { defaultValue: 'unreviewed' })}
                   </span>
                 )}

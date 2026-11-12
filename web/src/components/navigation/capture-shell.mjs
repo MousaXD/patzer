@@ -340,6 +340,19 @@ try {
           if (!value.includes('sample-player') || !value.includes('OpponentWithALongName')) {
             throw new Error(`Recent games ${recentTheme}/${color}/${viewport.width}px: desktop matchup incomplete: ${value}`);
           }
+          const statusContrast = await row.locator('.tracking-wider').evaluate((status) => {
+            const components = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+            const luminance = (values) => values.map((value) => {
+              const channel = value / 255;
+              return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+            }).reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index], 0);
+            const foreground = luminance(components(getComputedStyle(status).color));
+            const background = luminance(components(getComputedStyle(status.closest('ul')).backgroundColor));
+            return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+          });
+          if (statusContrast < 4.5) {
+            throw new Error(`Recent games ${recentTheme}/${color}/${viewport.width}px: Unreviewed status below 4.5:1 contrast: ${statusContrast}`);
+          }
         }
         await checkNoHorizontalOverflow(page, `recent games ${recentTheme}/${color}/${viewport.width}px`);
         await page.screenshot({ path: resolve(output, `home-recent-${recentTheme}-${color}-${viewport.width}.png`) });

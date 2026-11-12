@@ -1110,3 +1110,26 @@
 ### Next audit
 
 - Check computed text contrast for the **Unreviewed** status and Recent Games metadata across light/dark themes, particularly its 11px uppercase presentation, because the dark-mode screenshots show a faint secondary label. Reproduce and measure before changing semantic color tokens.
+
+## 2026-11-12: Make the Home Unreviewed status meet text contrast standards
+
+### Reproduction
+
+- Continued from clean pushed `e7823dd` and measured real Chromium computed foreground/background colors rather than inferring contrast from screenshots.
+- Desktop/tablet `Unreviewed` used fixed `text-chesscom-400` RGB(125,118,112), giving only **4.47:1** on the light card and **3.02:1** on the dark card. Its compact 11px uppercase lettering requires at least **4.5:1** for normal text.
+- The mobile row already used the accessible `text-ui-mutedText` color via its metadata parent: **6.21:1 light** and **8.17:1 dark**, so no mobile change was needed.
+
+### Fix and verification
+
+1. Switch the single desktop `Unreviewed` label to the shared `text-ui-mutedText` semantic color; retain its 11px uppercase typography, alignment and responsive placement.
+2. Add a Home component-class regression and a real Chromium computed-color assertion requiring **at least 4.5:1** for the visible desktop status in the existing 768/1440px, both-theme and both-player-color matrix.
+3. Separate post-fix Chromium contrast probe measured **6.21:1 light** and **8.17:1 dark**, with unchanged mobile values.
+4. Inspected `artifacts/agent-02/home-recent-dark-white-1440.png`; secondary status remains visually subordinate but clearly legible.
+5. `node web/src/components/navigation/capture-shell.mjs`: **passed**, including prior keyboard, responsive, long-name and translation checks.
+6. `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **12/12 passed**; `npx vitest run web/src --maxWorkers=2`: **439/439 passed across 74 files**.
+7. `npm run build -w web`: **passed**; `git diff --check`: **passed**.
+- Scope limited to Home and its browser/component tests plus this report. No merge, production change, deployment, or edits to other agents' lanes.
+
+### Next audit
+
+- Measure contrast and visual affordance of **Win/Loss/Draw** glyphs in Home Recent Games across both themes and at 320/1440px. Their accessible outcome names were already corrected in an earlier commit; do not repeat that work. Fix only a demonstrated, meaningful visual accessibility problem.
