@@ -5,6 +5,49 @@ import { legalAnalysisMove } from '../../lib/analysisVariations';
  * different FEN, or reuse the saved mainline during a free variation. */
 export interface SuggestedMove { best_move_uci?: string | null }
 
+export interface SavedBestAdvice extends SuggestedMove {
+  fen_before: string;
+  best_move_san?: string | null;
+  best_pv?: readonly string[];
+}
+
+/** Cached engine advice is descriptive data, not a license to draw arbitrary
+ * arrows or tell a learner an impossible move was best. The current FEN,
+ * legal UCI and canonical SAN must all match before it is presented. */
+export function verifiedSavedBestMove(
+  move: SavedBestAdvice | null | undefined,
+  precedingFen: string | undefined,
+): { uci: string; san: string } | null {
+  if (!move || !precedingFen || move.fen_before !== precedingFen
+    || !move.best_move_uci || !move.best_move_san) return null;
+  const legal = legalAnalysisMove(precedingFen, move.best_move_uci);
+  return legal && legal.san === move.best_move_san
+    ? { uci: legal.uci, san: legal.san } : null;
+}
+
+/** The engine may offer a sound best move alongside a corrupted or truncated
+ * PV. Keep the legally verified move visible, but do not invent or echo a
+ * continuation unless every SAN can be replayed from that exact position. */
+export function verifiedSavedBestContinuation(
+  move: SavedBestAdvice | null | undefined,
+  precedingFen: string | undefined,
+): string[] {
+  const best = verifiedSavedBestMove(move, precedingFen);
+  if (!best || !Array.isArray(move?.best_pv) || move.best_pv.length === 0
+    || move.best_pv[0] !== best.san) return [];
+  try {
+    const replay = new Chess(precedingFen);
+    for (const san of move.best_pv) {
+      if (typeof san !== 'string') return [];
+      const played = replay.move(san, { strict: true });
+      if (!played || played.san !== san) return [];
+    }
+    return [...move.best_pv];
+  } catch {
+    return [];
+  }
+}
+
 /** Offer an interactive best-move preview only when the cached suggestion is
  *  a legal, correctly named alternative in the original pre-move position.
  *  A raw UCI or SAN by itself is not sufficient evidence for a CTA. */
@@ -12,11 +55,8 @@ export function verifiedBestAlternative(
   move: { uci: string; fen_before: string; best_move_uci?: string | null; best_move_san?: string | null },
   precedingFen: string | undefined,
 ): { uci: string; san: string } | null {
-  if (!precedingFen || move.fen_before !== precedingFen
-    || !move.best_move_uci || !move.best_move_san) return null;
-  const legal = legalAnalysisMove(precedingFen, move.best_move_uci);
-  return legal && legal.uci !== move.uci && legal.san === move.best_move_san
-    ? { uci: legal.uci, san: legal.san } : null;
+  const best = verifiedSavedBestMove(move, precedingFen);
+  return best && best.uci !== move.uci ? best : null;
 }
 
 /** Stockfish's scorer derives absolute ply from FEN (fullmove and turn).
@@ -74,8 +114,9 @@ export function verifiedPositionEngineLines<T>(
 
 export function bestMoveForDisplayedBoard(args: {
   ply: number;
+  displayedFen: string;
   isVariation: boolean;
-  mainline?: readonly SuggestedMove[];
+  mainline?: readonly SavedBestAdvice[];
   liveLines?: readonly { uci: string }[];
   liveReady: boolean;
 }): string | undefined {
@@ -83,5 +124,5 @@ export function bestMoveForDisplayedBoard(args: {
   // Move N is evaluated from the position before move N, so the displayed
   // position after ply P can only use move P+1's saved suggestion.
   if (args.isVariation) return undefined;
-  return args.mainline?.[args.ply]?.best_move_uci ?? undefined;
+  return verifiedSavedBestMove(args.mainline?.[args.ply], args.displayedFen)?.uci;
 }

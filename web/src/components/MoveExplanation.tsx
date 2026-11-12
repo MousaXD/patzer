@@ -12,6 +12,7 @@ import { CLASS_STYLE } from '../lib/classification';
 import ClassificationIcon from './ClassificationIcon';
 import CoachPanel from './CoachPanel';
 import { moveNumberForPly, moveSideForPly } from './review/moveHistoryModel';
+import { verifiedSavedBestMove, verifiedSavedBestContinuation } from './review/reviewPosition';
 import type { AnalyzedMove } from '../types';
 
 /** Lichess win-chance curve (same as the server's cpToWinPct), 0..100 for White.
@@ -62,8 +63,9 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
   const reason = wp || ['book', 'forced', 'best'].includes(move.classification)
     ? t(`review.why.${move.classification}`, { before: wp?.before, after: wp?.after, drop: wp?.drop, pawns })
     : t('review.why.evaluationUnavailable');
-  const showBest = !!move.best_move_san && move.best_move_san !== move.san;
-  const line = move.best_pv?.slice(0, 6).join(' ');
+  const checkedBest = verifiedSavedBestMove(move, move.fen_before);
+  const showBest = !!checkedBest && checkedBest.san !== move.san;
+  const line = showBest ? verifiedSavedBestContinuation(move, move.fen_before).slice(0, 6).join(' ') : '';
   const num = `${moveNumberForPly(move.ply, startFen)}${side === 'white' ? '.' : '…'}`;
 
   return (
@@ -89,7 +91,7 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
       {showBest && (
         <div className="mt-2 rounded-md bg-white px-2.5 py-1.5 text-xs dark:bg-chesscom-800">
           <span className="text-chesscom-500 dark:text-chesscom-300">{t('review.why.engineWanted')} </span>
-          <span className="font-mono font-semibold text-move-best">{move.best_move_san}</span>
+          <span className="font-mono font-semibold text-move-best">{checkedBest?.san}</span>
           {line && (
             <div className="mt-0.5 font-mono text-[11px] text-chesscom-500 dark:text-chesscom-300">{t('review.why.line')}: {line}</div>
           )}
@@ -98,7 +100,7 @@ export default function MoveExplanation({ move, userColor, coachConfigured, coac
               className="btn-secondary mt-2 min-h-11 w-full justify-center text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500"
               data-review-show-best-move>
               <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-              {t('review.why.showBestOnBoard', { san: move.best_move_san })}
+              {t('review.why.showBestOnBoard', { san: checkedBest?.san })}
             </button>
           )}
         </div>

@@ -6,7 +6,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Ar
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -604,6 +604,7 @@ function GameAnalyzerView() {
   const evaluatedMove = analysis?.moves[ply - 1];
   const move: AnalyzedMove | undefined = !isVariation && evaluatedMove?.uci === pos?.uci
     ? evaluatedMove : undefined;
+  const currentSavedBest = move ? verifiedSavedBestMove(move, positions[ply - 1]?.fen) : null;
   const startFen = positions[0]?.fen;
   // A partially imported / still-running game is not an eligible blind drill.
   const eligiblePractice = !data.analysis_stale && !cachedAnalysisInvalid
@@ -651,6 +652,7 @@ function GameAnalyzerView() {
   // suggestion (or a fresh live line) is legal on the displayed board.
   const bestUci = bestMoveForDisplayedBoard({
     ply,
+    displayedFen: currentFen,
     isVariation,
     mainline: analysis?.moves,
     liveLines: freshLines,
@@ -882,8 +884,8 @@ function GameAnalyzerView() {
               ) : ply > 0 && pos?.san ? (
                 <>
                   <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{reviewedMoveSide === 'white' ? t('review.sideShort.white') : t('review.sideShort.black')}: {pos.san}</span>
-                  {move?.best_move_san && move.best_move_san !== pos.san && (
-                    <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: move.best_move_san })}</span>
+                  {currentSavedBest && currentSavedBest.san !== pos.san && (
+                    <span className="ml-2 text-xs text-chesscom-400">{t('review.best', { san: currentSavedBest.san })}</span>
                   )}
                 </>
               ) : <span className="italic">{t('review.startingPosition')}</span>}
@@ -1126,7 +1128,7 @@ function GameAnalyzerView() {
                           classification: m.classification,
                           cp_loss: m.cp_loss,
                           win_pct_delta: m.win_pct_delta,
-                          best_san: m.best_san,
+                          best_san: verifiedSavedBestMove(measuredMove, positions[m.ply - 1]?.fen)?.san ?? null,
                           title: proseHit?.title,
                           prose: proseHit?.prose,
                           mine: data.game.user_color ? moveSideForPly(m.ply, startFen) === data.game.user_color : undefined,

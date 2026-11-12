@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Chess } from 'chess.js';
-import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedBestAlternative } from './reviewPosition';
+import { bestMoveForDisplayedBoard, visibleEngineLines, verifiedPositionEngineLines, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation } from './reviewPosition';
 
-const savedMoves = [
-  { best_move_uci: 'e2e4' },
-  { best_move_uci: 'e7e5' },
-  { best_move_uci: 'g1f3' },
-];
+const chess = new Chess();
+const savedMoves = ['e4','e5','Nf3'].map((san) => {
+  const fen_before = chess.fen();
+  const move = chess.move(san);
+  return { fen_before, best_move_uci: move.from + move.to + (move.promotion || ''), best_move_san: move.san };
+});
 
 describe('review position-safe suggestions', () => {
   it('only permits a legal, correctly named alternative from the same analyzed pre-move FEN', () => {
@@ -21,19 +22,35 @@ describe('review position-safe suggestions', () => {
   });
   it('uses the next move, never a hint evaluated before the displayed move', () => {
     expect(bestMoveForDisplayedBoard({
-      ply: 1, isVariation: false, mainline: savedMoves, liveReady: false,
+      ply: 1, displayedFen: savedMoves[1]!.fen_before, isVariation: false, mainline: savedMoves, liveReady: false,
     })).toBe('e7e5');
     expect(bestMoveForDisplayedBoard({
-      ply: 0, isVariation: false, mainline: savedMoves, liveReady: false,
+      ply: 0, displayedFen: savedMoves[0]!.fen_before, isVariation: false, mainline: savedMoves, liveReady: false,
     })).toBe('e2e4');
     expect(bestMoveForDisplayedBoard({
-      ply: 3, isVariation: false, mainline: savedMoves, liveReady: false,
+      ply: 3, displayedFen: chess.fen(), isVariation: false, mainline: savedMoves, liveReady: false,
     })).toBeUndefined();
+  });
+
+  it('never presents mislabeled or position-inconsistent cached best moves as board arrows or advice', () => {
+    const initialFen = savedMoves[0]!.fen_before;
+    const valid = { ...savedMoves[0], best_pv: ['e4', 'e5', 'Nf3'] };
+    expect(verifiedSavedBestMove(valid, initialFen)).toEqual({ uci: 'e2e4', san: 'e4' });
+    expect(verifiedSavedBestContinuation(valid, initialFen)).toEqual(['e4', 'e5', 'Nf3']);
+    expect(verifiedSavedBestMove({ ...valid, best_move_san: 'Qh5' }, initialFen)).toBeNull();
+    expect(verifiedSavedBestMove({ ...valid, best_move_uci: 'e7e5' }, initialFen)).toBeNull();
+    expect(verifiedSavedBestMove(valid, savedMoves[1]!.fen_before)).toBeNull();
+    expect(verifiedSavedBestContinuation({ ...valid, best_pv: ['Qh5','Qh4'] }, initialFen)).toEqual([]);
+    expect(verifiedSavedBestContinuation({ ...valid, best_pv: ['e4','e4'] }, initialFen)).toEqual([]);
+    expect(verifiedSavedBestContinuation({ ...valid, best_pv: ['d4','d5'] }, initialFen)).toEqual([]);
+    expect(verifiedSavedBestContinuation({ ...valid, best_pv: [] }, initialFen)).toEqual([]);
+    expect(bestMoveForDisplayedBoard({ ply: 0, displayedFen: initialFen, isVariation: false,
+      mainline: [{ ...valid, best_move_san: 'Qh5' }], liveReady: false })).toBeUndefined();
   });
 
   it('does not leak saved-game arrows into hypothetical branches', () => {
     expect(bestMoveForDisplayedBoard({
-      ply: 1, isVariation: true, mainline: savedMoves, liveReady: false,
+      ply: 1, displayedFen: savedMoves[1]!.fen_before, isVariation: true, mainline: savedMoves, liveReady: false,
     })).toBeUndefined();
   });
 
@@ -42,10 +59,10 @@ describe('review position-safe suggestions', () => {
     expect(visibleEngineLines(stale, 'old fen', 'new fen')).toEqual([]);
     const fresh = visibleEngineLines([{ uci: 'd2d4' }], 'current fen', 'current fen');
     expect(bestMoveForDisplayedBoard({
-      ply: 0, isVariation: true, mainline: savedMoves, liveLines: fresh, liveReady: true,
+      ply: 0, displayedFen: 'current fen', isVariation: true, mainline: savedMoves, liveLines: fresh, liveReady: true,
     })).toBe('d2d4');
     expect(bestMoveForDisplayedBoard({
-      ply: 0, isVariation: true, mainline: savedMoves, liveLines: fresh, liveReady: false,
+      ply: 0, displayedFen: 'current fen', isVariation: true, mainline: savedMoves, liveLines: fresh, liveReady: false,
     })).toBeUndefined();
   });
 

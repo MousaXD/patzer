@@ -255,3 +255,30 @@
 ### Next Game Review issue
 
 - Review the cached best-move/continuation display for unsupported or impossible coaching lines. `verifiedBestAlternative` protects its clickable preview, but `MoveExplanation` and the move header still show stored best SAN/PV as prose without proving the whole line matches the saved starting position. First reproduce a genuinely conflicting best-move label or illegal PV, then make the narrowest correction without changing real engine scoring.
+
+## 2026-11-12: verify saved best-move arrows, coaching labels and PV before presentation
+
+### Independent reproduction
+
+- Resumed from the preceding `3389713` milestone and audited Game Review's cached advisory path. `verifiedBestAlternative` already protected the clickable preview, but the selected move header, the `MoveExplanation` prose/continuation, and the saved-game blue best arrow still rendered cached best UCI/SAN/PV without checking their exact position and move identity.
+- Added an authenticated disposable Chromium interception of `/api/games/:id`: a valid saved `e4` score was given `best_move_uci=e2e4` with contradictory `best_move_san=Qh5`, invalid PV `Qh5 Qh4`; the next scored move was likewise assigned mismatched UCI/SAN. **Before correction the browser failed** because an unsupported blue best-arrow note appeared. The misleading coaching SAN was also on the original rendering path.
+
+### Coherent correction
+
+- Added `verifiedSavedBestMove` which compares the advisory move's `fen_before` to the exact displayed FEN, replays its UCI legally and compares the canonical SAN. `verifiedBestAlternative` now reuses that same evidence check.
+- `bestMoveForDisplayedBoard` takes the displayed FEN and only exposes a live (already attested) line or a verified saved-game best suggestion; hypothetical variations cannot fall back to mainline arrows.
+- The current-move summary, Key Moments alternative label, and `MoveExplanation` best-move panel now show a suggested move only when that source check passes.
+- `verifiedSavedBestContinuation` replays every SAN from the matching source FEN, requires the first move to equal the verified best move and suppresses the entire invalid PV without hiding an otherwise legal best suggestion or throwing away valid saved scores.
+- Updated the older static coaching-component test to use a real, legal black-to-move `e5`/`c5` alternative rather than relying on an empty FEN with a bare callback to imply verified advice. A new negative component assertion checks that fabricated suggestions remain absent even if a callback is supplied.
+
+### Validation and evidence
+
+- Focused `reviewPosition`, `storedReview` and `MoveExplanation.evidence` tests: PASS, including new wrong-SAN/wrong-FEN/illegal-PV cases.
+- `npm run typecheck` and `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **979 passed / 12 skipped**, 107 passing test files. The first full run exposed the old invalid test fixture; corrected it and reran the complete suite to green.
+- Full authenticated disposable Chromium browser matrix: **PASS (exit 0)** including the previously failing false best-arrow scenario and existing responsive, variation, PGN, keyboard, localized and legal-best-preview paths. Opened/inspected real `qa-artifacts/agent-a/best-move-after-20261112/stored-best-move-label-rejected-390.png`: scored Book e4 remains explainable, but Qh5 and the fabricated continuation do not appear. Original PGN bytes unchanged.
+- All injected engine scores in browser checks remain **test-only**, not live Stockfish certifications. No production, merge or cross-agent changes.
+
+### Next integrity audit
+
+- The AI coach's `/api/coach/explain` request body still sends raw cached `best_move_san` and `best_pv` even when the visual presentation has suppressed those fields. Verify whether a contaminated best-move label can become fabricated LLM coaching context, then sanitize only Game Review's request facts using the same verified advice source. Do not change the shared coach interface or other agents' surfaces.

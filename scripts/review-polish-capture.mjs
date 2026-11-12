@@ -790,6 +790,53 @@ try {
     await page.screenshot({path:join(output,'stored-key-moment-inflated-odds-rejected-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await inflatedWinContext.close();}
+  // A legitimate cached move/classification can still carry malformed
+  // advisory fields. The move header, coaching explanation and board arrow
+  // must not display an invented 'best Qh5' when the stored best UCI is e4.
+  const falseBestContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await falseBestContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await falseBestContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let changed=false;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      const scored=JSON.parse(details.analysis.moves_json);
+      assert.equal(scored[0].uci,'e2e4');
+      scored[0].best_move_uci='e2e4';
+      scored[0].best_move_san='Qh5';
+      scored[0].best_pv=['Qh5','Qh4'];
+      scored[1].best_move_uci='g7g5';
+      scored[1].best_move_san='Qh5';
+      scored[1].best_pv=['Qh5'];
+      details.analysis.moves_json=JSON.stringify(scored);
+      changed=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.locator('cg-board').waitFor({state:'visible'});
+    await page.locator('[data-review-move-summary]').waitFor({state:'visible'});
+    assert.ok(changed,'The Chromium fixture must replace the cached best-move advice');
+    assert.equal(await page.locator('[data-review-best-arrow-note]').count(),0,
+      'A saved-game best arrow must require matching legal UCI and SAN');
+    await page.getByRole('button',{name:'Next',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')?.textContent?.trim().startsWith('1 /'));
+    assert.equal(await page.locator('[data-review-move-summary]').getByText(/Qh5/).count(),0,
+      'The current-move summary must not claim an impossible best move');
+    assert.equal(await page.locator('[data-review-best-arrow-note]').count(),0,
+      'The next move on the mainline must not expose an unverified best arrow');
+    await page.locator('[data-review-jump-to-details]').click();
+    const explanation=page.locator('[data-review-move-explanation]');
+    await explanation.waitFor({state:'visible'});
+    assert.equal(await explanation.getByText(/Qh5/).count(),0,
+      'The explanation must not repeat an illegal SAN or fake continuation');
+    assert.equal(await explanation.locator('[data-review-show-best-move]').count(),0,
+      'A corrupted advisory move must not offer a clickable best-move CTA');
+    await page.screenshot({path:join(output,'stored-best-move-label-rejected-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await falseBestContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.

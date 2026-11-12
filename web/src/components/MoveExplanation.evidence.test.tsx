@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { Chess } from 'chess.js';
 import type { AnalyzedMove } from '../types';
 
 vi.mock('react-i18next', () => ({
@@ -27,17 +28,31 @@ const render = (sample: AnalyzedMove, startFen?: string, userColor: 'white' | 'b
 describe('Game Review win-chance source integrity', () => {
   it('offers an actionable best-move preview only when the parent verified a safe alternative', () => {
     expect(render(move)).not.toContain('data-review-show-best-move');
+    // This fixture must use a real FEN and legal move: passing an onClick
+    // callback alone cannot authenticate an invented move description.
+    const game=new Chess();
+    game.move('e4');
+    const fen_before=game.fen();
+    game.move('e5');
+    const legalMove={ ...move, ply:2, san:'e5', uci:'e7e5', fen_before, fen_after:game.fen(),
+      best_move_uci:'c7c5', best_move_san:'c5', best_pv:['c5','Nf3'] };
     const withPreview = renderToStaticMarkup(createElement(MoveExplanation, {
-      move, userColor:'white', coachConfigured:false, coachRequest:null,
+      move:legalMove, userColor:'white', coachConfigured:false, coachRequest:null,
       onShowBestMove:() => {},
     }));
     expect(withPreview).toContain('data-review-show-best-move');
     expect(withPreview).toContain('review.why.showBestOnBoard');
     const sameMove = renderToStaticMarkup(createElement(MoveExplanation, {
-      move: { ...move, best_move_san:move.san }, userColor:'white',
+      move: { ...legalMove, best_move_uci:'e7e5', best_move_san:'e5' }, userColor:'white',
       coachConfigured:false, coachRequest:null, onShowBestMove:()=>{},
     }));
     expect(sameMove).not.toContain('data-review-show-best-move');
+    const fabricated = renderToStaticMarkup(createElement(MoveExplanation, {
+      move: { ...legalMove, best_move_san:'Qh5', best_pv:['Qh5'] }, userColor:'white',
+      coachConfigured:false, coachRequest:null, onShowBestMove:()=>{},
+    }));
+    expect(fabricated).not.toContain('data-review-show-best-move');
+    expect(fabricated).not.toContain('Qh5');
   });
   it('shows a compact truthful coaching-unavailable note without a nested empty coach card', () => {
     const html=render(move);
