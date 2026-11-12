@@ -6,7 +6,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Ar
 import ChessBoard from '../components/ChessBoard';
 import EvalBar from '../components/EvalBar';
 import EvalGraph from '../components/EvalGraph';
-import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove } from '../components/review/reviewPosition';
+import { visibleEngineLines, bestMoveForDisplayedBoard, reviewVariationScoringRequest, reviewVariationScoringKey, verifiedPositionEngineLines, verifiedBestAlternative, verifiedSavedBestMove, verifiedSavedBestContinuation } from '../components/review/reviewPosition';
 import { postReviewAnalysis } from '../components/review/reviewAnalysisRequest';
 import { moveSideForPly } from '../components/review/moveHistoryModel';
 import { decodeStoredReviewJson, needsFreshReviewAnalysis } from '../components/review/storedReview';
@@ -632,7 +632,10 @@ function GameAnalyzerView() {
       fen: move.fen_before,
       player: reviewedMoveSide === 'white' ? 'White' : 'Black',
       played_san: move.san,
-      best_san: move.best_move_san,
+      // The displayed coaching card and the model's FACTS must agree: an
+      // unsupported cached best SAN/PV cannot be smuggled into LLM context
+      // after the visible advice was suppressed by source verification.
+      best_san: currentSavedBest?.san ?? null,
       classification: move.classification,
       cp_loss: move.centipawn_loss,
       // Sending eval before/after lets the server build win-probability and
@@ -640,7 +643,7 @@ function GameAnalyzerView() {
       // small local model stops inventing winning attacks from training data.
       eval_before_cp: move.eval_before_cp,
       eval_after_cp: move.eval_after_cp,
-      pv_san: move.best_pv,
+      pv_san: verifiedSavedBestContinuation(move, positions[ply - 1]?.fen),
       history: historySoFar,
       // Your own moves get "you" and your history (past mistakes of the same
       // kind, weakest phase, the opening trainer); the opponent's get neither.

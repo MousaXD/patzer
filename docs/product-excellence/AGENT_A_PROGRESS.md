@@ -282,3 +282,22 @@
 ### Next integrity audit
 
 - The AI coach's `/api/coach/explain` request body still sends raw cached `best_move_san` and `best_pv` even when the visual presentation has suppressed those fields. Verify whether a contaminated best-move label can become fabricated LLM coaching context, then sanitize only Game Review's request facts using the same verified advice source. Do not change the shared coach interface or other agents' surfaces.
+
+## 2026-11-12: send only verified best-move facts to the Game Review AI coach
+
+### Browser-confirmed issue
+
+- Resumed from clean `31bd199`, then audited the Game Review-only `/api/coach/explain` request. Although the visible best-move card now suppresses unsupported SAN/PV, the coach request still sent raw cached `best_move_san` and `best_pv` as authoritative LLM facts.
+- Added a disposable authenticated Chromium fixture with an actually configured-looking CoachPanel and stub SSE reply (no external AI call). Intercepted the saved game, inserted `best_move_uci=e2e4` + impossible `best_move_san=Qh5` / PV `Qh5 Qh4`, then inspected the HTTP request body. Before the fix, the browser **failed** with `actual 'Qh5' !== expected null` for `best_san`.
+
+### Correction and verification
+
+- Only in `GameAnalyzer.tsx`'s `coachReq`, pass the already-verified current best SAN (or null) and a legally replayed PV from `verifiedSavedBestContinuation` (or empty array). The correct recorded move, classification, score, mover identity, game history and source remains untouched. No coach endpoint, model prompt, infrastructure or other agent's code changed.
+- Focused position/coaching source tests: **20/20 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **979 passed / 12 skipped**, 107 passing files.
+- Authenticated disposable Chromium harness: **PASS (exit 0)**, including intercepted POST checking `best_san:null` and `pv_san:[]` while keeping `played_san:e4` and `classification:book`. The coaching UI still renders its synthetic test-only SSE message. Opened/inspected actual 390px screenshot `qa-artifacts/agent-a/coach-facts-after-20261112/coach-request-unsupported-best-filtered-390.png`. Full responsive, source, keyboard, locale and PGN checks also passed.
+- No claim of live LLM or Stockfish accuracy certification; all intercepted outputs are disposable UI fixtures. No production SQLite change, merge or deployment.
+
+### Next candidate
+
+- Audit coach explanation lifecycle on a source-identical PGN **reanalyzed into a new authoritative analysis generation** while the selected ply remains the same. The `CoachPanel` currently auto-fetches by `triggerKey={move.ply}` and may retain older narration when `sourceKey` changes but ply does not. Reproduce with intercepted game-detail generations and a controlled SSE reply; fix only the Game Review source-specific lifecycle if verified.

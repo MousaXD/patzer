@@ -837,6 +837,49 @@ try {
     await page.screenshot({path:join(output,'stored-best-move-label-rejected-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await falseBestContext.close();}
+  // Hide-corrupt-advice-only is not enough. The configured AI coach receives
+  // its own FACTS body; a corrupt best_san/PV must not be sent there as
+  // authoritative evidence after the visible coaching card hid those fields.
+  const coachFactsContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await coachFactsContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await coachFactsContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.route('**/api/coach/status',async route=>
+      route.fulfill({status:200,contentType:'application/json',body:'{"configured":true}'}));
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      const scored=JSON.parse(details.analysis.moves_json);
+      assert.equal(scored[0].uci,'e2e4');
+      scored[0].best_move_uci='e2e4';
+      scored[0].best_move_san='Qh5';
+      scored[0].best_pv=['Qh5','Qh4'];
+      details.analysis.moves_json=JSON.stringify(scored);
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    const coachBodies=[];
+    await page.route('**/api/coach/explain',async route=>{
+      coachBodies.push(route.request().postDataJSON());
+      await route.fulfill({status:200,contentType:'text/event-stream',
+        body:'data: Synthetic coach answer for isolated request validation\n\n'});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    await page.locator('[data-review-jump-to-details]').click();
+    await page.locator('[data-review-move-explanation]').waitFor({state:'visible'});
+    await page.waitForFunction(()=>document.querySelector('.coach-md')?.textContent?.includes('Synthetic coach answer'),
+      undefined,{timeout:5000});
+    assert.equal(coachBodies.length,1,'The coaching card should issue one debounced request');
+    assert.equal(coachBodies[0].played_san,'e4');
+    assert.equal(coachBodies[0].classification,'book');
+    assert.equal(coachBodies[0].best_san,null,
+      'Invalid best-move SAN must not be sent as an AI coaching fact');
+    assert.deepEqual(coachBodies[0].pv_san,[],
+      'A fabricated PV must not reach the LLM FACTS payload');
+    await page.screenshot({path:join(output,'coach-request-unsupported-best-filtered-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await coachFactsContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.
