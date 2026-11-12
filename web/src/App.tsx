@@ -102,6 +102,7 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        gPrefixRef.current = 0;
         // Only one global overlay may be modal at a time. Otherwise their
         // competing focus traps can leave keyboard users unable to proceed.
         setShortcutsOpen(false);
@@ -110,9 +111,18 @@ export default function App() {
       }
       // Let the active dialog own keys instead of triggering page shortcuts
       // behind it (including the "g X" route navigation prefix).
-      if (paletteOpen || shortcutsOpen) return;
-      if (isTextField(e.target)) return;
-      if (e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); setShortcutsOpen(true); return; }
+      if (paletteOpen || shortcutsOpen) { gPrefixRef.current = 0; return; }
+      if (isTextField(e.target)) { gPrefixRef.current = 0; return; }
+      // Never override native browser/system shortcuts such as Ctrl+R, Alt+R
+      // or Cmd+P with a pending G prefix. They also cancel the sequence.
+      if (e.ctrlKey || e.metaKey || e.altKey) { gPrefixRef.current = 0; return; }
+      if (e.key === '?') {
+        gPrefixRef.current = 0;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setShortcutsOpen(true);
+        return;
+      }
       // The mobile drawer is modal. Ignore G+letter routing while it owns
       // focus; Ctrl+K and ? above may still open a global overlay, which
       // closes the drawer before the new dialog takes focus.
@@ -126,13 +136,15 @@ export default function App() {
         return;
       }
       const since = Date.now() - gPrefixRef.current;
+      // Prefixes are one-shot: an unrecognized key terminates the sequence
+      // instead of leaving it armed for another unrelated keystroke.
+      gPrefixRef.current = 0;
       if (since < 1200) {
         const map: Record<string, string> = { h: '/', p: '/play', r: '/review', i: '/insights', t: '/train', e: '/learn', s: '/settings', o: '/openings', n: '/plan', l: '/lab', u: '/players' };
         const target = map[e.key.toLowerCase()];
         if (target) {
           e.preventDefault();
           e.stopImmediatePropagation();
-          gPrefixRef.current = 0;
           nav(target);
         }
       }

@@ -694,3 +694,28 @@
 ### Next audit
 
 - Inspect whether global `G+letter` navigation can accidentally intercept browser/system shortcuts or activated controls when modifiers (Ctrl/Alt/Meta) are held. Verify actual behavior in a local browser before implementing any guard; keep the scope limited to shared App-level keyboard handling.
+
+## 2026-11-12: Prevent global navigation sequences from hijacking browser keys
+
+### Reproduction
+
+- Continued from clean, pushed Agent B `988e80d`; resumed the exact outstanding shared keyboard-modifier audit.
+- In real Chromium at **1024x768**, pressing `G` followed by **Ctrl+R** unexpectedly navigated to `/review` and prevented the normal browser refresh. A `G, X, R` sequence could also navigate despite the unrelated `X` because an unmatched key did not consume the waiting `G` prefix.
+
+### Correction
+
+1. In App-level global shortcuts, ignore Ctrl/Meta/Alt-modified keys (except the intentionally supported Ctrl/⌘+K palette shortcut). Modified combinations cancel any pending `G` prefix rather than being interpreted as routes.
+2. Make the `G` prefix **one-shot**: the next non-G key consumes it, even if it is not a valid route. Opening a dialog or focusing a text field also clears the pending prefix.
+3. Extended the real Chromium shortcut fixture with `G, Ctrl+R` (must not route), `G, X, R` (must not route), and positive `G, R` (must navigate to Review). The negative control failed before implementation and passed afterward.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **416/416 passed across 70 test files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including new modifier/one-shot cases and all earlier mobile/modal/contrast/accessibility cases.
+- `git diff --check`: **passed**.
+- No production, main, other agents' features or worktrees were modified. Only Agent B's App shortcut controller, Chromium fixture and this progress log changed.
+
+### Next audit
+
+- Inspect global shortcut help for parity with actual supported route combinations. The App router recognizes `G+S/O/N/L/U` in addition to the visible help rows, which may obscure discoverability. Confirm the help dialog and route map in-browser before altering the shared help content.

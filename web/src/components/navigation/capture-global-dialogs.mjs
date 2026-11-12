@@ -348,6 +348,27 @@ try {
   await page.keyboard.press('Escape');
   await tabletPalette.waitFor({ state: 'detached' });
 
+  // G+letter navigation must not hijack the browser's modified keys. A G
+  // prefix also expires after the *next* unrelated key, not just a timer.
+  await visit(page, 1024, 768);
+  await page.keyboard.press('g');
+  await page.keyboard.press('Control+r');
+  await page.waitForTimeout(200);
+  if (new URL(page.url()).pathname !== '/') {
+    throw new Error('Pending G prefix hijacked Control+R browser refresh');
+  }
+  await page.locator('[data-app-shell]').waitFor();
+  await page.keyboard.press('g');
+  await page.keyboard.press('x');
+  await page.keyboard.press('r');
+  await page.waitForTimeout(150);
+  if (new URL(page.url()).pathname !== '/') {
+    throw new Error('Unrelated X key failed to cancel G prefix before R');
+  }
+  await page.keyboard.press('g');
+  await page.keyboard.press('r');
+  await page.waitForURL((url) => url.pathname === '/review');
+
   // Landscape phones have enough width for the palette but very little height.
   // Dialog controls and the footer must remain inside the visual viewport.
   for (const color of ['light', 'dark']) {
