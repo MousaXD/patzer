@@ -111,7 +111,8 @@ async function newPage(theme, width, height,
     changingHistory = false, starredOnlyScenario = false,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
-    locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false} = {}) {
+    locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
+    delayedContinuation = null} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -119,6 +120,8 @@ async function newPage(theme, width, height,
   let hasPgnImports = false;
   let latestGameInserted = false;
   let longPlayerBookmarked = false;
+  let releaseContinuation;
+  const continuationGate=new Promise(resolve=>{releaseContinuation=resolve;});
   const removedStars = new Set();
   const seenPgnFiles = [];
   page.on('pageerror', error => pageErrors.push(error.message));
@@ -220,6 +223,15 @@ async function newPage(theme, width, height,
       else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0, enriched: body.limit === 200 ? 7 : 0};
     } else if (path === '/api/games/live') json = {bot: null, pvp: []};
     else { status = 404; json = {error: 'test_fixture_not_implemented'}; }
+    // A controlled late continuation from a *previous* filter is the hard
+    // case: the user must be free to browse the newly selected collection.
+    if (delayedContinuation && path === '/api/games' && request.method() === 'GET' &&
+      parsed.searchParams.get('offset') === '40' && !parsed.searchParams.has('source')) {
+      await continuationGate;
+      if (delayedContinuation === 'failure') {
+        status=503; json={error:'delayed_previous_filter_failure'};
+      }
+    }
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
@@ -245,7 +257,7 @@ async function newPage(theme, width, height,
       await page.getByText('40 of 620 games').waitFor();
     }
   }
-  return {page,context,pageErrors,seenPgnFiles};
+  return {page,context,pageErrors,seenPgnFiles,releaseContinuation};
 }
 function metrics(page) {
   return page.evaluate(() => ({
@@ -796,6 +808,35 @@ try {
     assert.deepEqual(pageErrors,[], 'Cursor pagination produced a browser error');
     console.log('PASS stable cursor load-more after concurrent import and fresh history refresh');
   } finally {await movingHistory.context.close();}
+
+  for (const delayedContinuation of ['success','failure']) {
+    const lagged = await newPage('light',390,844,{delayedContinuation});
+    try {
+      const {page,pageErrors,releaseContinuation}=lagged;
+      const pending=page.waitForRequest(req=>{
+        const parsed=new URL(req.url());
+        return parsed.pathname==='/api/games' && parsed.searchParams.get('offset')==='40' &&
+          !parsed.searchParams.has('source');
+      });
+      await page.getByRole('button',{name:'Load more games'}).click();
+      await pending;
+      await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+      await page.getByText('40 of 310 games').waitFor();
+      assert.equal(await page.locator('a[href="/review/1"]').count(),0,
+        'Old Chess.com game leaked into the new Lichess-only collection');
+      releaseContinuation();
+      await sleep(550);
+      await page.getByText('40 of 310 games').waitFor();
+      assert.equal(await page.locator('a[href="/review/1"]').count(),0,
+        `A late ${delayedContinuation} appended a stale game into the new filtered collection`);
+      assert.equal(await page.getByText(/Could not load more games/).count(),0,
+        'An old continuation failure must not appear as a failure of the new filter');
+      await page.getByRole('button',{name:'Load more games'}).click();
+      await page.getByText('80 of 310 games').waitFor();
+      assert.deepEqual(pageErrors,[], 'Switching filters during a pending page caused a browser error');
+      console.log(`PASS late ${delayedContinuation} continuation cannot contaminate another Library filter`);
+    } finally {lagged.releaseContinuation(); await lagged.context.close();}
+  }
 
   const starred = await newPage('dark',390,844,{starredOnlyScenario:true});
   try {

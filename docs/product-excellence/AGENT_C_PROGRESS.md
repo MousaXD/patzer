@@ -725,3 +725,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **Library's pagination behavior when filters change during a pending "Load more" request**. A returning player can change source/search/sort while a continuation page is in flight; verify that stale pages cannot appear under a new filter, the button stays correctly enabled, and any late failures don't create misleading errors. Reproduce using a delayed synthetic browser fixture before changing the query logic; keep all changes isolated to the Library.
+
+## 2026-11-12 — Verify filter switching is safe during an in-flight continuation
+
+- Resumed clean pushed `409403f` and audited Library pagination against a delayed second page. The view's React Query key includes the complete validated filter signature, bookmarked state and search query; implementation appeared properly isolated, but previous acceptance coverage had not exercised a late response from an abandoned filter.
+- Added a controlled isolated Chromium fixture that holds the **unfiltered** page-2 request (offset 40) while the player selects **Lichess**. It then releases the old response as either **success** or **HTTP 503 failure**. In both cases Chromium verified the new filter shows **40 of 310** distinct Lichess games, never includes an earlier Chess.com-only game, never displays the abandoned continuation's failure, and independently loads its own next page to **80 of 310**. No product bug was reproduced; deliberately left the production query and error handling untouched and retained the test as a regression guard.
+
+### Verification
+
+- Full repository suite: **109 passed files, 2 skipped; 1,087 tests passed, 12 skipped** (`--maxWorkers=2`), zero failures. `node --check web/tests/library.browser.mjs` and `git diff --check`: passed.
+- Full isolated Chromium desktop 1440px and mobile 390/320px light/dark and German fixtures, imports, cursor paging, bookmarks, search, recovery, plus late continuation **success/failure**: passed with zero browser JS exceptions.
+- This is a browser-test-only production audit; no Library runtime code, providers, other agents' worktrees, merge, deploy or production data changed.
+
+### Next independent audit
+
+- Audit the **retry experience for a failed Load more on a 320px mobile Library**, including preserving the already-loaded cards, visible localized error messaging, a reachable 44px retry action and restoring subsequent pagination without duplicated cards. Reproduce in Chromium with a one-time continuation failure; fix a genuine Library-local problem if present, otherwise retain the browser regression as protection.
