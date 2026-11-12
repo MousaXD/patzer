@@ -1536,3 +1536,22 @@
 ### Next independent source-integrity audit
 
 - While blind practice is mounted, a **new authoritative game source revision** may make its selected mistake invalid. Verify that a real background refetch leads to the isolated `PracticeUnavailable` recovery state, with no leaked saved move/engine hint, and that its Return action preserves keyboard focus and a valid saved-game route. Use a separate disposable source-attested fixture and avoid touching other agents' flows.
+
+## 2026-11-13: malformed practice links cannot expose saved-game answers
+
+### Reproduced spoiler leak and focused fix
+
+- Continued from clean pushed `0cfdff6` and reviewed the direct blind-practice route. Valid but ineligible numeric targets already failed closed, but a query like `?ply=17&practicePly=not-a-move` was parsed to `null` and the page dropped into **full scored Game Review**. On the existing separate completed, source-attested chess fixture, Chromium **failed before the fix** waiting for the practice-recovery action: the scored solution had been exposed instead.
+- Added an explicit `practiceTargetRequested = routeAttempt !== null` signal independent of whether the parameter is a safe positive integer. Any explicit but invalid practice target now shows the existing focused `PracticeUnavailable` recovery, never the mainline board, move list, AI report, score or private Notes. Valid eligible targets still show the actual blind practice board; ordinary Review URLs without `practicePly` remain unchanged. The recovery button removes the bad target and returns to the saved game. The new signal also suppresses full-review analysis, AI prose/coach and live-line requests while in either valid or malformed practice. Global Review shortcuts ignore the recovery surface.
+- Expanded the real Chromium coverage to **text, zero, negative, empty and oversized** practice targets. All five render the isolated unavailable alert, focus its recovery heading, keep the scored workspace and Notes unmounted, and recover through Return without changing the PGN. Valid practice, previously held Notes save/retry, responsive, keyboard, source and engine flows all remain green.
+
+### Verification and isolation
+
+- The baseline authenticated disposable Chromium run demonstrated the failure on isolated port 9004. The complete corrected browser matrix: **PASS (exit 0)** on port 9005.
+- Focused practice tests **14 passed**, `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- No main merge, deployment, production data/service changes or other agents' files touched.
+
+### Next independent Game Review protection audit
+
+- Verify that a pending, unacknowledged private Notes draft triggers native browser leave protection on **hard refresh, closing a tab or navigating to an external URL**, while a safely stored draft does not trigger a false warning. The current internal SPA navigation guard has extensive coverage, but `beforeunload` is a separate loss-prevention path. Use the disposable Chromium fixture; preserve the user's ability to deliberately leave and do not change native dialog text.

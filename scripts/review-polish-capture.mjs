@@ -1187,6 +1187,24 @@ try {
     await page.getByRole('alert').getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).click();
     await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
     assert.ok(!new URL(page.url()).searchParams.has('practicePly'));
+    // A malformed practicePly is still an explicit request for blind mode.
+    // Never silently fall back to scored Review just because it failed the
+    // integer parser: that would reveal the answer in a shared practice link.
+    for(const invalid of ['not-a-move','0','-17','','999999999999999999999999']){
+      await page.goto(`${base}/review/${practiceGameId}?ply=17&practicePly=${encodeURIComponent(invalid)}`,{waitUntil:'domcontentloaded'});
+      const unavailable=page.locator('[data-practice-unavailable="true"]');
+      await unavailable.getByRole('button',{name:enNotes.practice.returnSaved,exact:true})
+        .waitFor({state:'visible',timeout:5000});
+      assert.equal(await page.locator('[data-review-workspace]').count(),0,
+        `Malformed practice target '${invalid}' must not expose scored move analysis`);
+      assert.equal(await page.locator('[data-review-meta-toolbar]').count(),0,
+        `Malformed practice target '${invalid}' must not expose private Review Notes`);
+      assert.ok(await unavailable.getByRole('heading').evaluate(el=>document.activeElement===el),
+        'Practice recovery heading should receive keyboard focus');
+      await unavailable.getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).click();
+      await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
+      assert.ok(!new URL(page.url()).searchParams.has('practicePly'));
+    }
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn,pgn);
   }finally{releasePracticeNotes();await practiceNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
