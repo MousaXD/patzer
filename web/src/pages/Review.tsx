@@ -499,13 +499,13 @@ export default function Review() {
           <input id="library-pgn-file" ref={pgnInputRef} type="file" accept=".pgn,.txt,text/plain"
             aria-label={t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
             aria-describedby="library-pgn-help"
-            className="input block w-full min-w-0 max-w-full text-xs sm:w-56"
+            className="input !min-h-11 block w-full min-w-0 max-w-full text-xs sm:w-56"
             disabled={pgnMut.isPending}
             onChange={(e) => {
               const file = e.currentTarget.files?.[0] ?? null;
               setPgnFile(file);
             }} />
-          <button type="button" className="btn-primary min-h-10 shrink-0 text-sm"
+          <button type="button" className="btn-primary min-h-11 shrink-0 text-sm"
             disabled={!pgnFile || pgnMut.isPending || !user}
             onClick={() => {if (pgnFile && user) pgnMut.mutate({file:pgnFile,accountId:user.id});}}>
             <Upload className="h-4 w-4" aria-hidden="true" />

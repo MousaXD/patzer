@@ -328,6 +328,13 @@ async function verifyViewport(theme, width, height) {
     const fileControl = await page.getByLabel('Choose a PGN file').boundingBox();
     assert.ok(fileControl && fileControl.x >= -2 && fileControl.x + fileControl.width <= width + 2,
       `PGN file picker clipped at ${width}px ${theme}: ${JSON.stringify(fileControl)}`);
+    if (width<=390) {
+      const submit=await page.getByRole('button',{name:'Import PGN file'}).boundingBox();
+      assert.ok(fileControl.height>=44,
+        `PGN chooser must have a 44px mobile touch target: ${JSON.stringify(fileControl)}`);
+      assert.ok(submit && submit.height>=44 && submit.x>=0 && submit.x+submit.width<=width+2,
+        `PGN import action must have an unclipped 44px target: ${JSON.stringify(submit)}`);
+    }
     const closeImports=page.getByRole('button',{name:'Hide import options'});
     if(width===320) {
       await closeImports.focus();

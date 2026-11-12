@@ -386,6 +386,13 @@ describe('Review library with large histories', () => {
     expect(screen.queryByRole('link', { name: /Practice mistakes in White 2/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /Practice mistakes in White 3/ })).toBeNull();
   });
+  it('keeps the PGN file chooser and import action at a 44px touch size', async () => {
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
+    expect(screen.getByLabelText('Choose a PGN file').className).toContain('!min-h-11');
+    expect(screen.getByRole('button',{name:'Import PGN file'}).className).toContain('min-h-11');
+  });
 
   it('loads bounded batches and explains the 200-game backend cap', async () => {
     mount();

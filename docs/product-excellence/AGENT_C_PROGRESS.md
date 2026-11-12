@@ -820,3 +820,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Inspect **PGN picker and Import PGN action's true 320px mobile touch geometry**. The linked-account German screenshot shows a native file input and an Import PGN button that may remain below 44px. Measure them in actual Chromium with a selectable synthetic PGN; preserve file selection, error recovery, native keyboard access and the first-use CTA while applying only Library-local sizing corrections if required.
+
+## 2026-11-12 — Make PGN file selection and import action touch-safe on phones
+
+- Recovered clean pushed `4201988`, then added a failing focused React regression and real Chromium measurements for the expanded Library's native PGN picker and Import PGN button. Browser reproduced the **Import PGN action at 40px tall** on a 390px phone; file input geometry was already at least 44px, but did not guarantee that height via an explicit local class.
+- Made only two Library-local sizing changes: `!min-h-11` on the PGN file input (needed because of the existing more-specific global input rule) and `min-h-11` on the submit button. This preserves the native file-selection interaction, upload restrictions, disabled and pending behavior, account safety checks, and first-use flow. No stylesheet, import API, or accessibility name changed.
+- Chromium verified both controls at **44px or taller** and within viewport width at 390px and 320px in light and dark themes. The existing first-use 320px file-picker, imported PGN list, UTF-8 and error-retry browser tests still passed without any scroll overflow or JS exceptions.
+
+### Verification
+
+- Focused Library React suite: **50/50 passed**. Full repository suite: **109 passed files, 2 skipped; 1,108 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Isolated Chromium full desktop/mobile matrix, linked provider imports, PGN selection and first-use recovery, search, Unicode, bookmarks, pagination, error retries and German localization: passed.
+- No production data, server, other agents' branches/worktrees, merge or deploy touched.
+
+### Next independent audit
+
+- Inspect the **native PGN file-picker label and filename feedback in non-English UI**. The current German mobile screenshot shows browser-owned English phrases **Choose File** and **No file chosen**, despite a translated surrounding panel. Determine whether respecting the selected interface language via a local `lang` attribute is sufficient. If not, prefer an accessible localized label and selected-file name display without replacing browser-native file handling, and verify keyboard navigation and both 320px themes before changing presentation.
