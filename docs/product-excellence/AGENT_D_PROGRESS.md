@@ -86,3 +86,14 @@
 
 - Learn lesson recommendation currently includes saved `step > 0` records even for lessons with `completed_at`, possibly suggesting an already-completed lesson ahead of an unfinished course. Verify with a minimal regression fixture before changing.
 - Account-wide simultaneous-tab PvP state ownership/notification; requires careful client/server protocol audit and isolation from another agent's backend work.
+
+## Fourth pass — 2026-11-12 (continued from `b3ebfad`)
+
+### Learn loading failures are recoverable
+
+- **Problem:** When `/api/learn` failed, Learn showed an error without a retry action. When a lazily imported curriculum or language chunk failed, the module-level promise was cached as a permanently rejected promise, so switching back to Learn could not re-request the file in the same app session. The translated error incorrectly instructed players to reload even when a local recovery was possible.
+- **Fix:** A single accessible Retry action recovers from failed API and/or content requests. The curriculum and lesson-text caches now discard failed promises while retaining successful ones; the `useLearnContent` hook ignores stale asynchronous completions, exposes a controlled retry and respects language changes. The error's localized copy (English, German and Russian) is consistent with the actual Retry action and avoids claiming progress has already been safely retrieved.
+- **Tests:** Extended `Learn.account.test.tsx` with independent API failure, curriculum chunk failure and lesson-language chunk failure/retry cases. The prior account-scoped progress tests still pass. Mocked motion in these state tests to avoid happy-dom cancel-animation rejections unrelated to lesson state.
+- **Real browser:** Actual local Chrome at 390px with controlled temporary API and curriculum asset failures: `/api/learn` failed twice, then succeeded on the retry click (3 total requests); a curriculum asset request was aborted, then fetched again on Retry (2 requests). Both recovered to the genuine 69-lesson overview without a page reload and without uncaught JS page errors. Evidence screenshots are in `qa/agent-d-browser/learn/{api,chunk}-{error,recovered}.png`. These are fixture/network-fault browser checks, not production connectivity certification.
+- **Final validation:** `npm run typecheck` passed, `npm run build` passed, and `npx vitest run --maxWorkers=4` completed with **974 passing tests, 12 skipped, 0 failures** across 111 files. Chrome fault-injection rerun also passed after the copy update; both cases displayed the complete learning overview after Retry.
+- **Remaining:** Saved step mutation failures in `LessonPlayer` are swallowed, which can make a lesson look locally complete although its next-step progress was not persisted. Investigate sequencing and honest feedback in a later pass without changing server content or fabricating progress.

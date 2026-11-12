@@ -3,7 +3,7 @@
 // with its lessons (?course=…), or a lesson being played (?lesson=…).
 // Progress is one server-side row per lesson (see server/src/learnProgress.ts).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -32,19 +32,32 @@ export interface LessonProgress {
 export const fetchLearnProgress = () => api.get<{ lessons: LessonProgress[] }>('/api/learn');
 
 /** Curriculum + lesson texts in the current language, loaded on demand. */
-export function useLearnContent(): { cur: Curriculum | null; failed: boolean } {
+export function useLearnContent(): { cur: Curriculum | null; failed: boolean; retry: () => void } {
   const { i18n } = useTranslation();
   const lang = normalizeLanguage(i18n.language);
   const [cur, setCur] = useState<Curriculum | null>(null);
   const [textsFor, setTextsFor] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { loadCurriculum().then(setCur).catch(() => setFailed(true)); }, []);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setFailed(false);
+    setAttempt((n) => n + 1);
+  }, []);
   useEffect(() => {
     let live = true;
-    loadLearnTexts(lang).then(() => { if (live) setTextsFor(lang); }).catch(() => setFailed(true));
+    loadCurriculum()
+      .then((loaded) => { if (live) setCur(loaded); })
+      .catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
-  }, [lang]);
-  return { cur: cur && textsFor === lang ? cur : null, failed };
+  }, [attempt]);
+  useEffect(() => {
+    let live = true;
+    loadLearnTexts(lang)
+      .then(() => { if (live) setTextsFor(lang); })
+      .catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [lang, attempt]);
+  return { cur: cur && textsFor === lang ? cur : null, failed, retry };
 }
 
 /** The lesson to suggest: one you're in the middle of, else the first one
@@ -63,11 +76,11 @@ export default function Learn() {
   const [params, setParams] = useSearchParams();
   const lessonId = params.get('lesson');
   const courseId = params.get('course');
-  const { cur, failed } = useLearnContent();
+  const { cur, failed, retry: retryContent } = useLearnContent();
   // Match Home's per-account lesson cache. A second player who signs in on
   // this browser must never inherit the previous player's earned stars or
   // lesson resume point while /api/learn is still loading.
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: [...LEARN_QUERY_KEY, user?.id],
     enabled: user?.id != null,
     queryFn: fetchLearnProgress,
@@ -82,8 +95,20 @@ export default function Learn() {
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [lessonId, courseId]);
 
-  if (failed || isError) return <div className="card p-10 text-center text-sm text-move-mistake">{t('learn.loadError')}</div>;
-  if (!cur || isLoading) return <div className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
+  if (failed || isError) return (
+    <div role="alert" className="card mx-auto flex w-full max-w-lg flex-col items-center gap-3 p-8 text-center">
+      <p className="text-sm text-move-mistake">{t('learn.loadError')}</p>
+      <p className="text-xs text-chesscom-500">{t('learn.retryExplanation', { defaultValue: 'Check your connection and try again.' })}</p>
+      <button type="button" className="btn-primary min-h-11 text-sm" disabled={isFetching}
+        onClick={() => {
+          retryContent();
+          if (isError) void refetch();
+        }}>
+        {t('common.retry', { defaultValue: 'Retry' })}
+      </button>
+    </div>
+  );
+  if (!cur || isLoading) return <div role="status" className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
 
   const openLesson = (id: string) => setParams({ lesson: id });
   const openCourse = (id: string) => setParams({ course: id });

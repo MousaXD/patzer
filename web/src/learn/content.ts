@@ -37,12 +37,20 @@ export function buildCurriculum(levels: LevelDef[]): Curriculum {
 let curriculum: Promise<Curriculum> | null = null;
 
 export function loadCurriculum(): Promise<Curriculum> {
-  curriculum ??= Promise.all([
-    import('./content/basics.json'),
-    import('./content/beginner.json'),
-    import('./content/intermediate.json'),
-    import('./content/advanced.json'),
-  ]).then((mods) => buildCurriculum(mods.map((m) => m.default as unknown as LevelDef)));
+  if (!curriculum) {
+    // A temporary network/chunk failure must not poison the shared promise
+    // forever. Keep successful imports cached, but allow a later retry.
+    curriculum = Promise.all([
+      import('./content/basics.json'),
+      import('./content/beginner.json'),
+      import('./content/intermediate.json'),
+      import('./content/advanced.json'),
+    ]).then((mods) => buildCurriculum(mods.map((m) => m.default as unknown as LevelDef)))
+      .catch((error: unknown) => {
+        curriculum = null;
+        throw error;
+      });
+  }
   return curriculum;
 }
 
@@ -67,6 +75,11 @@ export function loadLearnTexts(lang: Language): Promise<void> {
       // buildCurriculum without starting i18next.
       p = Promise.all([loader(), import('../i18n')]).then(([m, { default: i18n }]) => {
         i18n.addResourceBundle(l, 'learn', m.default as object, true, true);
+      }).catch((error: unknown) => {
+        // Rejected language assets must be re-requested after connectivity
+        // returns instead of rethrowing the same cached rejected promise.
+        loadedTexts.delete(l);
+        throw error;
       });
       loadedTexts.set(l, p);
     }
