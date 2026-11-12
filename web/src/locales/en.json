@@ -1344,6 +1344,7 @@
       "draw": "draw streak"
     },
     "unreviewed": "unreviewed",
+    "opponent": "Opponent",
     "learnNext": "Your next lesson",
     "learnResume": "Continue where you left off",
     "learnDesc": "Interactive lessons with stars and levels."

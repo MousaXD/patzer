@@ -22,6 +22,7 @@ let homeFailureMode = false;
 let fixtureUsername = 'sample-player';
 let fixtureGameResult = 'win';
 let fixtureUserColor = 'white';
+let fixtureAnalyzed = false;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -43,7 +44,8 @@ const fixtures = (pathname) => {
     id: 103, white: fixtureUserColor === 'white' ? fixtureUsername : 'OpponentWithALongName',
     black: fixtureUserColor === 'white' ? 'OpponentWithALongName' : fixtureUsername,
     user_color: fixtureUserColor, end_time: '2026-11-12T12:00:00.000Z',
-    result: fixtureGameResult, time_control: '600', opening_name: 'Italian Game', analyzed: false,
+    result: fixtureGameResult, time_control: '600', opening_name: 'Italian Game',
+    analyzed: fixtureAnalyzed, accuracy_white: 99.9, accuracy_black: 100,
   }] : [] };
   if (pathname === '/api/stats/me') return homeGamesMode === 'recent'
     ? { total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: null, streak: null }
@@ -506,6 +508,84 @@ try {
   await page.locator('main a[href="/review/103"]').getByRole('img', { name: 'Victoria' }).waitFor();
   profile.language = 'en';
   fixtureGameResult = 'win';
+  // Analyzed games previously put both accuracy values beside the opponent
+  // on 320px phones, shrinking its name to 107px. Separate, labeled mobile
+  // accuracies must leave a readable opponent and preserve both scores.
+  fixtureAnalyzed = true;
+  fixtureUsername = 'AccountOwnerWithVeryLongNameIndeed1234567890';
+  for (const analyzedTheme of ['light', 'dark']) {
+    theme = analyzedTheme;
+    for (const color of ['white', 'black']) {
+      fixtureUserColor = color;
+      for (const width of [320, 390, 768, 1440]) {
+        await page.setViewportSize({ width, height: width <= 390 ? 700 : 900 });
+        await page.goto(origin, { waitUntil: 'domcontentloaded' });
+        const row = page.locator('main a[href="/review/103"]');
+        await row.waitFor();
+        await page.waitForFunction((dark) =>
+          document.documentElement.classList.contains('dark') === dark, analyzedTheme === 'dark');
+        await page.evaluate(() => document.fonts.ready);
+        if (width < 640) {
+          const mobile = row.locator('[data-home-mobile-accuracy]');
+          await mobile.waitFor({ state: 'visible' });
+          const actual = await row.evaluate((link) => ({
+            nameWidth: link.querySelector('[data-home-recent-opponent]').getBoundingClientRect().width,
+            selfScore: link.querySelector('[data-home-accuracy-self]').textContent.trim(),
+            opponentScore: link.querySelector('[data-home-accuracy-opponent]').textContent.trim(),
+            labels: link.querySelector('[data-home-mobile-accuracy]').textContent,
+            desktopScoreVisible: !!link.querySelector('.font-mono.text-xs.tabular-nums')?.getBoundingClientRect().width,
+          }));
+          const expectedSelf = color === 'white' ? '99.9%' : '100.0%';
+          const expectedOpponent = color === 'white' ? '100.0%' : '99.9%';
+          if (actual.nameWidth < 150 || actual.selfScore !== expectedSelf ||
+              actual.opponentScore !== expectedOpponent ||
+              !actual.labels.includes('You') || !actual.labels.includes('Opponent') ||
+              actual.desktopScoreVisible) {
+            throw new Error(`Analyzed games ${analyzedTheme}/${color}/${width}px: opponent/accuracy regression: ${JSON.stringify(actual)}`);
+          }
+        } else {
+          const score = row.locator('.font-mono.text-xs.tabular-nums');
+          await score.waitFor({ state: 'visible' });
+          const actual = await score.evaluate((element) => {
+            const separator = element.querySelector('.mx-1.text-ui-mutedText');
+            const rgb = (value) => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+            const luminance = (values) => values.map((x) => {
+              const unit = x / 255;
+              return unit <= 0.04045 ? unit / 12.92 : ((unit + 0.055) / 1.055) ** 2.4;
+            }).reduce((total, x, index) => total + x * [0.2126, 0.7152, 0.0722][index], 0);
+            const fg = luminance(rgb(getComputedStyle(separator).color));
+            const bg = luminance(rgb(getComputedStyle(element.closest('ul')).backgroundColor));
+            return {
+              text: element.textContent.replace(/\s/g, ''),
+              separatorContrast: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05),
+            };
+          });
+          if (actual.text !== '99.9%/100.0%' || actual.separatorContrast < 4.5) {
+            throw new Error(`Analyzed games ${analyzedTheme}/${color}/${width}px: score regression: ${JSON.stringify(actual)}`);
+          }
+        }
+        await checkNoHorizontalOverflow(page, `analyzed games ${analyzedTheme}/${color}/${width}px`);
+        await page.screenshot({ path: resolve(output, `home-analyzed-${analyzedTheme}-${color}-${width}.png`) });
+      }
+    }
+  }
+  profile.language = 'de';
+  theme = 'light';
+  fixtureUserColor = 'white';
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  const localizedAccuracy = page.locator('main a[href="/review/103"] [data-home-mobile-accuracy]');
+  await localizedAccuracy.waitFor();
+  const germanLabels = await localizedAccuracy.innerText();
+  if (!germanLabels.includes('Du') || !germanLabels.includes('Gegner')) {
+    throw new Error('German analyzed-game mobile accuracy labels fell back to English: ' + germanLabels);
+  }
+  await checkNoHorizontalOverflow(page, 'German analyzed game 320px');
+  profile.language = 'en';
+  fixtureUsername = 'sample-player';
+  fixtureUserColor = 'white';
+  fixtureAnalyzed = false;
+  theme = 'light';
   homeGamesMode = 'empty';
 
   // Broken API dependencies must not strand a touch user with microscopic

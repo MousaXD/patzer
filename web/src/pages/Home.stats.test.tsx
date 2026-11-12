@@ -162,6 +162,40 @@ describe('Home statistics failure', () => {
     expect(within(recentGame).getByRole('img', { name: 'Loss' })).toBeTruthy();
   });
 
+  it.each([
+    ['white', '83.7%', '91.2%'],
+    ['black', '91.2%', '83.7%'],
+  ])('keeps the opponent identifiable and labels both mobile accuracies when playing %s', async (userColor, ownScore, opponentScore) => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/stats/me') return Promise.resolve({ total: 1, wins: 1, losses: 0, draws: 0, avg_accuracy: 85, streak: null });
+      if (url.startsWith('/api/games')) return Promise.resolve({ games: [{
+        id: 106, white: userColor === 'white' ? 'sample-player' : 'OpponentWithALongName',
+        black: userColor === 'black' ? 'sample-player' : 'OpponentWithALongName',
+        user_color: userColor, end_time: '2026-11-12T12:00:00Z',
+        result: 'win', time_control: '600', analyzed: true,
+        accuracy_white: 83.7, accuracy_black: 91.2,
+      }] });
+      if (url === '/api/plan') return Promise.resolve({ goals: [] });
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      if (url.startsWith('/api/tactics/daily')) return Promise.resolve({ puzzle: null, done: null, streak: 0 });
+      return Promise.resolve({});
+    });
+    mount();
+    const link = await screen.findByRole('link', { name: /OpponentWithALongName/ });
+    expect(link.getAttribute('href')).toBe('/review/106');
+    expect(link.querySelector('[data-home-recent-opponent]')?.textContent?.trim()).toBe('OpponentWithALongName');
+    const mobileAccuracy = link.querySelector('[data-home-mobile-accuracy]');
+    expect(mobileAccuracy?.className).toContain('sm:hidden');
+    expect(mobileAccuracy?.textContent).toContain('You');
+    expect(mobileAccuracy?.textContent).toContain('Opponent');
+    expect(link.querySelector('[data-home-accuracy-self]')?.textContent).toBe(ownScore);
+    expect(link.querySelector('[data-home-accuracy-opponent]')?.textContent).toBe(opponentScore);
+    const desktopScore = link.querySelector('.font-mono.text-xs.tabular-nums');
+    expect(desktopScore?.textContent?.replace(/\s/g, '')).toBe('83.7%/91.2%');
+    expect(desktopScore?.parentElement?.className).toContain('hidden');
+    expect(desktopScore?.querySelector('.mx-1.text-ui-mutedText')?.textContent).toBe('/');
+  });
+
   it('shows a retryable error instead of the no-games tagline after a failed stats request', async () => {
     let offline = true;
     mocks.get.mockImplementation((url: string) => {

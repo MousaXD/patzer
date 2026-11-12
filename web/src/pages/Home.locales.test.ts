@@ -11,7 +11,7 @@ const homeKeys = [
   'greet.morning', 'greet.afternoon', 'greet.evening',
   'loadingStats', 'statsUnavailable', 'continue', 'tileLoading',
   'tileUnavailable', 'loadingGames', 'gamesUnavailable',
-  'learnNext', 'learnResume', 'learnDesc', 'unreviewed',
+  'learnNext', 'learnResume', 'learnDesc', 'unreviewed', 'opponent',
   'streak.win', 'streak.loss', 'streak.draw',
   'outcome.win', 'outcome.loss', 'outcome.draw',
 ] as const;

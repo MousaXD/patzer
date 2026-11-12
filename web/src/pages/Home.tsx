@@ -654,14 +654,30 @@ function RecentGames({ games, loading, error, retry }: { games: GameRow[]; loadi
                     </span>
                   )}
                 </div>
+                {g.analyzed && (
+                  <div data-home-mobile-accuracy className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-ui-mutedText sm:hidden">
+                    <span className="whitespace-nowrap">
+                      {t('players.you', { defaultValue: 'You' })}: {' '}
+                      <span data-home-accuracy-self className="font-mono font-semibold text-ui-foreground">
+                        {fmtAccuracy(g.user_color === 'white' ? g.accuracy_white : g.accuracy_black)}
+                      </span>
+                    </span>
+                    <span className="whitespace-nowrap">
+                      {t('home.opponent', { defaultValue: 'Opponent' })}: {' '}
+                      <span data-home-accuracy-opponent className="font-mono text-ui-mutedText">
+                        {fmtAccuracy(g.user_color === 'white' ? g.accuracy_black : g.accuracy_white)}
+                      </span>
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="shrink-0 text-right">
+              <div className="hidden shrink-0 text-right sm:block">
                 {g.analyzed ? (
                   <div className="font-mono text-xs tabular-nums">
                     <span className={g.user_color === 'white' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_white)}
                     </span>
-                    <span className="mx-1 text-chesscom-400">/</span>
+                    <span className="mx-1 text-ui-mutedText">/</span>
                     <span className={g.user_color === 'black' ? 'font-semibold text-chesscom-900 dark:text-chesscom-100' : 'text-ui-mutedText'}>
                       {fmtAccuracy(g.accuracy_black)}
                     </span>

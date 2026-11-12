@@ -1162,3 +1162,34 @@
 ### Next audit
 
 - Audit Recent Games' **analyzed accuracy values and game metadata** under light/dark at 320/390/768, particularly if analyzed accuracy has low contrast or becomes illegible due to the right-hand accuracy column. Move on to a higher-impact shell/onboarding issue if those states pass; do not repeat completed status/glyph audits.
+
+## 2026-11-12: Keep analyzed-game opponents readable and clarify accuracy ownership
+
+### Independent Chromium reproduction
+
+- Recovered clean pushed `8a58f3f` and audited *analyzed* Recent Games, which had not been covered by the earlier unreviewed-row improvements. Used the actual Home page with local API fixtures containing 99.9% White / 100.0% Black accuracies and an unusually long account name.
+- At **320px**, the right-hand two-score column consumed **92px**, reducing the opponent-name container to only **107px**. At 390px it was still just 177px. The two unlabeled percentages were especially ambiguous on phones, where the White-versus-Black names are intentionally hidden.
+- The score separator used fixed low-contrast `text-chesscom-400`, measured at **4.47:1 in light mode** and **3.02:1 in dark mode**. The primary and secondary score digits themselves already met contrast requirements.
+- Captured and inspected `artifacts/agent-02/analyzed-light-white-320.png`, `analyzed-light-white-390.png`, `analyzed-light-white-640.png`, and `analyzed-dark-black-320.png` as negative-control screenshots.
+
+### Scoped fix
+
+1. Show the actual opponent name at full available row width on phones instead of reserving a fixed right-hand column for two accuracy values. Present both percentages in their own compact, wrapping line below date/time.
+2. Explicitly label mobile accuracies as **You** and **Opponent**, selecting the correct White/Black score depending on the signed-in player's color. Reuse the existing localized `players.you` key; add the minimal `home.opponent` label to all five supported languages.
+3. Preserve the established White/Black percentages in the right-hand column at tablet/desktop widths, but switch the slash to the accessible `text-ui-mutedText` token.
+4. Extend Home unit coverage with both player colors and correct score ownership; extend five-language Home dictionary coverage.
+5. Add a durable Chromium regression for analyzed games at **320, 390, 768 and 1440px** in both themes and player colors, with an exceptionally long owner username. Assert mobile name width, both explicit score labels and values, absence of redundant desktop scores, no horizontal overflow, and desktop score/separator contrast. Check German mobile labels separately.
+
+### Verification
+
+- The real Chromium responsive shell fixture **passed**, including the new analyzed-game matrix and existing keyboard, translations, result, contrast, long-name and outage checks.
+- `npx vitest run web/src/pages/Home.stats.test.tsx web/src/pages/Home.locales.test.ts --maxWorkers=2`: **19/19 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **441/441 passed across 74 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- Inspected final `artifacts/agent-02/home-analyzed-light-white-320.png`, `home-analyzed-dark-black-320.png`, `home-analyzed-light-white-390.png`, and `home-analyzed-dark-black-768.png`: the full `OpponentWithALongName` identifier stays legible and the separate score line shows correct ownership. Desktop ordering and game destinations are preserved.
+- No merge, deployment, production data or other-agent-owned feature changes.
+
+### Next audit
+
+- Examine the first-use Home hero with a *very long display name* and with increased system text size at 320px. Verify whether the greeting, action labels and player identity remain readable and the Play/Review actions retain 44px targets. Do not change otherwise-stable onboarding without an actual browser reproduction.
