@@ -399,6 +399,11 @@
     "libraryRecentImportTitle": "Letzte Partien importieren",
     "libraryRecentImportHelp": "Wähle die Anzahl der Partien. Bereits gespeicherte Partien werden nicht überschrieben.",
     "libraryRecentImportLimit": "Anzahl der Partien",
+    "providerImportSaved": "{{imported}} neue Partien aus {{total}} abgerufenen Partien gespeichert.",
+    "providerImportDuplicates": "{{count}} bereits gespeichert.",
+    "providerImportSkipped": "{{count}} nicht unterstützt oder ungültig.",
+    "providerImportEnriched": "{{count}} vorhandene Partien haben neue Eröffnungsdetails erhalten.",
+    "providerImportRecentOnly": "Es werden nur die letzten Partien importiert, nicht dein vollständiger Spielverlauf.",
     "libraryFilterOptions": {
       "source": {
         "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",

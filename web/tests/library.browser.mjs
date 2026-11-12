@@ -112,7 +112,8 @@ async function newPage(theme, width, height,
     unknownImportedNames = false, practiceForUnknownNames = false,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
-    delayedContinuation = null, failContinuationUntilRetry = false} = {}) {
+    delayedContinuation = null, failContinuationUntilRetry = false,
+    providerImportBreakdown = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -221,6 +222,9 @@ async function newPage(theme, width, height,
       if (body.limit === 100 && path.endsWith('/chesscom')) { status = 429; json = {error: 'chesscom_rate_limited'}; }
       else if (body.limit === 100) { status = 409; json = {error: 'linked_account_changed'}; }
       else if (body.limit === 20 && path.endsWith('/lichess')) { status = 502; json = {error: 'lichess_unavailable'}; }
+      else if (providerImportBreakdown && body.limit === 200 && path.endsWith('/chesscom')) {
+        json = {imported:100,total:200,duplicates:6,skipped:3,enriched:7};
+      }
       else json = {imported: Math.round(body.limit / 2), total: body.limit, skipped: 0, enriched: body.limit === 200 ? 7 : 0};
     } else if (path === '/api/games/live') json = {bot: null, pvp: []};
     else { status = 404; json = {error: 'test_fixture_not_implemented'}; }
@@ -414,6 +418,28 @@ try {
     assert.deepEqual(pageErrors,[],'German recent-import controls produced a JS exception');
     console.log('PASS German recent-import title, batch explanation, touch targets and bounded selection');
   } finally {await germanImport.context.close();}
+
+  const germanResult=await newPage('light',390,844,{locale:'de',providerImportBreakdown:true});
+  try {
+    const {page,pageErrors}=germanResult;
+    await page.locator('button[aria-controls="library-import-controls"]').click();
+    const section=page.getByRole('region',{name:'Letzte Partien importieren'});
+    await section.getByRole('button',{name:/Von Chess.com importieren/}).click();
+    const success=page.getByRole('status').getByText(/100 neue Partien aus 200 abgerufenen Partien gespeichert/);
+    await success.waitFor();
+    for (const detail of [
+      '6 bereits gespeichert', '3 nicht unterstützt oder ungültig',
+      '7 vorhandene Partien haben neue Eröffnungsdetails erhalten',
+      'Es werden nur die letzten Partien importiert, nicht dein vollständiger Spielverlauf',
+    ]) {
+      assert.ok((await success.textContent()).includes(detail),
+        `German provider result omitted ${detail}`);
+    }
+    await success.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-german-provider-import-result-light-390.png')});
+    assert.deepEqual(pageErrors,[],'German provider result caused a JS exception');
+    console.log('PASS German provider result describes imported, duplicate, skipped and enriched games');
+  } finally {await germanResult.context.close();}
 
   const germanDesktop=await newPage('dark',1440,900,{locale:'de'});
   try {

@@ -788,3 +788,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Examine **linked provider import success feedback after a bounded batch** in non-English UI. The panel guidance is now localized, but the `importMut.onSuccess` summary still concatenates English strings ("new games saved", "retrieved", "already saved", "unsupported or invalid", "not your entire history"). Reproduce the German result for an actual synthetic Chess.com batch import, then localize feedback while preserving numeric precision, duplicate and enrichment reporting, account-change safety, and accessible status semantics.
+
+## 2026-11-12 — Localize complete provider-import feedback with all optional counts
+
+- Resumed clean pushed `76970be`. The provider import success callback previously assembled a single English sentence even in non-English interfaces, mixing optional duplicate/skipped counts and enrichment details with the recent-history limitation. Added failing locale regressions in **all five** supported languages to require five independently translated complete sentences with exact `{{imported}}`, `{{total}}` and `{{count}}` placeholders.
+- Replaced only the Library's English string concatenation in `importMut.onSuccess` with localized, count-preserving sentences for retrieved/saved, duplicates, skipped/invalid, newly enriched opening details, and the explicit **recent games only** limitation. Optional counts are included only when present, exactly as before. Kept the account-ID guard, query invalidation, status announcement, timeout, provider/API contracts, and 20/100/200 batch limits unchanged. Added keys in English, German, Spanish, Russian and Bulgarian, with safe English fallbacks for the focused mock.
+- Added a real Chromium German 390px fixture with a fully synthetic linked Chess.com import response (`100` newly saved of `200` retrieved, `6` duplicates, `3` unsupported, `7` enriched). Asserted all five German sentence components and a visible accessible `role=status`. The first focused component rerun identified an old punctuation-specific test expecting duplicate/skipped counts separated by a comma; updated it to assert the same exact counts in separate sentences. Inspected `qa-artifacts/agent-c-library/library-german-provider-import-result-light-390.png`; no missing details or layout overflow.
+
+### Verification
+
+- Focused Library+locales suite: **135/135 passed**. Full repository suite: **109 passed files, 2 skipped; 1,107 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full isolated Chromium on port 5397 passed 1440px desktop, 390/320px light/dark mobile, German provider-result breakdown, import recovery, Unicode, bookmarking, cursor pagination and other Library scenarios; no browser JS exceptions or horizontal overflow.
+- Modified only Agent C Library UI, five language files, component/locale/browser regressions and durable progress. No production data, provider authentication, cross-agent worktree, merge or deploy touched.
+
+### Next independent audit
+
+- Measure **WCAG contrast for the Library import success status**, especially the small green text on a pale green background in light mode. The newly captured 390px screenshot suggests the status may be hard to read. Reproduce with computed styles and contrast calculations from real Chromium; if below WCAG AA 4.5:1 for small text, apply an in-scope color/token fix with light and dark browser checks, preserving success/error differentiation and the shared design system.

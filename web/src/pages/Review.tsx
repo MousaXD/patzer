@@ -310,10 +310,25 @@ export default function Review() {
     onSuccess: (r, { accountId }) => {
       void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
       if (accountIdRef.current !== accountId) return;
-      const details = [r.duplicates ? `${r.duplicates} already saved` : '', r.skipped ? `${r.skipped} unsupported or invalid` : '']
-        .filter(Boolean).join(', ');
-      const enrichment = r.enriched ? ` ${r.enriched} existing games gained opening details.` : '';
-      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${details ? ` (${details})` : ''}.${enrichment} This imports recent games only, not your entire history.` }, 9000);
+      // Keep each optional server count explicit while letting every locale
+      // own its full sentence rather than concatenating English grammar.
+      const sentences = [t('review.providerImportSaved', {
+        imported:r.imported,total:r.total,
+        defaultValue:`${r.imported} new games saved from ${r.total} retrieved.`,
+      })];
+      if (r.duplicates) sentences.push(t('review.providerImportDuplicates', {
+        count:r.duplicates,defaultValue:`${r.duplicates} already saved.`,
+      }));
+      if (r.skipped) sentences.push(t('review.providerImportSkipped', {
+        count:r.skipped,defaultValue:`${r.skipped} unsupported or invalid.`,
+      }));
+      if (r.enriched) sentences.push(t('review.providerImportEnriched', {
+        count:r.enriched,defaultValue:`${r.enriched} existing games gained opening details.`,
+      }));
+      sentences.push(t('review.providerImportRecentOnly', {
+        defaultValue:'This imports recent games only, not your entire history.',
+      }));
+      showImportResult({ text: sentences.join(' ') }, 9000);
     },
     onError: (e, { accountId }) => {
       if (accountIdRef.current !== accountId) return;

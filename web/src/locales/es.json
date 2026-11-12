@@ -394,6 +394,11 @@
     "libraryRecentImportTitle": "Importar partidas recientes",
     "libraryRecentImportHelp": "Elige cuántas partidas importar; las ya guardadas no se sobrescriben.",
     "libraryRecentImportLimit": "Partidas recientes a importar",
+    "providerImportSaved": "Se guardaron {{imported}} partidas nuevas de {{total}} recuperadas.",
+    "providerImportDuplicates": "{{count}} ya guardadas.",
+    "providerImportSkipped": "{{count}} no válidas o no compatibles.",
+    "providerImportEnriched": "Se añadieron detalles de apertura a {{count}} partidas existentes.",
+    "providerImportRecentOnly": "Solo se importan partidas recientes, no todo tu historial.",
     "libraryFilterOptions": {
       "source": {
         "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",

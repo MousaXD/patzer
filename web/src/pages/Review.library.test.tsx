@@ -751,7 +751,7 @@ describe('Review library with large histories', () => {
     fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
     expect(await screen.findByText(/150 new games saved from 200 retrieved/)).toBeTruthy();
-    expect(screen.getByText(/42 already saved, 8 unsupported or invalid/)).toBeTruthy();
+    expect(screen.getByText(/42 already saved\. 8 unsupported or invalid\./)).toBeTruthy();
     expect(screen.getByText(/12 existing games gained opening details/)).toBeTruthy();
     expect(screen.getByText(/not your entire history/)).toBeTruthy();
   });

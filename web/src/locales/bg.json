@@ -390,6 +390,11 @@
     "libraryRecentImportTitle": "Импортиране на скорошни партии",
     "libraryRecentImportHelp": "Избери брой партии; вече запазените партии няма да бъдат презаписани.",
     "libraryRecentImportLimit": "Брой партии за импортиране",
+    "providerImportSaved": "Запазени {{imported}} нови партии от {{total}} извлечени.",
+    "providerImportDuplicates": "{{count}} вече запазени.",
+    "providerImportSkipped": "{{count}} невалидни или неподдържани.",
+    "providerImportEnriched": "{{count}} съществуващи партии получиха допълнителни подробности за дебютите.",
+    "providerImportRecentOnly": "Това импортира само скорошни партии, не цялата ти история.",
     "libraryFilterOptions": {
       "source": {
         "all": "Всички източници", "chesscom": "Chess.com", "lichess": "Lichess",

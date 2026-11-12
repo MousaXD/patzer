@@ -399,6 +399,11 @@
     "libraryRecentImportTitle": "Импорт последних партий",
     "libraryRecentImportHelp": "Выберите количество партий; уже сохранённые партии не перезаписываются.",
     "libraryRecentImportLimit": "Количество партий для импорта",
+    "providerImportSaved": "Сохранено новых партий: {{imported}} из {{total}} загруженных.",
+    "providerImportDuplicates": "{{count}} уже сохранены.",
+    "providerImportSkipped": "{{count}} не поддерживаются или некорректны.",
+    "providerImportEnriched": "У {{count}} сохранённых партий обновлены сведения о дебюте.",
+    "providerImportRecentOnly": "Импортируются только недавние партии, а не вся история.",
     "libraryFilterOptions": {
       "source": {
         "all": "Все источники", "chesscom": "Chess.com", "lichess": "Lichess",

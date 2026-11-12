@@ -140,6 +140,22 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
       }
     });
+    it('translates the complete provider import result without losing optional counts', () => {
+      const expected: Record<string,string[]> = {
+        providerImportSaved: ['{{imported}}','{{total}}'],
+        providerImportDuplicates: ['{{count}}'],
+        providerImportSkipped: ['{{count}}'],
+        providerImportEnriched: ['{{count}}'],
+        providerImportRecentOnly: [],
+      };
+      for (const [key, params] of Object.entries(expected)) {
+        const text = (locale.review as Record<string,unknown>)[key] as string | undefined;
+        const english = (en.review as Record<string,unknown>)[key] as string | undefined;
+        expect(text?.trim().length,`${lang}: ${key}`).toBeGreaterThan(0);
+        expect(placeholders(text ?? ''),`${lang}: ${key}`).toEqual(params);
+        if (lang !== 'en') expect(text,`${lang}: ${key}`).not.toBe(english);
+      }
+    });
     it('translates board, navigation and keyboard guidance', () => {
       expect(locale.review.startingPosition?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.bestArrowNote?.trim().length, lang).toBeGreaterThan(0);

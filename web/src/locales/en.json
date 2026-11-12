@@ -399,6 +399,11 @@
     "libraryRecentImportTitle": "Import recent games",
     "libraryRecentImportHelp": "Choose a batch size; existing games are not overwritten.",
     "libraryRecentImportLimit": "Recent games to fetch",
+    "providerImportSaved": "{{imported}} new games saved from {{total}} retrieved.",
+    "providerImportDuplicates": "{{count}} already saved.",
+    "providerImportSkipped": "{{count}} unsupported or invalid.",
+    "providerImportEnriched": "{{count}} existing games gained opening details.",
+    "providerImportRecentOnly": "This imports recent games only, not your entire history.",
     "libraryFilterOptions": {
       "source": {
         "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",
