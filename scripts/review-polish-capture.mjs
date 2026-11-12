@@ -700,6 +700,61 @@ try {
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,
       (await api(`/api/games/${id}`,{cookie:account.cookie})).json.game.pgn);
   }finally{await lateShareContext.close();}
+  // Copy FEN also awaits clipboard permission. An old permission result must
+  // not advertise a *different* visible board position as copied or offer a
+  // manual FEN for a request that belonged to the prior ply. The saved PGN,
+  // by contrast, stays source-valid when only the move cursor changes.
+  const lateExportContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await lateExportContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await lateExportContext.newPage();
+    await page.addInitScript(()=>{
+      window.__deferredExportCopies=[];
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+        writeText:text=>new Promise((resolve,reject)=>window.__deferredExportCopies.push({text,resolve,reject})),
+      }});
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    const exportRow=page.locator('[data-review-export-row]');
+    const copyFen=exportRow.getByRole('button',{name:'Copy FEN',exact:true});
+    const copyPgn=exportRow.getByRole('button',{name:'Copy PGN',exact:true});
+    const exportFallback=exportRow.locator('[data-review-clipboard-fallback]');
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const expectedFen=JSON.parse(db.prepare('SELECT moves_json FROM analyses WHERE game_id=?').get(id).moves_json)[14].fen_after;
+    const moveNext=async(expected)=>{
+      await page.getByRole('button',{name:'Next',exact:true}).click();
+      await page.waitForFunction(value=>document.querySelector('[data-review-move-progress]')
+        ?.textContent?.trim()===value,`${expected} / 24`,{timeout:3000});
+    };
+    await copyFen.click();
+    await page.waitForFunction(()=>window.__deferredExportCopies.length===1);
+    assert.equal(await page.evaluate(()=>window.__deferredExportCopies[0].text),expectedFen);
+    await moveNext(16);
+    await page.evaluate(()=>window.__deferredExportCopies[0].reject(new DOMException('Denied','NotAllowedError')));
+    await page.waitForTimeout(200);
+    assert.equal(await exportFallback.count(),0,
+      'A denied FEN for an earlier ply must not offer manual text for the current board');
+    await copyFen.click();
+    await page.waitForFunction(()=>window.__deferredExportCopies.length===2);
+    await moveNext(17);
+    await page.evaluate(()=>window.__deferredExportCopies[1].resolve());
+    await page.waitForTimeout(200);
+    assert.equal(await exportRow.getByRole('button',{name:'Copied',exact:true}).count(),0,
+      'A late successful FEN copy must not label a different selected board Copied');
+    await copyFen.click();
+    await page.waitForFunction(()=>window.__deferredExportCopies.length===3);
+    await page.evaluate(()=>window.__deferredExportCopies[2].resolve());
+    await exportRow.getByRole('button',{name:'Copied',exact:true}).waitFor({state:'visible',timeout:3000});
+    await copyPgn.click();
+    await page.waitForFunction(()=>window.__deferredExportCopies.length===4);
+    assert.equal(await page.evaluate(()=>window.__deferredExportCopies[3].text),originalPgn);
+    await moveNext(18);
+    await page.evaluate(()=>window.__deferredExportCopies[3].resolve());
+    await exportRow.getByRole('button',{name:'Copied',exact:true}).waitFor({state:'visible',timeout:3000});
+    assert.equal(await exportFallback.count(),0);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await lateExportContext.close();}
   // Notes remain private, editable and recoverable after a real failed PATCH.
   // Verify the localized retry against the disposable authenticated backend.
   const spanishNotes=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
@@ -2715,6 +2770,7 @@ try {
       };
       await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
       await exportFallback.waitFor({state:'visible',timeout:3000});
+      await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).waitFor({state:'visible',timeout:3000});
       await assertSelectedFallback(branchPosition.fen(),
         'Denied branch Copy FEN must focus and select the current hypothetical position');
       await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();

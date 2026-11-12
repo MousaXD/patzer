@@ -1732,6 +1732,12 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   const [manualCopy, setManualCopy] = useState<'fen' | 'pgn' | null>(null);
   const [manualCopyAttempt, setManualCopyAttempt] = useState(0);
   const previousExportRef = useRef({ fen, pgn });
+  const currentExportRef = useRef({ fen, pgn });
+  const exportGenerationRef = useRef({ fen: 0, pgn: 0 });
+  const exportRequestRef = useRef(0);
+  // React may commit the next board before an older clipboard permission
+  // promise settles. Keep the rendered source values current immediately.
+  currentExportRef.current = { fen, pgn };
 
   useEffect(() => {
     const previous = previousExportRef.current;
@@ -1739,6 +1745,8 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
     const pgnChanged = previous.pgn !== pgn;
     previousExportRef.current = { fen, pgn };
     if (!fenChanged && !pgnChanged) return;
+    if (fenChanged) exportGenerationRef.current.fen += 1;
+    if (pgnChanged) exportGenerationRef.current.pgn += 1;
     // A failed FEN copy describes one *visible board position*. Never leave
     // that old/manual value active when a variation or saved move changes.
     // PGN export is source-based, so keep that fallback across board moves.
@@ -1749,12 +1757,23 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   }, [fen, pgn]);
 
   async function copy(kind: 'fen' | 'pgn', text: string) {
+    const request = ++exportRequestRef.current;
+    const sourceGeneration = exportGenerationRef.current[kind];
+    const stillCurrent = () => request === exportRequestRef.current
+      && sourceGeneration === exportGenerationRef.current[kind]
+      && currentExportRef.current[kind] === text;
     try {
       await navigator.clipboard.writeText(text);
+      if (!stillCurrent()) return;
       setCopied(kind);
       setManualCopy(null);
-      setTimeout(() => setCopied(null), 1400);
+      setTimeout(() => { if (stillCurrent()) setCopied(null); }, 1400);
     } catch {
+      if (!stillCurrent()) return;
+      // A denied FEN/PGN action supersedes any earlier successful copy.
+      // Otherwise the old button can still say Copied while this new value
+      // is in its manual fallback, hiding the other Copy action's label.
+      setCopied(null);
       // Clipboard can be unavailable on self-hosted HTTP or denied by the
       // browser. Give each failure a new mounted fallback so even switching
       // FEN -> PGN (or repeating Copy FEN) focuses and selects the new value.
