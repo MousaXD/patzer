@@ -1262,6 +1262,36 @@ try {
       assert.equal(await child.getAttribute('aria-pressed'),'true');
       await page.locator('.review-board-square').scrollIntoViewIfNeeded();
       await page.screenshot({path:join(output,`nested-variation-cursors-${width}.png`)});
+      // On long exploratory lines the selected SAN can move outside the
+      // horizontal viewport. The trail should reveal it automatically when
+      // moving via the board or transport, without scrolling the whole page.
+      for(const [index,from,to] of [
+        ['e7','e6'],['g1','f3'],['d7','d5'],['b1','c3'],
+        ['b8','c6'],['f1','e2'],['g8','f6'],['a2','a3'],
+      ].map(([from,to],index)=>[index,from,to])) {
+        await dragMove(from,to);
+        await expectProgress(`Var ${index+2} / ${index+2}`);
+      }
+      const geometry=async()=>trail.evaluate(nav=>{
+        const current=nav.querySelector('[aria-current="step"]');
+        const bounds=nav.getBoundingClientRect();
+        const active=current?.getBoundingClientRect();
+        return {left:bounds.left,right:bounds.right,activeLeft:active?.left,
+          activeRight:active?.right,scrollLeft:nav.scrollLeft,
+          scrollWidth:nav.scrollWidth,clientWidth:nav.clientWidth};
+      });
+      const longTrail=await geometry();
+      assert.ok(longTrail.scrollWidth>longTrail.clientWidth,
+        `Long variation must overflow horizontally: ${JSON.stringify(longTrail)}`);
+      await page.waitForFunction(()=>{
+        const nav=document.querySelector('nav[aria-label="Variation moves"]');
+        const current=nav?.querySelector('[aria-current="step"]');
+        if(!nav||!current)return false;
+        const a=current.getBoundingClientRect(),n=nav.getBoundingClientRect();
+        return a.left>=n.left-2 && a.right<=n.right+2;
+      },undefined,{timeout:2400});
+      await trail.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`long-variation-active-trail-${width}.png`)});
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
     }finally{await nestedContext.close();}
   }

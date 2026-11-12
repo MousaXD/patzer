@@ -436,3 +436,26 @@
 ### Next high-value audit
 
 - In a longer variation the active SAN trail move can be *outside the initial horizontal scroll viewport*. Confirm whether selecting a later move via transport or a variation branch keeps its active SAN button visible without a horizontal hunt, then add minimal reduced-motion/accessibility-friendly auto-reveal if reproduced. Do not invent artificial scores or alter the other agents' shell.
+
+## 2026-11-12: keep active SAN visible in long variation move trails
+
+### Reproduction
+
+- Continued from pushed, clean `952abe6` and the recorded next issue. The new move trail horizontally overflows once a learner explores enough moves, but advancing through chessboard moves leaves the selected SAN outside the visible horizontal strip.
+- Extended the existing disposable authenticated nested Chromium scenario at **390px and 1024px** using a real legal sequence `e4 c5 d4 e6 Nf3 d5 Nc3 Nc6 Be2 Nf6 a3` (chess.js move legality independently checked). After the ninth move, the horizontal move strip overflowed its container and Chromium **timed out** waiting for the active SAN to be visible, confirming the defect without synthetic engine scores.
+
+### Focused correction
+
+- Added a Game Review-only `variationTrailRef` and an effect tied to the active branch identity, cursor and actual trail length. It reads the rendered active `[aria-current="step"]` bounds and adjusts only the trail's own `scrollLeft` toward the nearest edge, leaving the document vertically stationary and avoiding `scrollIntoView`'s document jump. The same logic returns toward the left when navigating to a previous move/fork. No saved PGN, move legality, scoring, game revision or other agent-owned layout changes.
+
+### Verification
+
+- Focused variation/locale suite **67 passed**; `npm run typecheck` PASS; `npm run build` PASS.
+- Full `npm test -- --testTimeout=20000`: **982 passed / 12 skipped**, 107 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)** including 9-move long-line visibility checks on 390px and 1024px, previous nested branch jumps, real last-move highlighting, responsive, source, keyboard, localization and saved PGN integrity.
+- Opened actual `qa-artifacts/agent-a/long-trail-after-20261112/long-variation-active-trail-390.png`: `a3` is visibly highlighted at the right edge of the trail below `Var 9 / 9`, without page or horizontal document overflow. Real chess positions, but browser scoring values are test-only and not live Stockfish certification.
+- No merge, deployment or production SQLite changes. Agent A worktree only.
+
+### Next target
+
+- Audit review analysis state and board feedback during a slow/in-flight exploratory move engine score, particularly when several legal moves are entered quickly. Check that the UI distinguishes *still scoring* from *failed/unavailable*, and that a late result cannot replace the latest move's label; existing stale-response checks cover some cases. Reproduce with a controlled delayed Chromium request before changing state or copy.

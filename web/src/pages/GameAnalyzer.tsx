@@ -145,6 +145,7 @@ function GameAnalyzerView() {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const boardFocusRef = useRef<HTMLDivElement | null>(null);
   const moveSummaryRef = useRef<HTMLDivElement | null>(null);
+  const variationTrailRef = useRef<HTMLElement | null>(null);
   // Local UI state for new features.
   const [flipped, setFlipped] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -378,6 +379,22 @@ function GameAnalyzerView() {
     ? variations.variations.find((branch) => branch.id === variations.activeVariationId)
     : null;
   const activeTrail = activeBranch ? analysisVariationTrail(activeBranch, variations.variations) : [];
+  useEffect(() => {
+    const nav = variationTrailRef.current;
+    const current = nav?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!nav || !current) return;
+    // Only scroll the horizontal move strip. scrollIntoView() also shifts the
+    // document vertically, stealing the chessboard from mobile players who
+    // are stepping through moves using the board or transport controls.
+    const container = nav.getBoundingClientRect();
+    const selected = current.getBoundingClientRect();
+    const edge = 6;
+    if (selected.right > container.right - edge) {
+      nav.scrollLeft += selected.right - container.right + edge;
+    } else if (selected.left < container.left + edge) {
+      nav.scrollLeft -= container.left - selected.left + edge;
+    }
+  }, [activeBranch?.id, variations.variationCursor, activeTrail.length]);
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
@@ -1002,7 +1019,8 @@ function GameAnalyzerView() {
               <p className="mb-1 text-xs font-semibold text-chesscom-600 dark:text-chesscom-300">
                 {t('review.variationMoveTrail')}
               </p>
-              <nav aria-label={t('review.variationMoveTrail')} className="flex max-w-full gap-1.5 overflow-x-auto pb-2">
+              <nav ref={variationTrailRef} aria-label={t('review.variationMoveTrail')}
+                className="flex max-w-full gap-1.5 overflow-x-auto pb-2">
                 <button type="button" aria-current={variations.variationCursor === 0 ? 'step' : undefined}
                   aria-label={t('review.variationJumpFork')}
                   onClick={() => {
