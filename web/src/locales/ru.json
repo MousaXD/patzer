@@ -264,6 +264,8 @@
     "libraryOpenOpening": "Показать {{count}} партий с дебютом {{name}}",
     "libraryOpeningEmpty": "Дебюты появятся после их определения при импорте или разборе партий.",
     "libraryFilteredOpening": "Показаны партии с дебютом {{name}}",
+    "libraryOpeningsLoadError": "Не удалось загрузить обзор дебютов. Ваши сохранённые партии по-прежнему доступны.",
+    "libraryRetryOpenings": "Повторить загрузку дебютов",
     "dateRange": "Период партий",
     "fromDate": "С даты",
     "gamesFromDate": "Партии с даты",

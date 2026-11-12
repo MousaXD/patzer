@@ -209,7 +209,12 @@ export default function Review() {
     },
   });
 
-  const { data: openingSummary } = useQuery({
+  const {
+    data: openingSummary,
+    isError: openingSummaryError,
+    isFetching: openingSummaryFetching,
+    refetch: retryOpeningSummary,
+  } = useQuery({
     queryKey: ['games', 'openings', user?.id],
     queryFn: () => api.get<OpeningSummary>('/api/games/openings'),
     enabled: user?.id != null,
@@ -299,6 +304,21 @@ export default function Review() {
           ? 'border-bad/30 bg-bad/10 text-bad'
           : 'border-board-dark/30 bg-board-dark/10 text-board-dark dark:text-chesscom-100')}>
           {importMsg.text}
+        </div>
+      )}
+
+      {openingSummaryError && (
+        <div role="alert" className="card flex flex-wrap items-center justify-between gap-3 border-bad/30 p-3 sm:p-4">
+          <p className="text-sm text-bad">
+            {t('review.libraryOpeningsLoadError', {
+              defaultValue: 'Opening highlights could not be loaded. Your saved games are still available.',
+            })}
+          </p>
+          <button type="button" className="btn-secondary min-h-10 text-sm"
+            disabled={openingSummaryFetching} onClick={() => void retryOpeningSummary()}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            {t('review.libraryRetryOpenings', {defaultValue: 'Retry opening highlights'})}
+          </button>
         </div>
       )}
 

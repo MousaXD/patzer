@@ -255,6 +255,8 @@
     "libraryOpenOpening": "Покажи {{count}} партии с дебют {{name}}",
     "libraryOpeningEmpty": "Дебютите ще се появят тук, когато бъдат разпознати при импорт или анализ.",
     "libraryFilteredOpening": "Показани са партии с дебют {{name}}",
+    "libraryOpeningsLoadError": "Обобщението на дебютите не може да се зареди. Запазените ти партии са достъпни.",
+    "libraryRetryOpenings": "Опитай отново да заредиш дебютите",
     "dateRange": "Период на партиите",
     "fromDate": "От дата",
     "gamesFromDate": "Партии от дата",

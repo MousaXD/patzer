@@ -189,3 +189,16 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 
 - Audit first-use and partial-failure behavior of the new opening summary. Investigate whether silently hiding the section when the summary request fails is confusing and whether the library should offer a retry without disrupting the working game list.
 - Consider **opponent discovery** and navigable past encounters, strictly from stored identities and results. Verify ownership and name normalization before adding UI.
+
+## 2026-11-12 — Recover opening discovery independently from library failures
+
+- Recovered clean `193bec4`. Reproduced a missing recovery state: when `GET /api/games/openings` failed, the entire opening-exploration section silently disappeared even though the user's game list was available. New component regression failed against the original implementation.
+- Added an accessible, independent opening-summary error message with an explicit retry button. A broken summary fetch does not replace, blank, or retry the unaffected paginated game list. Added localized error/retry text across the existing five UI languages.
+- Chromium fixture now simulates one failed opening summary (HTTP 503) on a separate mobile browser context, verifies the normal 620-game library stays usable, clicks the retry, verifies opening cards appear and the alert clears, and checks browser errors. Inspected the 390px light-mode failure screenshot.
+- Targeted Library component suite: **24/24 passed**. Full suite: **108 files passed, 2 skipped; 1,013 tests passed, 12 skipped**, no failures.
+- Typecheck and web production build: **passed**. Chromium tests passed at 1440, 390 and 320 widths in light and dark themes plus the mobile recovery flow; `git diff --check`: passed.
+- No production requests, DB mutation, merge or deployment. No edits to other agents' worktrees.
+
+### Next improvement
+
+- Audit library opponent identity semantics (`user_color`, `white`, `black`) and research a compact way to discover frequent opponents without making up results or pushing search far below the fold on mobile. A dedicated, account-scoped query and explicit unknown-identity count may be appropriate.

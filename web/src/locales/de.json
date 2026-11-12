@@ -264,6 +264,8 @@
     "libraryOpenOpening": "{{count}} Partien mit {{name}} anzeigen",
     "libraryOpeningEmpty": "Eröffnungen erscheinen hier, sobald sie beim Import oder in der Analyse erkannt werden.",
     "libraryFilteredOpening": "Partien mit {{name}} werden angezeigt",
+    "libraryOpeningsLoadError": "Die Eröffnungsübersicht konnte nicht geladen werden. Deine gespeicherten Partien sind weiterhin verfügbar.",
+    "libraryRetryOpenings": "Eröffnungen erneut laden",
     "dateRange": "Datumsbereich für Partien",
     "fromDate": "Von",
     "gamesFromDate": "Partien ab Datum",

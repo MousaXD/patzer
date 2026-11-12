@@ -196,6 +196,29 @@ describe('Review library with large histories', () => {
     expect(screen.queryByRole('button', {name:/Show \d+ saved games in/})).toBeNull();
   });
 
+  it('keeps the game list usable when opening discovery fails and allows an independent retry', async () => {
+    let openingAttempts = 0;
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') {
+        openingAttempts++;
+        if (openingAttempts === 1) throw new Error('temporary_opening_failure');
+        return {total: 1000, classified: 100, unclassified: 900,
+          openings: [{name: 'Italian Game', games: 100}]};
+      }
+      return {games: Array.from({length:40}, (_,i) => makeGame(i+1)),
+        total: 1000, offset: 0, has_more: true};
+    });
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/opening highlights could not be loaded/i);
+    fireEvent.click(screen.getByRole('button', {name:'Retry opening highlights'}));
+    expect(await screen.findByRole('button', {name:'Show 100 saved games in Italian Game'})).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(openingAttempts).toBe(2);
+    expect(screen.getByText('40 of 1,000 games')).toBeTruthy();
+  });
+
   it('accepts exact-opening deep links and bounds malicious or oversized parameters', async () => {
     mount('/review?opening=Italian%20Game');
     await screen.findByText(/40 of 1,000 games/);
@@ -307,7 +330,7 @@ describe('Review library with large histories', () => {
   it('shows a recoverable error, never the no-games onboarding state', async () => {
     mocks.get.mockRejectedValue(new Error('offline'));
     mount();
-    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(await screen.findByText(/Your game library could not be loaded/)).toBeTruthy();
     expect(screen.queryByText(/No games match your search/)).toBeNull();
     expect(screen.queryByText(/Play your first game/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();

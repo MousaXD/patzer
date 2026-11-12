@@ -71,10 +71,11 @@ async function awaitUp() {
   throw new Error('Private Vite preview did not start');
 }
 
-async function newPage(theme, width, height) {
+async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
+  let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/**', async route => {
     const request = route.request();
@@ -85,10 +86,16 @@ async function newPage(theme, width, height) {
     else if (path === '/api/auth/me') json = {user: {
       id: 7, username: 'fixture', role: 'user', created_at: '2026-11-10', profile: {...profile, site_theme: theme},
     }};
-    else if (path === '/api/games/openings') json = {
-      total: 620, classified: 620, unclassified: 0,
-      openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
-    };
+    else if (path === '/api/games/openings') {
+      if (openingFailuresRemaining > 0) {
+        openingFailuresRemaining--;
+        status = 503;
+        json = {error:'temporary_fixture_failure'};
+      } else json = {
+        total: 620, classified: 620, unclassified: 0,
+        openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
+      };
+    }
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
       json = list(parsed.searchParams);
@@ -104,7 +111,8 @@ async function newPage(theme, width, height) {
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
-  await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
+  if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
+  else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
   await page.getByText('40 of 620 games').waitFor();
   return {page,context,pageErrors};
 }
@@ -170,6 +178,20 @@ try {
       console.log(`PASS ${theme} ${w}x${h} overflow=${m.overflow}`);
     }
   }
+
+  const errorFixture = await newPage('light', 390, 844, {failOpeningsOnce:true});
+  try {
+    const {page, pageErrors} = errorFixture;
+    await page.getByRole('alert').getByText(/Opening highlights could not be loaded/).waitFor();
+    await page.getByText('40 of 620 games').waitFor();
+    await page.screenshot({path:join(output,'library-opening-retry-390.png')});
+    await page.getByRole('button', {name:'Retry opening highlights'}).click();
+    await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
+    assert.equal(await page.getByRole('alert').count(),0,
+      'Opening discovery error should disappear after a successful retry');
+    assert.deepEqual(pageErrors,[], 'Opening summary retry produced a browser error');
+    console.log('PASS partial opening summary failure with independent retry');
+  } finally { await errorFixture.context.close(); }
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

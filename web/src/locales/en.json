@@ -264,6 +264,8 @@
     "libraryOpenOpening": "Show {{count}} saved games in {{name}}",
     "libraryOpeningEmpty": "Opening details will appear here as games are recognized during import or review.",
     "libraryFilteredOpening": "Showing games in {{name}}",
+    "libraryOpeningsLoadError": "Opening highlights could not be loaded. Your saved games are still available.",
+    "libraryRetryOpenings": "Retry opening highlights",
     "dateRange": "Game date range",
     "fromDate": "From date",
     "gamesFromDate": "Games from date",
