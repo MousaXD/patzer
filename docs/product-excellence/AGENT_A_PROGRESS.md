@@ -1436,3 +1436,13 @@
 ### Next scoped user-experience audit
 
 - Verify the Notes leave-dialog's keyboard focus **when a pending save transitions to an error**. The Retry and Discard actions appear dynamically, so Shift+Tab and Tab should cycle through the enabled dialog controls without sending keys to the chessboard. Check Escape/Keep editing and any unwanted window shortcuts on the focused modal; only change UI if Chromium reproduces a genuine focus or navigation issue.
+
+## 2026-11-13: certify modal keyboard containment and Escape recovery
+
+- Resumed clean pushed `26b11c5`; added keyboard assertions in the existing authenticated disposable **failed Notes leave** fixture, not a new product implementation. On the pending → failed transition, Chromium confirms focus remains on **Keep editing**. Shift+Tab wraps to **Discard changes**, Tab wraps back to Keep editing, and subsequent Tab reaches **Retry save** and Discard in sequence, without shifting focus to the underlying chessboard. The modal remains an accessible `alertdialog` during the transition.
+- Independently verified Escape cancels the blocked Back navigation, preserves the complete private draft, and restores keyboard focus to the textarea. A subsequent Back click correctly starts a fresh blur/autosave attempt. The first browser run's repeated-error fixture expected the old error to persist through that fresh attempt; the fixture deliberately returned 200 for that attempt, so the app properly left on successful save. Adjusted the **synthetic HTTP failure count** to force the intended second 503 and then verified **Keep editing** restores draft/focus; its next blur saves the draft successfully. No product issue was found, and no application code was changed.
+- Entire authenticated disposable Chromium theme/viewport/locale/game/source/keyboard/variation/PGN matrix **PASS (exit 0)** on port 8990 after the corrected fixture. `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. Previous app typecheck, production build, and 1006-unit-test green checkpoint remain valid (browser regression only). No merge, deployment, production-data modification or other-agent worktree changes.
+
+### Next independent audit candidate
+
+- Explore the Notes **draft recovery after a background game refetch** while a stale save response arrives. Check that the editor never replaces the player's in-progress text or navigates early. Prior rapid-queue assertions cover two saves, but a background refetch triggered externally is a separate case. Only change product behavior if Chromium reproduces actual data loss.

@@ -779,7 +779,7 @@ try {
     let failures=0;
     await page.route(`**/api/games/${id}/notes`,async route=>{
       failures++;
-      if(failures===1 || failures===4 || failures===5){
+      if(failures===1 || failures===4 || failures===5 || failures===6){
         if(failures===1) await held;
         await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
       } else await route.continue();
@@ -801,8 +801,25 @@ try {
     releaseLeavingNotes();
     await leaveDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
       .waitFor({state:'visible',timeout:5000});
-    assert.ok(await leaveDialog.getByRole('button',{name:'Discard changes'}).isVisible(),
+    const stay=leaveDialog.getByRole('button',{name:'Keep editing',exact:true});
+    const discard=leaveDialog.getByRole('button',{name:'Discard changes',exact:true});
+    const retryAction=leaveDialog.getByRole('button',{name:enNotes.review.notesRetrySave,exact:true});
+    assert.ok(await discard.isVisible(),
       'A failed save must permit a deliberate, clearly labeled leave-without-saving choice');
+    assert.ok(await stay.evaluate(element=>document.activeElement===element),
+      'The pending-to-failed save dialog must preserve initial keyboard focus on Keep editing');
+    await page.keyboard.press('Shift+Tab');
+    assert.ok(await discard.evaluate(element=>document.activeElement===element),
+      'Shift+Tab from the first dialog action must wrap to the last');
+    await page.keyboard.press('Tab');
+    assert.ok(await stay.evaluate(element=>document.activeElement===element),
+      'Tab from the last dialog action must wrap to the first');
+    await page.keyboard.press('Tab');
+    assert.ok(await retryAction.evaluate(element=>document.activeElement===element),
+      'The Retry action must be keyboard-reachable after the save fails');
+    await page.keyboard.press('Tab');
+    assert.ok(await discard.evaluate(element=>document.activeElement===element),
+      'The explicit Discard action must be reachable only within the modal');
     assert.equal(failures,1);
     assert.equal(await page.getByPlaceholder(enNotes.review.notesPlaceholder).inputValue(),draft);
     await page.screenshot({path:join(output,'review-notes-leave-save-failed-390.png')});
@@ -860,6 +877,15 @@ try {
     const keepDialog=page.getByRole('alertdialog',{name:enNotes.review.notesLeaveTitle});
     await keepDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
       .waitFor({state:'visible',timeout:5000});
+    await page.keyboard.press('Escape');
+    await keepDialog.waitFor({state:'hidden',timeout:3000});
+    assert.equal(new URL(page.url()).pathname,`/review/${id}`);
+    assert.equal(await reopenedEditor.inputValue(),retainedDraft);
+    assert.ok(await reopenedEditor.evaluate(element=>document.activeElement===element),
+      'Escape should cancel blocked navigation and focus the preserved draft');
+    await page.getByRole('link',{name:'Back',exact:true}).click();
+    await keepDialog.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
     await keepDialog.getByRole('button',{name:'Keep editing'}).click();
     await keepDialog.waitFor({state:'hidden',timeout:3000});
     assert.equal(new URL(page.url()).pathname,`/review/${id}`);
@@ -871,7 +897,8 @@ try {
     await reopenedEditor.press('Tab');
     await nextSave;
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,retainedDraft);
-    assert.equal(failures,6);
+    assert.equal(failures,7,
+      'Reattempted navigation after Escape may trigger a fresh blur save; Keep editing must preserve the draft through both failures');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{releaseLeavingNotes();await leaveNotesContext.close();}
   // A successful old notes PATCH must not release a blocked navigation while
