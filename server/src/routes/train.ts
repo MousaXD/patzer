@@ -31,7 +31,16 @@ interface PuzzleCandidate {
   moves_json: string;
 }
 
-type AttemptRow = QueueState & { game_id: number; ply: number };
+type AttemptRow = QueueState & { game_id: number; ply: number; fen: string; solution_uci: string };
+
+// A game can be re-imported and reanalyzed at the same ply with a different
+// board or best move. Such a position is a *new* puzzle, not an old review.
+// The unique (user,game,ply) key in puzzle_attempts remains unchanged, so
+// compare the stored position and answer before reusing its learning state.
+function samePuzzle(attempt: AttemptRow, move: AnalyzedMove): boolean {
+  return attempt.fen === move.fen_before
+    && attempt.solution_uci.toLowerCase() === move.best_move_uci?.toLowerCase();
+}
 
 // The browser's calendar day (?today= or { today }), like the opening trainer.
 const todayOf = (v: unknown) => dayOf(typeof v === 'string' ? v : null);
@@ -87,13 +96,23 @@ function loadPuzzleMove(userId: number, gameId: number, ply: number): { game: Pu
 
 function dueCount(userId: number, today: string): number {
   const r = db.prepare(`
-    SELECT COUNT(*) AS n FROM puzzle_attempts
-    JOIN games g ON g.id = puzzle_attempts.game_id AND g.user_id = puzzle_attempts.user_id
+    SELECT COUNT(*) AS n FROM puzzle_attempts p
+    JOIN games g ON g.id = p.game_id AND g.user_id = p.user_id
     JOIN analyses a ON a.game_id = g.id
-    WHERE puzzle_attempts.user_id = ? AND puzzle_attempts.solved = 0
-      AND (puzzle_attempts.due_on IS NULL OR puzzle_attempts.due_on <= ?)
-      AND (puzzle_attempts.last_day IS NULL OR puzzle_attempts.last_day < ?)
+    WHERE p.user_id = ? AND p.solved = 0
+      AND (p.due_on IS NULL OR p.due_on <= ?)
+      AND (p.last_day IS NULL OR p.last_day < ?)
       AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})
+      AND EXISTS (
+        SELECT 1 FROM json_each(a.moves_json) AS m
+        WHERE json_extract(m.value, '$.ply') = p.ply
+          AND json_extract(m.value, '$.fen_before') = p.fen
+          AND lower(json_extract(m.value, '$.best_move_uci')) = lower(p.solution_uci)
+          AND json_extract(m.value, '$.classification') IN ('blunder', 'miss', 'mistake')
+          AND json_extract(m.value, '$.best_move_san') IS NOT NULL
+          AND json_extract(m.value, '$.best_move_uci') <> json_extract(m.value, '$.uci')
+          AND CASE WHEN p.ply % 2 = 1 THEN 'white' ELSE 'black' END = g.user_color
+      )
   `).get(userId, today, today, SCORING_VERSION) as { n: number };
   return r.n;
 }
@@ -112,7 +131,7 @@ router.get('/next', (c) => {
   const due = dueCount(me.id, today);
 
   const tried = new Map<string, AttemptRow>();
-  for (const r of db.prepare(`SELECT game_id, ply, solved, due_on, last_day FROM puzzle_attempts WHERE user_id = ?`).all(me.id) as AttemptRow[]) {
+  for (const r of db.prepare(`SELECT game_id, ply, fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts WHERE user_id = ?`).all(me.id) as AttemptRow[]) {
     tried.set(`${r.game_id}:${r.ply}`, r);
   }
 
@@ -124,7 +143,7 @@ router.get('/next', (c) => {
       .sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? ''));
     for (const r of dueRows) {
       const found = loadPuzzleMove(me.id, r.game_id, r.ply);
-      const puzzle = found && toPuzzle(found.game, found.move, true);
+      const puzzle = found && samePuzzle(r, found.move) && toPuzzle(found.game, found.move, true);
       if (puzzle) return c.json({ puzzle, due });
     }
   }
@@ -142,7 +161,8 @@ router.get('/next', (c) => {
     const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
     for (const m of moves) {
       if (!isPuzzleMove(m, userColor)) continue;
-      const before = tried.get(`${r.game_id}:${m.ply}`);
+      const previous = tried.get(`${r.game_id}:${m.ply}`);
+      const before = previous && samePuzzle(previous, m) ? previous : null;
       if (excludeSolved && before && !isDue(before, today)) continue;
       const puzzle = toPuzzle(r, m, !!before && before.solved === 0);
       if (puzzle) return c.json({ puzzle, due });
@@ -176,15 +196,27 @@ router.post('/attempt', async (c) => {
   const { move } = found;
 
   const before = db.prepare(`
-    SELECT game_id, ply, solved, due_on, last_day FROM puzzle_attempts WHERE user_id = ? AND game_id = ? AND ply = ?
+    SELECT game_id, ply, fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts WHERE user_id = ? AND game_id = ? AND ply = ?
   `).get(me.id, game_id, ply) as AttemptRow | undefined;
-  const next = afterTry(before ?? null, solved, today);
+  const previous = before && samePuzzle(before, move) ? before : null;
+  const next = afterTry(previous, solved, today);
 
   if (!before) {
     db.prepare(`
       INSERT INTO puzzle_attempts (user_id, game_id, ply, fen, solution_uci, attempted_uci, solved, due_on, last_day)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(me.id, game_id, ply, move.fen_before, move.best_move_uci!.toLowerCase(), attempted_uci?.toLowerCase() ?? null, next.solved, next.due_on, next.last_day);
+  } else if (!previous) {
+    // The old attempt was from another position at this ply. Replace its
+    // identity and retry history atomically instead of inheriting a prior
+    // failed/successful result or violating the unique game/ply constraint.
+    db.prepare(`
+      UPDATE puzzle_attempts
+      SET fen = ?, solution_uci = ?, attempted_uci = ?, solved = ?, due_on = ?,
+          last_day = ?, created_at = datetime('now')
+      WHERE user_id = ? AND game_id = ? AND ply = ?
+    `).run(move.fen_before, move.best_move_uci!.toLowerCase(), attempted_uci?.toLowerCase() ?? null,
+      next.solved, next.due_on, next.last_day, me.id, game_id, ply);
   } else if (next.counts) {
     db.prepare(`
       UPDATE puzzle_attempts SET solved = ?, due_on = ?, last_day = ?, attempted_uci = ?, created_at = datetime('now')

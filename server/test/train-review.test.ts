@@ -223,4 +223,46 @@ describe('/api/train', () => {
     expect(check.status).toBe(404);
     expect(await call<{ due: number }>(`/stats?today=${today}`)).toMatchObject({ due: 0 });
   });
+
+  it('does not revive a different old puzzle at the same ply after fresh reanalysis', async () => {
+    const replacement = {
+      ply: 1, san: 'Qd5', uci: 'e5d5', fen_before: CHECKS, fen_after: CHECKS,
+      eval_before_cp: 900, eval_after_cp: 100, mate_before: null, mate_after: null,
+      best_move_uci: 'e5e4', best_move_san: 'Qe4+', best_pv: ['Qe4+'],
+      centipawn_loss: 700, classification: 'blunder',
+    };
+    db.prepare(`UPDATE analyses SET moves_json = ?, source_hash = 'fresh-reanalysis',
+      source_revision = (SELECT source_revision FROM games WHERE id = 1),
+      analysis_generation = analysis_generation + 1 WHERE game_id = 1`)
+      .run(JSON.stringify([replacement]));
+
+    // This is the *first* try of the new puzzle, not an overdue review of
+    // Qxd8+ in the previous game. Its due count must also be zero.
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
+    expect(await call('/attempt', { game_id: 1, ply: 1, solved: true, attempted_uci: 'e5e4', today }))
+      .toMatchObject({ counted: true, done: true });
+    expect(db.prepare(`SELECT fen, solution_uci, solved FROM puzzle_attempts WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get())
+      .toEqual({ fen: CHECKS, solution_uci: 'e5e4', solved: 1 });
+
+    // A further game edit and fresh analysis brings back a different FEN at
+    // ply 1; even a *solved* attempt at the previous position cannot hide it.
+    db.prepare(`UPDATE games SET pgn = '1. d4 d5 2. c4 e6 1-0' WHERE id = 1`).run();
+    const initial = {
+      ...replacement, san: 'Qd3', uci: 'd2d3', fen_before: BACK_RANK,
+      best_move_uci: 'd2d8', best_move_san: 'Qxd8+', best_pv: ['Qxd8+', 'Qxd8', 'Rxd8#'],
+    };
+    db.prepare(`UPDATE analyses SET moves_json = ?, source_hash = 'second-reanalysis',
+      source_revision = (SELECT source_revision FROM games WHERE id = 1),
+      analysis_generation = analysis_generation + 1 WHERE game_id = 1`)
+      .run(JSON.stringify([initial]));
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['d2d8', 'f6d8', 'd1d8'] }, due: 0,
+    });
+    expect(await call('/attempt', { game_id: 1, ply: 1, solved: false, attempted_uci: 'd2d3', today }))
+      .toMatchObject({ counted: true, done: false });
+    expect(db.prepare(`SELECT fen, solution_uci, solved FROM puzzle_attempts WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get())
+      .toEqual({ fen: BACK_RANK, solution_uci: 'd2d8', solved: 0 });
+  });
 });
