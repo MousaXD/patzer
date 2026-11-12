@@ -22,7 +22,10 @@ import { coachRequest, playedMoveArrow, type GamePuzzle as Puzzle } from '../lib
 import CoachPanel from '../components/CoachPanel';
 
 
-interface Stats { total: number; solved: number; failed: number; accuracy: number; due: number }
+interface Stats {
+  total: number; solved: number; failed: number; accuracy: number; due: number;
+  current_total?: number; current_solved?: number; current_accuracy?: number | null; outdated_attempts?: number;
+}
 
 export default function Train() {
   const { t } = useTranslation();
@@ -87,7 +90,7 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
     // reuse it across accounts on a shared browser or after the day changes.
     queryKey: ['train-next', user?.id, today, run, skipParam],
     enabled: user?.id != null,
-    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number }>(
+    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number; awaiting_analysis?: number }>(
       `/api/train/next?today=${today}${skipParam ? `&skip=${encodeURIComponent(skipParam)}` : ''}`,
     ),
     staleTime: Infinity,
@@ -109,10 +112,24 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
         <p className="page-sub">{t('train.intro', { defaultValue: 'Personal puzzles drawn from your own analyzed games.' })}</p>
       </div>
       {stats && stats.total > 0 && (
-        <div className="flex items-center gap-3 text-xs text-chesscom-500">
-          <Stat label={t('train.solved', { defaultValue: 'Solved' })} value={stats.solved} tone="text-board-dark" />
-          <Stat label={t('train.mine.dueLabel')} value={stats.due} tone={stats.due > 0 ? 'text-gold-600' : undefined} />
-          <Stat label={t('train.accuracy', { defaultValue: 'Accuracy' })} value={`${stats.accuracy}%`} />
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-3 text-xs text-chesscom-500">
+            <Stat label={t('train.mine.currentSolved', { defaultValue: 'Current solves' })}
+              value={stats.current_solved ?? stats.solved} tone="text-board-dark" />
+            <Stat label={t('train.mine.dueLabel')} value={stats.due} tone={stats.due > 0 ? 'text-gold-600' : undefined} />
+            <Stat label={t('train.mine.solveRate', { defaultValue: 'Puzzle solve rate' })}
+              value={(stats.current_total ?? stats.total) > 0
+                ? `${stats.current_accuracy ?? stats.accuracy}%`
+                : '—'} />
+          </div>
+          {(stats.outdated_attempts ?? 0) > 0 && (
+            <p className="max-w-sm text-right text-[11px] leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+              {t('train.mine.historicalAttempts', {
+                count: stats.outdated_attempts,
+                defaultValue: '{{count}} previous practice attempts are kept in your history but no longer match current game analysis.',
+              })}
+            </p>
+          )}
         </div>
       )}
       {statsError && (
@@ -144,15 +161,24 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
         <div className="card flex flex-col items-center gap-3 p-10 text-center">
           {skipped.length > 0
             ? <RotateCcw className="h-8 w-8 text-chesscom-500" aria-hidden="true" />
+            : (data.awaiting_analysis ?? 0) > 0
+              ? <BookOpen className="h-8 w-8 text-board-dark" aria-hidden="true" />
             : <Trophy className="h-8 w-8 text-gold-500" aria-hidden="true" />}
           <div className="text-base font-semibold">{skipped.length
             ? t('train.mine.sessionSkippedTitle', { defaultValue: 'No more unskipped puzzles in this session' })
+            : (data.awaiting_analysis ?? 0) > 0
+              ? t('train.mine.needsAnalysisTitle', { defaultValue: 'Your games have more lessons to uncover' })
             : t('train.allClear', { defaultValue: "Nothing to train — you're caught up." })}</div>
           <p className="max-w-md text-sm text-chesscom-600 dark:text-chesscom-300">{skipped.length
             ? t('train.mine.sessionSkippedDesc', {
               defaultValue: 'You chose to continue without recording {{count}} attempts. They are still available when you retry or return later.',
               count: skipped.length,
             })
+            : (data.awaiting_analysis ?? 0) > 0
+              ? t('train.mine.needsAnalysisDesc', {
+                count: data.awaiting_analysis,
+                defaultValue: '{{count}} saved games still need a current analysis before Patzer can find personal puzzles in them.',
+              })
             : t('train.allClearDesc', { defaultValue: 'Play more games and analyze them to unlock new puzzles. Every blunder you fix here is a pattern you stop repeating in real games.' })}</p>
           <div className="mt-2 flex flex-wrap justify-center gap-2">
             {skipped.length > 0 && (
@@ -161,9 +187,20 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
                 {t('train.mine.retrySkipped', { defaultValue: 'Retry skipped puzzles' })}
               </button>
             )}
-            <button onClick={onPuzzles} className="btn-primary text-sm"><Zap className="h-4 w-4" /> {t('train.tabs.puzzles')}</button>
+            {skipped.length === 0 && (data.awaiting_analysis ?? 0) > 0 && (
+              <Link to="/review" className="btn-primary text-sm">
+                <BookOpen className="h-4 w-4" aria-hidden="true" />
+                {t('train.mine.analyzeGames', { defaultValue: 'Analyze your games' })}
+              </Link>
+            )}
+            <button onClick={onPuzzles}
+              className={`${skipped.length === 0 && (data.awaiting_analysis ?? 0) > 0 ? 'btn-secondary' : 'btn-primary'} text-sm`}>
+              <Zap className="h-4 w-4" /> {t('train.tabs.puzzles')}
+            </button>
             <Link to="/play" className="btn-secondary text-sm">{t('home.playTitle')}</Link>
-            <Link to="/review" className="btn-secondary text-sm">{t('review.title')}</Link>
+            {(skipped.length > 0 || !(data.awaiting_analysis ?? 0)) && (
+              <Link to="/review" className="btn-secondary text-sm">{t('review.title')}</Link>
+            )}
           </div>
         </div>
       </div>

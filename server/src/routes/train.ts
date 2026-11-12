@@ -99,6 +99,22 @@ function loadPuzzleMove(userId: number, gameId: number, ply: number): { game: Pu
   return { game, move };
 }
 
+// A historical attempt remains in the database even if its source game
+// changes. It counts as *current* practice only while its original board and
+// answer still match an eligible move in the latest authoritative analysis.
+// Both the due counter and practice progress use this exact eligibility gate.
+const CURRENT_ATTEMPT_SQL = `g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})
+  AND EXISTS (
+    SELECT 1 FROM json_each(a.moves_json) AS m
+    WHERE json_extract(m.value, '$.ply') = p.ply
+      AND json_extract(m.value, '$.fen_before') = p.fen
+      AND lower(json_extract(m.value, '$.best_move_uci')) = lower(p.solution_uci)
+      AND json_extract(m.value, '$.classification') IN ('blunder', 'miss', 'mistake')
+      AND json_extract(m.value, '$.best_move_san') IS NOT NULL
+      AND json_extract(m.value, '$.best_move_uci') <> json_extract(m.value, '$.uci')
+      AND CASE WHEN p.ply % 2 = 1 THEN 'white' ELSE 'black' END = g.user_color
+  )`;
+
 function dueCount(userId: number, today: string): number {
   const r = db.prepare(`
     SELECT COUNT(*) AS n FROM puzzle_attempts p
@@ -107,19 +123,21 @@ function dueCount(userId: number, today: string): number {
     WHERE p.user_id = ? AND p.solved = 0
       AND (p.due_on IS NULL OR p.due_on <= ?)
       AND (p.last_day IS NULL OR p.last_day < ?)
-      AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})
-      AND EXISTS (
-        SELECT 1 FROM json_each(a.moves_json) AS m
-        WHERE json_extract(m.value, '$.ply') = p.ply
-          AND json_extract(m.value, '$.fen_before') = p.fen
-          AND lower(json_extract(m.value, '$.best_move_uci')) = lower(p.solution_uci)
-          AND json_extract(m.value, '$.classification') IN ('blunder', 'miss', 'mistake')
-          AND json_extract(m.value, '$.best_move_san') IS NOT NULL
-          AND json_extract(m.value, '$.best_move_uci') <> json_extract(m.value, '$.uci')
-          AND CASE WHEN p.ply % 2 = 1 THEN 'white' ELSE 'black' END = g.user_color
-      )
+      AND (${CURRENT_ATTEMPT_SQL})
   `).get(userId, today, today, SCORING_VERSION) as { n: number };
   return r.n;
+}
+
+function awaitingAnalysisCount(userId: number): number {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS n FROM games g
+    LEFT JOIN analyses a ON a.game_id = g.id
+    WHERE g.user_id = ? AND g.user_color IN ('white', 'black')
+      AND g.result IS NOT NULL AND g.result <> '*'
+      AND NOT COALESCE(a.scoring_version >= ? AND a.source_hash IS NOT NULL
+        AND a.source_revision = g.source_revision AND a.analysis_generation > 0, 0)
+  `).get(userId, SCORING_VERSION) as { n: number };
+  return row.n;
 }
 
 // GET /api/train/next — the next puzzle: one due for review first, else the
@@ -195,7 +213,7 @@ router.get('/next', (c) => {
     if (rows.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
-  return c.json({ puzzle: null, due });
+  return c.json({ puzzle: null, due, awaiting_analysis: awaitingAnalysisCount(me.id) });
 });
 
 const uciSchema = z.string().regex(/^[a-h][1-8][a-h][1-8][nbrq]?$/i);
@@ -361,6 +379,14 @@ router.get('/stats', (c) => {
       SUM(CASE WHEN solved = 0 THEN 1 ELSE 0 END) AS failed
     FROM puzzle_attempts WHERE user_id = ?
   `).get(me.id) as { total: number; solved: number; failed: number };
+  const current = db.prepare(`
+    SELECT COUNT(*) AS total,
+      SUM(CASE WHEN p.solved = 1 THEN 1 ELSE 0 END) AS solved
+    FROM puzzle_attempts p
+    JOIN games g ON g.id = p.game_id AND g.user_id = p.user_id
+    JOIN analyses a ON a.game_id = g.id
+    WHERE p.user_id = ? AND (${CURRENT_ATTEMPT_SQL})
+  `).get(me.id, SCORING_VERSION) as { total: number; solved: number | null };
   // Recent attempt stream
   const recent = db.prepare(`
     SELECT game_id, ply, solved, attempted_uci, solution_uci, created_at
@@ -372,6 +398,12 @@ router.get('/stats', (c) => {
     solved: stats.solved ?? 0,
     failed: stats.failed ?? 0,
     accuracy: stats.total > 0 ? Math.round(((stats.solved ?? 0) / stats.total) * 100) : 0,
+    // Keep historical attempts intact; these fields describe practice whose
+    // position still exists in the current game's analysis.
+    current_total: current.total,
+    current_solved: current.solved ?? 0,
+    current_accuracy: current.total > 0 ? Math.round(((current.solved ?? 0) / current.total) * 100) : null,
+    outdated_attempts: (stats.total ?? 0) - current.total,
     due: dueCount(me.id, today),
     recent,
   });

@@ -28,6 +28,25 @@ function mount(Component: typeof Plan | typeof Train) {
 afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.account = 1; });
 
 describe('private practice and plan data states', () => {
+  it('distinguishes games awaiting analysis from completed training and labels old practice as history', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url.startsWith('/api/train/stats')) return Promise.resolve({
+        total: 1, solved: 1, failed: 0, accuracy: 100, due: 0,
+        current_total: 0, current_solved: 0, current_accuracy: null, outdated_attempts: 1,
+      });
+      if (url.startsWith('/api/train/next')) return Promise.resolve({ puzzle: null, due: 0, awaiting_analysis: 2 });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    mount(Train);
+    expect(await screen.findByText('Your games have more lessons to uncover')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Analyze your games' }).getAttribute('href')).toBe('/review');
+    expect(screen.queryByText(/Nothing to train/)).toBeNull();
+    expect(screen.getByText('Current solves').parentElement?.textContent).toContain('0');
+    expect(screen.getByText('Puzzle solve rate').parentElement?.textContent).toContain('—');
+    expect(screen.queryByText('100%')).toBeNull();
+    expect(screen.getByText(/previous practice attempts are kept in your history/)).toBeTruthy();
+  });
+
   it('shows an explicit retry instead of pretending a failed personal puzzle load is complete', async () => {
     let offline = true;
     mocks.get.mockImplementation((url: string) => {
