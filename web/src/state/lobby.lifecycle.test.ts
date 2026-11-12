@@ -41,6 +41,28 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('keeps acknowledged changes ahead of a stale GET and mirrors server replacement of an older sent challenge', async () => {
+    let finishIncoming!: (value: { challenges: Challenge[] }) => void;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/incoming') return new Promise((resolve) => { finishIncoming = resolve; });
+      return Promise.resolve({ challenges: [invitation(12)], users: [] });
+    });
+    useLobby.getState().connect(1);
+    useLobby.setState({ incoming: [invitation(10)] });
+    const pending = useLobby.getState().refreshChallenges();
+    useLobby.getState().forgetChallenge('incoming', 10);
+    expect(useLobby.getState().incoming).toEqual([]);
+    finishIncoming({ challenges: [invitation(10)] });
+    await pending;
+    expect(useLobby.getState().incoming).toEqual([]);
+
+    const old = { ...invitation(12), from: invitation(12).to, to: invitation(12).from };
+    const recent = { ...old, id: 13 };
+    useLobby.setState({ outgoing: [old] });
+    useLobby.getState().recordSentChallenge(recent);
+    expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([13]);
+  });
+
   it('ignores an older player refresh finishing after a newer successful list', async () => {
     let finishOld!: (value: { users: { id: number; username: string; display_name: string; avatar_emoji: string; online: boolean }[] }) => void;
     let requests = 0;

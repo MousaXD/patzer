@@ -38,6 +38,8 @@ interface LobbyState {
   disconnect: () => void;
   refreshUsers: () => Promise<void>;
   refreshChallenges: () => Promise<void>;
+  forgetChallenge: (direction: 'incoming' | 'outgoing', id: number) => void;
+  recordSentChallenge: (challenge: Challenge) => void;
 }
 
 export const useLobby = create<LobbyState>((set, get) => {
@@ -174,6 +176,30 @@ export const useLobby = create<LobbyState>((set, get) => {
       ...(outgoing ? { outgoing: out.value.challenges } : {}),
       challengesStatus: incoming && outgoing ? 'ready' : 'error',
     });
+  },
+
+  forgetChallenge: (direction, id) => {
+    if (currentUserId === null || !Number.isSafeInteger(id) || id <= 0) return;
+    // A completed mutation has newer authority than any old GET already in
+    // flight. Fence that snapshot before hiding only the acknowledged row.
+    challengesRequestId++;
+    if (direction === 'incoming') {
+      set((s) => ({ incoming: s.incoming.filter((challenge) => challenge.id !== id) }));
+    } else {
+      set((s) => ({ outgoing: s.outgoing.filter((challenge) => challenge.id !== id) }));
+    }
+  },
+
+  recordSentChallenge: (challenge) => {
+    if (currentUserId === null || !Number.isSafeInteger(challenge?.id) || challenge.id <= 0
+      || !Number.isSafeInteger(challenge.to?.id)) return;
+    challengesRequestId++;
+    // The server replaces an older pending invitation to the same recipient.
+    // Mirror that rule so a failed list refresh cannot leave two waiting rows.
+    set((s) => ({
+      outgoing: [challenge, ...s.outgoing.filter((old) =>
+        old.id !== challenge.id && old.to.id !== challenge.to.id)],
+    }));
   },
 };
 });

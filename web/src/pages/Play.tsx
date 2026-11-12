@@ -11,7 +11,7 @@ import CapturedPieces from '../components/CapturedPieces';
 import PieceEmotionsOverlay from '../components/PieceEmotionsOverlay';
 import Spinner from '../components/Spinner';
 import { useAuth } from '../state/auth';
-import { useLobby } from '../state/lobby';
+import { useLobby, type Challenge } from '../state/lobby';
 import { fmtClock } from '../lib/utils';
 import { api } from '../api';
 import { ReconnectingSocket, type SocketLike } from '../lib/reconnectingSocket';
@@ -1815,15 +1815,28 @@ export function FriendTab({ onChallengeAccepted }: { onChallengeAccepted: (gameI
 
   function sendChallenge() {
     if (!target) return;
-    void act('send', () => api.post('/api/challenges', { to_user_id: target, color, time_control: tc }),
-      () => setTarget(null));
+    void act('send', () => api.post<{ challenge: Challenge }>('/api/challenges',
+      { to_user_id: target, color, time_control: tc }),
+      (result) => {
+        setTarget(null);
+        lobby.recordSentChallenge(result.challenge);
+      });
   }
-  function cancel(id: number) { void act('cancel', () => api.del(`/api/challenges/${id}`)); }
+  function cancel(id: number) {
+    void act('cancel', () => api.del(`/api/challenges/${id}`),
+      () => lobby.forgetChallenge('outgoing', id));
+  }
   function accept(id: number) {
     void act('accept', () => api.post<{ game_id: number }>(`/api/challenges/${id}/accept`),
-      (result) => onChallengeAccepted(result.game_id));
+      (result) => {
+        lobby.forgetChallenge('incoming', id);
+        onChallengeAccepted(result.game_id);
+      });
   }
-  function decline(id: number) { void act('decline', () => api.post(`/api/challenges/${id}/decline`)); }
+  function decline(id: number) {
+    void act('decline', () => api.post(`/api/challenges/${id}/decline`),
+      () => lobby.forgetChallenge('incoming', id));
+  }
 
   return (
     <div className="space-y-4">

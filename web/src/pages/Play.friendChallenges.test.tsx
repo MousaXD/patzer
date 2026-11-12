@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   post: vi.fn(), del: vi.fn(), account: 1,
   refreshChallenges: vi.fn(), refreshUsers: vi.fn(),
+  forgetChallenge: vi.fn(), recordSentChallenge: vi.fn(),
   lobby: {
     online: new Set<number>([2]),
     usersStatus: 'ready' as 'ready' | 'loading' | 'error',
@@ -17,7 +18,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../api', () => ({ api: { post: mocks.post, del: mocks.del } }));
-vi.mock('../state/lobby', () => ({ useLobby: () => ({ ...mocks.lobby, refreshChallenges: mocks.refreshChallenges, refreshUsers: mocks.refreshUsers }) }));
+vi.mock('../state/lobby', () => ({ useLobby: () => ({
+  ...mocks.lobby, refreshChallenges: mocks.refreshChallenges, refreshUsers: mocks.refreshUsers,
+  forgetChallenge: mocks.forgetChallenge, recordSentChallenge: mocks.recordSentChallenge,
+}) }));
 vi.mock('../state/auth', () => ({ useAuth: () => ({ user: { id: mocks.account } }) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),
@@ -34,12 +38,59 @@ beforeEach(() => {
   mocks.del.mockReset();
   mocks.refreshChallenges.mockReset().mockResolvedValue(undefined);
   mocks.refreshUsers.mockReset().mockResolvedValue(undefined);
+  mocks.forgetChallenge.mockReset().mockImplementation((direction: 'incoming' | 'outgoing', id: number) => {
+    mocks.lobby[direction] = mocks.lobby[direction].filter((row: any) => row.id !== id);
+  });
+  mocks.recordSentChallenge.mockReset().mockImplementation((challenge: { to?: { id?: number } } | null) => {
+    if (!Number.isSafeInteger(challenge?.to?.id)) return;
+    mocks.lobby.outgoing = [challenge, ...mocks.lobby.outgoing];
+  });
   mocks.lobby.incoming = [];
   mocks.lobby.outgoing = [];
 });
 afterEach(() => { cleanup(); });
 
 describe('Play friend challenges request recovery', () => {
+  it('removes confirmed declined and cancelled invitations even when the list refresh is offline', async () => {
+    mocks.lobby.incoming = [{
+      id: 10, color: 'white', time_control: 'rapid',
+      from: { id: 2, display_name: 'Opponent', avatar_emoji: 'pawn' },
+    }];
+    mocks.lobby.outgoing = [{
+      id: 11, color: 'black', time_control: 'blitz',
+      to: { id: 2, display_name: 'Opponent', avatar_emoji: 'pawn' },
+    }];
+    mocks.post.mockResolvedValue({ ok: true });
+    mocks.del.mockResolvedValue({ ok: true });
+    mocks.refreshChallenges.mockRejectedValue(new Error('still offline'));
+    const page = render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.decline' }));
+    await waitFor(() => expect(mocks.forgetChallenge).toHaveBeenCalledWith('incoming', 10));
+    expect(mocks.lobby.incoming).toEqual([]);
+    page.rerender(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+    await waitFor(() => expect(mocks.forgetChallenge).toHaveBeenCalledWith('outgoing', 11));
+    expect(mocks.lobby.outgoing).toEqual([]);
+    expect(mocks.refreshChallenges).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a server-confirmed sent invitation in Waiting even if refreshing challenges fails', async () => {
+    const challenge = {
+      id: 21, color: 'white', time_control: 'rapid', status: 'pending',
+      to: { id: 2, display_name: 'Opponent', avatar_emoji: 'pawn' },
+    };
+    mocks.post.mockResolvedValue({ challenge });
+    mocks.refreshChallenges.mockRejectedValue(new Error('offline'));
+    const page = render(<FriendTab onChallengeAccepted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Opponent/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.send' }));
+    await waitFor(() => expect(mocks.recordSentChallenge).toHaveBeenCalledExactlyOnceWith(challenge));
+    page.rerender(<FriendTab onChallengeAccepted={vi.fn()} />);
+    expect(mocks.lobby.outgoing).toHaveLength(1);
+    expect(screen.getByText('challenge.waiting')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'common.cancel' })).toBeTruthy();
+  });
+
   it('shows a player-fetch failure and retry instead of claiming nobody can be challenged', () => {
     mocks.lobby.usersStatus = 'error';
     mocks.lobby.users = [];
