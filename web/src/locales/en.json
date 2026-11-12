@@ -16,6 +16,13 @@
     "gameAnalysis": "Game analysis",
     "playerProfile": "Player profile"
   },
+  "changelog": {
+    "title": "Release notes",
+    "loading": "Loading release notes…",
+    "error": "Release notes could not be loaded right now.",
+    "retry": "Try again",
+    "empty": "No release notes are available yet."
+  },
   "authShell": {
     "intro": "About Patzer",
     "eyebrow": "A place to sharpen your chess",

@@ -138,3 +138,34 @@
 ### Next audit
 
 - Continue inspecting shared global loading/error navigation experiences and modal interactions in narrow screens, including interrupted navigation and low-bandwidth states. Keep changes limited to Agent B's shell/design ownership and require real browser evidence before editing.
+
+## 2026-11-12: Release notes and update notice usability
+
+### Recovery and verified problems
+
+- Resumed from clean pushed `e674b79`, with previous focus/keyboard fixes preserved and without touching other agents' checkouts.
+- Audited `ChangelogModal`, `UpdateNotice`, global initial loading and the release metadata API; confirmed the changelog endpoint can return an empty markdown body and the old UI rendered a completely blank panel on 503 errors.
+- Created a real Chromium API-fixture harness. Its **pre-fix run failed** because failed release-notes requests never surfaced an error message, even though the modal remained visible.
+- Screenshot audit revealed a hard-coded English changelog heading, weak mobile presentation, and a release-banner dismissal target smaller than typical touch accessibility guidance. Technical update instructions were shown to ordinary players who cannot administer the self-hosted server.
+
+### Implementation
+
+1. Replaced blank changelog failures with a named, accessible error state and a working retry action; successful empty changelogs display a clear non-error explanation.
+2. Safely aborts in-flight changelog requests on unmount and when retrying; stale responses cannot replace newer results. Handles non-2xx responses correctly instead of treating their bodies as release notes.
+3. Reused the shared `useDialogFocus` behavior: initial close-button focus, contained keyboard navigation, Escape dismissal and focus restoration. Mobile uses a rounded, scrollable bottom sheet with accessible 44px close control, while desktop stays a centered panel.
+4. Added localized changelog title, loading, error, retry, and empty-state copy for all five supported languages (English, German, Spanish, Russian and Bulgarian).
+5. Scoped readable markdown link styles to the release-notes content without altering other Markdown consumers or chess-coaching internals.
+6. Enlarged the update notice dismiss control for mobile and limited technical container-update instructions to administrators. The notice remains dismissible per release.
+7. Added `web/src/components/navigation/capture-notices.mjs`: authenticated local Chromium API-fixture checks at 1440px, 390px and 320px in both themes, changelog success/error/empty/retry/long-scroll states, focus trapping/return, 44px touch target, role-aware technical copy, dismissal persistence, and reappearance for a later release.
+8. Added `web/src/components/ChangelogModal.test.tsx` covering HTTP failures and retry, empty notes, and cancellation of outstanding requests.
+
+### Verification
+
+- `npm run build -w web`: **passed** (TypeScript + Vite).
+- `npx vitest run web/src --maxWorkers=2`: **380/380 passed across 62 test files**.
+- `node web/src/components/navigation/capture-notices.mjs`: **passed**, real Chromium with isolated API fixtures. Inspected 320px dark and 1440px light screenshots.
+- No real account, production service, external deployment, database or other agent branch was modified.
+
+### Next verified-audit target
+
+- Initial authentication/bootstrap loading and failed capability checks: confirm readable/accessible global loading status and any actionable server-unavailable guidance in a real browser before implementing further changes.

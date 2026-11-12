@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpCircle, X } from 'lucide-react';
 import { api } from '../api';
+import { useAuth } from '../state/auth';
 
 // Tells you when the box you're running is behind the latest release. A
 // self-hosted app can't update itself — and shouldn't — but it can stop you
@@ -25,6 +26,7 @@ const DISMISS_KEY = 'update.dismissed';
 
 export default function UpdateNotice() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [info, setInfo] = useState<UpdateResponse | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(() => {
     try { return localStorage.getItem(DISMISS_KEY); } catch { return null; }
@@ -46,9 +48,9 @@ export default function UpdateNotice() {
   }
 
   return (
-    <div className="border-b border-gold-500/30 bg-gold-500/10 px-3 py-2 text-sm text-chesscom-900 dark:text-chesscom-100 sm:px-6">
-      <div className="mx-auto flex max-w-[1920px] items-center gap-3">
-        <ArrowUpCircle className="h-4 w-4 shrink-0 text-gold-600" />
+    <div role="status" className="border-b border-gold-500/30 bg-gold-500/10 px-3 py-1.5 text-sm text-chesscom-900 dark:text-chesscom-100 sm:px-6">
+      <div className="mx-auto flex max-w-[1920px] items-center gap-2 sm:gap-3">
+        <ArrowUpCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-gold-600 dark:text-gold-400" />
         <span className="min-w-0 flex-1">
           {t('update.available', {
             latest: info.latest,
@@ -60,18 +62,19 @@ export default function UpdateNotice() {
               {t('update.whatsNew', { defaultValue: "What's new" })}
             </a>
           )}
-          <span className="hidden text-chesscom-500 sm:inline">
+          {user?.role === 'admin' && <span className="hidden text-ui-mutedText sm:inline">
             {' · '}
             {t('update.how', { defaultValue: 'Pull the new image and recreate the container.' })}
-          </span>
+          </span>}
         </span>
         <button
+          type="button"
           onClick={dismiss}
-          className="shrink-0 rounded-md p-1 text-chesscom-500 hover:bg-black/5 hover:text-chesscom-900 dark:hover:bg-white/10 dark:hover:text-white"
+          className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 hover:bg-black/5 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-white/10 dark:hover:text-white"
           title={t('update.dismiss', { defaultValue: 'Dismiss until the next release' })}
           aria-label={t('update.dismiss', { defaultValue: 'Dismiss until the next release' })}
         >
-          <X className="h-4 w-4" />
+          <X aria-hidden="true" className="h-4 w-4" />
         </button>
       </div>
     </div>

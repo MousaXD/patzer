@@ -16,6 +16,13 @@
     "gameAnalysis": "Detalles de la partida",
     "playerProfile": "Perfil de jugador"
   },
+  "changelog": {
+    "title": "Notas de la versión",
+    "loading": "Cargando notas de la versión…",
+    "error": "No se pueden cargar las notas de la versión ahora mismo.",
+    "retry": "Reintentar",
+    "empty": "Todavía no hay notas de la versión disponibles."
+  },
   "authShell": {
     "intro": "Acerca de Patzer",
     "eyebrow": "Un lugar para mejorar tu ajedrez",

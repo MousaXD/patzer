@@ -16,6 +16,13 @@
     "gameAnalysis": "Partiedetails",
     "playerProfile": "Spielerprofil"
   },
+  "changelog": {
+    "title": "Versionshinweise",
+    "loading": "Versionshinweise werden geladen…",
+    "error": "Die Versionshinweise können derzeit nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "empty": "Es sind noch keine Versionshinweise verfügbar."
+  },
   "authShell": {
     "intro": "Über Patzer",
     "eyebrow": "Ein Ort, um besser Schach zu spielen",
