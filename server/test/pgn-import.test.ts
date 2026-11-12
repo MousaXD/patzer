@@ -49,6 +49,28 @@ describe('explicit local PGN archive import', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:1});
   });
 
+  it('never treats an Event tag quoted inside a multiline move comment as a new game', () => {
+    const db = fixture();
+    const annotated = `[Event "Commented"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 {This is only a study note:\n[Event "Not a separate game"]\nThe variation still belongs to Alice.} e5 1-0`;
+    expect(splitPgnArchive(annotated)).toEqual([annotated]);
+    expect(splitPgnArchive(`${annotated}\n\n${two}`)).toEqual([annotated,two]);
+    expect(importPgnArchive(db,1,`${annotated}\n\n${two}`))
+      .toEqual({total:2,imported:2,duplicates:0});
+    expect(db.prepare('SELECT pgn FROM games WHERE user_id = 1 ORDER BY id').all())
+      .toEqual([{pgn:annotated},{pgn:two}]);
+  });
+
+  it('does not mistake literal comment delimiters in PGN header values for actual comments', () => {
+    const db=fixture();
+    const unusualHeader = '[Event "Study { Session; notes"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const crlf = unusualHeader.replace(/\n/g,'\r\n');
+    expect(splitPgnArchive(`${crlf}\r\n\r\n${two}`)).toEqual([crlf,two]);
+    expect(importPgnArchive(db,1,`${crlf}\r\n\r\n${two}`))
+      .toEqual({total:2,imported:2,duplicates:0});
+    expect(db.prepare('SELECT pgn FROM games WHERE user_id=1 ORDER BY id').all())
+      .toEqual([{pgn:crlf},{pgn:two}]);
+  });
+
   it('rejects mixed valid/corrupt files atomically with the failing game index', () => {
     const db = fixture();
     try { importPgnArchive(db, 1, `${one}\n\n${invalid}`); }

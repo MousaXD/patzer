@@ -331,6 +331,18 @@ describe('authenticated PGN archive upload', () => {
     } finally { cleanup(); }
   });
 
+  it('imports annotated PGNs without treating quoted Event tags in comments as extra games', async () => {
+    cleanup();
+    const annotated = '[Event "Annotated"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 {Notes include this literal line:\n[Event "Not another game"]\nStill the same game.} e5 1-0';
+    try {
+      const result = await requestUpload(3,`${annotated}\n\n${two}`);
+      expect(result.status).toBe(200);
+      expect(await result.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT pgn FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([{pgn:annotated},{pgn:two}]);
+    } finally {cleanup();}
+  });
+
   it('refuses malformed second games, unsafe positions and oversized uploads with no partial commits', async () => {
     cleanup();
     try {

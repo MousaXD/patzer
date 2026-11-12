@@ -19,8 +19,9 @@ export class PgnImportError extends Error {
 }
 
 /** Recognize standard multi-game exports, whose games begin with [Event ...].
- * A nonstandard/mixed file is rejected, not silently reduced to its first
- * game. A headerless *single* PGN remains valid.
+ * Comments may contain header-like lines, especially in annotated training
+ * PGNs. Find real headers at top level only; never slice out an Event line
+ * quoted inside a brace comment. A headerless *single* PGN remains valid.
  */
 export function splitPgnArchive(input: string): string[] {
   if (!input || Buffer.byteLength(input, 'utf8') > MAX_PGN_ARCHIVE_BYTES) {
@@ -28,8 +29,44 @@ export function splitPgnArchive(input: string): string[] {
   }
   const text = input.replace(/^\uFEFF/, '').trim();
   if (!text) throw new PgnImportError('invalid_pgn', 1);
-  const markers = [...text.matchAll(/^\[Event[ \t]+"[^"\r\n]*"\][ \t]*\r?$/gm)]
-    .map((m) => m.index!);
+  const markers: number[] = [];
+  let scanAt = 0;
+  let braceDepth = 0;
+  let lineComment = false;
+  let inTag = false;
+  let inTagString = false;
+  let tagEscape = false;
+  // This lexer is linear in the original 4 MiB bound. It does not interpret
+  // chess moves; chess.js validates every resulting whole PGN before insert.
+  const header = /^\[Event[ \t]+"(?:[^"\\\r\n]|\\.)*"\][ \t]*\r?$/gm;
+  for (const match of text.matchAll(header)) {
+    const index = match.index!;
+    for (; scanAt < index; scanAt++) {
+      const ch = text[scanAt];
+      if (ch === '\n') { lineComment = false; continue; }
+      if (lineComment) continue;
+      if (braceDepth > 0) {
+        if (ch === '{') braceDepth++;
+        else if (ch === '}') braceDepth--;
+        continue;
+      }
+      // A tag such as [Event "Study { session"] can contain braces or
+      // semicolons as plain quoted text, not PGN comments.
+      if (inTag) {
+        if (inTagString) {
+          if (tagEscape) tagEscape = false;
+          else if (ch === '\\') tagEscape = true;
+          else if (ch === '"') inTagString = false;
+        } else if (ch === '"') inTagString = true;
+        else if (ch === ']') inTag = false;
+        continue;
+      }
+      if (ch === '{') braceDepth = 1;
+      else if (ch === ';') lineComment = true;
+      else if (ch === '[') inTag = true;
+    }
+    if (braceDepth === 0 && !lineComment && !inTag) markers.push(index);
+  }
   if (!markers.length) return [text];
   if (markers[0] !== 0) throw new PgnImportError('ambiguous_pgn_archive');
   if (markers.length > MAX_PGN_ARCHIVE_GAMES) throw new PgnImportError('pgn_too_many_games');

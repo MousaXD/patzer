@@ -269,3 +269,22 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 
 - Independently test the reliability of **multi-game PGN boundaries and accurate success counts** for unusual but realistic exported headers and comments. Reject ambiguous files explicitly rather than saving only the first game. Focus on a reproducible failure; preserve byte-exact original PGNs and avoid migrations unless justified.
 - The in-app full Chess.com historical-import job remains intentionally unimplemented pending persistent checkpoints, consent, throttle, cancellation and backup verification.
+
+## 2026-11-12 — PGN archive boundary integrity for annotated games
+
+- Recovered clean pushed `9fe3d5f` and followed the existing next audit (multi-game PGN boundaries), with no repeated library/onboarding investigations.
+- **Reproduced a data-loss-adjacent bug:** a valid annotated PGN may contain a line such as `[Event "Not a separate game"]` inside a multiline `{...}` move comment. The prior regex splitter treated that line as a game boundary, producing 2/3 false game segments and rejecting the otherwise valid archive. A new focused test failed against the original implementation.
+- Replaced regex-only boundary splitting with a bounded linear scan of candidate Event lines, recognizing whether each line is inside an open brace comment, semicolon comment, or quoted header field. This keeps real `[Event]` headers as split markers while never promoting those embedded in comments. Still parses and validates every whole PGN through chess.js before the atomic database transaction. Does not alter original PGN content, owner, dedupe hash, game result or analysis provenance.
+- Added tests for single/multiple annotated games, exact PGN retention, CRLF headers with literal `{` and `;` in values, and an authenticated `POST /api/games/import/pgn` integration covering the boundary case and exact stored content.
+
+### Verification
+
+- Targeted SQLite/parser + authenticated Hono suite: **47 tests passed**. Full repository suite rerun: **109 files passed, 2 skipped; 1,034 tests passed, 12 skipped; zero errors**.
+- Initial parallel full-suite pass had all 1,034 assertions green but reported a *late* `window is not defined` timer teardown exception from `web/src/pages/Settings.persistence.test.tsx` / `Settings.tsx:159` (outside Agent C's lane). It passed in isolated rerun, and a second full-suite run was clean. No out-of-scope Settings edits were made; share this as an independent QA handoff if it recurs.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`: passed. Existing isolated Chromium fixture passed desktop/mobile light/dark, native PGN picker, browser import feedback, partial-error recovery and 320px first-use path; no production network or databases used.
+- Disposable 1,000-game annotated archive (129,888 bytes, each game containing an Event-like comment): **1,000/1,000 recognized and saved**, byte-identical canonical game segments; splitter ~3.5 ms, validation + database insert ~566 ms on the test machine. Figures are local smoke measurements, not a latency guarantee.
+
+### Next within Agent C's lane
+
+- Examine whether other PGN comment forms or nonstandard header order cause a false import success. Only implement fixes after reproducing on an actual parser behavior. Continue to reject ambiguous archives rather than dropping games.
+- The full historical Chess.com UI sync remains a separate, authorization-sensitive design and is intentionally not enabled by this boundary change.
