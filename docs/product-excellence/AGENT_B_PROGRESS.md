@@ -802,3 +802,33 @@
 
 - The **Learn feature page** itself still displays some English strings when the surrounding shell is Spanish/Bulgarian; that content is owned by the Learn/Play lane and was intentionally left unchanged.
 - Inspect the shared shell's **version/changelog labels** in non-English languages. The Bulgarian mobile-drawer screenshot still showed the English fallback `View changelog`; check all five locales and fix global shell language consistency where missing, not feature-owned pages.
+
+## 2026-11-12: Changelog discoverability, localization and accessible version controls
+
+### Exact recovery and confirmed problem
+
+- Continued from clean, pushed Agent B `0763a64` and investigated the next documented shared-shell task; did not replay any completed navigation or feature work.
+- Confirmed that Spanish and Bulgarian had no `common.viewChangelog` translation, causing an English fallback in the mobile navigation drawer. The rail's compact version button also exposed a hard-coded English-only accessible label and a much smaller hit target than the other tablet controls.
+- Inspected the existing `ChangelogModal` and global drawer flow before editing. Confirmed the dialog's own loading/error/empty and focus-trap handling already worked; did not redesign or duplicate those patterns.
+
+### Implementation
+
+1. Added Spanish `Ver novedades` and Bulgarian `Виж промените` translations and localized the complete **version + changelog** accessible label in all five supported languages. Kept the numeric version visible and localized the associated tooltip and screen-reader name.
+2. Increased the navigation-rail version button to a **minimum 44px height** with usable hover and focus styles, retaining the existing rail width and understated version-label appearance. The mobile drawer already had a 44px changelog row.
+3. Expanded the five-language navigation translation regression to cover both `common.viewChangelog` and `navigation.versionChangelog` along with all global route labels.
+4. Extended the real Chromium shell fixture to check the version-button touch target on tablet, the Spanish 768px rail and Bulgarian 640px mobile drawer translated labels, and the ability to open a single localized changelog dialog and close it. Focus must return to the original rail version button or the persistent mobile **Open menu** trigger, respectively.
+5. Inspected the Bulgarian 640px screenshot; the drawer now shows **Patzer v7.19.0 · Виж промените**, not the English fallback.
+6. Updated the old navigation unit-test i18n mock to interpolate `{{version}}` like the actual translation layer. A first full regression run exposed the outdated mock; focused retest after correction passed.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** with localized desktop/mobile changelog open-close and return-focus checks.
+- `npx vitest run web/src/components/navigation/Layout.navigation.test.tsx web/src/components/navigation/Layout.locales.test.ts --maxWorkers=2`: **21/21 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **423/423 passed across 72 files**.
+- `git diff --check`: **passed**.
+- No merge, deployment, production operations, game data or other agent worktree modifications.
+
+### Next audit
+
+- Audit the shared `UpdateNotice` and changelog-related shell affordances in dark/light and localized mobile layouts, looking for real clipping, missing labels or intrusive focus changes. Prefer high-impact shared navigation issues, not feature-owned content.

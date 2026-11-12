@@ -10,6 +10,7 @@
     "open": "Menü öffnen",
     "close": "Menü schließen",
     "language": "Sprache",
+    "versionChangelog": "Patzer-Version {{version}}: Änderungsprotokoll anzeigen",
     "languageSaveFailed": "Die Sprache konnte nicht gespeichert werden. Überprüfe die Verbindung und versuche es erneut.",
     "logoutBusy": "Abmeldung läuft…",
     "logoutFailed": "Abmeldung fehlgeschlagen. Überprüfe die Verbindung und versuche es erneut.",

@@ -10,6 +10,7 @@
     "open": "Abrir menú",
     "close": "Cerrar menú",
     "language": "Idioma",
+    "versionChangelog": "Patzer versión {{version}}: ver novedades",
     "languageSaveFailed": "No se pudo guardar el idioma. Comprueba la conexión e inténtalo de nuevo.",
     "logoutBusy": "Cerrando sesión…",
     "logoutFailed": "No se pudo cerrar la sesión. Comprueba la conexión e inténtalo de nuevo.",
@@ -84,7 +85,8 @@
     "download": "Descargar",
     "saved": "Guardado",
     "email": "Correo electrónico",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "viewChangelog": "Ver novedades"
   },
   "setup": {
     "title": "Bienvenido a Patzer",

@@ -160,6 +160,9 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
   const closeMenuLabel = t('navigation.close', { defaultValue: 'Close menu' });
   const openMenuLabel = t('navigation.open', { defaultValue: 'Open menu' });
   const languageLabel = t('navigation.language', { defaultValue: 'Language' });
+  const versionChangelogLabel = t('navigation.versionChangelog', {
+    version, defaultValue: 'Patzer version {{version}}, view changelog',
+  });
   const isAnalysis = isDestinationActive(location.pathname, '/review') && location.pathname !== '/review';
   const activeItem = [...PRIMARY_DESTINATIONS, SETTINGS_DESTINATION, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
     .find((item) => isDestinationActive(location.pathname, item.to));
@@ -328,8 +331,8 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           />
           {version && (
             <button type="button" onClick={() => setShowChangelog(true)}
-              className="mt-1 w-full rounded-md px-1 py-1 text-center text-[10px] text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:text-white"
-              title={t('common.viewChangelog')} aria-label={`Patzer version ${version}, view changelog`}>
+              className="mt-1 flex min-h-11 w-full items-center justify-center rounded-md px-1 py-1 text-center text-[10px] text-chesscom-500 hover:bg-chesscom-100 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:bg-chesscom-800 dark:hover:text-white"
+              title={versionChangelogLabel} aria-label={versionChangelogLabel}>
               v{version}
             </button>
           )}
@@ -531,7 +534,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               {version && (
                 <button type="button" onClick={() => { setDrawerOpen(false); setShowChangelog(true); }}
                   className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
-                  title={t('common.viewChangelog')}>
+                  title={t('common.viewChangelog')} aria-label={versionChangelogLabel}>
                   Patzer v{version} · {t('common.viewChangelog')}
                 </button>
               )}

@@ -35,10 +35,11 @@ const labels: Record<string, string> = {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) =>
-      harness.longLabels && key === 'players.nav'
+    t: (key: string, options?: { defaultValue?: string; version?: string | number }) =>
+      (harness.longLabels && key === 'players.nav'
         ? 'Spieler und ausführliche Langbezeichnungen für die Navigation'
-        : labels[key] ?? options?.defaultValue ?? key,
+        : labels[key] ?? options?.defaultValue ?? key)
+        .replace(/\{\{\s*version\s*\}\}/g, String(options?.version ?? '')),
     i18n: { language: harness.language, changeLanguage: harness.changeLanguage },
   }),
 }));

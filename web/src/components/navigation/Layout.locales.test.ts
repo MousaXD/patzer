@@ -5,12 +5,13 @@ import es from '../../locales/es.json';
 import ru from '../../locales/ru.json';
 import bg from '../../locales/bg.json';
 
-// A missing navigation key falls back to English even when the entire shell
-// is otherwise translated. Keep every primary destination fully localizable.
+// Missing global navigation keys fall back to English even when the shell
+// is otherwise translated. Keep primary routes and version help localized.
 const keys = [
   'app.home', 'home.playTitle', 'home.reviewTitle', 'insights.title',
   'train.nav', 'learn.nav', 'openings.nav', 'plan.nav',
   'players.nav', 'lab.nav', 'common.settings',
+  'common.viewChangelog', 'navigation.versionChangelog',
 ] as const;
 
 const locales = { en, de, es, ru, bg };

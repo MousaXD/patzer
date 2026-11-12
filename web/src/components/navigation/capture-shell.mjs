@@ -182,6 +182,7 @@ try {
           tabletControls.push(
             ['Language', page.getByRole('combobox', { name: 'Language' })],
             ['Log out', page.getByRole('button', { name: 'Log out' })],
+            ['Version & changelog', page.locator('[data-navigation-rail] button[aria-label^="Patzer version"]')],
           );
         }
         for (const [name, control] of tabletControls) {
@@ -301,8 +302,10 @@ try {
   // Verify actual localized shell navigation instead of relying on English
   // fallback labels on touch-sized tablets. Keep feature pages untouched.
   for (const locale of [
-    { code: 'es', width: 768, primary: 'Navegación principal', learn: 'Aprender', review: 'Análisis de partida' },
-    { code: 'bg', width: 640, primary: 'Мобилна навигация', menu: 'Отвори менюто', learn: 'Обучение', review: 'Преглед на игри' },
+    { code: 'es', width: 768, primary: 'Navegación principal', learn: 'Aprender', review: 'Análisis de partida',
+      versionLabel: 'Patzer versión 7.19.0: ver novedades', notesTitle: 'Notas de la versión', closeLabel: 'Cerrar' },
+    { code: 'bg', width: 640, primary: 'Мобилна навигация', menu: 'Отвори менюто', learn: 'Обучение', review: 'Преглед на игри',
+      versionLabel: 'Patzer версия 7.19.0: виж промените', notesTitle: 'Бележки по версията', closeLabel: 'Затвори' },
   ]) {
     profile.language = locale.code;
     await page.setViewportSize({ width: locale.width, height: 900 });
@@ -330,6 +333,7 @@ try {
     await navigation.waitFor({ timeout: 8000 });
     await navigation.locator('a[href="/learn"]').getByText(locale.learn).waitFor({ timeout: 8000 });
     await page.locator('[data-current-section]').getByText(locale.learn).waitFor({ timeout: 8000 });
+    await page.getByRole('button', { name: locale.versionLabel }).waitFor({ timeout: 8000 });
     if (locale.width >= 768) {
       const labelsTooNarrow = await page.locator('[data-navigation-rail] nav a > span:last-child').evaluateAll((labels) => {
         const canvas = document.createElement('canvas');
@@ -350,9 +354,23 @@ try {
     }
     await checkNoHorizontalOverflow(page, `${locale.code} tablet shell ${locale.width}px`);
     await page.screenshot({ path: resolve(output, `localized-nav-${locale.code}-${locale.width}.png`) });
+    const versionButton = page.getByRole('button', { name: locale.versionLabel });
+    await versionButton.click();
+    const notesDialog = page.getByRole('dialog', { name: locale.notesTitle });
+    await notesDialog.waitFor();
+    if ((await page.getByRole('dialog').count()) !== 1) {
+      throw new Error(`${locale.code} changelog opened alongside another modal`);
+    }
+    await notesDialog.getByRole('button', { name: locale.closeLabel }).click();
+    await notesDialog.waitFor({ state: 'detached' });
     if (locale.width < 768) {
-      await page.keyboard.press('Escape');
       await page.getByRole('dialog', { name: locale.primary }).waitFor({ state: 'detached' });
+      const menuTrigger = page.getByRole('button', { name: locale.menu });
+      if (!(await menuTrigger.evaluate((button) => button === document.activeElement))) {
+        throw new Error(`${locale.code} changelog closed without restoring focus to the mobile menu trigger`);
+      }
+    } else if (!(await versionButton.evaluate((button) => button === document.activeElement))) {
+      throw new Error(`${locale.code} changelog did not restore focus to its desktop version trigger`);
     }
   }
   profile.language = 'en';
