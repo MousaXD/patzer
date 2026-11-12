@@ -873,3 +873,23 @@
 ### Next high-value review issue
 
 - The Engine Lines rail uses `fmtCp(null)` returning `0.00`, but its verified backend response rejects entirely unscored lines. Rather than changing correct behavior, audit the **terminal mate-zero** engine line: its present formatter converts `mate=0` to `-#0` (Black), even though the sign of a terminal mate zero is undefined, unlike a true signed nonzero mate. Confirm actual source semantics and, if reproduced, replace the false winner with an unknown-side terminal marker while preserving legal PV, matched FEN, and exact other mate counts.
+
+## 2026-11-12: avoid fictitious Black mate-in-zero in live engine lines
+
+### Recovery and reproduced source-contract gap
+
+- Continued directly from clean pushed `604e27a`. Previous candidate `fmtCp(null) => 0.00` was confirmed **unreachable for verified lines without any score**: `verifiedPositionEngineLines` rejects `(cp=null,mate=null)`, and the ad-hoc position endpoint validates the result's score. No unnecessary change to that existing source guard.
+- However, the same verified live-line contract permits `mate=0` with a legal, matching FEN/SAN/PV and cp=0. Server-side source comments explicitly identify mate zero as an unsigned **terminal** marker, not as Black winning. The live Engine Lines row rendered all `mate<=0` as Black mates, incorrectly producing `-#0` for this accepted input. The issue is limited to score presentation; the still-valid move continuation must remain clickable.
+
+### Correction and verification
+
+- Introduced a small Game Review-only pure `formatReviewEngineLineScore` helper, with regression tests for White/Black nonzero mate counts, White-perspective centipawns, high cp bands, invalid fractional scores, missing scores and unsigned `mate=0`. The latter now displays neutral `—` instead of inventing a mating side or an engine-validated equality. Preserved nonzero `#N`/`-#N` and ordinary cp formatting.
+- Reused the existing authenticated disposable source-integrity Chromium scenario: after rejecting a position-matched line mislabeled `d4` for `e4`, the retry now returns its valid scored `e4` plus a second legal `d4` continuation with test-only `(mate=0,cp=0)`. Verified `d4` visibly displays `—`, remains enabled, and the ordinary `e4` line still displays `+0.45` and keeps keyboard focus. Saved PGN remains unchanged.
+- Focused score/position-source tests: **11 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **999 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium browser matrix: **PASS (exit 0)**. Independently inspected `qa-artifacts/agent-a/engine-line-zero-safe-20261112/engine-line-matched-after-retry-390.png`: the two scored/uncertain engine lines are readable at 390px without clipped move labels, with the uncertain legal `d4` row shown but not misclassified as a Black mating win. Earlier review/variation/source/recovery/keyboard/multilingual checks remain green.
+- Mate-zero test annotations are **synthetic HTTP fixtures**, not real Stockfish certification. No production SQLite mutation, merge, deploy or cross-agent modifications.
+
+### Next issue to investigate
+
+- The live `verifiedPositionEngineLines` contract checks cp and mate *individually* for finite values but does not guard incompatible signs when a nonzero mate and an extreme cp are both present. Audit whether the live engine contract can legitimately output conflicting signs; if not, withhold a precise mating-side claim from contradictory cached/HTTP line evidence while keeping a legal PV navigable. Do not impose saved-report `±(10000-10*N)` normalization on live Stockfish scores without source evidence.

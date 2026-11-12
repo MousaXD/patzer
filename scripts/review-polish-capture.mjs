@@ -953,9 +953,10 @@ try {
       assert.equal(data.fen,initialFen,'The engine query must use the displayed pre-move FEN');
       engineRequests++;
       const scoredLine={uci:'e2e4',san:'e4',pv_san:['e4','e5','Nf3'],cp:45,mate:null,multipv:1};
+      const unsignedTerminalLine={uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:0,mate:0,multipv:2};
       const lines=engineRequests===1
         ? [{...scoredLine,san:'d4',pv_san:['d4']}]
-        : [scoredLine];
+        : [scoredLine,unsignedTerminalLine];
       await route.fulfill({status:200,contentType:'application/json',
         body:JSON.stringify({fen:initialFen,depth:18,lines})});
     });
@@ -983,6 +984,12 @@ try {
     await scoredAgain;
     const validMove=page.getByRole('button',{name:'Follow played move e4'});
     await validMove.waitFor({state:'visible',timeout:5000});
+    const unsignedLine=page.getByRole('button',{name:'Try engine move d4'});
+    await unsignedLine.waitFor({state:'visible',timeout:5000});
+    assert.equal((await unsignedLine.locator('[data-review-engine-line-score]').innerText()).trim(),'—',
+      'Mate zero must never claim the Black side wins a false -#0, nor invent a drawn cp value');
+    assert.ok(await unsignedLine.isEnabled(),
+      'Score uncertainty must not hide a still-legal engine continuation from the same FEN');
     const focused=await page.evaluate(()=>({
       tag:document.activeElement?.tagName,
       id:document.activeElement?.id,

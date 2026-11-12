@@ -20,6 +20,7 @@ import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
 import ReviewClassificationGuide from '../components/review/ReviewClassificationGuide';
 import { displayableMate, formatReviewMate } from '../components/review/reviewMateScore';
+import { formatReviewEngineLineScore } from '../components/review/reviewEngineLineScore';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
@@ -1678,8 +1679,8 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
                 <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                   l.multipv === 1 ? 'bg-gold-500/20 text-gold-600' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800'
                 }`}>{l.multipv}</span>
-                <span className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
-                  {l.mate != null ? (l.mate > 0 ? `#${l.mate}` : `-#${Math.abs(l.mate)}`) : fmtCp(l.cp)}
+                <span data-review-engine-line-score className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
+                  {formatReviewEngineLineScore(l)}
                 </span>
                 <span className="w-12 shrink-0 truncate font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{l.san}</span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>
