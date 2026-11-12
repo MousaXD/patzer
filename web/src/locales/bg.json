@@ -284,6 +284,7 @@
     "evalBarMateBlack": "Мат за черните (M{{count}})",
     "evalBarScoreWhite": "Оценка {{score}} от гледна точка на белите",
     "jumpToMoveDetails": "Подробности за хода",
+    "jumpToGameActions": "Действия с партията",
     "returnToBoard": "Назад към дъската",
     "exploreLabel": "Изследвай:",
     "exploreHint": "Премести фигура на дъската, за да опиташ друг вариант. Запазената партия остава непроменена.",

@@ -1030,6 +1030,32 @@ try {
       'Only the final user-owned draft must be sent to the Notes endpoint');
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(sourceNotesId).notes,localDraft);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(sourceNotesId).pgn,sourceNotesPgn);
+    // A game with unavailable/stale engine analysis still has Notes, Share
+    // and PGN export. On narrow screens these actions sit below the board,
+    // so unscored Review needs its own accessible jump affordance instead of
+    // only offering the scored game's Move details jump.
+    await page.locator('.review-board-square').scrollIntoViewIfNeeded();
+    const actions=page.locator('[data-review-meta-toolbar]');
+    const actionsBefore=await actions.evaluate(element=>({
+      top:element.getBoundingClientRect().top,viewport:window.innerHeight,
+    }));
+    assert.ok(actionsBefore.top>actionsBefore.viewport-44,
+      `The mobile unscored game actions should be below the initial board viewport: ${JSON.stringify(actionsBefore)}`);
+    assert.equal(await page.locator('[data-review-jump-to-details]').count(),0,
+      'The scored move-details jump must not promise unavailable analysis');
+    const jumpActions=page.locator('[data-review-jump-to-actions]');
+    await jumpActions.waitFor({state:'visible',timeout:4000});
+    const jumpBox=await jumpActions.boundingBox();
+    assert.ok(jumpBox && jumpBox.height>=44,'Unscored Game actions jump needs a 44px mobile target');
+    await jumpActions.click();
+    await page.waitForFunction(()=>{
+      const toolbar=document.querySelector('[data-review-meta-toolbar]');
+      const first=toolbar?.querySelector('button');
+      const rect=toolbar?.getBoundingClientRect();
+      return !!rect && !!first && document.activeElement===first
+        && rect.top>=55 && rect.top<window.innerHeight-44;
+    },undefined,{timeout:5000});
+    await page.screenshot({path:join(output,'unscored-review-game-actions-jump-390.png')});
     // Exporting an original saved game needs only its legal PGN and current
     // board FEN. Source analysis may become stale or Stockfish unavailable;
     // neither should remove copy/download from the unscored review.

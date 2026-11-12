@@ -293,6 +293,7 @@
     "evalBarMateBlack": "Чёрные ставят мат (M{{count}})",
     "evalBarScoreWhite": "Оценка {{score}} с точки зрения белых",
     "jumpToMoveDetails": "Разбор хода",
+    "jumpToGameActions": "Действия с партией",
     "returnToBoard": "Вернуться к доске",
     "exploreLabel": "Изучить:",
     "exploreHint": "Сделайте ход на доске, чтобы проверить другой вариант. Сохранённая партия не изменится.",

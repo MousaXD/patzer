@@ -293,6 +293,7 @@
     "evalBarMateBlack": "Mate in {{count}} for Black",
     "evalBarScoreWhite": "Evaluation {{score}} for White",
     "jumpToMoveDetails": "Move details",
+    "jumpToGameActions": "Game actions",
     "returnToBoard": "Back to board",
     "exploreLabel": "Explore:",
     "exploreHint": "Move a piece on the board to try a different line. Your saved game stays intact.",

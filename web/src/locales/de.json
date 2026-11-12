@@ -293,6 +293,7 @@
     "evalBarMateBlack": "Matt in {{count}} für Schwarz",
     "evalBarScoreWhite": "Bewertung {{score}} aus Sicht von Weiß",
     "jumpToMoveDetails": "Zugdetails",
+    "jumpToGameActions": "Partieaktionen",
     "returnToBoard": "Zurück zum Brett",
     "exploreLabel": "Erkunden:",
     "exploreHint": "Ziehe eine Figur auf dem Brett, um eine andere Variante auszuprobieren. Deine gespeicherte Partie bleibt unverändert.",

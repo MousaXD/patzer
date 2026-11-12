@@ -827,6 +827,16 @@ function GameAnalyzerView() {
       document.getElementById('review-tab-moves')?.focus({ preventScroll: true });
     });
   };
+  const jumpToGameActions = () => {
+    requestAnimationFrame(() => {
+      const toolbar = document.querySelector<HTMLElement>('[data-review-meta-toolbar]');
+      if (!toolbar) return;
+      toolbar.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      // Even without engine analysis these are active game controls. Focus
+      // the first real action so keyboard users don't remain on the board.
+      toolbar.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    });
+  };
   const jumpToBoard = () => {
     boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     boardFocusRef.current?.focus({ preventScroll: true });
@@ -1046,6 +1056,15 @@ function GameAnalyzerView() {
               onClick={jumpToReviewSection}>
               <FileText className="h-4 w-4" aria-hidden="true" />
               {t('review.jumpToMoveDetails')}
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+          {!analysis && !isVariation && (
+            <button type="button" data-review-jump-to-actions
+              className="review-mobile-jump btn-secondary mt-2 min-h-11 w-full justify-center text-sm"
+              onClick={jumpToGameActions}>
+              <NotebookPen className="h-4 w-4" aria-hidden="true" />
+              {t('review.jumpToGameActions')}
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
@@ -1567,7 +1586,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
   }, [notesBlocker.state]);
 
   return (
-    <div className="card overflow-hidden" data-review-meta-toolbar>
+    <div className="card overflow-hidden scroll-mt-16" data-review-meta-toolbar>
       {notesBlocker.state === 'blocked' && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
           <div ref={notesLeaveDialogRef} role="alertdialog" aria-modal="true"

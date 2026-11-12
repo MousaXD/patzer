@@ -286,6 +286,7 @@
     "gameReport": "Informe de IA",
     "keyMoments": "Momentos clave",
     "jumpToMoveDetails": "Detalles de la jugada",
+    "jumpToGameActions": "Acciones de la partida",
     "returnToBoard": "Volver al tablero",
     "exploreLabel": "Explorar:",
     "exploreHint": "Mueve una pieza en el tablero para probar otra variante. Tu partida guardada no cambia.",
