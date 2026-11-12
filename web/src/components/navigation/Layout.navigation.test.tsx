@@ -112,13 +112,19 @@ describe('Patzer navigation rail', () => {
 
   it('marks parent destinations active on nested review and player pages', () => {
     const { unmount } = mount('/review/42');
-    expect(screen.getByRole('link', { name: 'Review' }).getAttribute('aria-current')).toBe('page');
+    expect(within(screen.getByRole('navigation', { name: 'Primary navigation' })).getByRole('link', { name: 'Review' }).getAttribute('aria-current')).toBe('page');
+    const reviewBreadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(reviewBreadcrumb).getByRole('link', { name: 'Review' }).getAttribute('href')).toBe('/review');
+    expect(within(reviewBreadcrumb).getByText('Game analysis').getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('[data-workspace]')?.getAttribute('data-workspace')).toBe('analysis');
     expect(document.querySelector('[data-workspace-content]')?.className).toContain('max-w-none');
     expect(document.querySelector('[data-shell-main]')?.className).toContain('min-w-0');
     unmount();
     mount('/players/42');
-    expect(screen.getByRole('link', { name: 'Players' }).getAttribute('aria-current')).toBe('page');
+    expect(within(screen.getByRole('navigation', { name: 'Primary navigation' })).getByRole('link', { name: 'Players' }).getAttribute('aria-current')).toBe('page');
+    const playerBreadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(playerBreadcrumb).getByRole('link', { name: 'Players' }).getAttribute('href')).toBe('/players');
+    expect(within(playerBreadcrumb).getByText('Player profile').getAttribute('aria-current')).toBe('page');
     expect(document.querySelector('[data-workspace]')?.getAttribute('data-workspace')).toBe('default');
   });
 

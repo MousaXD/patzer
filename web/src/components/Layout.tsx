@@ -2,7 +2,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  BarChart3, BookMarked, BookOpen, ChevronDown, GraduationCap, Home, Keyboard,
+  BarChart3, BookMarked, BookOpen, ChevronDown, ChevronRight, GraduationCap, Home, Keyboard,
   ListChecks, LogOut, Menu, Microscope, Search, Server, Link2, Settings as SettingsIcon,
   Swords, Target, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react';
@@ -143,6 +143,16 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
   const activeItem = [...PRIMARY_DESTINATIONS, SETTINGS_DESTINATION, ...(user?.role === 'admin' ? ADMIN_DESTINATIONS : [])]
     .find((item) => isDestinationActive(location.pathname, item.to));
   const pageTitle = activeItem ? t(activeItem.key, { defaultValue: activeItem.fallback }) : t('app.name');
+  const nestedSection = location.pathname.startsWith('/review/')
+    ? t('home.reviewTitle', { defaultValue: 'Review' })
+    : location.pathname.startsWith('/players/')
+      ? t('players.nav', { defaultValue: 'Players' })
+      : null;
+  const nestedTitle = location.pathname.startsWith('/review/')
+    ? t('navigation.gameAnalysis', { defaultValue: 'Game analysis' })
+    : location.pathname.startsWith('/players/')
+      ? t('navigation.playerProfile', { defaultValue: 'Player profile' })
+      : null;
 
   useEffect(() => {
     api.get<{ version: string }>('/api/meta')
@@ -272,7 +282,18 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             <NavLink to="/" className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 md:hidden" aria-label={t('app.name')}>
               <LogoMark size={27} />
             </NavLink>
-            <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>
+            {nestedSection && nestedTitle ? (
+              <nav aria-label={t('navigation.breadcrumb', { defaultValue: 'Breadcrumb' })} className="flex min-w-0 items-center gap-1 text-sm sm:text-base" data-current-section>
+                <NavLink
+                  to={location.pathname.startsWith('/review/') ? '/review' : '/players'}
+                  className="shrink-0 rounded px-1 py-1 font-medium text-chesscom-500 hover:text-chesscom-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-300 dark:hover:text-white"
+                >{nestedSection}</NavLink>
+                <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-chesscom-400" />
+                <span className="min-w-0 truncate font-semibold" aria-current="page">{nestedTitle}</span>
+              </nav>
+            ) : (
+              <span className="truncate text-sm font-semibold tracking-tight sm:text-base" data-current-section>{pageTitle}</span>
+            )}
           </div>
           {onOpenPalette && (
             <button
@@ -338,8 +359,12 @@ export default function Layout({ onOpenPalette, onOpenShortcuts }: LayoutProps) 
             isAnalysis ? 'max-w-none' : 'max-w-[1440px]',
           )} data-workspace-content>
             <Suspense fallback={
-              <div role="status" aria-live="polite" className="flex min-h-60 items-center justify-center text-sm text-chesscom-500 dark:text-chesscom-300">
-                Loading page…
+              <div role="status" aria-live="polite" className="flex min-h-60 flex-col items-center justify-center gap-4 text-sm text-chesscom-600 dark:text-chesscom-300" data-page-loading>
+                <LogoMark size={36} />
+                <span className="flex items-center gap-2">
+                  <span aria-hidden="true" className="h-3 w-3 animate-pulse rounded-full bg-green-500 motion-reduce:animate-none" />
+                  {t('navigation.loading', { defaultValue: 'Loading page…' })}
+                </span>
               </div>
             }>
               <Outlet />

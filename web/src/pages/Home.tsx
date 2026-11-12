@@ -7,7 +7,7 @@ import {
   Swords, BookOpen, ChevronRight, Target, Sparkles,
   ListChecks, Award, ArrowRight, GraduationCap, Star, Flame,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../state/auth';
 import { api } from '../api';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -123,6 +123,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
   error: boolean; retry: () => void;
 }) {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   const hour = new Date().getHours();
   const greetingKey = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const greeting = t(`home.greet.${greetingKey}`, {
@@ -135,7 +136,7 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 6 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
       className="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-chesscom-900 via-[#3b4c2f] to-board-dark text-white shadow-lift"

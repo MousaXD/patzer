@@ -269,11 +269,11 @@ cg-board square.last-move.premove-dest {
 
 
 /* Patzer design contract v1. Preserve existing Chessground / legacy selectors. */
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-regular.woff2') format('woff2'); font-weight:400 500; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-semibold.woff2') format('woff2'); font-weight:600; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-bold.woff2') format('woff2'); font-weight:700 900; font-style:normal; font-display:block; }
-@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-italic.woff2') format('woff2'); font-weight:400 500; font-style:italic; font-display:block; }
-@font-face { font-family:'Patzer Mono'; src:url('/fonts/patzer-mono-regular.woff2') format('woff2'); font-weight:400 900; font-style:normal; font-display:block; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-regular.woff2') format('woff2'); font-weight:400 500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-semibold.woff2') format('woff2'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-bold.woff2') format('woff2'); font-weight:700 900; font-style:normal; font-display:swap; }
+@font-face { font-family:'Patzer Sans'; src:url('/fonts/patzer-sans-italic.woff2') format('woff2'); font-weight:400 500; font-style:italic; font-display:swap; }
+@font-face { font-family:'Patzer Mono'; src:url('/fonts/patzer-mono-regular.woff2') format('woff2'); font-weight:400 900; font-style:normal; font-display:swap; }
 
 :root {
  --ui-bg:#ffffff; --ui-surface:#ffffff; --ui-surface-raised:#ffffff;
