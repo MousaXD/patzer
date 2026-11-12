@@ -38,6 +38,14 @@ router.get('/', (c) => {
     // or note with the same name. Always restrict to this user's saved games.
     filters.push('g.opening_name = ?'); params.push(query.opening);
   }
+  if (query.opponent !== null) {
+    // A username is only evidence of an opponent in a provider-scoped game
+    // where the linked account's color is known. The paired source predicate
+    // is required by the parser to avoid Chess.com/Lichess name collisions.
+    filters.push("g.user_color IN ('white','black')");
+    filters.push(`LOWER(TRIM(CASE WHEN g.user_color = 'white' THEN g.black ELSE g.white END)) = ?`);
+    params.push(query.opponent.trim().toLowerCase());
+  }
   // end_time is a UTC ISO-like string. Comparing against a calendar-day
   // boundary preserves its index and includes the entire selected final day.
   if (query.fromDate !== null) { filters.push('g.end_time >= ?'); params.push(query.fromDate); }
@@ -116,6 +124,39 @@ router.get('/openings', (c) => {
     total: coverage.total, classified: coverage.classified,
     unclassified: coverage.total - coverage.classified, openings,
   });
+});
+
+// Only imported online games have a reliable public-provider opponent name.
+// Keep Chess.com and Lichess identities separate even when usernames match.
+// Local PGNs and PvP games are deliberately excluded: their free-text name
+// does not prove a provider identity. No inferred results or fake profiles.
+router.get('/opponents', (c) => {
+  const user = c.get('user');
+  const coverage = db.prepare(`
+    SELECT COUNT(*) AS total,
+      SUM(CASE WHEN user_color IN ('white','black') AND
+        LENGTH(TRIM(COALESCE(CASE WHEN user_color = 'white' THEN black ELSE white END, '')))
+        BETWEEN 2 AND 40 THEN 1 ELSE 0 END) AS identified
+    FROM games
+    WHERE user_id = ? AND source IN ('chesscom','lichess')
+  `).get(user.id) as {total:number; identified:number|null};
+  const opponents = db.prepare(`
+    SELECT source, MIN(TRIM(opponent)) AS name, COUNT(*) AS games
+    FROM (
+      SELECT source,
+        CASE WHEN user_color = 'white' THEN black ELSE white END AS opponent
+      FROM games
+      WHERE user_id = ? AND source IN ('chesscom','lichess')
+        AND user_color IN ('white','black')
+    )
+    WHERE LENGTH(TRIM(COALESCE(opponent,''))) BETWEEN 2 AND 40
+    GROUP BY source, LOWER(TRIM(opponent))
+    ORDER BY games DESC, source ASC, name COLLATE NOCASE ASC
+    LIMIT 5
+  `).all(user.id) as {source:'chesscom'|'lichess'; name:string; games:number}[];
+  const identified = coverage.identified ?? 0;
+  return c.json({total:coverage.total, identified,
+    unidentified:coverage.total - identified, opponents});
 });
 
 // Games you can walk back into: the bot game you left mid-move, and any PvP

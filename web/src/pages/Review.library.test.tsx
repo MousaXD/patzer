@@ -227,6 +227,78 @@ describe('Review library with large histories', () => {
     expect(screen.getByText('Showing games in Italian Game')).toBeTruthy();
   });
 
+  it('explores frequent online opponents separately by provider without losing the saved-game history', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') return {total:1000,classified:500,unclassified:500,
+        openings:[{name:'Italian Game',games:250}]};
+      if (url === '/api/games/opponents') return {total:800,identified:710,unidentified:90,
+        opponents:[{source:'chesscom',name:'Nepo',games:15}, {source:'lichess',name:'Nepo',games:3}]};
+      const query = new URLSearchParams(url.split('?')[1] ?? '');
+      return {games:Array.from({length:query.has('opponent') ? 3 : 40}, (_,i) => makeGame(i+1)),
+        total:query.has('opponent') ? 3 : 1000, offset:0, has_more:!query.has('opponent')};
+    });
+    mount('/review?q=stale&opening=Italian%20Game&from_date=2026-01-01');
+    await screen.findByText('40 of 1,000 games');
+    fireEvent.click(screen.getByRole('button', {name:'Opponents'}));
+    expect(await screen.findByText('710 of 800 imported online games have an identifiable opponent')).toBeTruthy();
+    expect(screen.getByText('90 without confirmed identity')).toBeTruthy();
+    const chesscom = screen.getByRole('button', {name:'Show 15 Chess.com games against Nepo'});
+    const lichess = screen.getByRole('button', {name:'Show 3 Lichess games against Nepo'});
+    fireEvent.click(lichess);
+    await screen.findByText('3 of 3 games');
+    expect(lichess.getAttribute('aria-pressed')).toBe('true');
+    expect(chesscom.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText('Showing Lichess games against Nepo')).toBeTruthy();
+    const matching = mocks.get.mock.calls.filter(([url]) => String(url).startsWith('/api/games?'))
+      .map(([url]) => new URLSearchParams(String(url).split('?')[1]));
+    expect(matching.some(p => p.get('source') === 'lichess' && p.get('opponent') === 'Nepo'
+      && !p.has('q') && !p.has('opening') && !p.has('from_date'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', {name:'Clear filters'}));
+    await screen.findByText('40 of 1,000 games');
+    expect(lichess.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', {name:'Openings'}));
+    expect(await screen.findByRole('button', {name:'Show 250 saved games in Italian Game'})).toBeTruthy();
+  });
+
+  it('honors deep-linked opponents and does not invent identities for unidentifiable online games', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') return {total:12,classified:0,unclassified:12,openings:[]};
+      if (url === '/api/games/opponents') return {total:8,identified:0,unidentified:8,opponents:[]};
+      return {games:[makeGame(1)],total:12,offset:0,has_more:true};
+    });
+    mount('/review?source=chesscom&opponent=Nepo');
+    expect(await screen.findByText('8 without confirmed identity')).toBeTruthy();
+    expect(screen.getByText(/Import Chess.com or Lichess games to explore confirmed online opponents/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Opponents'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Showing Chess.com games against Nepo')).toBeTruthy();
+    expect(mocks.get.mock.calls.some(([url]) => String(url).startsWith('/api/games?') &&
+      new URLSearchParams(String(url).split('?')[1]).get('opponent') === 'Nepo')).toBe(true);
+  });
+
+  it('recovers frequent-opponent highlights without retrying or blanking the game list', async () => {
+    let attempts = 0;
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/api/games/openings') return {total:100,classified:50,unclassified:50,openings:[]};
+      if (url === '/api/games/opponents') {
+        attempts++;
+        if (attempts === 1) throw new Error('opponents_temporarily_offline');
+        return {total:100,identified:1,unidentified:99,
+          opponents:[{source:'chesscom',name:'Magnus',games:1}]};
+      }
+      return {games:[makeGame(1)],total:100,offset:0,has_more:true};
+    });
+    mount();
+    await screen.findByText('1 of 100 games');
+    fireEvent.click(screen.getByRole('button',{name:'Opponents'}));
+    const error = await screen.findByRole('alert');
+    expect(error.textContent).toMatch(/frequent opponents could not be loaded/i);
+    fireEvent.click(screen.getByRole('button',{name:'Retry opponents'}));
+    expect(await screen.findByRole('button',{name:'Show 1 Chess.com games against Magnus'})).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('1 of 100 games')).toBeTruthy();
+    expect(attempts).toBe(2);
+  });
+
   it('exposes server-side history filters and date sorting in a shareable URL', async () => {
     mount('/review?source=lichess&result=win&time_class=rapid&sort=oldest&analyzed=0');
     await screen.findByText(/40 of 1,000 games/);
@@ -366,9 +438,9 @@ describe('Review library with large histories', () => {
 
   it('restores the bookmark and shows an actionable error after a failed save', async () => {
     let persisted = false;
-    mocks.get.mockImplementation(async () => ({
-      games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1,
-    }));
+    mocks.get.mockImplementation(async (url: string) => url === '/api/games/openings'
+      ? {total: 1, classified: 1, unclassified: 0, openings: [{name:'Italian Game',games:1}]}
+      : {games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1});
     mocks.patch.mockRejectedValueOnce(new Error('offline')).mockImplementationOnce(async () => {
       persisted = true;
       return { ok: true };
@@ -386,9 +458,9 @@ describe('Review library with large histories', () => {
 
   it('does not mutate another account cached games when bookmarking an identical game ID', async () => {
     let persisted = false;
-    mocks.get.mockImplementation(async () => ({
-      games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1,
-    }));
+    mocks.get.mockImplementation(async (url: string) => url === '/api/games/openings'
+      ? {total: 1, classified: 1, unclassified: 0, openings: [{name:'Italian Game',games:1}]}
+      : {games: [{ ...makeGame(1), bookmarked: persisted ? 1 : 0 }], total: 1});
     mocks.patch.mockImplementation(async () => {
       persisted = true;
       return { ok: true };

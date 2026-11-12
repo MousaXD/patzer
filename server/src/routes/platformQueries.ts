@@ -14,6 +14,7 @@ export interface GameListQuery {
   fromDate: string | null;
   toDate: string | null;
   opening: string | null;
+  opponent: string | null;
 }
 
 const SOURCES = new Set(['chesscom', 'lichess', 'played', 'imported', 'pvp']);
@@ -44,7 +45,7 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
   // Duplicated recognized parameters are ambiguous to caches and clients:
   // reject them instead of silently using the first value.
   for (const key of ['limit', 'offset', 'q', 'bookmarked', 'source',
-    'time_class', 'result', 'analyzed', 'sort', 'from_date', 'to_date', 'opening']) {
+    'time_class', 'result', 'analyzed', 'sort', 'from_date', 'to_date', 'opening', 'opponent']) {
     if (params.getAll(key).length > 1) return null;
   }
   const limit = integerParam(params.get('limit'), 50, 200, true);
@@ -59,6 +60,7 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
   const fromDate = dateParam(params.get('from_date'));
   const toDate = dateParam(params.get('to_date'));
   const opening = params.get('opening');
+  const opponent = params.get('opponent');
   if (limit === null || offset === null || q.length > 120 ||
       (bookmarked !== '0' && bookmarked !== '1') ||
       (source !== null && !SOURCES.has(source)) ||
@@ -67,13 +69,15 @@ export function parseGameListQuery(params: URLSearchParams): GameListQuery | nul
       (analyzed !== null && analyzed !== '0' && analyzed !== '1') ||
       (sort !== 'newest' && sort !== 'oldest') ||
       (opening !== null && (!opening.trim() || opening.length > 200)) ||
+      (opponent !== null && (opponent.trim().length < 2 || opponent.length > 40 ||
+        /[\u0000-\u001f\u007f]/.test(opponent) || (source !== 'chesscom' && source !== 'lichess'))) ||
       fromDate === false || toDate === false ||
       (fromDate !== null && toDate !== null && fromDate > toDate)) return null;
 
   return {
     limit, offset, q, bookmarked: bookmarked === '1',
     source, timeClass, result, analyzed: analyzed === null ? null : analyzed === '1', sort,
-    fromDate, toDate, opening,
+    fromDate, toDate, opening, opponent,
   };
 }
 

@@ -109,7 +109,11 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
       'from_date=2026-01-01&from_date=2026-01-03',
       'from_date=9999-12-31', 'to_date=garbage',
       'opening=', 'opening=%20%20', `opening=${'A'.repeat(201)}`,
-      'opening=Italian&opening=French']) {
+      'opening=Italian&opening=French',
+      'opponent=Nepo', 'source=played&opponent=Nepo',
+      'source=chesscom&opponent=', 'source=lichess&opponent=%20',
+      `source=chesscom&opponent=${'a'.repeat(41)}`,
+      'source=chesscom&opponent=Nepo&opponent=Hikaru']) {
       const response = await get('/?' + query);
       expect(response.status, query).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_input' });
@@ -203,6 +207,47 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     }
   });
 
+  it('groups verifiable online opponents by provider and normalized username without mixing account identities', async () => {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    const ownerCookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const add = db.prepare(`INSERT INTO games (user_id, source, external_id, pgn, white, black, user_color, result)
+      VALUES (?, ?, ?, '1. e4 e5 *', ?, ?, ?, 'win')`);
+    const fixtures: Array<[number,string,string,string,string,string|null]> = [
+      [3,'chesscom','agentc-rival-1','Owner','Nepo','white'],
+      [3,'chesscom','agentc-rival-2','nepo ','Owner','black'],
+      [3,'lichess','agentc-rival-3','Owner','Nepo','white'],
+      [3,'chesscom','agentc-rival-4','Owner','Magnus','white'],
+      [3,'chesscom','agentc-rival-5','Owner','Nepo',null],
+      [3,'lichess','agentc-rival-6','','Owner','black'],
+      [3,'pvp','agentc-rival-7','Owner','Nepo','white'],
+      [2,'chesscom','agentc-rival-8','Owner','Nepo','white'],
+    ];
+    const ids: number[] = [];
+    try {
+      for (const row of fixtures) ids.push(Number(add.run(...row).lastInsertRowid));
+      const response = await gamesRoute.request('/opponents', {headers:{Cookie: ownerCookie}});
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        total:6, identified:4, unidentified:2,
+        opponents:[
+          {source:'chesscom', name:'Nepo', games:2},
+          {source:'chesscom', name:'Magnus', games:1},
+          {source:'lichess', name:'Nepo', games:1},
+        ],
+      });
+      const fromChesscom = await gamesRoute.request('/?source=chesscom&opponent=NEPO', {headers:{Cookie:ownerCookie}});
+      expect(fromChesscom.status).toBe(200);
+      expect((await fromChesscom.json() as {total:number;games:{id:number}[]}).games.map(g => g.id).sort())
+        .toEqual(ids.slice(0,2).sort());
+      const fromLichess = await gamesRoute.request('/?source=lichess&opponent=Nepo', {headers:{Cookie:ownerCookie}});
+      expect((await fromLichess.json() as {total:number}).total).toBe(1);
+      expect((await gamesRoute.request('/opponents')).status).toBe(401);
+    } finally {
+      const remove = db.prepare('DELETE FROM games WHERE id = ?');
+      for (const id of ids) remove.run(id);
+    }
+  });
+
   it('never reveals or edits games from another user', async () => {
     expect((await gamesRoute.request('/', auth)).status).toBe(401);
     expect((await get('/1201')).status).toBe(404);
@@ -226,6 +271,9 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     expect(await emptyGames.json()).toMatchObject({
       total: 0, games: [], limit: 50, offset: 0, has_more: false,
     });
+    const opponents = await gamesRoute.request('/opponents', { headers: {Cookie: emptyCookie} });
+    expect(opponents.status).toBe(200);
+    expect(await opponents.json()).toEqual({total: 0, identified: 0, unidentified: 0, opponents: []});
     const emptyInsights = await insightsRoute.request('/', { headers: { Cookie: emptyCookie } });
     expect(emptyInsights.status).toBe(200);
     expect(await emptyInsights.json()).toMatchObject({

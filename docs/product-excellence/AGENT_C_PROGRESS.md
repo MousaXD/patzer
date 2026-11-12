@@ -202,3 +202,27 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next improvement
 
 - Audit library opponent identity semantics (`user_color`, `white`, `black`) and research a compact way to discover frequent opponents without making up results or pushing search far below the fold on mobile. A dedicated, account-scoped query and explicit unknown-identity count may be appropriate.
+
+## 2026-11-12 — Explore frequent opponents without identity collisions
+
+- Recovered clean `fbece9d`. Completed the unfinished opponent-discovery implementation rather than restarting the existing opening/import audits. An initial backend regression correctly failed with HTTP 400 because the endpoint and provider-scoped filter did not exist; new frontend tests also exposed an existing fixture that returned game-list data for the opening summary endpoint.
+- Implemented authenticated, account-scoped `GET /api/games/opponents`: derives opponent display names **only** from `chesscom`/`lichess` records with known `user_color`. Groups by **provider and case-normalized opponent name**, never merges identical usernames across different sites, and reports total, identifiable and missing-name coverage. Explicitly excludes untrusted local PGN free-text names and PvP from this provider-oriented summary. Empty accounts return numeric zeros, not nulls.
+- Added validated `source=chesscom|lichess&opponent=...` to bounded, paginated Game Library queries. Exact, normalized opponent matching prevents accidental results from a similarly named player or note. Source changes clear the old opponent filter to avoid silently reusing an identity across providers.
+- Reused the compact opening-discovery card as **Openings / Opponents** tabs, rather than adding another tall mobile section. Clicking a named opponent opens provider-qualified history and preserves a shareable URL; clearing filters restores the full library. Added independent error/retry states, recognized/unknown coverage, accessible button names and localized UI strings for the five existing languages.
+- Hardened both discovery API consumers against malformed response shapes so an unexpected summary response cannot crash the unaffected game list. Fixed legacy component fixtures to mock each API's actual response shape, retaining bookmark error/retry behavior.
+- Adjusted mobile cards to wrap provider/game-count details rather than truncate. Inspected 320px dark and 1440px light Chromium screenshots; navigation, 31-game Lichess / 15-game Chess.com fixtures with the **same username**, source-change clearing, mobile geometry, import recovery and independent opening retry all passed.
+
+### Verification
+
+- Targeted frontend/backend Hono tests: **64/64 passed**; includes cross-account privacy, exact provider identity, unknown color and empty-account cases.
+- Full `npm test -- --maxWorkers=3`: **108 test files passed, 2 skipped; 1,017 tests passed, 12 skipped**; zero failures.
+- `npm run typecheck`, `npm run build -w web`, `npm run build -w server`, `git diff --check`: **passed**.
+- Isolated Chromium: **1440×900, 390×844, 320×700**, both light and dark, no horizontal overflow; opening/opponent discovery navigation, provider-qualified filtering and restoration, full history pagination, search/date filters, import feedback and independent failure recovery all passed. Test browser uses private local preview with mocked API responses and no live database/provider traffic.
+- Disposable SQLite benchmark of **30,000 owner games plus 2,500 other-user games**, 20 runs of summary + exact opponent count: **~36 ms median, ~42 ms max**, with the existing user-scoped index used. No DB migration/index necessary based on this test.
+- No changes to Game Review internals, other agents' worktrees, main branch, deployed services or production SQLite.
+
+### Next highest-impact candidates
+
+1. Fix the first-use/full-history import gap: the UI is explicitly limited to 200 recent games; the standalone Chess.com historical importer already has archive checkpoints and backups but is not accessible to ordinary Library users. Design and independently verify a safe, opt-in, resumable, cancellable, rate-controlled in-app workflow before implementing it. Do not claim full-history support until it exists and is tested.
+2. Audit empty library and non-linked account onboarding, and PGN imports with duplicate/partial failure handling; preserve original files and authenticated ownership.
+3. Retest large-source opening and opponent lists without guessing results or replacing curated classifications with synthetic data.

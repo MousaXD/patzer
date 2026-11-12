@@ -26,9 +26,13 @@ const profile = {
 };
 const games = Array.from({ length: 620 }, (_, i) => {
   const id = i + 1;
+  // Same visible username on different providers is two distinct identities.
+  const opponent = id % 2
+    ? (id % 21 === 0 ? 'Nepo' : `Opponent ${id}`)
+    : (id % 20 === 0 ? 'Nepo' : `Opponent ${id}`);
   return {
-    id, white: id % 2 ? 'fixtureuser' : `Opponent ${id}`,
-    black: id % 2 ? `Opponent ${id}` : 'fixtureuser',
+    id, white: id % 2 ? 'fixtureuser' : opponent,
+    black: id % 2 ? opponent : 'fixtureuser',
     user_color: id % 2 ? 'white' : 'black',
     result: ['win', 'loss', 'draw'][id % 3], time_control: '600+0',
     time_class: id % 2 ? 'rapid' : 'blitz',
@@ -49,6 +53,8 @@ function list(params) {
     (!params.get('result') || g.result === params.get('result')) &&
     (!params.get('time_class') || g.time_class === params.get('time_class')) &&
     (!params.get('opening') || g.opening_name === params.get('opening')) &&
+    (!params.get('opponent') || (g.user_color === 'white' ? g.black : g.white).toLowerCase()
+      === params.get('opponent').trim().toLowerCase()) &&
     (!params.has('analyzed') || g.analyzed === Number(params.get('analyzed'))) &&
     (!params.get('from_date') || g.end_time.slice(0,10) >= params.get('from_date')) &&
     (!params.get('to_date') || g.end_time.slice(0,10) <= params.get('to_date')) &&
@@ -96,6 +102,10 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
         openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
       };
     }
+    else if (path === '/api/games/opponents') json = {
+      total: 620, identified: 620, unidentified: 0,
+      opponents: [{source:'lichess',name:'Nepo',games:31}, {source:'chesscom',name:'Nepo',games:15}],
+    };
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
       json = list(parsed.searchParams);
@@ -144,6 +154,13 @@ async function verifyViewport(theme, width, height) {
         `Clipped select ${item.aria} on ${width}px ${theme}: ${JSON.stringify(item)}`);
     }
     await page.screenshot({path:join(output,`library-${theme}-${width}.png`),fullPage: width <= 390});
+    await page.getByRole('button', {name:'Opponents'}).click();
+    await page.getByRole('button', {name:'Show 31 Lichess games against Nepo'}).waitFor();
+    const rivalLayout = await metrics(page);
+    assert.ok(rivalLayout.overflow <= 2, `Opponent cards overflow at ${width}px ${theme}`);
+    await page.screenshot({path:join(output,`library-opponents-${theme}-${width}.png`)});
+    await page.getByRole('button', {name:'Openings'}).click();
+    await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
     if (width <= 390) {
       await page.screenshot({path:join(output,`library-${theme}-${width}-viewport.png`)});
       for (const label of ['Bookmark game','Remove bookmark']) {
@@ -208,6 +225,28 @@ try {
     `Filter changes did not reach the paginated API: url=${page.url()} recent=${JSON.stringify(queries.slice(-6))}`);
     await page.getByRole('button', {name:'Clear filters'}).click();
     await page.getByText('40 of 620 games').waitFor();
+    // Provider-qualified encounter discovery must not mix identical names on
+    // Chess.com and Lichess, and switching sources clears the scoped filter.
+    await page.getByRole('button', {name:'Opponents'}).click();
+    await page.getByRole('button', {name:'Show 31 Lichess games against Nepo'}).click();
+    await page.getByText('31 of 31 games').waitFor();
+    const lichessRivalParams = new URL(page.url()).searchParams;
+    assert.equal(lichessRivalParams.get('source'), 'lichess');
+    assert.equal(lichessRivalParams.get('opponent'), 'Nepo');
+    assert.ok(queries.some(q => {
+      const p=new URLSearchParams(q);
+      return p.get('source') === 'lichess' && p.get('opponent') === 'Nepo';
+    }), 'Provider-qualified opponent filter did not reach the API');
+    await page.getByRole('combobox', {name:'Game source'}).selectOption('chesscom');
+    await page.getByText('40 of 310 games').waitFor();
+    assert.equal(new URL(page.url()).searchParams.has('opponent'), false,
+      'Provider change must clear the previously selected opponent');
+    await page.getByRole('button', {name:'Show 15 Chess.com games against Nepo'}).click();
+    await page.getByText('15 of 15 games').waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('source'), 'chesscom');
+    await page.getByRole('button', {name:'Clear filters'}).click();
+    await page.getByText('40 of 620 games').waitFor();
+    await page.getByRole('button', {name:'Openings'}).click();
     await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).click();
     await page.getByText('40 of 310 games').waitFor();
     const exactOpening = new URL(page.url()).searchParams;
