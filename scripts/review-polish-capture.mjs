@@ -614,16 +614,24 @@ try {
     body:{language:'es',site_theme:'dark'}});
   assert.equal(notesLocale.status,200);
   const notesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseOldNote=()=>{};
+  let releaseNewNote=()=>{};
   try{
     await notesContext.addCookies([{name:account.cookie.split('=')[0],
       value:account.cookie.split('=').slice(1).join('='),url:base}]);
     const page=await notesContext.newPage();
     const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
     let noteAttempts=0;
+    const heldOldNote=new Promise(resolve=>{releaseOldNote=resolve;});
+    const heldNewNote=new Promise(resolve=>{releaseNewNote=resolve;});
     await page.route(`**/api/games/${id}/notes`,async route=>{
       noteAttempts++;
       if(noteAttempts===1)await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
-      else await route.continue();
+      else {
+        if(noteAttempts===3)await heldOldNote;
+        if(noteAttempts===4)await heldNewNote;
+        await route.continue();
+      }
     });
     await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
     const notesButton=page.getByRole('button',{name:spanishNotes.review.notes,exact:true});
@@ -648,8 +656,39 @@ try {
     assert.equal(noteAttempts,2,'Notes retry must send exactly one new PATCH');
     assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,
       'Nota de ensayo: revisar la partida','Successful retry must persist the unchanged draft');
+    // Two fast blur saves share a serialized mutation scope. If an older
+    // response succeeds while the newer draft waits, the visible status must
+    // still say Saving, never claim the stale text is the final saved note.
+    const olderDraft='Nota intermedia: revisar el medio juego';
+    const latestDraft='Nota final: revisar el final de partida';
+    const oldRequest=page.waitForRequest(request=>request.url().endsWith(`/api/games/${id}/notes`)
+      && request.postDataJSON().notes===olderDraft);
+    await editor.fill(olderDraft);
+    await editor.press('Tab');
+    await oldRequest;
+    await editor.fill(latestDraft);
+    await editor.press('Tab');
+    assert.equal(await editor.inputValue(),latestDraft,'Newer notes must remain editable while an older PATCH is pending');
+    const newerRequest=page.waitForRequest(request=>request.url().endsWith(`/api/games/${id}/notes`)
+      && request.postDataJSON().notes===latestDraft);
+    releaseOldNote();
+    await newerRequest;
+    await page.getByText(spanishNotes.common.saving,{exact:true}).waitFor({state:'visible',timeout:3000});
+    assert.equal(await page.getByText(spanishNotes.common.saved,{exact:true}).count(),0,
+      'The older successful note PATCH must not announce Saved while a newer draft is pending');
+    assert.equal(await editor.inputValue(),latestDraft,'An older success must not replace the newer unsaved draft');
+    const latestResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===latestDraft);
+    releaseNewNote();
+    await latestResponse;
+    await page.getByText(spanishNotes.common.saved,{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(noteAttempts,4,'Exactly two queued saves must follow the original failure and retry');
+    assert.equal(await editor.inputValue(),latestDraft);
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,latestDraft,
+      'The latest typed note must be the final persisted value');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{
+    releaseOldNote();releaseNewNote();
     await notesContext.close();
     const restored=await api('/api/settings/profile',{method:'PATCH',cookie:account.cookie,
       body:{language:'en',site_theme:'dark'}});

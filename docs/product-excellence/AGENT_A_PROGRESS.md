@@ -1309,3 +1309,22 @@
 ### Next independent product audit
 
 - Inspect whether **user notes** silently lose focus or display premature "Saved" while two rapid blur/save PATCHes are queued. Existing mutations are serialized, but a previous successful request can still set the Saved indicator while a newer draft is pending. Verify with deliberate delayed responses in the disposable notes scenario before changing status semantics or persisting real user data.
+
+## 2026-11-12: two queued note saves preserve the latest draft and localized pending status
+
+### Recovery, source-backed browser audit and confirmed localization issue
+
+- Continued from clean pushed `038410a` with only the unfinished Notes audit. Extended the established **Spanish** authenticated, disposable notes-failure/retry browser fixture: after the original first-save 503 and successful Retry, a third PATCH with an older draft is deliberately held, then a newer draft is typed and blurred while the older PATCH remains pending. Once the older request is released, the fourth, newer PATCH remains held. The test asserts the actual textarea still contains the latest draft, the visible status reads **Guardando…** rather than **Guardado**, and the original PGN is untouched. Only after releasing the fourth request may the final Saved status appear; backend final notes must equal the newest draft and there must be exactly four PATCH attempts.
+- First test attempt revealed an **actual locale gap**: Notes used `t('common.saving')`, but none of the five language JSON resources defined that key. The test could not resolve `spanishNotes.common.saving`. Added distinct, correct `common.saving` translations to English, German, Spanish, Russian and Bulgarian, plus review locale parity assertions. This is a visible user-facing fix, not a change to persisted notes or save sequencing.
+- The final browser matrix passed with both delayed responses, correct latest-draft persistence, no stale Saved indication, and no accidental overwrite. The existing `scope: {id: review-notes:<game>}` sequencing and current `saveNotes.isPending` semantics are correct, so **no change to mutation logic** was justified. Delayed requests and note strings are entirely disposable synthetic test data.
+
+### Verification and boundaries
+
+- Focused locale suite: **51 passed**. `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive, source, locale, keyboard, variations and PGN matrix: **PASS (exit 0)** on port 8974.
+- No merge, production database/service, deployment, or other-agent branch/worktree edits.
+
+### Next independent Game Review accessibility audit
+
+- Notes' **transient failed-save Retry** button unmounts after success, similarly to the already-fixed bookmark Retry. Audit keyboard Enter on it and verify focus recovers to the persistent Notes editor or Notes disclosure after success. Fix only if demonstrated in a real browser; preserve the existing draft and save-retry behavior.
