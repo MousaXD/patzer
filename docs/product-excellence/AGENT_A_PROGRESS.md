@@ -1019,3 +1019,26 @@
 ### Next high-value Game Review truthfulness audit
 
 - `formatReviewEngineLineScore` displays a bare `#` or `-#` from **centipawn-only** scores above magnitude 9000, even when the verified engine candidate has `mate:null`. The source adapters emit raw centipawns (not saved-report mate proxies). Reproduce with extreme-cp/no-mate evidence, then remove unsupported mate notation while keeping explicit, integer mate distances exact and preserving White-perspective scoring.
+
+## 2026-11-12: do not fabricate checkmate from raw extreme cp scores
+
+### Real source-convention review and failing regression
+
+- Resumed from clean pushed `26d79a3` without revisiting prior keyboard or source-rank investigations. Inspected the local Stockfish UCI adapter (`score cp` or `score mate`) and the hosted engine adapter (`cp` cleared when a mate score is present). Both return **raw side-to-move centipawns** in live position candidates, distinct from stored full-game synthetic mate-cp proxies.
+- `formatReviewEngineLineScore` nevertheless turned any `cp >= 9000` into a bare `#` and `cp <= -9000` into `-#` even when `mate:null`. This falsely asserted a proved mating outcome from a high numeric advantage. A new focused regression for `cp:9500,mate:null` **failed before the change**, receiving `#` instead of `+95.00`.
+
+### Minimal correction and actual browser evidence
+
+- Removed only the two raw-cp-to-mate thresholds from the Game Review live-line score formatter. Numeric cp, including extreme positive/negative scores, stays numeric and is normalized to White perspective; a verified, nonzero integer mate value still takes precedence and displays exact `#N` or `-#N`. Other pending/unscored and mate-zero guards remain intact. No engine adapter, score computation, saved analysis or backend source contract changed.
+- Reused the authenticated malformed-rank browser fixture: first response still rejects contradictory duplicate-best MultiPV ranks; Retry returns source-matched legal `e4` and `d4` lines with **synthetic** `(cp:+9500,mate:null)` and `(cp:-9500,mate:null)`. Chromium verifies the exact `+95.00` / `−95.00` display, linked accessible score description, retry action and unchanged source PGN. Independently inspected `qa-artifacts/agent-a/engine-line-extreme-cp-20261112/engine-line-extreme-cp-no-mate-390.png`: both live scores legible without checkmate claims at 390px dark mode.
+
+### Verification
+
+- `git diff --check`: PASS; focused position/score unit tests: **14 passed**; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1002 passed / 12 skipped**, 110 passing test files.
+- Complete disposable authenticated Chromium viewport/theme, five-language, source-identity, variation, keyboard and saved-PGN matrix: **PASS (exit 0)** on port 8945. Injected extreme scores are UI adversarial fixtures, not claims about real Stockfish accuracy.
+- No merge, deploy, production database/service, or edits outside Agent A's worktree.
+
+### Next independent review audit
+
+- The position-line verifier accepts a response where **both** `cp` and nonzero `mate` are supplied on the same candidate, even if their winning-side signs contradict each other. The supported adapters emit a single authoritative score type. Audit whether this can result in a materially false visible mate claim; if reproducible, reject inconsistent score evidence without inventing another best move. Preserve verified legal continuations whenever safe.

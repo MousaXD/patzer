@@ -15,8 +15,9 @@ export function formatReviewEngineLineScore({ cp, mate }: {
   }
   if (cp === null || !Number.isFinite(cp)) return '—';
   const whiteCp = cp * signToWhite;
-  if (whiteCp >= 9000) return '#';
-  if (whiteCp <= -9000) return '-#';
+  // These are *raw* centipawns, not the synthetic mate proxies found in
+  // stored full-game reports. An extreme numeric advantage is not proof of a
+  // mating sequence; only a verified nonzero mate score may display #N.
   const sign = whiteCp > 0 ? '+' : whiteCp < 0 ? '−' : '';
   return `${sign}${(Math.abs(whiteCp) / 100).toFixed(2)}`;
 }

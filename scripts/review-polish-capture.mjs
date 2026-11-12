@@ -1097,9 +1097,14 @@ try {
       assert.equal(route.request().postDataJSON().fen,initialFen);
       requests++;
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
-        fen:initialFen,depth:18,lines:[
+        fen:initialFen,depth:18,lines:requests===1 ? [
           {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:55,mate:null,multipv:1},
           {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:70,mate:null,multipv:1},
+        ] : [
+          // These are extreme *centipawn* scores without verified mate. Do
+          // not fabricate a checkmate marker from the number's magnitude.
+          {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:9500,mate:null,multipv:1},
+          {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:-9500,mate:null,multipv:2},
         ],
       })});
     });
@@ -1113,6 +1118,19 @@ try {
     await retry.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-lines-duplicate-rank-rejected-390.png')});
     assert.equal(requests,1);
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelectorAll('#review-engine-lines-content [data-review-engine-line-score]').length===2,
+      undefined,{timeout:5000});
+    const extremeScores=await page.locator('#review-engine-lines-content [data-review-engine-line-score]').allTextContents();
+    assert.deepEqual(extremeScores.map(score=>score.trim()),['+95.00','−95.00'],
+      'Centipawn-only extreme scores must retain their numeric evidence, not imply a proven checkmate');
+    const firstExtreme=page.getByRole('button',{name:'Follow played move e4'});
+    assert.ok((await firstExtreme.getAttribute('aria-describedby'))?.includes('review-engine-line-score-0'),
+      'Screen readers should receive the same source-backed numeric score');
+    await firstExtreme.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-line-extreme-cp-no-mate-390.png')});
+    assert.equal(requests,2);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalRankPgn);
   }finally{await duplicateRankContext.close();}
   // Stockfish and the hosted adapter both return live MultiPV scores from

@@ -28,4 +28,13 @@ describe('Game Review live engine-line score presentation', () => {
     expect(formatReviewEngineLineScore({ cp: null, mate: -1 }, 'b')).toBe('#1');
     expect(formatReviewEngineLineScore({ cp: null, mate: 0 }, 'b')).toBe('—');
   });
+
+  it('never invents a checkmate verdict from an extreme centipawn-only evaluation', () => {
+    expect(formatReviewEngineLineScore({ cp: 9500, mate: null })).toBe('+95.00');
+    expect(formatReviewEngineLineScore({ cp: -9500, mate: null })).toBe('−95.00');
+    expect(formatReviewEngineLineScore({ cp: 9500, mate: null }, 'b')).toBe('−95.00');
+    expect(formatReviewEngineLineScore({ cp: -9500, mate: null }, 'b')).toBe('+95.00');
+    // Explicit source-backed mate scores still take precedence over cp.
+    expect(formatReviewEngineLineScore({ cp: 9500, mate: -2 })).toBe('-#2');
+  });
 });
