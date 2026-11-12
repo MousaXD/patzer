@@ -107,7 +107,7 @@ async function awaitUp() {
 }
 
 async function newPage(theme, width, height,
-  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
+  {failOpeningsOnce = false, failOpponentsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false, pendingStarResult = null,
     lastPageScenario = false, intermediatePageScenario = false,
     hideFailedBookmarkAfterRefresh = false, concurrentBookmarkFailures = false,
@@ -120,6 +120,7 @@ async function newPage(theme, width, height,
   const page = await context.newPage();
   const pageErrors = [];
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
+  let opponentFailuresRemaining = failOpponentsOnce ? 1 : 0;
   let hasPgnImports = false;
   let latestGameInserted = false;
   let longPlayerBookmarked = false;
@@ -168,10 +169,16 @@ async function newPage(theme, width, height,
         openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
       };
     }
-    else if (path === '/api/games/opponents') json = {
-      total: 620, identified: 620, unidentified: 0,
-      opponents: [{source:'lichess',name:'Nepo',games:31}, {source:'chesscom',name:'Nepo',games:15}],
-    };
+    else if (path === '/api/games/opponents') {
+      if (opponentFailuresRemaining > 0) {
+        opponentFailuresRemaining--;
+        status=503;
+        json={error:'synthetic_opponent_summary_failure'};
+      } else json = {
+        total: 620, identified: 620, unidentified: 0,
+        opponents: [{source:'lichess',name:'Nepo',games:31}, {source:'chesscom',name:'Nepo',games:15}],
+      };
+    }
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
       if (longPlayerNames) json = {games:[{
@@ -384,6 +391,14 @@ async function verifyViewport(theme, width, height) {
         `Opening label overflows the mobile card: ${JSON.stringify(openingRect)}`);
     }
     await page.screenshot({path:join(output,`library-${theme}-${width}.png`),fullPage: width <= 390});
+    if (width<=390) {
+      const exploreGroup=page.getByRole('group',{name:'Explore saved games by'});
+      for (const mode of ['Openings','Opponents']) {
+        const rect=await exploreGroup.getByRole('button',{name:mode}).boundingBox();
+        assert.ok(rect && rect.width>=44 && rect.height>=44 && rect.x>=0 && rect.x+rect.width<=width+2,
+          `Exploration ${mode} toggle must have a 44px mobile target: ${JSON.stringify(rect)}`);
+      }
+    }
     await page.getByRole('button', {name:'Opponents'}).click();
     await page.getByRole('button', {name:'Show 31 Lichess games against Nepo'}).waitFor();
     const rivalLayout = await metrics(page);
@@ -942,13 +957,33 @@ try {
     await page.getByRole('alert').getByText(/Opening highlights could not be loaded/).waitFor();
     await page.getByText('40 of 620 games').waitFor();
     await page.screenshot({path:join(output,'library-opening-retry-390.png')});
-    await page.getByRole('button', {name:'Retry opening highlights'}).click();
+    const retryOpenings=page.getByRole('button',{name:'Retry opening highlights'});
+    const retryOpeningsRect=await retryOpenings.boundingBox();
+    assert.ok(retryOpeningsRect && retryOpeningsRect.height>=44,
+      `Opening discovery retry must have a 44px touch target: ${JSON.stringify(retryOpeningsRect)}`);
+    await retryOpenings.click();
     await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
     assert.equal(await page.getByRole('alert').count(),0,
       'Opening discovery error should disappear after a successful retry');
     assert.deepEqual(pageErrors,[], 'Opening summary retry produced a browser error');
     console.log('PASS partial opening summary failure with independent retry');
   } finally { await errorFixture.context.close(); }
+
+  const opponentError=await newPage('dark',390,844,{failOpponentsOnce:true});
+  try {
+    const {page,pageErrors}=opponentError;
+    await page.getByRole('button',{name:'Opponents'}).click();
+    await page.getByRole('alert').getByText(/frequent opponents could not be loaded/).waitFor();
+    const retry=page.getByRole('button',{name:'Retry opponents'});
+    const rect=await retry.boundingBox();
+    assert.ok(rect && rect.height>=44 && rect.x>=0 && rect.x+rect.width<=392,
+      `Opponent discovery retry must have a 44px touch target: ${JSON.stringify(rect)}`);
+    await retry.click();
+    await page.getByRole('button',{name:'Show 31 Lichess games against Nepo'}).waitFor();
+    assert.equal(await page.getByRole('alert').count(),0);
+    assert.deepEqual(pageErrors,[],'Opponent discovery recovery caused a JS exception');
+    console.log('PASS opponent discovery error has a touch-safe independent retry');
+  } finally {await opponentError.context.close();}
 
   const pgnFixture = await newPage('dark', 390, 844);
   try {

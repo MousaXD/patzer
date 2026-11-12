@@ -666,7 +666,7 @@ export default function Review() {
               defaultValue: 'Opening highlights could not be loaded. Your saved games are still available.',
             })}
           </p>
-          <button type="button" className="btn-secondary min-h-10 text-sm"
+          <button type="button" className="btn-secondary min-h-11 text-sm"
             disabled={openingSummaryFetching} onClick={() => void retryOpeningSummary()}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             {t('review.libraryRetryOpenings', {defaultValue: 'Retry opening highlights'})}
@@ -682,10 +682,10 @@ export default function Review() {
               {t('review.libraryExplore', {defaultValue: 'Explore your game history'})}
             </h2>
             <div role="group" aria-label={t('review.libraryExploreBy', {defaultValue: 'Explore saved games by'})}
-              className="inline-flex flex-wrap gap-1 rounded-lg border border-chesscom-200 p-1 dark:border-chesscom-700">
+              className="flex w-full gap-1 rounded-lg border border-chesscom-200 p-0.5 dark:border-chesscom-700 sm:inline-flex sm:w-auto sm:p-1">
               {(['openings', 'opponents'] as ExploreMode[]).map((mode) => (
                 <button type="button" key={mode} aria-pressed={exploreMode === mode}
-                  className={cn('min-h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
+                  className={cn('min-h-11 min-w-0 flex-1 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:flex-none',
                     exploreMode === mode ? 'bg-chesscom-100 text-chesscom-900 dark:bg-chesscom-700 dark:text-chesscom-100'
                       : 'text-chesscom-500 hover:bg-chesscom-50 dark:text-chesscom-300 dark:hover:bg-chesscom-800')}
                   onClick={() => setExploreMode(mode)}>
@@ -742,7 +742,7 @@ export default function Review() {
               <span>{t('review.libraryOpponentsLoadError', {
                 defaultValue: 'Your frequent opponents could not be loaded. Your saved games are still available.',
               })}</span>
-              <button type="button" className="btn-secondary min-h-10 text-xs"
+              <button type="button" className="btn-secondary min-h-11 text-xs"
                 disabled={opponentSummaryFetching} onClick={() => void retryOpponentSummary()}>
                 <RefreshCw className="h-4 w-4" aria-hidden="true" />
                 {t('review.libraryRetryOpponents', {defaultValue: 'Retry opponents'})}

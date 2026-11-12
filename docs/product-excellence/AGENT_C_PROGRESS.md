@@ -1163,3 +1163,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Revisit **Library exploration discoverability** with fresh desktop and 390px screenshots: prioritize a genuine, visible improvement to opening/opponent discovery and meaningful navigation over more low-impact regression-only work. Use the already-tested opening/opponent summaries and URL handoffs; avoid inventing chess insights, adding global navigation, or editing the other agents' Game Review code.
+
+## 2026-11-13 — Make mobile opening/opponent exploration easier to operate
+
+- Recovered clean pushed `63d51a3` and re-inspected desktop/light and 390px dark/mobile screenshots. The **Openings / Opponents** switch was only **32px high** in real Chromium (below the 44px mobile touch target used elsewhere); independent opening/opponent Retry buttons declared only a 40px minimum. Added a failing Chromium geometry check before editing the UI. The 390px opening switch measured **81×32px**.
+- Changed the Library-only discovery mode switch to two full-width, evenly spaced segments on narrow phones, each at least 44px tall with readable 14px labels. Desktop retains the compact two-option group. Raised both discovery error Retry controls to a 44px minimum without changing query behavior, recognized opening metadata, provider-qualified opponent counts or URL navigation.
+- Expanded the synthetic browser fixture with an independent **opponent-summary HTTP 503 → Retry → recovered opponent list** journey in dark mode; previous opening-summary failure/retry remains. Chromium verified both retry target heights and the two discovery mode targets at 320px and 390px in light/dark, with zero horizontal overflow. Visually inspected refreshed `qa-artifacts/agent-c-library/library-light-390-viewport.png` and `library-opponents-dark-390.png`; the segmented controls are substantially easier to identify and touch.
+- An initial repository-wide test run found a timing-sensitive *existing account-switch test*: it asserted the new account's bookmark button synchronously before its account-scoped query had finished. The focused run had passed. Updated the test to await the new account's rendered button rather than change runtime behavior; the focused and full reruns passed.
+
+### Verification
+
+- Focused Library React suite: **59/59 passed**. Full repository suite after correcting the timing-sensitive test: **109 passed files, 2 skipped; 1,137 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Complete synthetic Chromium desktop 1440px and mobile 390/320px, both themes, discovery tap targets, independent opening/opponent recovery, keyboard paging, imports, search, bookmarks and filters: passed without browser exceptions or overflow.
+- Changes confined to Agent C Library UI, scoped React/browser regressions and durable report. No other agent's code, production provider/DB, main, merge or deployment touched.
+
+### Next independent audit
+
+- Examine **first-fold information density on narrow phones**. The game list begins below much of the 390px viewport because all advanced filters are expanded, even for a player who just wants to browse games. Consider an accessible, non-disruptive mobile-only filters disclosure with a visible active-filter count and automatic deep-link discoverability, while keeping desktop controls fully visible and preserving source/date/search URL state. Validate against all prior browser journeys before accepting any layout change.

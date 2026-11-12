@@ -1040,7 +1040,10 @@ describe('Review library with large histories', () => {
     await act(async()=>failSaves[1]!(new Error('second_old_save_failed')));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByRole('link',{name:'Open game to retry'})).toBeNull();
-    expect(screen.getByRole('button',{name:'Remove bookmark'}).getAttribute('aria-pressed')).toBe('true');
+    // The account-scoped query may still be loading after the old mutation
+    // settles; assert the new account's bookmark once its card has rendered.
+    const newAccountStar=await screen.findByRole('button',{name:'Remove bookmark'},undefined,{timeout:5000});
+    expect(newAccountStar.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('refreshes the importing account history, insights, plan and achievements without touching another account', async () => {
