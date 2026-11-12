@@ -376,7 +376,13 @@ function GameAnalyzerView() {
   const branchMove = isVariation ? variations.playedVariationMoves.at(-1) : undefined;
   const qualityKey = branchMove ? reviewVariationScoringKey(gameId, branchMove) : null;
   const [qualityCache, setQualityCache] = useState<Record<string, VariationMoveQuality>>({});
-  const [qualityError, setQualityError] = useState('');
+  // A failed branch must not contaminate another branch whose source-matched
+  // score is already cached. The effect below is skipped on cache hits, so a
+  // global error string would otherwise survive every branch switch.
+  const [qualityFailure, setQualityFailure] = useState<{
+    key: string; reason: 'source_mismatch' | 'engine_unavailable';
+  } | null>(null);
+  const qualityError = qualityKey && qualityFailure?.key === qualityKey ? qualityFailure.reason : '';
   const [qualityRetry, setQualityRetry] = useState(0);
   const variationQuality = qualityKey && qualityMatchesVariationMove(qualityCache[qualityKey], branchMove)
     ? qualityCache[qualityKey] : null;
@@ -410,7 +416,7 @@ function GameAnalyzerView() {
     const controller = new AbortController();
     let cancelled = false;
     let retry: number | undefined;
-    setQualityError('');
+    setQualityFailure(null);
     const evaluate = async (attempt: number) => {
       try {
         const result = await postReviewAnalysis<{quality: VariationMoveQuality}>(
@@ -420,7 +426,7 @@ function GameAnalyzerView() {
           if (qualityMatchesVariationMove(result.quality, branchMove)) {
             setQualityCache((previous) => ({ ...previous, [qualityKey]: result.quality }));
           } else {
-            setQualityError('source_mismatch');
+            setQualityFailure({ key: qualityKey, reason: 'source_mismatch' });
           }
         }
       } catch (e) {
@@ -429,7 +435,7 @@ function GameAnalyzerView() {
         if (status === 429 && attempt === 0) {
           retry = window.setTimeout(() => void evaluate(1), 1100);
         } else {
-          setQualityError('engine_unavailable');
+          setQualityFailure({ key: qualityKey, reason: 'engine_unavailable' });
         }
       }
     };
@@ -439,7 +445,7 @@ function GameAnalyzerView() {
   // just because the controller produces a new view object on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qualityKey, variations.currentFen, qualityRetry, practicePicker, practicePly]);
-  useEffect(() => { setQualityCache({}); setQualityError(''); }, [gameId]);
+  useEffect(() => { setQualityCache({}); setQualityFailure(null); }, [gameId]);
 
   const onAnalysisMove = (uci: string) => {
     const move = legalAnalysisMove(variations.currentFen, uci);
@@ -875,6 +881,21 @@ function GameAnalyzerView() {
               {currentEvalCp === null ? (isVariation && branchMove && !qualityError ? t('review.variationAnalyzing') : '—') : fmtCp(currentEvalCp)}
             </div>
           </div>
+          {/* Scoring feedback belongs beside the move it describes, not below
+              the lengthy variation selector. On phones the previous warning
+              was entirely below the viewport while the board showed '—'. */}
+          {isVariation && qualityError && (
+            <div data-review-variation-scoring-feedback role="status"
+              className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+              <span className="min-w-0 flex-1">
+                {t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}
+              </span>
+              <button type="button" className="min-h-11 shrink-0 rounded border border-amber-500/50 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
+                onClick={() => { setQualityFailure(null); setQualityRetry((previous) => previous + 1); }}>
+                {t('review.variationRetryScoring')}
+              </button>
+            </div>
+          )}
           <div className="mt-3 flex select-none items-center justify-center gap-1.5 sm:gap-2" data-move-transport aria-label={t('review.moveNavigation')}>
             <button type="button" onClick={first} disabled={isVariation ? variations.variationCursor === 0 : ply === 0} aria-label={t('review.first')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.first')}><ChevronsLeft className="h-5 w-5" /></button>
             <button type="button" onClick={backward} disabled={!isVariation && ply === 0} aria-label={t('review.prev')} className="btn-secondary h-10 w-10 p-0 sm:h-12 sm:w-12" title={t('review.prev')}><ChevronLeft className="h-5 w-5" /></button>
@@ -929,13 +950,8 @@ function GameAnalyzerView() {
                 </button>
               ))}
             </div>}
-            {isVariation && <div role="status" className="mt-2 text-sm">
+            {isVariation && <div className="mt-2 text-sm">
               <span className="font-mono text-xs text-chesscom-500 dark:text-chesscom-300">{variations.playedVariationMoves.map((m) => m.san).join(' ') || t('review.variationBranchPoint')}</span>
-              {qualityError && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
-                <span>{t(qualityError === 'source_mismatch' ? 'review.variationSourceMismatch' : 'review.variationEngineUnavailable')}</span>
-                <button type="button" className="min-h-11 rounded border border-amber-500/40 px-3 py-2 font-semibold hover:bg-amber-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500"
-                  onClick={() => setQualityRetry((previous) => previous + 1)}>{t('review.variationRetryScoring')}</button>
-              </div>}
             </div>}
             {variations.error && <p role="alert" className="mt-2 text-xs text-red-600">{variations.error}</p>}
           </section>

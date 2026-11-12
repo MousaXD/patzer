@@ -652,6 +652,75 @@ try {
     await page.screenshot({path:join(output,'matched-variation-score-after-retry-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await mismatchedContext.close();}
+  // A scoring failure belongs to a specific exploratory move. An error from
+  // d4 must never follow the user to an already scored c4 branch when the
+  // browser reselects it from cache (no new engine request is sent there).
+  const branchErrorContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await branchErrorContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await branchErrorContext.newPage();
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const chess=new Chess();
+    const fenBefore=chess.fen();
+    assert.ok(chess.move('c4'));
+    const c4Quality={source:'variation',scoring_version:1,
+      fen_before:fenBefore,fen_after:chess.fen(),ply:1,san:'c4',uci:'c2c4',from:'c2',to:'c4',
+      classification:'best',centipawn_loss:0,win_pct_drop:0,eval_before_cp:0,eval_after_cp:24,
+      mate_before:null,mate_after:null,best_move_uci:'c2c4',best_move_san:'c4',best_pv:[],
+      is_best:true,legal_move_count:20,depth_before:12,depth_after:12,candidate_count:20,terminal:null};
+    const requests=[];
+    await page.route('**/api/analyze/variation-move',async route=>{
+      const request=route.request().postDataJSON();
+      requests.push(request.move_uci);
+      if(request.move_uci==='c2c4'){
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({quality:c4Quality})});
+      }else{
+        assert.equal(request.move_uci,'d2d4');
+        await route.fulfill({status:503,contentType:'application/json',body:'{"error":"engine_unavailable"}'});
+      }
+    });
+    await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
+    await page.locator('cg-board').waitFor({state:'visible'});
+    const drag=async file=>{
+      const board=await page.locator('cg-board').boundingBox();
+      assert.ok(board);
+      await page.mouse.move(board.x+board.width*(file+.5)/8,board.y+board.height*6.5/8);
+      await page.mouse.down();
+      await page.mouse.move(board.x+board.width*(file+.5)/8,board.y+board.height*4.5/8,{steps:12});
+      await page.mouse.up();
+    };
+    const failure=page.getByText(locale.review.variationEngineUnavailable,{exact:true});
+    await drag(3); // d2-d4, deliberate Stockfish outage
+    await failure.waitFor({state:'visible'});
+    const feedback=page.locator('[data-review-variation-scoring-feedback]');
+    await feedback.waitFor({state:'visible'});
+    const feedbackRect=await feedback.boundingBox();
+    assert.ok(feedbackRect && feedbackRect.y>=0 && feedbackRect.y+Math.min(feedbackRect.height,44)<=844,
+      `The active move's scoring error must be discoverable above the fold: ${JSON.stringify(feedbackRect)}`);
+    const retryRect=await page.getByRole('button',{name:locale.review.variationRetryScoring}).boundingBox();
+    assert.ok(retryRect && retryRect.height>=44 && retryRect.width>=44,
+      `The immediate mobile scoring retry must be comfortably actionable: ${JSON.stringify(retryRect)}`);
+    await page.screenshot({path:join(output,'variation-scoring-failure-visible-390.png')});
+    await page.getByRole('button',{name:locale.review.variationReturn}).click();
+    await drag(2); // c2-c4, engine returns source-matched score
+    await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true}).waitFor({state:'visible'});
+    await failure.waitFor({state:'hidden'});
+    const branchButton=index=>page.getByRole('button',{name:locale.review.variationOption
+      .replace('{{number}}',String(index)).replace('{{moves}}','1')});
+    await branchButton(1).click();
+    await failure.waitFor({state:'visible'});
+    const requestCount=requests.length;
+    await branchButton(2).click();
+    await page.locator('[data-review-variation-quality]').getByText(locale.classification.best,{exact:true}).waitFor({state:'visible'});
+    await page.screenshot({path:join(output,'variation-cross-branch-error-390.png')});
+    assert.equal(requests.length,requestCount,'Reopening a scored branch should not request the engine again');
+    assert.equal(await failure.count(),0,
+      'An unscored d4 error must not be shown alongside the cached, source-matched c4 score');
+    assert.equal(await feedback.count(),0,'A cached, validated move must not display another branch scoring error');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await branchErrorContext.close();}
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
   for(const [width,height] of [[320,760],[390,844],[1024,768]]){
