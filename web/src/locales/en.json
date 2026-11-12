@@ -393,6 +393,9 @@
     "loadMore": "Load more games",
     "moreFailed": "Could not load more games. Your loaded games are still available.",
     "retryMore": "Retry",
+    "notAnalyzed": "Not reviewed yet",
+    "analysisReady": "Analysis available",
+    "bookmarkFailed": "Bookmark could not be saved. Try again.",
     "libraryFilterOptions": {
       "source": {
         "all": "All sources", "chesscom": "Chess.com", "lichess": "Lichess",

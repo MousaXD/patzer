@@ -388,6 +388,9 @@
     "loadMore": "Cargar más partidas",
     "moreFailed": "No se pudieron cargar más partidas. Las partidas ya cargadas siguen disponibles.",
     "retryMore": "Reintentar",
+    "notAnalyzed": "Aún sin analizar",
+    "analysisReady": "Análisis disponible",
+    "bookmarkFailed": "No se pudo guardar el marcador. Inténtalo de nuevo.",
     "libraryFilterOptions": {
       "source": {
         "all": "Todos los orígenes", "chesscom": "Chess.com", "lichess": "Lichess",

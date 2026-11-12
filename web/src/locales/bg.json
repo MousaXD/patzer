@@ -384,6 +384,9 @@
     "loadMore": "Зареди още партии",
     "moreFailed": "Неуспешно зареждане на още партии. Вече заредените партии остават достъпни.",
     "retryMore": "Опитай отново",
+    "notAnalyzed": "Все още не е анализирана",
+    "analysisReady": "Наличен анализ",
+    "bookmarkFailed": "Неуспешно запазване на отметката. Опитайте отново.",
     "libraryFilterOptions": {
       "source": {
         "all": "Всички източници", "chesscom": "Chess.com", "lichess": "Lichess",

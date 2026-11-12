@@ -399,6 +399,15 @@ try {
     console.log('PASS German desktop game-card Review action is translated');
   } finally {await germanDesktop.context.close();}
 
+  const germanMobileStatus=await newPage('dark',390,844,{locale:'de'});
+  try {
+    const {page,pageErrors}=germanMobileStatus;
+    await page.getByText('Noch nicht analysiert',{exact:true}).first().waitFor();
+    await page.screenshot({path:join(output,'library-german-status-dark-390.png')});
+    assert.deepEqual(pageErrors,[],'Localized mobile analysis status caused a JS exception');
+    console.log('PASS German mobile Library shows an explicit translated unanalyzed state');
+  } finally {await germanMobileStatus.context.close();}
+
   const timezoneBoundary=await newPage('light',390,844,{
     locale:'de',timeZone:'Asia/Dubai',dateBoundary:true,
   });
@@ -638,6 +647,7 @@ try {
     const {page,pageErrors}=practiceUnknown;
     const card=page.locator('a[href="/review/9001"]');
     assert.equal(await card.getByText('Unbekannter Spieler',{exact:true}).count(),2);
+    await page.getByText('Analyse verfügbar',{exact:true}).waitFor();
     const practice=page.locator('a[href="/review/9001?practice=1"]');
     assert.equal(await practice.getAttribute('aria-label'),
       'Fehler in Unbekannter Spieler gegen Unbekannter Spieler ohne Lösungshinweise üben',
@@ -899,6 +909,21 @@ try {
     assert.deepEqual(pageErrors,[], 'Starred-only bookmark retry caused a JS error');
     console.log('PASS Starred-only pending bookmark removal, server success and retryable failure');
   } finally {await starred.context.close();}
+
+  const germanBookmarkError=await newPage('dark',390,844,{locale:'de',starredOnlyScenario:true});
+  try {
+    const {page,pageErrors}=germanBookmarkError;
+    await page.getByRole('button',{name:'Alle Partien',exact:true}).click();
+    await page.getByText('Partien: 40 von 56',{exact:true}).waitFor();
+    const failed=page.locator('a[href="/review/22"]').locator('..')
+      .getByRole('button',{name:'Markierung entfernen'});
+    await failed.click();
+    await page.getByRole('alert').getByText('Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.').waitFor();
+    assert.equal(await failed.getAttribute('aria-pressed'),'true',
+      'Failed bookmark updates must keep the previous starred state');
+    assert.deepEqual(pageErrors,[], 'German bookmark failure label caused a browser exception');
+    console.log('PASS German bookmark error explains the retryable starred state');
+  } finally {await germanBookmarkError.context.close();}
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

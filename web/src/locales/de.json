@@ -393,6 +393,9 @@
     "loadMore": "Weitere Partien laden",
     "moreFailed": "Weitere Partien konnten nicht geladen werden. Deine bereits geladenen Partien bleiben verfügbar.",
     "retryMore": "Erneut versuchen",
+    "notAnalyzed": "Noch nicht analysiert",
+    "analysisReady": "Analyse verfügbar",
+    "bookmarkFailed": "Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.",
     "libraryFilterOptions": {
       "source": {
         "all": "Alle Quellen", "chesscom": "Chess.com", "lichess": "Lichess",

@@ -393,6 +393,9 @@
     "loadMore": "Загрузить ещё партии",
     "moreFailed": "Не удалось загрузить остальные партии. Уже загруженные партии остаются доступны.",
     "retryMore": "Повторить",
+    "notAnalyzed": "Партия ещё не разобрана",
+    "analysisReady": "Анализ доступен",
+    "bookmarkFailed": "Не удалось сохранить закладку. Попробуйте ещё раз.",
     "libraryFilterOptions": {
       "source": {
         "all": "Все источники", "chesscom": "Chess.com", "lichess": "Lichess",

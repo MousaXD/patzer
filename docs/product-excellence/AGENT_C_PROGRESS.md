@@ -756,3 +756,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **Library card analysis-status translation in German and other supported languages**. The 320px recovery screenshot still displays the English fallback **Not reviewed yet** on unanalyzed cards while the rest of the interface is German. Check localized analysis-available status as well; reproduce and fix the specific Library card strings with focused locale and real-browser tests, preserving the existing analyzed-state semantics.
+
+## 2026-11-12 — Translate Library mobile analysis and bookmark error states
+
+- Resumed clean pushed `fe7c616` and confirmed the screenshot finding: the mobile Library card used English default text for **Not reviewed yet**. Review of the five locale dictionaries showed all three Library-only status keys (`review.notAnalyzed`, `review.analysisReady`, `review.bookmarkFailed`) were absent. Added a failing five-language locale regression covering all three states before making translations.
+- Added concise, contextual translations to English, German, Spanish, Russian and Bulgarian without changing the existing card state branching, analyzed flags, accuracy semantics, bookmark optimistic update or rollback. German now displays **Noch nicht analysiert** for unanalyzed games, **Analyse verfügbar** for analyzed games with unknown user side, and **Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.** after a failed bookmark save.
+- Extended real isolated Chromium with a 390px German unanalyzed-card fixture, a dated/analyzed imported PGN with unknown player identity, and a Starred-only failed bookmark attempt. The browser verified the correct translated status in each case and that a rejected bookmark still retains its previous starred state. Inspected `qa-artifacts/agent-c-library/library-german-status-dark-390.png`; layout remains aligned and scrollable.
+
+### Verification
+
+- Focused Library and locales: **125/125 passed**. Full repository suite: **109 passed files, 2 skipped; 1,097 passed tests, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full Chromium desktop 1440px, mobile 390/320px light/dark, German variants, import, Unicode, bookmark, first-use and pagination recovery: passed with no browser exceptions or horizontal overflow.
+- Only locale files, locale tests, isolated Library browser fixture and this progress report were changed. No production database, provider calls, other-agent files, merge or deployment.
+
+### Next independent audit
+
+- Audit **Library import-panel accessibility and localized explanations**. The expanded recent-game import section contains English-only labels and help text even in German. Verify the actual account-linked mobile experience, accessible group/limit labels and the distinction between a bounded batch and full history. Fix within the Library lane with translated copy and browser coverage; do not alter import APIs or provider authentication.
