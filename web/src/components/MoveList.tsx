@@ -48,6 +48,30 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
       ref={scrollRef}
       role="region"
       aria-label={t('review.moves', { defaultValue: 'Game move history' })}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const focused = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-review-ply]');
+        if (!focused || !event.currentTarget.contains(focused)) return;
+        const focusedPly = Number(focused.dataset.reviewPly);
+        if (!Number.isSafeInteger(focusedPly)) return;
+        const maxPly = moves.length ? moves[moves.length - 1]!.ply : 0;
+        let target: number;
+        if (event.key === 'ArrowRight') target = Math.min(maxPly, focusedPly + 1);
+        else if (event.key === 'ArrowLeft') target = Math.max(0, focusedPly - 1);
+        else if (event.key === 'Home') target = 0;
+        else if (event.key === 'End') target = maxPly;
+        else return;
+        // The window-level Game Review shortcuts update the board, but leave
+        // focus on the previous SAN. Keep selection and focus together while
+        // navigating *inside* the move history; don't intercept other areas.
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(target, 'keyboard');
+        requestAnimationFrame(() => {
+          scrollRef.current?.querySelector<HTMLButtonElement>(`button[data-review-ply="${target}"]`)
+            ?.focus({ preventScroll: true });
+        });
+      }}
       className="max-h-[20rem] overflow-auto overscroll-contain rounded-md border border-chesscom-200 bg-white dark:border-chesscom-700 dark:bg-chesscom-800/60 sm:max-h-[min(55dvh,32rem)]"
       style={maxHeight == null ? undefined : { maxHeight }}
     >
@@ -58,6 +82,7 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
       </div>
       <button
         type="button"
+        data-review-ply={0}
         onClick={(event) => onSelect(0, event.detail === 0 ? 'keyboard' : 'pointer')}
         aria-current={current === 0 ? 'step' : undefined}
         className={`block min-h-11 w-full px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-gold-500 ${current === 0 ? 'bg-chesscom-900 text-white dark:bg-chesscom-600 dark:text-white dark:ring-1 dark:ring-inset dark:ring-gold-500/50' : 'text-chesscom-500 hover:bg-chesscom-100 dark:text-chesscom-300 dark:hover:bg-chesscom-700'}`}

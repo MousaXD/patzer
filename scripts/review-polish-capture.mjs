@@ -1468,6 +1468,23 @@ try {
       await expectProgress(`2 / ${savedMoves.length}`);
       assert.ok(await secondSaved.evaluate(el=>document.activeElement===el),
         'Successive keyboard SAN selections must not steal focus');
+      const thirdSaved=savedList.getByRole('button',{name:/^2\. White Nf3/});
+      await page.keyboard.press('ArrowRight');
+      await expectProgress(`3 / ${savedMoves.length}`);
+      assert.equal(await thirdSaved.getAttribute('aria-current'),'step',
+        'ArrowRight in the move list must select the next saved SAN');
+      assert.ok(await thirdSaved.evaluate(el=>document.activeElement===el),
+        'ArrowRight must move keyboard focus to the newly selected SAN, not leave it on e5');
+      await page.keyboard.press('Home');
+      await expectProgress(`0 / ${savedMoves.length}`);
+      const startingPosition=savedList.getByRole('button',{name:'starting position',exact:true});
+      assert.ok(await startingPosition.evaluate(el=>document.activeElement===el),
+        'Home in move history must focus the starting-position button');
+      await page.keyboard.press('End');
+      await expectProgress(`${savedMoves.length} / ${savedMoves.length}`);
+      const finalSaved=savedList.getByRole('button',{name:/^12… Black Rad8/});
+      assert.ok(await finalSaved.evaluate(el=>document.activeElement===el),
+        'End in move history must focus the actual last saved move');
       await page.screenshot({path:join(output,`variation-movelist-keyboard-${width}.png`)});
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
     }finally{await nestedContext.close();}

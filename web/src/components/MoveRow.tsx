@@ -72,6 +72,7 @@ function Half({ move, num, side, current, onSelect, t, highlight }: {
   return (
     <button
       type="button"
+      data-review-ply={move.ply}
       onClick={(event) => onSelect(move.ply, event.detail === 0 ? 'keyboard' : 'pointer')}
       aria-current={current ? 'step' : undefined}
       aria-label={`${num}${side === 'white' ? '.' : '…'} ${t(`review.${side}`)} ${move.san}${label ? `: ${label}` : ''}`}

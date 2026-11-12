@@ -26,6 +26,7 @@ describe('Game Review move history', () => {
     expect(html).toContain('Game move history');
     expect(html).toContain('Starting position');
     expect(html).toContain('min-h-11 w-full');
+    expect(html).toContain('data-review-ply="0"');
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
   });
 

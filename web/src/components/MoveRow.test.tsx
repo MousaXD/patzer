@@ -25,6 +25,7 @@ describe('review move row', () => {
     const html = render(14);
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
     expect(html).toContain('aria-label="7… review.black Kxf7: mistake"');
+    expect(html).toContain('data-review-ply="14"');
     expect(html).toContain('aria-label="7. review.white Nxf7+: brilliant"');
     expect(html).toContain('type="button"');
     expect(html).toContain('min-h-11');

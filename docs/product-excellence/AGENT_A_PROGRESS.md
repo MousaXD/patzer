@@ -611,3 +611,24 @@
 ### Next high-impact interaction candidate
 
 - The Game Review global Left/Right keyboard shortcuts remain active when a SAN move button holds focus. They advance the saved ply, but the DOM focus may remain on the *previous* SAN, causing assistive technology to announce the wrong highlighted move. Reproduce the focus/selection discrepancy using a real Chromium keyboard sequence, then scope any fix to MoveList and preserve global shortcuts elsewhere, including the board and original evaluation slider.
+
+## 2026-11-12: synchronize move-history keyboard focus with saved SAN navigation
+
+### Reproduction and correction
+
+- Continued from pushed, clean `cd0b5e9`; investigated the recorded next move-history keyboard defect without redoing the successful touch-target audit.
+- In the authenticated 390px/1024px move-history browser scenario, focus `1…e5`, press ArrowRight, and verify both selected ply and DOM focus. **Baseline failed:** the global Review shortcut advanced to ply 3 (`Nf3`) and highlighted the correct SAN but **left keyboard focus on the previous `e5` button**. Assistive technology therefore continued announcing an out-of-date move while the board showed the next one.
+- Added stable, Game Review-only `data-review-ply` attributes to Starting Position and each saved move. Within `MoveList`'s region, ArrowLeft/ArrowRight/Home/End now navigate from the focused SAN, stop propagation to the unrelated global handler, update the current saved ply as a keyboard action, and move DOM focus to the newly selected SAN in the next animation frame. Existing pointer-to-board behavior and all shortcuts outside the move-list region are preserved. Source identity, legal moves, variations, scoring and persisted PGN were not changed.
+- Kept the implementation local to `MoveList`/`MoveRow`; no global keyboard or design-system edits. Added static tests verifying the stable ply attributes.
+
+### Verification and evidence
+
+- Focused MoveList/MoveRow/saved-timeline tests: **10 passed**; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped**, 107 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)** including real keyboard Enter on successive SANs, ArrowRight e5→Nf3 with matching focused and selected move, Home focusing Starting Position, End focusing final `12…Rad8`, 390/1024px visual checks, saved PGN unchanged, previous responsive/source/coach/variation and translation checks.
+- Opened and inspected actual `qa-artifacts/agent-a/movelist-keyboard-after-20261112/variation-movelist-keyboard-{390,1024}.png`: visible focus outline and current-move highlight agree on `Rad8`; 390px rail scrolls to show the selected 12th Black move without vertical page hijack.
+- Browser evaluations remain synthetic QA fixtures, not Stockfish scoring certification. No merge, deployment, production SQLite mutation or edits to other agent worktrees.
+
+### Next candidate
+
+- Audit the static MoveList empty state and phase separators for screen-reader discoverability. The empty message is currently hard-coded `No recorded moves.` in English, while every other Game Review state is localized, and phase dividers are plain text instead of navigable section labels. Confirm a genuine user-facing localization/accessibility defect in a five-language rendered test and fix narrowly in MoveList rather than touching the global shell.
