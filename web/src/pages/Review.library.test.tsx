@@ -868,6 +868,30 @@ describe('Review library with large histories', () => {
     }
   });
 
+  it('keeps advanced filters behind an accessible mobile disclosure until requested', async () => {
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    const toggle=screen.getByRole('button',{name:'Filters'});
+    const panel=document.getElementById('library-filters');
+    expect(toggle.getAttribute('aria-controls')).toBe('library-filters');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(panel?.className).toContain('hidden');
+    expect(panel?.className).toContain('sm:flex');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(panel?.className).toContain('grid');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('reveals advanced filters and counts them on a shared source/date deep link', async () => {
+    mount('/review?source=lichess&from_date=2025-01-01');
+    const toggle=screen.getByRole('button',{name:'Filters (2)'});
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect((screen.getByRole('combobox',{name:'Game source'}) as HTMLSelectElement).value).toBe('lichess');
+    expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe('2025-01-01');
+  });
+
   it('shows a recoverable error, never the no-games onboarding state', async () => {
     mocks.get.mockRejectedValue(new Error('offline'));
     mount();
@@ -1042,7 +1066,7 @@ describe('Review library with large histories', () => {
     expect(screen.queryByRole('link',{name:'Open game to retry'})).toBeNull();
     // The account-scoped query may still be loading after the old mutation
     // settles; assert the new account's bookmark once its card has rendered.
-    const newAccountStar=await screen.findByRole('button',{name:'Remove bookmark'},undefined,{timeout:5000});
+    const newAccountStar=await screen.findByRole('button',{name:'Remove bookmark'},{timeout:5000});
     expect(newAccountStar.getAttribute('aria-pressed')).toBe('true');
   });
 

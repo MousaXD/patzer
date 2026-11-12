@@ -115,7 +115,8 @@ async function newPage(theme, width, height,
     unicodeLibrary = false, longPlayerNames = false,
     locale = 'en', timeZone = 'UTC', dateBoundary = false, noStarredGames = false,
     delayedContinuation = null, failContinuationUntilRetry = false,
-    providerImportBreakdown = false, providerImportInvalidSummary = false} = {}) {
+    providerImportBreakdown = false, providerImportInvalidSummary = false,
+    preserveCollapsedFilters = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme, timezoneId: timeZone});
   const page = await context.newPage();
   const pageErrors = [];
@@ -281,7 +282,19 @@ async function newPage(theme, width, height,
     await route.fulfill({status, contentType:'application/json', body: JSON.stringify(json)});
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
-  await page.getByRole('combobox', {name:locale === 'de' ? 'Partiequelle' : 'Game source'}).waitFor();
+  if (width < 640 && !preserveCollapsedFilters) {
+    const toggle=page.locator('button[aria-controls="library-filters"]');
+    await toggle.waitFor();
+    await toggle.click();
+  }
+  if (width < 640 && preserveCollapsedFilters) {
+    // Intentionally hidden controls should still be mounted, but not present
+    // in the accessibility tree until the player expands Filters.
+    await page.locator(`select[aria-label="${locale === 'de' ? 'Partiequelle' : 'Game source'}"]`)
+      .waitFor({state:'attached'});
+  } else {
+    await page.getByRole('combobox', {name:locale === 'de' ? 'Partiequelle' : 'Game source'}).waitFor();
+  }
   if (longPlayerNames) {
     await page.getByText('1 of 1 games').waitFor();
   } else if (unicodeLibrary) {
@@ -440,6 +453,58 @@ try {
       console.log(`PASS ${theme} ${w}x${h} overflow=${m.overflow}`);
     }
   }
+
+  for (const width of [390,320]) {
+    const condensed=await newPage(width===390?'light':'dark',width,844,{preserveCollapsedFilters:true});
+    try {
+      const {page,pageErrors}=condensed;
+      const toggle=page.locator('button[aria-controls="library-filters"]');
+      await toggle.waitFor();
+      assert.equal(await toggle.getAttribute('aria-expanded'),'false',
+        'Advanced filters should be collapsed by default on a narrow phone');
+      assert.equal(await page.getByRole('group',{name:'Filter and sort games'}).isVisible(),false);
+      const firstGame=await page.locator('.card-hover > a[href="/review/1"]').boundingBox();
+      assert.ok(firstGame && firstGame.y<665,
+        `The first saved game should be discoverable in the initial phone viewport: ${JSON.stringify(firstGame)}`);
+      await page.screenshot({path:join(output,`library-compact-firstfold-${width}.png`)});
+      await toggle.click();
+      assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+      await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+      await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess');
+      await toggle.click();
+      assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+      assert.match(await toggle.textContent(),/Filters \(1\)/,
+        'The collapsed filter control must disclose active filter count');
+      await page.reload();
+      assert.equal(await toggle.getAttribute('aria-expanded'),'true',
+        'A direct URL with an active source filter should reveal its existing controls');
+      assert.equal(await page.getByRole('combobox',{name:'Game source'}).inputValue(),'lichess');
+      assert.ok((await metrics(page)).overflow<=2,`Compact filters overflow at ${width}px`);
+      assert.deepEqual(pageErrors,[],`Compact filter interaction caused browser errors at ${width}px`);
+      console.log(`PASS ${width}px initial collapsed filters, visible games, active-count summary and deep-link recovery`);
+    } finally {await condensed.context.close();}
+  }
+
+  const germanCompact=await newPage('dark',320,700,{locale:'de',preserveCollapsedFilters:true});
+  try {
+    const {page,pageErrors}=germanCompact;
+    const toggle=page.locator('button[aria-controls="library-filters"]');
+    assert.equal((await toggle.textContent())?.trim(),'Filter');
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+    await page.getByRole('combobox',{name:'Partiequelle'}).selectOption('lichess');
+    await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess');
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    assert.match(await toggle.textContent(),/Filter \(1\)/);
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    await page.reload();
+    assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+    assert.equal(await page.getByRole('combobox',{name:'Partiequelle'}).inputValue(),'lichess');
+    assert.deepEqual(pageErrors,[],'German mobile filter disclosure caused a browser exception');
+    console.log('PASS keyboard-accessible German compact filter disclosure and active deep link');
+  } finally {await germanCompact.context.close();}
 
   const germanFilters=await newPage('dark',390,844,{locale:'de'});
   try {

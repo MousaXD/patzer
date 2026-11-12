@@ -75,6 +75,14 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(localized).not.toEqual(en.review.libraryFilterLabel[filter]);
       }
     });
+    it('translates the compact mobile filter disclosure and its active count', () => {
+      expect(locale.review.libraryMobileFilters?.trim().length,lang).toBeGreaterThan(0);
+      expect(placeholders(locale.review.libraryMobileFilterCount ?? ''),lang).toEqual(['{{count}}']);
+      if (lang !== 'en') {
+        expect(locale.review.libraryMobileFilters).not.toEqual(en.review.libraryMobileFilters);
+        expect(locale.review.libraryMobileFilterCount).not.toEqual(en.review.libraryMobileFilterCount);
+      }
+    });
     it('localizes Library filter options, group and clear action without changing filter values', () => {
       const options: Record<string, Record<string, string>> = locale.review.libraryFilterOptions;
       const englishOptions: Record<string, Record<string, string>> = en.review.libraryFilterOptions;

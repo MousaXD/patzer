@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
+import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -179,6 +179,17 @@ export default function Review() {
   const paginationScope = JSON.stringify([user?.id, bookmarkedOnly, q, filterSignature]);
   const activeFilters = !!fromDate || !!toDate || !!selectedOpening || !!selectedOpponent ||
     Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
+  // Only count fields in the advanced panel. Opening/opponent and Starred
+  // selection already have their own visible controls or labels.
+  const advancedFilterCount = Object.entries(filters)
+    .filter(([key,value]) => value && !(key === 'sort' && value === 'newest')).length +
+    Number(Boolean(fromDate)) + Number(Boolean(toDate));
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(advancedFilterCount > 0);
+  useEffect(() => {
+    // A bookmarked/deep-linked URL can restore advanced filters while the
+    // player has the compact panel closed. Reveal them on history restore.
+    if (navigationType === 'POP' && advancedFilterCount > 0) setMobileFiltersOpen(true);
+  }, [navigationType, location.key, advancedFilterCount]);
 
   function updateFilter(key: FilterName, value: string) {
     setDateAdjustment(null);
@@ -836,6 +847,16 @@ export default function Review() {
           <Star className={cn('h-3.5 w-3.5', bookmarkedOnly && 'fill-gold-500')} />
           {bookmarkedOnly ? t('review.starredFilterOn', { defaultValue: 'Starred only' }) : t('review.starredFilterOff', { defaultValue: 'All games' })}
         </button>
+        <button type="button" aria-controls="library-filters" aria-expanded={mobileFiltersOpen}
+          onClick={() => setMobileFiltersOpen(open => !open)}
+          className="btn-secondary min-h-11 gap-2 text-sm sm:hidden">
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+          {advancedFilterCount > 0
+            ? t('review.libraryMobileFilterCount', {
+              count:advancedFilterCount, defaultValue:`Filters (${advancedFilterCount})`,
+            })
+            : t('review.libraryMobileFilters', {defaultValue:'Filters'})}
+        </button>
         <span className="text-xs text-chesscom-500" aria-live="polite" aria-atomic="true">
           {isLoading ? t('common.loading', { defaultValue: 'Loading games…' }) : initialError
             ? t('review.loadError', { defaultValue: 'Could not load games' })
@@ -870,7 +891,8 @@ export default function Review() {
         </div>
       )}
 
-      <div id="library-filters" role="group" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"
+      <div id="library-filters" role="group" className={cn('grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center',
+        mobileFiltersOpen ? 'grid' : 'hidden')}
         aria-label={t('review.libraryFilterGroup', { defaultValue: 'Filter and sort games' })}>
         {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => {
           const filterLabel = t(`review.libraryFilterLabel.${key}`, { defaultValue: {

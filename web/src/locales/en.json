@@ -389,6 +389,8 @@
     },
     "libraryFilterGroup": "Filter and sort games",
     "clearLibraryFilters": "Clear filters",
+    "libraryMobileFilters": "Filters",
+    "libraryMobileFilterCount": "Filters ({{count}})",
     "libraryClearSearch": "Clear search",
     "libraryVisibleCount": "{{visible}} of {{total}} games",
     "libraryUpdating": "Updating",

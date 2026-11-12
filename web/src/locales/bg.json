@@ -380,6 +380,8 @@
     },
     "libraryFilterGroup": "Филтриране и сортиране на партии",
     "clearLibraryFilters": "Изчисти филтрите",
+    "libraryMobileFilters": "Филтри",
+    "libraryMobileFilterCount": "Филтри ({{count}})",
     "libraryClearSearch": "Изчисти търсенето",
     "libraryVisibleCount": "Партии: {{visible}} от {{total}}",
     "libraryUpdating": "Обновяване",

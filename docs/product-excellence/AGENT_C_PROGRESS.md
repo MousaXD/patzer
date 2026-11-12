@@ -1180,3 +1180,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Examine **first-fold information density on narrow phones**. The game list begins below much of the 390px viewport because all advanced filters are expanded, even for a player who just wants to browse games. Consider an accessible, non-disruptive mobile-only filters disclosure with a visible active-filter count and automatic deep-link discoverability, while keeping desktop controls fully visible and preserving source/date/search URL state. Validate against all prior browser journeys before accepting any layout change.
+
+## 2026-11-13 — Reveal saved games sooner with compact mobile-only advanced filters
+
+- Recovered clean pushed `1b1d195` and confirmed the first-fold problem with real 390/320px screenshots: the always-expanded source/speed/result/review/sort/date fields pushed the first saved game below much of the phone viewport. Added failing browser assertions for a collapsed default, visible first game, accessible expansion, active-filter count, URL reload and German keyboard navigation before changing runtime UI.
+- Added a dedicated **Filters** disclosure button on phones only (`sm:hidden`, 44px minimum, `aria-controls` and live `aria-expanded`). Advanced controls now start collapsed on a fresh unfiltered mobile Library, while the existing `sm:flex` layout keeps all controls continuously visible on desktop. The control shows the count of nondefault source/speed/result/review/sort/date fields and remains useful when closed. Active-filter deep links start expanded; Back/Forward navigation to active advanced filters reopens the panel. Existing source/date/sort/filter URL semantics, search, Starred-only toggle, and independent no-match recovery remain unchanged.
+- Added English, German, Spanish, Russian and Bulgarian translations for the compact label and interpolated active count. Scoped React regressions assert the disclosure lifecycle and source/date deep-link behavior; locale tests validate translations/placeholders across five languages. The isolated Chromium fixture now explicitly expands the mobile filter panel for all existing interaction tests, but independently checks the **actual default collapsed experience** at 390px light and 320px dark, no overflow, active-count display after filtering, and full rehydration on reload. Added a German 320px Enter-key disclosure/deep-link journey.
+- Inspected `qa-artifacts/agent-c-library/library-compact-firstfold-390.png` and `library-compact-firstfold-320.png`: the first game is now plainly visible in the initial screen (two complete cards on 390px), rather than being pushed below the expanded controls. The disclosure keeps all existing filters one click away and does not affect desktop presentation.
+
+### Verification
+
+- Focused Library+locale tests: **172/172 passed**; full repository suite: **109 passed files, 2 skipped; 1,144 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Full isolated Chromium 1440px desktop and 390/320px light/dark plus German keyboard tests; compact first fold, source/date/filter URL state, opening/opponent discovery, imports, cursor pages, bookmarks and recovery all passed without JavaScript errors or horizontal overflow.
+- Changes limited to Agent C Library presentation, five locales, focused regressions, isolated browser fixture and progress report. No server, production data, other-agent code, merge or deployment.
+
+### Next independent audit
+
+- Verify **responsive resizing and focus continuity** of the mobile filter disclosure: while Filters is closed, changing from narrow to desktop should show all controls; resizing back should preserve the deliberate closed state. Check keyboard Tab access, active deep-link counts and restoration after Back/Forward. Avoid altering existing URL query contracts or cross-agent shell layout.
