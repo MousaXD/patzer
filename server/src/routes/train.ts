@@ -17,6 +17,7 @@ import { SCORING_VERSION, cpToWinPct, normalizeEval } from '../chess/classifier.
 import { createAnalysisEngine } from '../chess/engine.js';
 import { dayOf } from '../chess/openingTrainer.js';
 import { afterTry, isDue, isPuzzleMove, positionAfter, puzzleLine, type QueueState } from '../chess/gamePuzzles.js';
+import { readAnalysisMoves } from './analysisData.js';
 import type { AnalyzedMove } from '../types.js';
 
 const router = new Hono();
@@ -59,9 +60,22 @@ const GAME_SQL = `
   FROM analyses a JOIN games g ON g.id = a.game_id
   WHERE g.user_id = ? AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})`;
 
+function safePuzzleLine(m: AnalyzedMove): ReturnType<typeof puzzleLine> | null {
+  if (typeof m.fen_before !== 'string' || typeof m.best_move_uci !== 'string') return null;
+  try {
+    const line = puzzleLine(m.fen_before, m.best_move_uci,
+      Array.isArray(m.best_pv) ? m.best_pv : []);
+    return line.uci.length > 0 ? line : null;
+  } catch {
+    // A malformed cached FEN must not prevent the user's other valid
+    // personal exercises from loading or make a saved attempt editable.
+    return null;
+  }
+}
+
 function toPuzzle(r: PuzzleCandidate, m: AnalyzedMove, review: boolean) {
-  const line = puzzleLine(m.fen_before, m.best_move_uci!, m.best_pv ?? []);
-  if (line.uci.length === 0) return null;
+  const line = safePuzzleLine(m);
+  if (!line) return null;
   return {
     game_id: r.game_id,
     ply: m.ply,
@@ -94,8 +108,8 @@ function toPuzzle(r: PuzzleCandidate, m: AnalyzedMove, review: boolean) {
 function loadPuzzleMove(userId: number, gameId: number, ply: number): { game: PuzzleCandidate; move: AnalyzedMove } | null {
   const game = db.prepare(`${GAME_SQL} AND g.id = ?`).get(userId, SCORING_VERSION, gameId) as PuzzleCandidate | undefined;
   if (!game) return null;
-  const move = (JSON.parse(game.moves_json) as AnalyzedMove[]).find((m) => m.ply === ply);
-  if (!move || !isPuzzleMove(move, game.user_color)) return null;
+  const move = readAnalysisMoves(game.moves_json).find((m) => m.ply === ply);
+  if (!move || !isPuzzleMove(move, game.user_color) || !safePuzzleLine(move)) return null;
   return { game, move };
 }
 
@@ -105,8 +119,13 @@ function loadPuzzleMove(userId: number, gameId: number, ply: number): { game: Pu
 // Both the due counter and practice progress use this exact eligibility gate.
 const CURRENT_ATTEMPT_SQL = `g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})
   AND EXISTS (
-    SELECT 1 FROM json_each(a.moves_json) AS m
-    WHERE json_extract(m.value, '$.ply') = p.ply
+    SELECT 1 FROM json_each(
+      CASE WHEN json_valid(a.moves_json)
+        THEN CASE WHEN json_type(a.moves_json) = 'array' THEN a.moves_json ELSE '[]' END
+        ELSE '[]' END
+    ) AS m
+    WHERE m.type = 'object'
+      AND json_extract(m.value, '$.ply') = p.ply
       AND json_extract(m.value, '$.fen_before') = p.fen
       AND lower(json_extract(m.value, '$.best_move_uci')) = lower(p.solution_uci)
       AND json_extract(m.value, '$.classification') IN ('blunder', 'miss', 'mistake')
@@ -199,7 +218,7 @@ router.get('/next', (c) => {
   while (true) {
     const rows = page.all(...params, PAGE_SIZE, offset) as PuzzleCandidate[];
     for (const r of rows) {
-      const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
+      const moves = readAnalysisMoves(r.moves_json);
       for (const m of moves) {
         if (skipped.has(`${r.game_id}:${m.ply}`)) continue;
         if (!isPuzzleMove(m, r.user_color)) continue;
