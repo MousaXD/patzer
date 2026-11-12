@@ -226,3 +226,25 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 1. Fix the first-use/full-history import gap: the UI is explicitly limited to 200 recent games; the standalone Chess.com historical importer already has archive checkpoints and backups but is not accessible to ordinary Library users. Design and independently verify a safe, opt-in, resumable, cancellable, rate-controlled in-app workflow before implementing it. Do not claim full-history support until it exists and is tested.
 2. Audit empty library and non-linked account onboarding, and PGN imports with duplicate/partial failure handling; preserve original files and authenticated ownership.
 3. Retest large-source opening and opponent lists without guessing results or replacing curated classifications with synthetic data.
+
+## 2026-11-12 — PGN file import for offline first-use and history recovery
+
+- Resumed clean `6ec0a26` and audited the historical Chess.com CLI safeguards before attempting any long-running in-app job. Confirmed the existing CLI can back up/checkpoint archives, but that is **not** an ordinary authenticated UI workflow and must not be described as complete in-app full-history support.
+- Identified a smaller, practical blocker: the Library offered no PGN file upload despite having an `imported` games source. Implemented **explicit local .pgn/.txt upload** independent of provider account links. Import is limited to **4 MiB UTF-8 and 1,000 standard games per file**, with per-game limit of 256 KiB and 2,048 plies. No external Chess.com/Lichess requests occur.
+- Added bounded streamed JSON request reading, source PGN parsing, invalid/unsupported variant and SetUp/FEN rejection (including chess.js's normalized-away SetUp case), full-batch validation before SQLite writes, and **one atomic transaction** for the complete file. If any game is malformed, the request returns an indexed error and saves no games; SQLite insertion errors also roll the batch back.
+- Import deduplicates **exact original PGN content** using a deterministic SHA-256 external ID scoped to `(user_id, source='imported', external_id)`. Reimporting leaves PGNs, notes, ownership, bookmarks and reviews intact. The classifier may add a recognized opening, but does not invent a player identity, user's color, a match outcome or a date. Absent dates appear as **Date unavailable**, not **In progress**.
+- Added a visible and accessible file picker, clear limits, a progress/pending indicator, actionable file/game errors and correct new/duplicate counts in all five UI languages. After successful upload, the UI automatically selects **PGN import** so undated files are visible immediately rather than buried after 1,000 dated games. File is cleared after success and retained on error for retry.
+
+### Verification
+
+- New unit/in-memory SQLite suite: 6 passed. Authenticated Hono route tests verify ownership, valid files, 4 MiB rejection, a broken second game with no partial writes, and account isolation. Targeted backend/frontend suites: **76/76 passed**.
+- Full `npm test -- --maxWorkers=3`: **109 test files passed, 2 skipped; 1,029 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `npm run build -w server`, and `git diff --check`: passed.
+- Isolated Chromium: **1440×900, 390×844, 320×700** light/dark with zero horizontal overflow. Uploaded a real browser-generated 2-game PGN file, verified original text sent to the mocked endpoint, status, automatic `source=imported` navigation and unknown-date labeling; tested malformed second game, visible error, and retained library. Inspected the 390px dark-mode success screenshot. Browser uses only isolated mock APIs and a private loopback preview.
+- Disposable SQLite performance smoke: **1,000 distinct valid PGNs** (82 KB) imported in **576 ms**; exact reimport in **504 ms** added zero games. No real user games or production DB involved. This is a local measurement, not a service-level guarantee.
+
+### Known boundaries / next priority
+
+- This is an explicit **PGN-file** import, not account-wide Chess.com sync; the existing in-app provider import still fetches up to 200 recent games. The original one-time Chess.com historical CLI has verified archive checkpoints and backups, but exposing it as an in-app job still needs durable progress state, cancellation, rate limits, recovery and backup validation. Do not claim full-history sync or run production bulk imports.
+- Multi-game PGN files must have conventional `[Event "..."]` headers per game; single headerless PGNs are supported. Mixed/ambiguous exports fail clearly rather than dropping unknown entries. Variants and setup positions are deliberately unsupported until their analysis pipeline is certified.
+- Next audit: review the first-use library screen with **no linked provider** and a real PGN upload, particularly its source-filter discoverability and clear missing-date/results semantics. Then independently certify any in-app full-history design before implementation.

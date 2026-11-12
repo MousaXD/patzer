@@ -296,6 +296,60 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
   });
 });
 
+describe('authenticated PGN archive upload', () => {
+  const one = '[Event "First"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 1-0';
+  const two = '[Event "Second"]\n[White "Carl"]\n[Black "Dani"]\n[Result "0-1"]\n\n1. d4 d5 0-1';
+  const broken = '[Event "Broken"]\n\n1. e4 e9 *';
+
+  async function requestUpload(userId: number, pgn: string) {
+    const {createSession, SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+    return gamesRoute.request('/import/pgn', {method:'POST', headers:{
+      Cookie:`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(userId))}`,
+      'Content-Type':'application/json',
+    }, body:JSON.stringify({pgn})});
+  }
+  function cleanup() {
+    db.prepare("DELETE FROM games WHERE source = 'imported' AND external_id LIKE 'sha256:%'").run();
+  }
+
+  it('imports two saved games without inferred outcomes and isolates them to the authenticated owner', async () => {
+    cleanup();
+    try {
+      const imported = await requestUpload(3, `${one}\n\n${two}`);
+      expect(imported.status).toBe(200);
+      expect(await imported.json()).toEqual({total:2, imported:2, duplicates:0});
+      const saved = db.prepare("SELECT user_id,white,black,pgn,result,user_color,end_time FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all();
+      expect(saved).toEqual([
+        {user_id:3, white:'Alice', black:'Bob', pgn:one, result:null,user_color:null,end_time:null},
+        {user_id:3, white:'Carl', black:'Dani', pgn:two, result:null,user_color:null,end_time:null},
+      ]);
+      expect(await (await requestUpload(3,`${one}\n\n${two}`)).json())
+        .toEqual({total:2,imported:0,duplicates:2});
+      expect((await (await gamesRoute.request('/?source=imported', {headers:{Cookie:cookie}})).json() as {total:number}).total).toBe(0);
+      expect(await (await requestUpload(2, one)).json()).toEqual({total:1,imported:1,duplicates:0});
+      expect((await (await gamesRoute.request('/?source=imported', {headers:{Cookie:cookie}})).json() as {total:number}).total).toBe(0);
+    } finally { cleanup(); }
+  });
+
+  it('refuses malformed second games, unsafe positions and oversized uploads with no partial commits', async () => {
+    cleanup();
+    try {
+      const brokenResponse = await requestUpload(3,`${one}\n\n${broken}`);
+      expect(brokenResponse.status).toBe(422);
+      expect(await brokenResponse.json()).toEqual({error:'invalid_pgn',game_index:2});
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:0});
+      const oversized = await requestUpload(3, 'e'.repeat(4*1024*1024+1));
+      expect(oversized.status).toBe(413);
+      expect((await oversized.json() as {error:string}).error).toMatch(/pgn_too_large|invalid_input/);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:0});
+      const anonymous = await gamesRoute.request('/import/pgn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pgn:one})});
+      expect(anonymous.status).toBe(401);
+    } finally { cleanup(); }
+  });
+});
+
 describe('platform backend edge-case protection', () => {
   it('does not allow malformed recent PvP records to hide an older playable game', async () => {
     const insert = db.prepare(`INSERT INTO games (user_id, source, pgn, white, black,

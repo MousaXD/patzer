@@ -82,6 +82,8 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
+  let hasPgnImports = false;
+  const seenPgnFiles = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/**', async route => {
     const request = route.request();
@@ -108,7 +110,24 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
     };
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
-      json = list(parsed.searchParams);
+      if (hasPgnImports && parsed.searchParams.get('source') === 'imported') {
+        json = { games: [
+          {id:9001, source:'imported', white:'Alice',black:'Bob',result:null,time_control:null,
+            end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"King's Pawn Game",notes:''},
+          {id:9002, source:'imported',white:'Chris',black:'Dana',result:null,time_control:null,
+            end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"Queen's Pawn Game",notes:''},
+        ], total:2,offset:0,limit:40,has_more:false};
+      } else json = list(parsed.searchParams);
+    } else if (path === '/api/games/import/pgn' && request.method() === 'POST') {
+      const pgn = request.postDataJSON().pgn;
+      seenPgnFiles.push(pgn);
+      if (pgn.includes('[Event "Broken"]')) {
+        status = 422;
+        json = {error:'invalid_pgn',game_index:2};
+      } else {
+        json = {total:2, imported:1,duplicates:1};
+        hasPgnImports = true;
+      }
     } else if (/^\/api\/games\/import\/(?:chesscom|lichess)$/.test(path)) {
       const body = request.postDataJSON();
       if (body.limit === 100 && path.endsWith('/chesscom')) { status = 429; json = {error: 'chesscom_rate_limited'}; }
@@ -124,7 +143,7 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
   if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
   else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
   await page.getByText('40 of 620 games').waitFor();
-  return {page,context,pageErrors};
+  return {page,context,pageErrors,seenPgnFiles};
 }
 function metrics(page) {
   return page.evaluate(() => ({
@@ -153,6 +172,9 @@ async function verifyViewport(theme, width, height) {
       assert.ok(item.right <= width + 2 && item.x >= -2,
         `Clipped select ${item.aria} on ${width}px ${theme}: ${JSON.stringify(item)}`);
     }
+    const fileControl = await page.getByLabel('Choose a PGN file').boundingBox();
+    assert.ok(fileControl && fileControl.x >= -2 && fileControl.x + fileControl.width <= width + 2,
+      `PGN file picker clipped at ${width}px ${theme}: ${JSON.stringify(fileControl)}`);
     await page.screenshot({path:join(output,`library-${theme}-${width}.png`),fullPage: width <= 390});
     await page.getByRole('button', {name:'Opponents'}).click();
     await page.getByRole('button', {name:'Show 31 Lichess games against Nepo'}).waitFor();
@@ -209,6 +231,34 @@ try {
     assert.deepEqual(pageErrors,[], 'Opening summary retry produced a browser error');
     console.log('PASS partial opening summary failure with independent retry');
   } finally { await errorFixture.context.close(); }
+
+  const pgnFixture = await newPage('dark', 390, 844);
+  try {
+    const {page, pageErrors, seenPgnFiles} = pgnFixture;
+    const good = '[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *\n\n' +
+      '[Event "Two"]\n[White "Chris"]\n[Black "Dana"]\n\n1. d4 d5 *';
+    const input = page.getByLabel('Choose a PGN file');
+    const importButton = page.getByRole('button', {name:'Import PGN file'});
+    assert.ok(await importButton.isDisabled(), 'PGN import should require a selected file');
+    await input.setInputFiles({name:'history.pgn',mimeType:'text/plain',buffer:Buffer.from(good)});
+    await importButton.click();
+    await page.getByText(/1 new games saved from 2 PGNs \(1 already saved\)/).waitFor();
+    await page.getByText('2 of 2 games').waitFor();
+    await page.getByText('Date unavailable').first().waitFor();
+    assert.ok(await importButton.isDisabled(), 'Successful import must clear the file selection');
+    assert.equal(seenPgnFiles[0],good, 'PGN text changed before upload');
+    assert.equal(new URL(page.url()).searchParams.get('source'),'imported',
+      'After import, users should see imported games rather than undated games lost at the end of history');
+    await page.screenshot({path:join(output,'library-pgn-success-dark-390.png')});
+    const bad = '[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *\n\n' +
+      '[Event "Broken"]\n\n1. e4 e9 *';
+    await input.setInputFiles({name:'broken.pgn',mimeType:'text/plain',buffer:Buffer.from(bad)});
+    await importButton.click();
+    await page.getByRole('alert').getByText(/Game 2: Invalid or incomplete PGN/).waitFor();
+    await page.getByText('2 of 2 games').waitFor();
+    assert.deepEqual(pageErrors, [], 'PGN import UI had a JavaScript exception');
+    console.log('PASS PGN file import, source filter, original content, partial failure and recovery');
+  } finally { await pgnFixture.context.close(); }
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

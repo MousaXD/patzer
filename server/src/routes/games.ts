@@ -6,6 +6,7 @@ import { requireAuth } from '../auth/middleware.js';
 import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
 import { prepareImportedOpeningEnrichment } from '../chess/importOpening.js';
+import { importPgnArchive, MAX_PGN_ARCHIVE_BYTES, PgnImportError } from '../chess/pgnImport.js';
 import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
 import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
@@ -405,6 +406,61 @@ router.post('/import/lichess', async (c) => {
   } catch (error) {
     if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
     throw error;
+  }
+});
+
+const pgnImportSchema = z.object({pgn: z.string().min(1)}).strict();
+const MAX_PGN_JSON_BYTES = MAX_PGN_ARCHIVE_BYTES * 4 + 16_384;
+
+async function readBoundedPgnJson(request: Request): Promise<unknown> {
+  // Limit actual streamed bytes even when Content-Length is omitted or forged.
+  // JSON escaping can make a valid 4 MiB PGN larger than its decoded text.
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_PGN_JSON_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new PgnImportError('pgn_too_large');
+      }
+      parts.push(value);
+    }
+    try { return JSON.parse(Buffer.concat(parts).toString('utf8')) as unknown; }
+    catch { return null; }
+  } finally { reader.releaseLock(); }
+}
+
+// Explicit, no-provider PGN upload. Validate every game before a single
+// transaction so a broken later game cannot silently leave half a file saved.
+router.post('/import/pgn', async (c) => {
+  const user = c.get('user');
+  const declaredBytes = Number(c.req.header('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > MAX_PGN_JSON_BYTES) {
+    return c.json({error: 'pgn_too_large'}, 413);
+  }
+  let body: unknown;
+  try { body = await readBoundedPgnJson(c.req.raw); }
+  catch (e) {
+    if (e instanceof PgnImportError && e.code === 'pgn_too_large') return c.json({error: e.code}, 413);
+    return c.json({error: 'invalid_input'}, 400);
+  }
+  const parsed = pgnImportSchema.safeParse(body);
+  if (!parsed.success) return c.json({error: 'invalid_input'}, 400);
+  if (Buffer.byteLength(parsed.data.pgn, 'utf8') > MAX_PGN_ARCHIVE_BYTES) {
+    return c.json({error:'pgn_too_large'}, 413);
+  }
+  try {
+    return c.json(importPgnArchive(db, user.id, parsed.data.pgn));
+  } catch (e) {
+    if (!(e instanceof PgnImportError)) throw e;
+    const error = {error:e.code, ...(e.gameIndex ? {game_index:e.gameIndex} : {})};
+    return e.code === 'pgn_too_large' || e.code === 'pgn_too_many_games'
+      ? c.json(error, 413) : c.json(error, 422);
   }
 });
 

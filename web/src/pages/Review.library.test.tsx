@@ -22,7 +22,12 @@ vi.mock('react-i18next', () => ({
     t: (key: string, opts?: { defaultValue?: string; white?: string; black?: string }) =>
       key === 'practice.entryAria'
         ? `Practice mistakes in ${opts?.white} versus ${opts?.black} without spoilers`
-        : key === 'practice.entry' ? 'Practice first' : opts?.defaultValue ?? key,
+        : key === 'practice.entry' ? 'Practice first'
+          : ({
+            'review.pgnError.invalid_pgn': 'Invalid or incomplete PGN. No games from this file were imported.',
+            'review.pgnError.pgn_bad_file_type': 'Choose a .pgn or .txt file.',
+            'review.pgnError.pgn_too_large': 'The PGN file exceeds the 4 MB limit. Split it into smaller files.',
+          } as Record<string,string>)[key] ?? opts?.defaultValue ?? key,
   }),
 }));
 
@@ -63,7 +68,9 @@ function mount(initial = '/review') {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // Clear queued mockResolvedValueOnce/rejectedValueOnce implementations too;
+  // a failed upload test must not affect another test's provider import.
+  vi.resetAllMocks();
   mocks.user = { id: 7, profile: { chesscom_username: null, lichess_username: null } };
   mocks.get.mockImplementation(async (url: string) => {
     if (url === '/api/games/openings') return {total: 0, classified: 0, unclassified: 0, openings: []};
@@ -76,6 +83,71 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('uploads a local PGN without linked provider accounts, reports actual saved/duplicate counts and clears selection', async () => {
+    mocks.post.mockResolvedValue({total:2,imported:1,duplicates:1});
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    const button = screen.getByRole('button', {name:'Import PGN file'});
+    expect(button.hasAttribute('disabled')).toBe(true);
+    const pgn='[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const file = new File([pgn],'my-history.pgn',{type:'text/plain'});
+    Object.defineProperty(file,'text',{value:async()=>pgn});
+    const input = screen.getByLabelText('Choose a PGN file') as HTMLInputElement;
+    fireEvent.change(input,{target:{files:[file]}});
+    expect(button.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/pgn',{pgn}));
+    expect(await screen.findByText(/1 new games saved from 2 PGNs \(1 already saved\)/)).toBeTruthy();
+    await waitFor(() => expect(mocks.get.mock.calls.some(([url]) => String(url).startsWith('/api/games?')
+      && new URLSearchParams(String(url).split('?')[1]).get('source') === 'imported')).toBe(true));
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(input.value).toBe('');
+  });
+
+  it('reports the offending game in an invalid PGN file and allows retry without a false success', async () => {
+    const error = Object.assign(new Error('invalid_pgn'),{data:{game_index:2}});
+    mocks.post.mockRejectedValueOnce(error).mockResolvedValueOnce({total:2,imported:2,duplicates:0});
+    mount();
+    const pgn='[Event "One"]\n\n1. e4 e5 *\n\n[Event "Second"]\n\n1. d4 d5 *';
+    const file=new File([pgn],'fix-this.pgn',{type:'text/plain'});
+    Object.defineProperty(file,'text',{value:async()=>pgn});
+    fireEvent.change(screen.getByLabelText('Choose a PGN file'),{target:{files:[file]}});
+    const button=screen.getByRole('button',{name:'Import PGN file'});
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toContain('Game 2: Invalid or incomplete PGN');
+    expect(button.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(button);
+    expect(await screen.findByText(/2 new games saved from 2 PGNs/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects non-PGN file types and oversized uploads before making a request', async () => {
+    mount();
+    const input=screen.getByLabelText('Choose a PGN file');
+    const upload=screen.getByRole('button',{name:'Import PGN file'});
+    const other=new File(['not pgn'],'picture.jpg',{type:'image/jpeg'});
+    Object.defineProperty(other,'text',{value:async()=> 'not pgn'});
+    fireEvent.change(input,{target:{files:[other]}});
+    fireEvent.click(upload);
+    expect((await screen.findByRole('alert')).textContent).toContain('Choose a .pgn or .txt file.');
+    const huge=new File(['x'],'very-large.pgn',{type:'text/plain'});
+    Object.defineProperty(huge,'size',{value:4*1024*1024+1});
+    fireEvent.change(input,{target:{files:[huge]}});
+    fireEvent.click(upload);
+    expect((await screen.findByRole('alert')).textContent).toContain('exceeds the 4 MB limit');
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('labels a PGN game without a verified date as unknown, not in progress', async () => {
+    mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
+      ? {total:1,classified:0,unclassified:1,openings:[]}
+      : {games:[{...makeGame(1),source:'imported',end_time:null,user_color:null,result:null}],total:1});
+    mount();
+    expect(await screen.findByText('Date unavailable')).toBeTruthy();
+    expect(screen.queryByText('In progress')).toBeNull();
+  });
+
   it('offers direct spoiler-free practice only for games with saved analysis', async () => {
     mocks.get.mockResolvedValueOnce({ games: [
       { ...makeGame(1), analyzed: 1 }, makeGame(2),

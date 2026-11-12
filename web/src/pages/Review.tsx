@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
+import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -16,6 +16,7 @@ type ImportSource = 'chesscom' | 'lichess';
 const PAGE_SIZE = 40;
 const LEGACY_MAX_VISIBLE = 200;
 const MAX_SEARCH_LENGTH = 120;
+const MAX_PGN_FILE_BYTES = 4 * 1024 * 1024;
 const IMPORT_BATCH_SIZES = [20, 100, 200] as const;
 const FILTER_OPTIONS = {
   source: [['', 'All sources'], ['chesscom', 'Chess.com'], ['lichess', 'Lichess'], ['played', 'Played'], ['pvp', 'Friends'], ['imported', 'PGN import']],
@@ -94,11 +95,15 @@ export default function Review() {
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
+  const [pgnFile, setPgnFile] = useState<File | null>(null);
+  const pgnInputRef = useRef<HTMLInputElement | null>(null);
   const importMessageTimer = useRef<number | null>(null);
   useEffect(() => {
     // A previously signed-in account's import result must not remain visible
     // when another account begins using this browser.
     setImportMsg(null);
+    setPgnFile(null);
+    if (pgnInputRef.current) pgnInputRef.current.value = '';
     return () => {
       if (importMessageTimer.current != null) window.clearTimeout(importMessageTimer.current);
       importMessageTimer.current = null;
@@ -301,6 +306,39 @@ export default function Review() {
       showImportResult({ text: guidance, error: true }, 6000);
     },
   });
+  const pgnMut = useMutation({
+    mutationFn: async ({file}: {file: File; accountId: number}) => {
+      if (file.size > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
+      if (!/\.(pgn|txt)$/i.test(file.name)) throw new Error('pgn_bad_file_type');
+      const pgn = await file.text();
+      if (new TextEncoder().encode(pgn).byteLength > MAX_PGN_FILE_BYTES) throw new Error('pgn_too_large');
+      return api.post<{total:number;imported:number;duplicates:number}>('/api/games/import/pgn', {pgn});
+    },
+    onSuccess: (result, {accountId}) => {
+      void qc.invalidateQueries({predicate:({queryKey})=>isOwnHistoryQuery(queryKey, accountId)});
+      if (accountIdRef.current !== accountId) return;
+      showImportResult({text: t('review.pgnImportSuccess', {
+        total:result.total, imported:result.imported, duplicates:result.duplicates,
+        defaultValue:`${result.imported} new games saved from ${result.total} PGNs (${result.duplicates} already saved). No player identity or result was assumed.`,
+      })}, 12_000);
+      setPgnFile(null);
+      if (pgnInputRef.current) pgnInputRef.current.value = '';
+      // Undated PGNs sort after dated provider games. Show the imported
+      // collection immediately instead of making users hunt at page 200+.
+      setSearchDraft('');
+      setSearchParams(new URLSearchParams({source:'imported'}));
+    },
+    onError: (error, {accountId}) => {
+      if (accountIdRef.current !== accountId) return;
+      const code = error instanceof Error ? error.message : 'generic';
+      const index = (error as {data?:{game_index?:unknown}})?.data?.game_index;
+      const gameLabel = Number.isSafeInteger(index) && Number(index) > 0
+        ? `${t('review.pgnGameIndex', {index, defaultValue:`Game ${index}`})}: ` : '';
+      showImportResult({error:true,text:`${gameLabel}${t(`review.pgnError.${code}`, {
+        defaultValue:t('review.pgnError.generic', {defaultValue:'Could not import the PGN file. Check the file and retry.'}),
+      })}`}, 12_000);
+    },
+  });
   const sources: { source: ImportSource; username: string | null | undefined; label: string }[] = [
     { source: 'chesscom', username: user?.profile.chesscom_username, label: t('review.import') },
     { source: 'lichess', username: user?.profile.lichess_username, label: t('review.importLichess') },
@@ -357,6 +395,38 @@ export default function Review() {
           </div>
         </section>
       )}
+
+      <section className="card flex min-w-0 flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
+        aria-label={t('review.pgnImportHeading', {defaultValue:'Import a PGN file'})}>
+        <div className="min-w-0 sm:max-w-64">
+          <h2 className="text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+            {t('review.pgnImportHeading', {defaultValue:'Import a PGN file'})}
+          </h2>
+          <p id="library-pgn-help" className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">
+            {t('review.pgnImportHelp', {
+              defaultValue:'Import up to 1,000 standard games from a .pgn or .txt file (4 MB max). Existing identical PGNs are not overwritten.',
+            })}
+          </p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <input id="library-pgn-file" ref={pgnInputRef} type="file" accept=".pgn,.txt,text/plain"
+            aria-label={t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
+            aria-describedby="library-pgn-help"
+            className="input block w-full min-w-0 max-w-full text-xs sm:w-56"
+            disabled={pgnMut.isPending}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0] ?? null;
+              setPgnFile(file);
+            }} />
+          <button type="button" className="btn-primary min-h-10 shrink-0 text-sm"
+            disabled={!pgnFile || pgnMut.isPending || !user}
+            onClick={() => {if (pgnFile && user) pgnMut.mutate({file:pgnFile,accountId:user.id});}}>
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            {pgnMut.isPending ? t('review.pgnImporting', {defaultValue:'Importing PGNs…'})
+              : t('review.pgnImportButton', {defaultValue:'Import PGN file'})}
+          </button>
+        </div>
+      </section>
 
       {importMsg && (
         <div role={importMsg.error ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-2 text-sm', importMsg.error
@@ -702,7 +772,9 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-chesscom-500">
-            <span>{g.end_time ? new Date(g.end_time).toLocaleDateString() : t('review.inProgress', { defaultValue: 'In progress' })}</span>
+            <span>{g.end_time ? new Date(g.end_time).toLocaleDateString()
+              : g.source === 'imported' ? t('review.pgnUnknownDate', {defaultValue:'Date unavailable'})
+                : t('review.inProgress', { defaultValue: 'In progress' })}</span>
             <span>·</span>
             <span>{t(`review.source.${g.source}`, { defaultValue: g.source })}</span>
             {!!g.from_position && <span className="rounded-full bg-chesscom-100 px-2 py-0.5 text-[11px] dark:bg-chesscom-800">{t('review.fromPosition')}</span>}
