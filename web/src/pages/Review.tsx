@@ -97,8 +97,9 @@ export default function Review() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const starredFilterRef = useRef<HTMLButtonElement | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
+  const retryMoreRef = useRef<HTMLButtonElement | null>(null);
   const firstAppendedGameRef = useRef<HTMLAnchorElement | null>(null);
-  const keyboardPageStartRef = useRef<number | null>(null);
+  const keyboardPageStartRef = useRef<{start: number; scope: string} | null>(null);
   const [exploreMode, setExploreMode] = useState<ExploreMode>(searchParams.has('opponent') ? 'opponents' : 'openings');
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean; scope: 'provider' | 'pgn' } | null>(null);
   const [bookmarkFailures, setBookmarkFailures] = useState<{id:number; players:string}[]>([]);
@@ -175,6 +176,7 @@ export default function Review() {
     setSearchParams(next, {replace:true});
   }, [fromDate, requestedToDate, searchParams, setSearchParams]);
   const filterSignature = [...Object.values(filters), fromDate, toDate, selectedOpening, selectedOpponent].join('|');
+  const paginationScope = JSON.stringify([user?.id, bookmarkedOnly, q, filterSignature]);
   const activeFilters = !!fromDate || !!toDate || !!selectedOpening || !!selectedOpponent ||
     Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
 
@@ -487,9 +489,24 @@ export default function Review() {
   const importControlsVisible = firstUseEmpty || importPanelOpen;
   const hiddenBookmarkFailures = bookmarkFailures.filter(failure => !games.some(game => game.id === failure.id));
   useEffect(() => {
-    const start = keyboardPageStartRef.current;
-    if (start == null || isFetchingNextPage) return;
-    if (isFetchNextPageError || games.length < start || (games.length === start && !hasNextPage)) {
+    const requested = keyboardPageStartRef.current;
+    if (requested == null) return;
+    // Once the player changes accounts or any URL-owned filter, an old page's
+    // focus request must never affect the newly selected Library query.
+    if (requested.scope !== paginationScope) {
+      keyboardPageStartRef.current = null;
+      return;
+    }
+    if (isFetchingNextPage) return;
+    if (isFetchNextPageError) {
+      keyboardPageStartRef.current = null;
+      if (document.activeElement === document.body || document.activeElement === loadMoreRef.current) {
+        retryMoreRef.current?.focus();
+      }
+      return;
+    }
+    const start = requested.start;
+    if (games.length < start || (games.length === start && !hasNextPage)) {
       keyboardPageStartRef.current = null;
       return;
     }
@@ -501,7 +518,7 @@ export default function Review() {
     if (document.activeElement !== document.body && document.activeElement !== loadMoreRef.current) return;
     if (hasNextPage) loadMoreRef.current?.focus();
     else firstAppendedGameRef.current?.focus();
-  }, [games.length, hasNextPage, isFetchingNextPage, isFetchNextPageError]);
+  }, [paginationScope, games.length, hasNextPage, isFetchingNextPage, isFetchNextPageError]);
 
   function toggleBookmarkedOnly() {
     const next = new URLSearchParams(searchParams);
@@ -948,7 +965,7 @@ export default function Review() {
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
           {games.map((g, index) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly}
-            focusLinkRef={index === keyboardPageStartRef.current ? firstAppendedGameRef : undefined}
+            focusLinkRef={index === keyboardPageStartRef.current?.start ? firstAppendedGameRef : undefined}
             restoreKeyboardFocus={() => starredFilterRef.current?.focus()}
             onBookmarkAttempt={(gameId) => setBookmarkFailures(current => current.filter(failure => failure.id !== gameId))}
             onBookmarkFailure={(gameId, players) => {
@@ -960,7 +977,12 @@ export default function Review() {
       {!isLoading && !initialError && isFetchNextPageError && (
         <div role="alert" className="card flex flex-wrap items-center justify-center gap-3 border-bad/30 p-3">
           <span className="text-sm text-bad">{t('review.moreFailed', { defaultValue: 'Could not load more games. Your loaded games are still available.' })}</span>
-          <button type="button" className="btn-secondary min-h-11 shrink-0 text-sm" onClick={() => void fetchNextPage()}>
+          <button ref={retryMoreRef} type="button" className="btn-secondary min-h-11 shrink-0 text-sm"
+            onClick={(event) => {
+              keyboardPageStartRef.current = event.detail === 0
+                ? {start:games.length,scope:paginationScope} : null;
+              void fetchNextPage();
+            }}>
             {t('review.retryMore', { defaultValue: 'Retry' })}
           </button>
         </div>
@@ -969,7 +991,8 @@ export default function Review() {
         <div className="flex justify-center">
           <button ref={loadMoreRef} type="button" className="btn-secondary min-h-11 px-5 text-sm" disabled={isFetchingNextPage}
             onClick={(event) => {
-              keyboardPageStartRef.current = event.detail === 0 ? games.length : null;
+              keyboardPageStartRef.current = event.detail === 0
+                ? {start:games.length,scope:paginationScope} : null;
               void fetchNextPage();
             }}>
             {isFetchingNextPage ? t('common.loading', { defaultValue: 'Loading games…' }) : t('review.loadMore', { defaultValue: 'Load more games' })}

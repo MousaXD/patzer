@@ -1276,6 +1276,47 @@ try {
     } finally {lagged.releaseContinuation(); await lagged.context.close();}
   }
 
+  const switchedWhilePaging=await newPage('light',390,844,{delayedContinuation:'success'});
+  try {
+    const {page,pageErrors,releaseContinuation}=switchedWhilePaging;
+    const source=page.getByRole('combobox',{name:'Game source'});
+    await source.selectOption('lichess');
+    await page.getByText('40 of 310 games').waitFor();
+    await page.getByRole('button',{name:'Load more games'}).click();
+    await page.getByText('80 of 310 games').waitFor();
+    await source.selectOption('');
+    await page.getByText('40 of 620 games').waitFor();
+    const pending=page.waitForRequest(req=>{
+      const parsed=new URL(req.url());
+      return parsed.pathname==='/api/games' && parsed.searchParams.get('offset')==='40' &&
+        !parsed.searchParams.has('source');
+    });
+    await page.getByRole('button',{name:'Load more games'}).focus();
+    await page.keyboard.press('Enter');
+    await pending;
+    // Browser Back can retain focus on this same persistent button. Remove
+    // that ambient focus first so this verifies whether an obsolete paging
+    // effect *actively restores* it after the query changes.
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
+    await page.goBack();
+    await page.waitForURL(href=>new URL(href).searchParams.get('source')==='lichess');
+    await page.getByText('80 of 310 games').waitFor();
+    await sleep(120);
+    assert.equal(await page.getByRole('button',{name:'Load more games'})
+      .evaluate(node=>document.activeElement===node),false,
+      'An old keyboard pagination should not refocus Load more in a history-restored filter');
+    releaseContinuation();
+    await sleep(400);
+    await page.getByText('80 of 310 games').waitFor();
+    assert.equal(await page.getByRole('button',{name:'Load more games'})
+      .evaluate(node=>document.activeElement===node),false,
+      'Late pagination completion stole focus from a different query');
+    assert.deepEqual(pageErrors,[],'Switching a cached filter during keyboard pagination produced a browser exception');
+    console.log('PASS stale keyboard paging cannot refocus a restored cached filter');
+  } finally {switchedWhilePaging.releaseContinuation();await switchedWhilePaging.context.close();}
+
   const failedPage=await newPage('dark',320,700,{locale:'de',failContinuationUntilRetry:true});
   try {
     const {page,pageErrors,allowContinuationRetry}=failedPage;
@@ -1299,6 +1340,25 @@ try {
     assert.deepEqual(pageErrors,[], 'Mobile continuation failure/recovery caused a JS exception');
     console.log('PASS German 320px continuation failure keeps existing games and retries without duplication');
   } finally {await failedPage.context.close();}
+
+  const keyboardFailedPage=await newPage('light',390,844,{failContinuationUntilRetry:true});
+  try {
+    const {page,pageErrors,allowContinuationRetry}=keyboardFailedPage;
+    await page.getByRole('button',{name:'Load more games'}).focus();
+    await page.keyboard.press('Enter');
+    const retry=page.getByRole('button',{name:'Retry'});
+    await retry.waitFor({timeout:40000});
+    assert.ok(await retry.evaluate(node=>document.activeElement===node),
+      'Keyboard pagination failure should focus its newly displayed Retry button');
+    allowContinuationRetry();
+    await page.keyboard.press('Enter');
+    await page.getByText('80 of 620 games').waitFor();
+    const load=page.getByRole('button',{name:'Load more games'});
+    assert.ok(await load.evaluate(node=>document.activeElement===node),
+      'Keyboard Retry should restore focus to Load more once another page is available');
+    assert.deepEqual(pageErrors,[],'Keyboard pagination failure produced a browser exception');
+    console.log('PASS failed keyboard pagination focuses Retry, then returns focus to Load more after recovery');
+  } finally {await keyboardFailedPage.context.close();}
 
   const finalPage=await newPage('dark',320,700,{lastPageScenario:true});
   try {

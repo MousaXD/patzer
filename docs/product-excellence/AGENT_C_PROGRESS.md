@@ -1133,3 +1133,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Investigate **pagination focus safety if the player changes source/search/date filters or accounts while a keyboard-initiated continuation is pending**. The new focus target is local state but pending React Query continuations may finish after the Library switches to another query. Reproduce with delayed synthetic responses and an explicit focus move to another control; cancel the stale focus request on query identity change if needed, without changing the existing query-cache isolation or pagination API.
+
+## 2026-11-13 — Scope pagination focus requests to the current Library query and preserve keyboard retry
+
+- Recovered clean pushed `5b9caa1` and extended the synthetic Chromium pagination tests. A keyboard-started All-games continuation was delayed while the user returned with browser Back to a cached **80-game Lichess** collection. The initial focus assertion was too broad: browser navigation may retain focus on the same persistent button even without an application action. Corrected the fixture to explicitly blur that button before navigating and assert that an obsolete pagination effect **does not actively refocus it** after the query switch and old request completion.
+- Bound each keyboard pagination intent to the exact account/URL-owned query (`user.id`, Starred-only, search `q`, source/result/sort/date/opening/opponent filter signature). Clear the intent before any focus action if that identity changes. A continued page still focuses Load more when more results exist or the first newly appended game after the final page; pointer actions and deliberate focus changes remain untouched.
+- Also covered the previously untested **failed keyboard continuation**: when Load more is replaced by an error and Retry, focus now moves to Retry for an unmodified keyboard interaction. Activating Retry by Enter starts a new query-scoped continuation and returns focus to Load more after success if more pages remain. Chromium passed the cached-history filter transition, failure/retry, final 45-game page, intermediate 85-game page, and mouse-initiated final page without JS errors or horizontal overflow.
+
+### Verification
+
+- Focused Library tests: **59/59 passed**. Full repository suite: **109 passed files, 2 skipped; 1,137 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `node --check web/tests/library.browser.mjs`, `git diff --check`: passed.
+- Complete isolated Chromium desktop/mobile light/dark, query-scoped pagination, keyboard Retry, Starred-only bookmark focus, German and provider/PGN imports, dates and search, cursor pagination: passed.
+- Only Agent C Library UI, isolated browser acceptance fixture, and this progress log changed. No other agent, API, production data, merge or deployment touched.
+
+### Next independent audit
+
+- Review **keyboard paging failure with an intentional focus change before the response**. The new Retry focus guard should not steal focus from a source/date/search control when the player navigates away while a request is pending. Add a delayed failing continuation in Chromium and verify both focus ownership and retryability; then resume broader Library discovery audits from the existing master plan rather than repeating completed import and localization investigations.
