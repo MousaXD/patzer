@@ -1526,3 +1526,13 @@
 ### Next independent source-safety audit
 
 - A background game GET initiated **before** a Notes PATCH might arrive **after** the save with an older `notes` field. Inspect whether the `notes` prop effect can incorrectly revert the acknowledged status or trigger a duplicate re-save despite a successful PATCH. Reproduce a source-valid but stale delayed GET in Chromium before changing reconciliation logic.
+
+## 2026-11-13: verify stale pre-save game GET cannot undo acknowledged Notes
+
+- Recovered pushed `4b6877f` and the unfinished single-file browser regression, without redoing the previous successful Notes status fix. The new authenticated disposable Chromium scenario captures an old game response, triggers a real background game GET from the Star action and holds its response, then edits Notes and waits for the backend's successful PATCH before releasing the **pre-save game response**. It checks the exact textarea value, the absence of the misleading Unsaved label, the **single** Notes PATCH even after focus/blur, the database's latest notes text, and byte-for-byte unchanged PGN.
+- The initial full matrix reached and passed the stale-Notes assertions, but the new fixture had left the synthetic game **Starred**. The independent bookmark error/retry test later expected an unstarred game and failed locating Star. This was test-state leakage, not an application regression. Corrected the fixture to unstar with a verified successful PATCH before closing. The entire authenticated disposable responsive, locale, keyboard, source, engine, variation, Notes, bookmark and PGN Chromium matrix then **PASSED (exit 0)** on isolated port 9003.
+- `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. Test-only coverage; the preceding product commit passed **1006 tests / 12 skipped**, typecheck, build and browser matrix. No application logic change, merge, deployment, production data access or other agent worktree edits.
+
+### Next independent source-integrity audit
+
+- While blind practice is mounted, a **new authoritative game source revision** may make its selected mistake invalid. Verify that a real background refetch leads to the isolated `PracticeUnavailable` recovery state, with no leaked saved move/engine hint, and that its Return action preserves keyboard focus and a valid saved-game route. Use a separate disposable source-attested fixture and avoid touching other agents' flows.

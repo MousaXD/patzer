@@ -754,6 +754,68 @@ try {
     releaseStatusRefresh();
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,oldPgn);
   }finally{releaseStatusRefresh();await acknowledgedStatusContext.close();}
+  // An older game GET can be underway before a new note is saved. Release
+  // that source-valid but stale response after the successful PATCH and
+  // confirm it never turns the latest acknowledged draft back into an
+  // apparent unsaved edit or triggers a duplicate PATCH on the next blur.
+  const staleNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  let releaseStaleGameGet=()=>{};
+  try{
+    await staleNotesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await staleNotesContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const initialGame=await api(`/api/games/${id}`,{cookie:account.cookie});
+    assert.equal(initialGame.status,200);
+    const oldPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:enNotes.review.notes,exact:true}).click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    const heldStaleGet=new Promise(resolve=>{releaseStaleGameGet=resolve;});
+    let GETs=0;
+    const noteWrites=[];
+    await page.route(`**/api/games/${id}`,async route=>{
+      if(route.request().method()==='GET' && GETs++===0){
+        await heldStaleGet;
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(initialGame.json)});
+      } else await route.continue();
+    });
+    await page.route(`**/api/games/${id}/notes`,async route=>{
+      noteWrites.push(route.request().postDataJSON().notes);
+      await route.continue();
+    });
+    const olderGet=page.waitForRequest(req=>req.method()==='GET' && req.url().endsWith(`/api/games/${id}`));
+    await page.getByRole('button',{name:'Star',exact:true}).click();
+    await olderGet;
+    const newestDraft='Latest saved notes must withstand an old game GET';
+    const persisted=page.waitForResponse(res=>res.status()===200 && res.url().endsWith(`/api/games/${id}/notes`)
+      && res.request().postDataJSON().notes===newestDraft);
+    await editor.fill(newestDraft);
+    await editor.press('Tab');
+    await persisted;
+    await page.locator('[data-review-meta-toolbar]').getByText(enNotes.common.saved,{exact:true})
+      .waitFor({state:'visible',timeout:3000});
+    releaseStaleGameGet();
+    await page.waitForTimeout(350);
+    assert.equal(await editor.inputValue(),newestDraft,
+      'A stale refetch must not erase Notes saved after that GET was initiated');
+    assert.equal(await page.locator('[data-review-meta-toolbar]').getByText(enNotes.review.notesUnsaved,{exact:true}).count(),0,
+      'An older GET must not incorrectly revert acknowledged Notes to Unsaved');
+    await editor.focus();
+    await editor.press('Tab');
+    await page.waitForTimeout(200);
+    assert.deepEqual(noteWrites,[newestDraft],
+      'A stale game GET must not cause a redundant save of an already acknowledged draft');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,newestDraft);
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,oldPgn);
+    // This fixture used Star to initiate a real background game GET. Restore
+    // its original state before the independent bookmark failure/retry suite.
+    const unstarResponse=page.waitForResponse(res=>res.url().endsWith(`/api/games/${id}/bookmark`)
+      && res.status()===200 && res.request().postDataJSON().bookmarked===false);
+    await page.getByRole('button',{name:'Starred',exact:true}).click();
+    await unstarResponse;
+    assert.equal(db.prepare('SELECT bookmarked FROM games WHERE id=?').get(id).bookmarked,0);
+  }finally{releaseStaleGameGet();await staleNotesContext.close();}
   // Closing Notes blurs its editor and starts an asynchronous autosave. If
   // that PATCH fails *after* the editor collapses, the error cannot be left
   // inside its now-hidden content: the user must see and recover the draft.
