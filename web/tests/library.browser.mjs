@@ -430,8 +430,13 @@ try {
     const card=page.locator('a[href="/review/7003"]');
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'library-unicode-search-dark-390.png')});
+    await search.fill('неизвестный');
+    await page.getByText('No games match your search').waitFor();
+    await page.getByRole('button',{name:'Clear filters'}).last().click();
+    await page.getByText('3 of 3 games').waitFor();
+    await page.locator('a[href="/review/7001"]').waitFor();
     assert.deepEqual(pageErrors,[], 'Unicode search produced a browser exception');
-    console.log('PASS Unicode player searches through saved-game cards and URL query params');
+    console.log('PASS Unicode player searches through saved-game cards, URL params and empty-query recovery');
   } finally {await internationalHistory.context.close();}
 
   // Real first-use path: account has no linked providers and no saved games.

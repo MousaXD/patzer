@@ -256,6 +256,49 @@ describe('platform API with 1,200 isolated synthetic games plus another user', (
     }
   });
 
+  it('paginates Unicode search results consistently when a new matching game arrives mid-browse', async () => {
+    const {createSession,SESSION_COOKIE_NAME}=await import('../src/auth/sessions.js');
+    const cookieForUser=`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(3))}`;
+    const insert=db.prepare(`INSERT INTO games (user_id,source,external_id,pgn,white,black,end_time)
+      VALUES (3,'imported',?,'1. e4 e5 *',?,'Other',?)`);
+    const ids:number[]=[];
+    const request=async (cursor:string|null) => {
+      const params=new URLSearchParams({q:'блиц',source:'imported',limit:'17'});
+      if(cursor) params.set('cursor',cursor);
+      const response=await gamesRoute.request(`/?${params.toString()}`,{headers:{Cookie:cookieForUser}});
+      expect(response.status).toBe(200);
+      return response.json() as Promise<{games:{id:number}[];total:number;has_more:boolean;next_cursor:string|null}>;
+    };
+    try {
+      for(let i=0;i<93;i++) ids.push(Number(insert.run(`agentc-unicode-paging-${i}`,
+        `БЛИЦ ${i}`,new Date(Date.UTC(2026,5,1)+i*60_000).toISOString()).lastInsertRowid));
+      const first=await request(null);
+      expect(first.total).toBe(93);
+      expect(first.games).toHaveLength(17);
+      expect(first.next_cursor).toEqual(expect.any(String));
+      ids.push(Number(insert.run('agentc-unicode-paging-new','БЛИЦ NEW','2027-01-01T00:00:00Z').lastInsertRowid));
+      const seen=first.games.map(g=>g.id);
+      let cursor=first.next_cursor;
+      let hasMore=first.has_more;
+      while(hasMore) {
+        const page=await request(cursor);
+        expect(page.total).toBe(93);
+        seen.push(...page.games.map(g=>g.id));
+        hasMore=page.has_more;
+        cursor=page.next_cursor;
+      }
+      expect(cursor).toBeNull();
+      expect(seen).toEqual(ids.slice(0,93).reverse());
+      expect(new Set(seen).size).toBe(93);
+      const fresh=await request(null);
+      expect(fresh.total).toBe(94);
+      expect(fresh.games[0]?.id).toBe(ids[93]);
+    } finally {
+      const remove=db.prepare('DELETE FROM games WHERE id=?');
+      ids.forEach(id=>remove.run(id));
+    }
+  });
+
   it('rejects negative, non-finite, ambiguous and unbounded query parameters', async () => {
     for (const query of ['limit=-1', 'limit=NaN', 'limit=1.5',
       'offset=-2', 'offset=1000001', 'sort=random()', 'analyzed=maybe',

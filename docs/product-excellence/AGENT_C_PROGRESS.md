@@ -503,3 +503,18 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Verify Unicode-aware Library search maintains correct **cursor pagination and sort order** for large matching international sets, with no duplicate or skipped games after a concurrent insert. The new function is deterministic, but exercising the combined search+cursor path would guard against any future query-order changes. Then independently inspect search-empty recovery on 320px.
+
+## 2026-11-12 — Certify Unicode search with paginated history and empty-query recovery
+
+- Resumed clean pushed `ac7dbbb` and finished the exact outstanding combined-path audit. No bug was reproduced: existing account-scoped cursor pagination behaves correctly with Unicode-filtered results. Added an authenticated Hono/SQLite regression populating **93 uppercase Cyrillic matching games** for a disposable user, browsing them in 17-game cursor pages, importing one new matching game between pages, and proving every original game appears **exactly once**. The in-flight listing stays at 93 games while a fresh query returns all 94 and the new game first.
+- Extended the isolated 390px Chromium fixture to search for a **nonmatching Cyrillic phrase**, verify the explicit no-match message, clear filters through the real UI, and recover the full three-game collection without a stuck filter or console error. Existing international searches (`JOSÉ`, `БОРИС`, decomposed `Café`) and filter navigation still pass.
+- This is **regression certification only**, with no additional product behavior change or ungrounded claim of an immutable SQLite snapshot. The cursor still documents that editing an existing game's sortable timestamp or search membership can reorder it between pages; that requires a separate snapshot design.
+
+### Verification
+
+- Targeted Unicode/cursor regression passed. Full repository suite: **109 files passed, 2 skipped; 1,056 tests passed, 12 skipped**, zero failures. Existing production builds/typecheck from `ac7dbbb` are green; this checkpoint only adds Hono and Chromium tests plus documentation.
+- Isolated Chromium 1440/390/320 light/dark, Unicode search empty-state recovery, PGN imports, first-use, pagination and bookmark error recovery: passed. No production accounts, services, schema, merges or cross-agent files touched.
+
+### Next product audit
+
+- Independently review the Library search/deep-filter interaction for **source-qualified opponent names and exact openings** when switching between a normal search and a discovery chip. Ensure no stale filters stay selected in the URL or hide desired games. Coordinate Review back-navigation through the already documented cross-lane handoff rather than editing GameAnalyzer.
