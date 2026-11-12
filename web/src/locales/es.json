@@ -658,6 +658,9 @@
     "bookmark": "Marcar / desmarcar destacada",
     "share": "Copiar enlace a la posición"
   },
+  "learn": {
+    "nav": "Aprender"
+  },
   "train": {
     "nav": "Entrenar",
     "title": "Entrenador de táctica",

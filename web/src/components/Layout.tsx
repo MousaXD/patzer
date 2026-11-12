@@ -78,7 +78,7 @@ function NavigationItem({
         'dark:focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none',
         mobile
           ? 'min-h-11 w-full gap-3 px-3 py-2.5 text-sm'
-          : 'mx-auto min-h-[53px] w-[64px] flex-col justify-center gap-1 px-1.5 py-1.5 text-[10px] select-none',
+          : 'mx-auto min-h-[53px] w-[76px] flex-col justify-center gap-1 px-1 py-1.5 text-[10px] select-none',
         isActive
           ? 'bg-green-500/10 text-green-700 dark:bg-green-500/20 dark:text-green-100'
           : 'text-chesscom-600 hover:bg-chesscom-100 hover:text-chesscom-900 dark:text-chesscom-300 dark:hover:bg-chesscom-800 dark:hover:text-white',
@@ -87,7 +87,7 @@ function NavigationItem({
       {({ isActive }) => (
         <>
           {!mobile && isActive && (
-            <span aria-hidden="true" className="absolute -left-2 h-7 w-[3px] rounded-r-full bg-green-500" />
+            <span aria-hidden="true" className="absolute -left-0.5 h-7 w-[3px] rounded-r-full bg-green-500" />
           )}
           <Icon aria-hidden="true" className={cn('shrink-0', mobile ? 'h-[19px] w-[19px]' : 'h-[20px] w-[20px]')} />
           <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>

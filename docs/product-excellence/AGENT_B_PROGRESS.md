@@ -773,3 +773,32 @@
 ### Next audit
 
 - Check global header accessibility and discoverability across language changes and unusually long translated section headings on **640/768px tablet layouts**, including whether the title, search and settings controls remain identifiable without overlap. Reproduce with real localized browser screenshots before editing shared shell typography or breakpoints.
+
+## 2026-11-12: Localized navigation integrity and readable rail labels
+
+### Recovery and real-world evidence
+
+- Continued from clean pushed `dfd4e68` and the exact pending 640/768px localized-header audit; kept the already verified touch-target changes intact.
+- Measured real navigation strings in all five locales. At **768px**, the Spanish Learn page used English fallback `Learning` because `learn.nav` was missing. The equivalent Bulgarian translation was also absent. The real Chromium test failed before adding the missing Spanish label.
+- Screenshot inspection exposed a second visual defect in the shared **80px rail**: Spanish `Estadísticas` and `Laboratorio` split their final letters onto a second line, despite other destinations fitting normally. The Spanish Review heading itself fit at 768px; no header typography change was necessary.
+
+### Implementation
+
+1. Added `learn.nav` to the Spanish and Bulgarian locale dictionaries (Aprender / Обучение), so the primary navigation and current-page title no longer fall back to English. Did not touch feature-owned Learn page content.
+2. Made **better use of the existing rail width**: expanded each desktop navigation item's label area from 64px to 76px and reduced horizontal padding, while retaining the overall `w-20` app rail. Repositioned the active indicator to continue lining up with the rail edge.
+3. Extended real Chromium shell tests for Spanish at **768px** and Bulgarian at **640px**, including translated Review titles without clipping, correct Learn navigation in the rail/mobile drawer, and no horizontal overflow. At the desktop-rail breakpoint, computed text measurements assert no whole-word label is wider than its available label area.
+4. Added `Layout.locales.test.ts`, verifying all eleven global primary destination and settings labels are present and nonempty in **English, German, Spanish, Russian and Bulgarian**.
+5. Visually rechecked Spanish 768px and Bulgarian 640px screenshots. The Spanish Statistics and Laboratory names now remain intact, and the active state is aligned and readable.
+
+### Verification and ownership
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** after the earlier translation negative control, covering the existing responsive and newly localized checks.
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **423/423 passed across 72 test files**.
+- `git diff --check`: **passed**.
+- Scoped to the shared Layout, translations and Agent B tests/progress. No user records, production operations, other agent worktrees, merges or deployment.
+
+### Integration note / next audit
+
+- The **Learn feature page** itself still displays some English strings when the surrounding shell is Spanish/Bulgarian; that content is owned by the Learn/Play lane and was intentionally left unchanged.
+- Inspect the shared shell's **version/changelog labels** in non-English languages. The Bulgarian mobile-drawer screenshot still showed the English fallback `View changelog`; check all five locales and fix global shell language consistency where missing, not feature-owned pages.

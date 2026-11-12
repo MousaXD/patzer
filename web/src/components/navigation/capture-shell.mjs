@@ -298,6 +298,63 @@ try {
     await parent.click();
     await page.waitForURL((url) => url.pathname === nested.parent);
   }
+  // Verify actual localized shell navigation instead of relying on English
+  // fallback labels on touch-sized tablets. Keep feature pages untouched.
+  for (const locale of [
+    { code: 'es', width: 768, primary: 'Navegación principal', learn: 'Aprender', review: 'Análisis de partida' },
+    { code: 'bg', width: 640, primary: 'Мобилна навигация', menu: 'Отвори менюто', learn: 'Обучение', review: 'Преглед на игри' },
+  ]) {
+    profile.language = locale.code;
+    await page.setViewportSize({ width: locale.width, height: 900 });
+    await page.goto(origin + '/review', { waitUntil: 'domcontentloaded' });
+    if (locale.width >= 768) {
+      await page.getByRole('navigation', { name: locale.primary }).waitFor({ timeout: 8000 });
+    } else {
+      await page.getByRole('button', { name: locale.menu }).waitFor({ timeout: 8000 });
+    }
+    const sectionHeading = page.locator('[data-workspace-header] [data-current-section]');
+    await sectionHeading.getByText(locale.review).waitFor({ timeout: 8000 });
+    const sizing = await sectionHeading.evaluate((node) => ({
+      visible: node.clientWidth, full: node.scrollWidth,
+      header: node.getBoundingClientRect().right,
+      search: document.querySelector('[data-workspace-header] button[aria-label*="palette"]')?.getBoundingClientRect().left,
+    }));
+    if (sizing.full > sizing.visible + 1) {
+      throw new Error(`${locale.code} review heading clipped at ${locale.width}px: ${JSON.stringify(sizing)}`);
+    }
+    await page.goto(origin + '/learn', { waitUntil: 'domcontentloaded' });
+    if (locale.width < 768) {
+      await page.getByRole('button', { name: locale.menu }).click();
+    }
+    const navigation = page.getByRole('navigation', { name: locale.primary });
+    await navigation.waitFor({ timeout: 8000 });
+    await navigation.locator('a[href="/learn"]').getByText(locale.learn).waitFor({ timeout: 8000 });
+    await page.locator('[data-current-section]').getByText(locale.learn).waitFor({ timeout: 8000 });
+    if (locale.width >= 768) {
+      const labelsTooNarrow = await page.locator('[data-navigation-rail] nav a > span:last-child').evaluateAll((labels) => {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Unable to measure navigation label text');
+        return labels.flatMap((label) => {
+          const style = getComputedStyle(label);
+          context.font = style.font || style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily;
+          const available = label.clientWidth;
+          const words = (label.textContent ?? '').trim().split(/\s+/);
+          const widest = Math.max(0, ...words.map((word) => context.measureText(word).width));
+          return widest > available + 1 ? [{ label: label.textContent?.trim(), available, widest }] : [];
+        });
+      });
+      if (labelsTooNarrow.length > 0) {
+        throw new Error(`${locale.code} rail breaks words into orphaned letters at ${locale.width}px: ${JSON.stringify(labelsTooNarrow)}`);
+      }
+    }
+    await checkNoHorizontalOverflow(page, `${locale.code} tablet shell ${locale.width}px`);
+    await page.screenshot({ path: resolve(output, `localized-nav-${locale.code}-${locale.width}.png`) });
+    if (locale.width < 768) {
+      await page.keyboard.press('Escape');
+      await page.getByRole('dialog', { name: locale.primary }).waitFor({ state: 'detached' });
+    }
+  }
   profile.language = 'en';
 
   // A route selected from the mobile drawer must announce the new workspace
