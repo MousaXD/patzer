@@ -266,6 +266,9 @@ export default function Play() {
   const savedBotRequestEpoch = useRef(0);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
+  // A search-param change does not unmount Play. Track the game the socket
+  // actually belongs to, not just the ?game= URL currently shown.
+  const connectedPvpGameRef = useRef<number | null>(null);
   const accountRef = useRef<number | null>(user?.id ?? null);
   function socket(): ReconnectingSocket {
     if (!socketRef.current) {
@@ -306,6 +309,7 @@ export default function Play() {
     if (accountRef.current === nextId) return;
     accountRef.current = nextId;
     socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
     connectedRef.current = false;
     setConnected(false);
     resetGameState();
@@ -392,9 +396,21 @@ export default function Play() {
   // Leaving the page must not leave a reconnect loop running behind it.
   useEffect(() => () => { socketRef.current?.disconnect(); }, []);
 
-  // PvP: auto-connect when arriving with ?game=ID
+  // PvP: keep the mounted board and WebSocket in sync with the actual route.
+  // Checking `phase === 'setup'` silently left the old bot/PvP board active
+  // after Join game changed the URL. Browser Back also needs to close an old
+  // PvP socket instead of displaying it under a URL without ?game=.
   useEffect(() => {
-    if (pvpGameId && phase === 'setup') connectPvp(pvpGameId);
+    if (pvpGameId) {
+      if (connectedPvpGameRef.current !== pvpGameId) connectPvp(pvpGameId);
+    } else if (connectedPvpGameRef.current !== null) {
+      connectedPvpGameRef.current = null;
+      socketRef.current?.disconnect();
+      connectedRef.current = false;
+      setConnected(false);
+      resetGameState();
+      setPhase('setup');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvpGameId]);
 
@@ -451,6 +467,7 @@ export default function Play() {
   };
 
   function startBot() {
+    connectedPvpGameRef.current = null;
     const finalColor = fromPos ? fromColor : color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
     setUserColor(finalColor);
     userColorRef.current = finalColor;
@@ -478,6 +495,7 @@ export default function Play() {
 
   /** Walk back into the bot game the server kept for us. */
   function resumeBot(from: ResumableBot) {
+    connectedPvpGameRef.current = null;
     setUserColor(from.user_color);
     userColorRef.current = from.user_color;
     resetGameState();
@@ -488,6 +506,11 @@ export default function Play() {
   }
 
   function connectPvp(gameId: number) {
+    // Switching from another game must close its socket. ReconnectingSocket
+    // protects stale messages, but connect() alone does not close the old
+    // underlying WebSocket (which can keep a second session alive).
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = gameId;
     resetGameState();
     setConnected(false);
     connectedRef.current = false;

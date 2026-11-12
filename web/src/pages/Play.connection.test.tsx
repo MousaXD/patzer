@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 
 const socketHarness = vi.hoisted(() => ({
   current: null as null | {
     connected: boolean;
     connectCalls: number;
     disconnectCalls: number;
+    urls: string[];
     sent: { type: string; uci?: string }[];
     accept(): void;
     drop(): void;
@@ -72,11 +73,12 @@ vi.mock('../lib/reconnectingSocket', () => ({
     connected = false;
     connectCalls = 0;
     disconnectCalls = 0;
+    urls: string[] = [];
     sent: { type: string; uci?: string }[] = [];
     constructor(private readonly opts: { onMessage(event: MessageEvent): void; onStatusChange(up: boolean): void }) {
       socketHarness.current = this;
     }
-    connect() { this.connectCalls++; this.connected = false; }
+    connect(url: string) { this.connectCalls++; this.urls.push(url); this.connected = false; }
     disconnect() { this.disconnectCalls++; this.connected = false; }
     send(payload: { type: string; uci?: string }) {
       if (!this.connected) return false;
@@ -96,6 +98,14 @@ const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const snapshot = { type: 'game_started', fen: START, history: [], time_control: 'untimed' };
 const savedBot = { difficulty: 'kid', user_color: 'white', time_control: 'rapid', ply: 12, updated_at: '2026-11-12T12:00:00Z' };
 
+function JoinDifferentGame({ gameId }: { gameId: number }) {
+  const navigate = useNavigate();
+  return <>
+    <button onClick={() => navigate(`/play?game=${gameId}`)}>Join different game</button>
+    <button onClick={() => navigate(-1)}>Go back</button>
+  </>;
+}
+
 beforeEach(() => {
   lobbyHarness.setActivePlaySession.mockReset();
   liveHarness.getLive.mockReset().mockResolvedValue({ bot: null, pvp: [] });
@@ -104,6 +114,53 @@ beforeEach(() => {
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('switches from a running bot game to the explicitly selected PvP game, not just its URL', async () => {
+    render(<MemoryRouter initialEntries={['/play']}>
+      <Play /><JoinDifferentGame gameId={401} />
+    </MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive(snapshot); });
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Join different game' }));
+    expect(ws.connectCalls).toBe(2);
+    expect(ws.urls[1]).toContain('/ws/play?game=401');
+    expect(ws.disconnectCalls).toBe(1);
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(true);
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', opponent: { display_name: 'New rival', online: true } }); });
+    expect(screen.getByText('New rival')).toBeTruthy();
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(ws.disconnectCalls).toBe(2);
+    expect(screen.queryByTestId('chess-board')).toBeNull();
+    expect(screen.getByRole('button', { name: 'play.start' })).toBeTruthy();
+  });
+
+  it('replaces a connected PvP game when a new game ID is chosen without unmounting Play', () => {
+    render(<MemoryRouter initialEntries={['/play?game=511']}>
+      <Play /><JoinDifferentGame gameId={512} />
+    </MemoryRouter>);
+    const ws = socketHarness.current!;
+    expect(ws.urls[0]).toContain('/ws/play?game=511');
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', opponent: { display_name: 'First rival', online: true } }); });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Join different game' }));
+    expect(ws.connectCalls).toBe(2);
+    expect(ws.urls[1]).toContain('/ws/play?game=512');
+    expect(ws.disconnectCalls).toBe(1);
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', opponent: { display_name: 'Second rival', online: true } }); });
+    expect(screen.getByText('Second rival')).toBeTruthy();
+    expect(screen.queryByText('First rival')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(ws.connectCalls).toBe(3);
+    expect(ws.urls[2]).toContain('/ws/play?game=511');
+    expect(ws.disconnectCalls).toBe(2);
+  });
+
   it('suppresses blocking global invitations during a connecting or active game and restores them on exit', async () => {
     const page = render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
     expect(lobbyHarness.setActivePlaySession).toHaveBeenLastCalledWith(false);
