@@ -995,3 +995,27 @@
 ### Next independent audit candidate
 
 - Inspect whether losing focus on the Engine Lines Retry button during a request (or collapsing its panel from within) creates a keyboard-focus trap or drops focus to the document body. Reproduce with real Chromium before making a UX change; preserve correct engine source guards.
+
+## 2026-11-12: retain keyboard focus after applying an engine line
+
+### Exact recovery, narrowed focus audit, and failing browser reproduction
+
+- Resumed from clean pushed `716b842` on Agent A's own isolated worktree, with no unfinished files. The existing Retry handler already returns focus to the durable `#review-engine-lines-content` region when its Retry button unmounts; verified that no new change is needed there. Added a real Chromium keyboard collapse/reopen assertion: `aria-expanded` updates and focus remains on the disclosure header rather than becoming hidden or stranded.
+- The more consequential failure was activating a **valid saved-game engine line** while its button was focused. Following `e4` advanced the PGN replay to ply 1 and removed all first-FEN engine buttons, leaving keyboard focus off the actual board. A new browser assertion for focused board recovery **failed against the preceding implementation** (`AssertionError: Applying a focused engine suggestion must focus the updated board`).
+
+### Scoped correction and self-audit
+
+- Both `Follow played move` and `Try engine move` now reuse one Game Review-only post-action focus helper. At stacked/mobile widths it uses the existing reduced-motion-aware `jumpToBoard` (focus + board reveal); on desktop it focuses the board without scrolling the side-by-side workspace. The original saved PGN, FEN verifier, variation creation, legal move validation, score, and engine request handling remain unchanged.
+- The same authenticated Chromium scenario now confirms focused `e4` advances the saved board to ply 1 and leaves focus on the updated board. A **separate Black-to-move** source-matched suggestion activated with Enter now opens a legal unsaved `c5` variation, focuses/reveals the new board, and leaves the saved PGN intact. Actual 390px dark mobile capture `qa-artifacts/agent-a/engine-line-action-focus-final-20261112/engine-line-applied-alternative-board-390.png` was visually inspected: resulting board, variation state and controls are visible.
+- Explicit close/reopen exercises the current on-demand fetch contract; the browser assertion now expects **three** requests: initial invalid line, explicit Retry, and reopening the panel. This is test fixture accounting, not an application request-policy change.
+
+### Verification
+
+- `git diff --check`: PASS; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1001 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive/locale/source/variation/mate/keyboard/PGN browser matrix: **PASS (exit 0)** with isolated SQLite and port 8944. The synthetic line results verify presentation and interaction, not Stockfish scoring accuracy.
+- No merge, deployment, user database, active service, or other-agent branch modifications.
+
+### Next high-value Game Review truthfulness audit
+
+- `formatReviewEngineLineScore` displays a bare `#` or `-#` from **centipawn-only** scores above magnitude 9000, even when the verified engine candidate has `mate:null`. The source adapters emit raw centipawns (not saved-report mate proxies). Reproduce with extreme-cp/no-mate evidence, then remove unsupported mate notation while keeping explicit, integer mate distances exact and preserving White-perspective scoring.

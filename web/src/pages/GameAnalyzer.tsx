@@ -794,6 +794,13 @@ function GameAnalyzerView() {
     boardFocusRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     boardFocusRef.current?.focus({ preventScroll: true });
   };
+  // Engine suggestions are buttons tied to one exact FEN. Playing a line
+  // changes that position and unmounts the focused button; send keyboard
+  // users to the updated board instead of leaving focus on document BODY.
+  const focusBoardAfterEngineLine = () => requestAnimationFrame(() => {
+    if (window.matchMedia('(max-width: 959px)').matches) jumpToBoard();
+    else boardFocusRef.current?.focus({ preventScroll: true });
+  });
   /** A mobile tap in the rail should reveal the board that changed above.
    * Keep focus in the rail for keyboard/assistive selections so successive
    * moves can be compared without losing the active control. */
@@ -1339,8 +1346,8 @@ function GameAnalyzerView() {
                 error={linesError}
                 onRetry={() => setLinesRetry((n) => n + 1)}
                 playedUci={!isVariation ? positions[ply + 1]?.uci ?? null : null}
-                onAdvance={forward}
-                onTryMove={onAnalysisMove}
+                onAdvance={() => { forward(); focusBoardAfterEngineLine(); }}
+                onTryMove={(uci) => { onAnalysisMove(uci); focusBoardAfterEngineLine(); }}
                 onHover={(line) => setLinesHover(line ? { fen: currentFen, uci: line.uci } : null)}
               />
 

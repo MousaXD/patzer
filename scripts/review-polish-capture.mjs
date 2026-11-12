@@ -1061,11 +1061,25 @@ try {
       undefined,{timeout:3000});
     assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),engineFocusedPly,
       'Home/End on the engine list must not jump the original chessboard');
+    // Collapsing Engine Lines from its persistent header must never strand
+    // keyboard focus inside hidden, inactive suggestions.
+    const linesDisclosure=page.getByRole('button',{name:'Engine lines',exact:true});
+    await linesDisclosure.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await linesDisclosure.getAttribute('aria-expanded'),'false');
+    assert.ok(await linesDisclosure.evaluate(element=>document.activeElement===element),
+      'Closing engine suggestions should preserve focus on the disclosure');
+    await page.keyboard.press('Enter');
+    assert.equal(await linesDisclosure.getAttribute('aria-expanded'),'true');
+    await validMove.focus();
     await validMove.click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+    assert.ok(await page.locator('.review-board-square').evaluate(element=>document.activeElement===element),
+      'Applying a focused engine suggestion must focus the updated board when its button disappears');
     assert.equal(await page.locator('.review-board-square').getAttribute('data-review-live-preview-uci'),null,
       'A line-focused preview from the starting FEN must not survive navigation to Black-to-move');
-    assert.equal(engineRequests,2);
+    assert.equal(engineRequests,3,
+      'Initial request, explicit retry, and reopening the on-demand panel each fetch the displayed FEN');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
   // A malformed HTTP MultiPV result can supply two individually legal moves
@@ -1151,6 +1165,16 @@ try {
     await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-lines-black-turn-white-perspective-390.png')});
     assert.equal(requests,1,'One displayed FEN must produce one live MultiPV request');
+    // Selecting an alternative also destroys the focused old-FEN button. It
+    // should show the legal unsaved branch on the board, not lose keyboard
+    // focus or silently replace the original PGN.
+    const alternative=page.getByRole('button',{name:'Try engine move c5'});
+    await alternative.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('[data-review-variation-trail]').waitFor({state:'visible',timeout:5000});
+    assert.ok(await page.locator('.review-board-square').evaluate(element=>document.activeElement===element),
+      'Trying a new engine move must focus the resulting variation board');
+    await page.screenshot({path:join(output,'engine-line-applied-alternative-board-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,sourcePgn);
   }finally{await blackLinesContext.close();}
   // The Game Review shell is localized, but Engine Lines used to expose raw
