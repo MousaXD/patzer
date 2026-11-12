@@ -21,4 +21,17 @@ describe('Game Review evaluation bar', () => {
     const html = renderToStaticMarkup(createElement(EvalBar, { cp: null, mate: -3 }));
     expect(html).toContain('aria-label="Mate in 3 for Black"');
   });
+
+  it('allows Game Review to supply localized accessible names without changing score geometry', () => {
+    const unknown = renderToStaticMarkup(createElement(EvalBar, {
+      cp: null, ariaLabel: 'Evaluación de la posición no disponible',
+    }));
+    expect(unknown).toContain('aria-label="Evaluación de la posición no disponible"');
+    expect(unknown).not.toContain('aria-label="Evaluation unavailable"');
+    const mate = renderToStaticMarkup(createElement(EvalBar, {
+      cp: -9980, mate: -2, ariaLabel: 'Mate en 2 a favor de las negras',
+    }));
+    expect(mate).toContain('aria-label="Mate en 2 a favor de las negras"');
+    expect(mate).toContain('M2');
+  });
 });

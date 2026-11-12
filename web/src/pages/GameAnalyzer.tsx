@@ -672,6 +672,11 @@ function GameAnalyzerView() {
   const evalStatusAccessible = currentScoreLabel === null
     ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
     : t('review.variationEvalLabel', { score: currentScoreLabel });
+  const evalBarAriaLabel = currentMate !== null
+    ? t(currentMate > 0 ? 'review.evalBarMateWhite' : 'review.evalBarMateBlack', { count: Math.abs(currentMate) })
+    : currentScoreLabel === null
+      ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
+      : t('review.evalBarScoreWhite', { score: currentScoreLabel });
 
   const historySoFar = analysis?.moves.slice(0, ply - 1).map((m) => m.san) ?? [];
   const coachReq = move ? () => ({
@@ -896,7 +901,7 @@ function GameAnalyzerView() {
           {/* The board fills its responsive grid track. Page-level scrolling
               replaces a short viewport's clipped workspace. */}
           <div className="relative my-2 flex items-stretch justify-center gap-2">
-            <EvalBar cp={currentEvalCp} mate={currentMate} orientation={orientation} />
+            <EvalBar cp={currentEvalCp} mate={currentMate} orientation={orientation} ariaLabel={evalBarAriaLabel} />
             <div
               ref={boardFocusRef}
               role="group"

@@ -83,7 +83,7 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       }
     });
     it('provides distinct, translated review recovery and retry messages', () => {
-      for (const key of ['noRecordedMoves', 'noMovesToAnalyze', 'savedMovesWithoutAnalysis', 'partialMoveUnavailable', 'partialReanalyze', 'moveSymbolGuide'] as const) {
+      for (const key of ['noRecordedMoves', 'noMovesToAnalyze', 'savedMovesWithoutAnalysis', 'partialMoveUnavailable', 'partialReanalyze', 'moveSymbolGuide', 'evalBarMateWhite', 'evalBarMateBlack', 'evalBarScoreWhite'] as const) {
         expect(locale.review[key]?.trim().length, `${lang}: ${key}`).toBeGreaterThan(0);
         if (lang !== 'en') expect(locale.review[key]).not.toEqual(en.review[key]);
       }

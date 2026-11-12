@@ -5,6 +5,8 @@ interface Props {
   cp: number | null;       // white-perspective centipawns; null = unscored/unknown
   mate?: number | null;    // mate-in-N from white's POV (positive = white mates)
   orientation?: 'white' | 'black';
+  /** Accessible presentation supplied by the Game Review locale. */
+  ariaLabel?: string;
   /** Optional explicit height. If omitted, fills parent height (use with align-self: stretch). */
   height?: number;
 }
@@ -26,7 +28,7 @@ function fmtCp(cp: number | null): string {
   return `${sign}${(Math.abs(cp) / 100).toFixed(1)}`;
 }
 
-export default function EvalBar({ cp, mate, orientation = 'white', height }: Props) {
+export default function EvalBar({ cp, mate, orientation = 'white', height, ariaLabel }: Props) {
   const share = useMemo(() => {
     if (mate != null) return mate > 0 ? 1 : 0;
     return cpToShare(cp ?? 0);
@@ -51,7 +53,7 @@ export default function EvalBar({ cp, mate, orientation = 'white', height }: Pro
   const ease = [0.22, 1, 0.36, 1] as const;
 
   return (
-    <div className="relative" style={wrapStyle} aria-label={unknown ? 'Evaluation unavailable' : mate != null ? `Mate in ${Math.abs(mate)} for ${mate > 0 ? 'White' : 'Black'}` : `Evaluation ${label} for White`} role="img">
+    <div className="relative" style={wrapStyle} aria-label={ariaLabel ?? (unknown ? 'Evaluation unavailable' : mate != null ? `Mate in ${Math.abs(mate)} for ${mate > 0 ? 'White' : 'Black'}` : `Evaluation ${label} for White`)} role="img">
       <div
         className={`relative flex h-full w-full ${flip ? 'flex-col-reverse' : 'flex-col'} overflow-hidden rounded-l-md border border-chesscom-300 bg-chesscom-200 shadow-soft dark:border-chesscom-700 ${isMate ? 'shadow-glow' : ''}`}
       >

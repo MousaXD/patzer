@@ -833,3 +833,23 @@
 ### Next issue
 
 - Review the evaluation bar's localized accessible name. It currently hardcodes `Evaluation unavailable`, `Mate in 3 for White`, and similar strings in English; unlike the score summary and graph, this is announced in English even on a Spanish/Game Review screen. The EvalBar is currently used only by GameAnalyzer, so improve translation there without impacting other agents, and add Spanish Chromium/locale tests that verify the mating side and unknown state. Keep visual scores/geometry unchanged.
+
+## 2026-11-12: localize evaluation-bar screen-reader descriptions across five review languages
+
+### Reproduced gap and limited correction
+
+- Continued from clean pushed `98f83c1`. The board score and timeline were localized, but `EvalBar`'s `role="img"` name was hard-coded to English, including `Evaluation unavailable` and `Mate in N for White/Black`, even with Spanish selected in the existing authenticated Game Review.
+- Added a focused static-render regression requiring an explicit Spanish accessible name. **Before fix it failed**, retaining `aria-label="Evaluation unavailable"` despite the supplied Spanish name.
+- Added an optional `ariaLabel` override to the Game Review-only EvalBar without altering legacy default labels or any score/share/geometry behavior. GameAnalyzer now supplies localized source-aware descriptions: a Spanish/other-language unknown state, exact White/Black mate count only when the existing mate provenance guard succeeds, or a White-perspective evaluated cp score. Added natural accessible strings for English, German, Spanish, Russian and Bulgarian and parity checks. No changes to the global shell or other agents' components.
+
+### Verification and evidence
+
+- Focused bar/locales/mate-source tests **59 passed**; `npm run typecheck` PASS; `npm run build` PASS.
+- Full `npm test -- --testTimeout=20000`: **996 passed / 12 skipped**, 109 passing test files.
+- Full disposable authenticated Chromium matrix **PASS (exit 0)**. The existing Spanish no-engine scenarios verify `role=img` has translated `review.variationEvalUnavailable` instead of English. A fresh test-only source-matched mate fixture verifies the exact Spanish labels `Mate en 3 a favor de las blancas` and `Mate en 2 a favor de las negras`; the second case explicitly excludes the English `Mate in 2 for Black` name. Original game PGN unchanged; previous keyboard, partial recovery, mate graph/source and responsive checks remained green.
+- Opened/inspected `qa-artifacts/agent-a/evalbar-localized-20261112/review-evalbar-localized-mate-es-390.png`: selected Black e5, high-confidence `−M2`/Black bar visuals and Spanish review labels remain legible. Mate sources are **synthetic HTTP test-only annotations**, not live Stockfish scoring certification.
+- No merge, deployment, production SQLite mutation or other-agent changes.
+
+### Next source-integrity candidate
+
+- In GameAnalyzer's engine-lines rail, `fmtCp(null)` currently returns `0.00`. The EngineLine contract permits `cp:null` and `mate:null`, so an incomplete engine line could be displayed as a false drawn/equal position. Inspect the on-demand engine-line fetch/validation path and add a regression with missing score evidence. If reproducible, show a truthful localized unavailable label without hiding a still-useful legal PV; preserve engine source and pagination.

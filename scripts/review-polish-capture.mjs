@@ -2619,6 +2619,10 @@ try {
       });
       await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
       await page.locator('cg-board').waitFor({state:'visible'});
+      await page.getByRole('img',{name:spanishWithoutEngine.review.variationEvalUnavailable,exact:true})
+        .waitFor({state:'visible',timeout:4000});
+      assert.equal(await page.getByRole('img',{name:'Evaluation unavailable',exact:true}).count(),0,
+        'The Spanish Review evaluation bar must not announce its unknown score in English');
       assert.equal(await page.locator('[data-review-classification-guide]').count(),0,
         'Without actual engine classifications, a saved PGN must not display a classification guide');
       const moveList=page.getByRole('region',{name:spanishWithoutEngine.review.moves});
@@ -2657,6 +2661,35 @@ try {
         'Unscored Review navigation must never mutate persisted game PGN');
     }finally{await noEngineContext.close();}
   }
+  // The evaluation bar's accessible mate score must use the player's review
+  // locale without altering the signed, source-verified mate count.
+  const spanishMateContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await spanishMateContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await spanishMateContext.newPage();
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const detail=await response.json();
+      const scored=JSON.parse(detail.analysis.moves_json);
+      assert.equal(scored.length,24);
+      scored[0].mate_after=3;scored[0].eval_after_cp=9970;
+      scored[1].mate_after=-2;scored[1].eval_after_cp=-9980;
+      detail.analysis.moves_json=JSON.stringify(scored);
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(detail)});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('img',{name:spanishWithoutEngine.review.evalBarMateWhite.replace('{{count}}','3'),exact:true})
+      .waitFor({state:'visible',timeout:4000});
+    await page.getByRole('region',{name:spanishWithoutEngine.review.moves})
+      .getByRole('button',{name:/^1… Negras e5/}).click();
+    await page.getByRole('img',{name:spanishWithoutEngine.review.evalBarMateBlack.replace('{{count}}','2'),exact:true})
+      .waitFor({state:'visible',timeout:4000});
+    assert.equal(await page.getByRole('img',{name:'Mate in 2 for Black',exact:true}).count(),0,
+      'Localized Black mate must not retain the hardcoded English accessible label');
+    await page.screenshot({path:join(output,'review-evalbar-localized-mate-es-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgnWithoutEngine);
+  }finally{await spanishMateContext.close();}
   const restored=await api('/api/settings/profile',{
     method:'PATCH',cookie:account.cookie,body:{language:'en'},
   });
