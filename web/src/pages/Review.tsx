@@ -753,7 +753,7 @@ export default function Review() {
 
       {!isLoading && !initialError && games.length > 0 && (
         <div className="grid gap-2" aria-busy={isFetching}>
-          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} />)}
+          {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly} />)}
         </div>
       )}
       {!isLoading && !initialError && isFetchNextPageError && (
@@ -781,7 +781,7 @@ export default function Review() {
   );
 }
 
-function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined }) {
+function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number | undefined; starredOnly: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [bookmarkError, setBookmarkError] = useState(false);
@@ -790,12 +790,19 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
     onMutate: async (next: boolean) => {
       setBookmarkError(false);
       await qc.cancelQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) });
-      qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
-        (old) => updateBookmarkInCache(old, g.id, next ? 1 : 0));
+      // A pending removal in Starred only must not display an unstarred card
+      // inside the filtered list. Keep it visible and starred until the
+      // server confirms; that also preserves the card's retryable error UI.
+      if (!(starredOnly && !next)) {
+        qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
+          (old) => updateBookmarkInCache(old, g.id, next ? 1 : 0));
+      }
     },
     onError: (_error, next) => {
-      qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
-        (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
+      if (!(starredOnly && !next)) {
+        qc.setQueriesData({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) },
+          (old) => updateBookmarkInCache(old, g.id, next ? 0 : 1));
+      }
       setBookmarkError(true);
     },
     onSettled: () => qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnGameQuery(queryKey, accountId) }),
@@ -845,7 +852,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
           </span>
         )}
       </Link>
-      <div className="flex min-w-0 items-center justify-between gap-2 border-t border-chesscom-200 pt-2 dark:border-chesscom-700 sm:contents sm:border-0 sm:pt-0">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-chesscom-200 pt-2 dark:border-chesscom-700 sm:contents sm:border-0 sm:pt-0">
         <span className="min-w-0 truncate text-xs text-chesscom-500 dark:text-chesscom-300 sm:hidden">
           {g.analyzed && g.user_color
             ? `${t('review.accuracy')}: ${fmtAccuracy(g.user_color === 'black' ? g.accuracy_black : g.accuracy_white)}`
@@ -875,7 +882,7 @@ function GameCard({ g, accountId }: { g: GameRow; accountId: number | undefined 
         <Star className={cn('h-4 w-4', isStarred && 'fill-gold-500')} />
       </button>
       {bookmarkError && (
-        <span role="alert" className="absolute bottom-0 right-12 rounded bg-cream px-2 text-xs text-bad dark:bg-chesscom-900">
+        <span role="alert" className="basis-full rounded bg-cream px-2 py-1 text-xs leading-snug text-bad dark:bg-chesscom-900 sm:absolute sm:bottom-0 sm:right-12 sm:basis-auto sm:py-0">
           {t('review.bookmarkFailed', { defaultValue: 'Bookmark could not be saved. Try again.' })}
         </span>
       )}

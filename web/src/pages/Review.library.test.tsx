@@ -96,6 +96,32 @@ describe('Review library with large histories', () => {
     expect(preview?.className).toContain('truncate');
     expect(preview?.className).toContain('sm:hidden');
   });
+
+  it('keeps the bookmark state consistent in Starred only while a removal is pending or fails', async () => {
+    let saved = true;
+    let rejectSave!: (error: Error) => void;
+    mocks.get.mockImplementation(async (url:string) => {
+      if (url==='/api/games/openings') return {total:1,classified:1,unclassified:0,
+        openings:[{name:'Italian Game',games:1}]};
+      const params=new URLSearchParams(url.split('?')[1] ?? '');
+      if (params.get('bookmarked')==='1' && !saved) return {games:[],total:0,offset:0,has_more:false};
+      return {games:[{...makeGame(1),bookmarked:saved ? 1 : 0}],total:1,offset:0,has_more:false};
+    });
+    mocks.patch.mockImplementationOnce(() => new Promise((_resolve,reject)=>{rejectSave=reject;}));
+    mount('/review?bookmarked=1');
+    const remove=await screen.findByRole('button',{name:'Remove bookmark'});
+    expect(remove.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(remove);
+    await waitFor(()=>expect(mocks.patch).toHaveBeenCalledTimes(1));
+    // While the save is outstanding, a starred-only card must never look like
+    // an unstarred card that violates the currently selected filter.
+    expect(screen.getByRole('button',{name:'Remove bookmark'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button',{name:'Bookmark game'})).toBeNull();
+    await act(async()=>rejectSave(new Error('unavailable')));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Bookmark could not be saved/);
+    expect(screen.getByRole('button',{name:'Remove bookmark'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('1 of 1 games')).toBeTruthy();
+  });
   it('offers one clear first-use choice to upload PGN or connect a chess provider when no games exist', async () => {
     mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
       ? {total:0,classified:0,unclassified:0,openings:[]}

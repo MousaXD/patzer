@@ -45,8 +45,8 @@ const games = Array.from({ length: 620 }, (_, i) => {
   };
 });
 
-function list(params) {
-  let filtered = games.filter(g =>
+function list(params, availableGames = games) {
+  let filtered = availableGames.filter(g =>
     (!params.get('q') || [g.white,g.black,g.opening_name,g.notes].some(v =>
       v.toLowerCase().includes(params.get('q').toLowerCase()))) &&
     (!params.get('source') || g.source === params.get('source')) &&
@@ -98,13 +98,15 @@ async function awaitUp() {
 }
 
 async function newPage(theme, width, height,
-  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false, changingHistory = false} = {}) {
+  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
+    changingHistory = false, starredOnlyScenario = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
   let openingFailuresRemaining = failOpeningsOnce ? 1 : 0;
   let hasPgnImports = false;
   let latestGameInserted = false;
+  const removedStars = new Set();
   const seenPgnFiles = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/**', async route => {
@@ -147,7 +149,14 @@ async function newPage(theme, width, height,
       else if (changingHistory) {
         json = changingHistoryPage(parsed.searchParams,latestGameInserted);
         latestGameInserted = true;
-      } else json = list(parsed.searchParams);
+      } else json = starredOnlyScenario
+        ? list(parsed.searchParams, games.map(g=>removedStars.has(g.id) ? {...g,bookmarked:0} : g))
+        : list(parsed.searchParams);
+    } else if (starredOnlyScenario && /^\/api\/games\/\d+\/bookmark$/.test(path) && request.method() === 'PATCH') {
+      const id = Number(path.split('/')[3]);
+      await sleep(450);
+      if (id === 22) { status=503; json={error:'synthetic_bookmark_failure'}; }
+      else { removedStars.add(id); json={bookmarked:0}; }
     } else if (path === '/api/games/import/pgn' && request.method() === 'POST') {
       const pgn = request.postDataJSON().pgn;
       seenPgnFiles.push(pgn);
@@ -377,6 +386,38 @@ try {
     assert.deepEqual(pageErrors,[], 'Cursor pagination produced a browser error');
     console.log('PASS stable cursor load-more after concurrent import and fresh history refresh');
   } finally {await movingHistory.context.close();}
+
+  const starred = await newPage('dark',390,844,{starredOnlyScenario:true});
+  try {
+    const {page,pageErrors}=starred;
+    await page.getByRole('button',{name:'All games'}).click();
+    await page.getByText('40 of 56 games').waitFor();
+    const firstStar=page.locator('a[href="/review/11"]').locator('..')
+      .getByRole('button',{name:'Remove bookmark'});
+    await firstStar.click();
+    assert.equal(await firstStar.getAttribute('aria-pressed'),'true',
+      'A pending unbookmark must not show an unstarred card in Starred only');
+    assert.equal(await page.getByRole('button',{name:'Bookmark game'}).count(),0);
+    await page.locator('a[href="/review/11"]').waitFor({state:'detached'});
+    await page.getByText('40 of 55 games').waitFor();
+    const failingStar=page.locator('a[href="/review/22"]').locator('..')
+      .getByRole('button',{name:'Remove bookmark'});
+    await failingStar.click();
+    const starError=page.getByRole('alert').getByText(/Bookmark could not be saved/);
+    await starError.waitFor();
+    assert.equal(await page.locator('a[href="/review/22"]').count(),1,
+      'A failed unbookmark must retain the starred game for retry');
+    assert.equal(await failingStar.getAttribute('aria-pressed'),'true');
+    const errorRect=await starError.boundingBox();
+    const starRect=await failingStar.boundingBox();
+    assert.ok(errorRect && starRect && errorRect.y >= starRect.y + starRect.height - 1 &&
+      errorRect.x >= -2 && errorRect.x + errorRect.width <= 392,
+    `Bookmark error must appear beneath the star button, without mobile overflow: ${JSON.stringify({errorRect,starRect})}`);
+    await page.locator('a[href="/review/22"]').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-starred-failed-removal-dark-390.png')});
+    assert.deepEqual(pageErrors,[], 'Starred-only bookmark retry caused a JS error');
+    console.log('PASS Starred-only pending bookmark removal, server success and retryable failure');
+  } finally {await starred.context.close();}
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

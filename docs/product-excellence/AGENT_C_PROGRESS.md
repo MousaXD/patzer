@@ -357,3 +357,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next investigation
 
 - Audit bookmark interactions in the **Starred only** filtered history, especially when a game is unstarred while later cursor pages are already loaded. Confirm the UI does not temporarily show an item that violates the active filter or lose previously loaded cards on an avoidable refetch. Fix only a reproduced usability/reliability defect.
+
+## 2026-11-12 — Keep Starred-only Library consistent during failed bookmark removal
+
+- Recovered pushed `5eeb89d` and audited bookmark interaction within Starred-only game history. A new focused regression reproduced a genuine mismatch: immediately after clicking **Remove bookmark**, the optimistic cache changed the card into an **unstarred game** while the Starred-only filter remained active. On failed requests this momentarily looked like a successful removal and then reverted.
+- Preserve the card's starred state only while **removal from Starred-only results** is pending; all-game lists retain their fast optimistic updates. On success, the owned Library queries are invalidated and the confirmed server list removes the card and fills from subsequent games. On failure, the starred card stays visible for retry with an accessible error. Query invalidation remains scoped to the account; no global design-system or Game Review files changed.
+- Real Chromium at **390px dark mode** verified an actual 450ms pending request, confirmed the star stayed pressed, confirmed a successful removal disappeared from 40 visible starred games with the next saved game filling in, and confirmed a subsequent simulated 503 left the next game starred and displayed a retryable error.
+- Visual QA caught an existing issue in that path: the error label overlaid the mobile action row. Wrapped the mobile actions and placed the error in its own padded row, with browser geometry assertions that it stays beneath the button and inside the viewport. Visually inspected `qa-artifacts/agent-c-library/library-starred-failed-removal-dark-390.png` after the fix. Desktop absolute positioning remains unchanged.
+
+### Verification
+
+- Targeted Library React suite: **38/38 passed**. Full repository suite: **109 test files passed, 2 skipped; 1,043 tests passed, 12 skipped**, no failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Chromium passed all 1440/390/320 light/dark layout cases, the new Starred-only successful/failed request scenario, opening discovery, provider filtering, cursor paging, PGN uploads and empty-state recovery.
+- No production service, SQLite, merge, deployment or other agent branch touched.
+
+### Next independent audit
+
+- Verify that bookmark updates or failures begun on account A cannot modify account B's cached Library or show stale errors when switching between accounts that contain identically numbered game IDs while a request is in flight. Existing tests cover some cached-game isolation; focus on cross-account *in-flight* behavior rather than repeating completed probes.
