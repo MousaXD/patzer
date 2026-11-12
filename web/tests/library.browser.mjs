@@ -440,11 +440,49 @@ try {
     const providerRect=await provider.boundingBox();
     assert.ok(providerRect && providerRect.height>=44 && providerRect.x>=0 && providerRect.x+providerRect.width<=392,
       `Provider import action must be mobile touch accessible: ${JSON.stringify(providerRect)}`);
+    const pgnSection=page.getByRole('region',{name:'PGN-Datei importieren'});
+    await pgnSection.getByText('Keine Datei ausgewählt',{exact:true}).waitFor();
+    assert.equal(await pgnSection.getByLabel('PGN-Datei auswählen').getAttribute('type'),'file');
     assert.ok((await metrics(page)).overflow<=2,'Expanded import section overflows German 390px view');
     await page.screenshot({path:join(output,'library-german-recent-import-light-390.png'),fullPage:true});
     assert.deepEqual(pageErrors,[],'German recent-import controls produced a JS exception');
     console.log('PASS German recent-import title, batch explanation, touch targets and bounded selection');
   } finally {await germanImport.context.close();}
+
+  for (const theme of ['light','dark']) {
+    const localizedFile=await newPage(theme,320,700,{locale:'de'});
+    try {
+      const {page,pageErrors}=localizedFile;
+      await page.locator('button[aria-controls="library-import-controls"]').click();
+      const fileInput=page.getByLabel('PGN-Datei auswählen');
+      const chooserRect=await fileInput.boundingBox();
+      assert.ok(chooserRect && chooserRect.width>=200 && chooserRect.height>=44 &&
+        chooserRect.x>=0 && chooserRect.x+chooserRect.width<=322,
+        `Native file chooser should keep an accessible 44px area at 320px: ${JSON.stringify(chooserRect)}`);
+      await page.getByText('Keine Datei ausgewählt',{exact:true}).waitFor();
+      const noFile=page.locator('#library-pgn-filename');
+      await noFile.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`library-german-pgn-picker-${theme}-320.png`)});
+      const chooser=page.waitForEvent('filechooser',{timeout:10000});
+      await fileInput.focus();
+      assert.ok(await fileInput.evaluate(node=>document.activeElement===node),
+        'Native PGN chooser must remain keyboard focusable');
+      await page.keyboard.press('Enter');
+      const fileDialog=await chooser;
+      const filename='training_archive_with_long_unicode_names_ä_ç_фигуры_2026.pgn';
+      await fileDialog.setFiles({name:filename,mimeType:'text/plain',
+        buffer:Buffer.from('[Event "Training"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *')});
+      await page.getByText(filename,{exact:true}).waitFor();
+      assert.equal(await fileInput.getAttribute('aria-describedby'),
+        'library-pgn-help library-pgn-filename');
+      assert.ok((await metrics(page)).overflow<=2,
+        `Long selected PGN filename caused overflow at 320px in ${theme}`);
+      assert.equal(await page.getByRole('button',{name:'PGN-Datei importieren'}).isEnabled(),true);
+      await page.screenshot({path:join(output,`library-german-pgn-selected-${theme}-320.png`)});
+      assert.deepEqual(pageErrors,[],`Localized file chooser produced a JS exception in ${theme}`);
+      console.log(`PASS ${theme} German 320px PGN native keyboard chooser and selected-file feedback`);
+    } finally {await localizedFile.context.close();}
+  }
 
   const germanResult=await newPage('light',390,844,{locale:'de',providerImportBreakdown:true});
   try {

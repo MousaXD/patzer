@@ -397,6 +397,7 @@
     "analysisReady": "Analyse verfügbar",
     "bookmarkFailed": "Markierung konnte nicht gespeichert werden. Bitte erneut versuchen.",
     "libraryRecentImportTitle": "Letzte Partien importieren",
+    "pgnNoFileSelected": "Keine Datei ausgewählt",
     "libraryRecentImportHelp": "Wähle die Anzahl der Partien. Bereits gespeicherte Partien werden nicht überschrieben.",
     "libraryRecentImportLimit": "Anzahl der Partien",
     "providerImportSaved": "{{imported}} neue Partien aus {{total}} abgerufenen Partien gespeichert.",

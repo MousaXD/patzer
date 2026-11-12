@@ -397,6 +397,7 @@
     "analysisReady": "Analysis available",
     "bookmarkFailed": "Bookmark could not be saved. Try again.",
     "libraryRecentImportTitle": "Import recent games",
+    "pgnNoFileSelected": "No file selected",
     "libraryRecentImportHelp": "Choose a batch size; existing games are not overwritten.",
     "libraryRecentImportLimit": "Recent games to fetch",
     "providerImportSaved": "{{imported}} new games saved from {{total}} retrieved.",

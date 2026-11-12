@@ -496,15 +496,25 @@ export default function Review() {
           </p>
         </div>
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-          <input id="library-pgn-file" ref={pgnInputRef} type="file" accept=".pgn,.txt,text/plain"
-            aria-label={t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
-            aria-describedby="library-pgn-help"
-            className="input !min-h-11 block w-full min-w-0 max-w-full text-xs sm:w-56"
-            disabled={pgnMut.isPending}
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0] ?? null;
-              setPgnFile(file);
-            }} />
+          <div className="relative flex min-h-11 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-chesscom-200 bg-ui-surface px-2 focus-within:ring-2 focus-within:ring-ui-focus dark:border-chesscom-700 sm:w-56">
+            <span aria-hidden="true" className="shrink-0 rounded border border-chesscom-200 bg-chesscom-100 px-2 py-1.5 text-xs font-medium text-chesscom-900 dark:border-chesscom-600 dark:bg-chesscom-700 dark:text-chesscom-100">
+              {t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
+            </span>
+            <span id="library-pgn-filename" aria-live="polite" className="min-w-0 flex-1 truncate text-xs text-chesscom-500 dark:text-chesscom-300" title={pgnFile?.name || undefined}>
+              {pgnFile?.name || t('review.pgnNoFileSelected', {defaultValue:'No file selected'})}
+            </span>
+            {/* Keep a full-size native file input for mouse, touch, keyboard and file choosers.
+                Its browser-owned English filename UI cannot be localized via lang. */}
+            <input id="library-pgn-file" ref={pgnInputRef} type="file" accept=".pgn,.txt,text/plain"
+              aria-label={t('review.pgnChooseFile', {defaultValue:'Choose a PGN file'})}
+              aria-describedby="library-pgn-help library-pgn-filename"
+              className="absolute inset-0 z-10 h-full min-h-11 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+              disabled={pgnMut.isPending}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0] ?? null;
+                setPgnFile(file);
+              }} />
+          </div>
           <button type="button" className="btn-primary min-h-11 shrink-0 text-sm"
             disabled={!pgnFile || pgnMut.isPending || !user}
             onClick={() => {if (pgnFile && user) pgnMut.mutate({file:pgnFile,accountId:user.id});}}>

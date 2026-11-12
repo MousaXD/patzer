@@ -390,8 +390,25 @@ describe('Review library with large histories', () => {
     mount();
     await screen.findByText(/40 of 1,000 games/);
     openImportOptions();
-    expect(screen.getByLabelText('Choose a PGN file').className).toContain('!min-h-11');
+    const input=screen.getByLabelText('Choose a PGN file');
+    expect(input.className).toContain('absolute');
+    expect(input.className).toContain('h-full');
+    expect(input.className).toContain('min-h-11');
+    expect(input.parentElement?.className).toContain('min-h-11');
     expect(screen.getByRole('button',{name:'Import PGN file'}).className).toContain('min-h-11');
+  });
+  it('shows localized PGN selection feedback and the exact file name without replacing the native input', async () => {
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    openImportOptions();
+    const input=screen.getByLabelText('Choose a PGN file') as HTMLInputElement;
+    expect(input.type).toBe('file');
+    expect(screen.getByText('No file selected')).toBeTruthy();
+    expect(input.getAttribute('aria-describedby')).toContain('library-pgn-filename');
+    const file=new File(['[Event "Training"]\n\n1. e4 e5 *'],'my-training.pgn',{type:'text/plain'});
+    fireEvent.change(input,{target:{files:[file]}});
+    expect(screen.getByText('my-training.pgn')).toBeTruthy();
+    expect(screen.queryByText('No file selected')).toBeNull();
   });
 
   it('loads bounded batches and explains the 200-game backend cap', async () => {

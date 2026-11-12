@@ -388,6 +388,7 @@
     "analysisReady": "Наличен анализ",
     "bookmarkFailed": "Неуспешно запазване на отметката. Опитайте отново.",
     "libraryRecentImportTitle": "Импортиране на скорошни партии",
+    "pgnNoFileSelected": "Няма избран файл",
     "libraryRecentImportHelp": "Избери брой партии; вече запазените партии няма да бъдат презаписани.",
     "libraryRecentImportLimit": "Брой партии за импортиране",
     "providerImportSaved": "Запазени {{imported}} нови партии от {{total}} извлечени.",

@@ -140,6 +140,10 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         if (lang !== 'en') expect(locale.review[key]).not.toBe(en.review[key]);
       }
     });
+    it('provides localized feedback before a PGN file has been selected', () => {
+      expect(locale.review.pgnNoFileSelected?.trim().length,lang).toBeGreaterThan(0);
+      if (lang !== 'en') expect(locale.review.pgnNoFileSelected).not.toEqual(en.review.pgnNoFileSelected);
+    });
     it('translates the complete provider import result without losing optional counts', () => {
       const expected: Record<string,string[]> = {
         providerImportSaved: ['{{imported}}','{{total}}'],

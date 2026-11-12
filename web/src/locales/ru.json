@@ -397,6 +397,7 @@
     "analysisReady": "Анализ доступен",
     "bookmarkFailed": "Не удалось сохранить закладку. Попробуйте ещё раз.",
     "libraryRecentImportTitle": "Импорт последних партий",
+    "pgnNoFileSelected": "Файл не выбран",
     "libraryRecentImportHelp": "Выберите количество партий; уже сохранённые партии не перезаписываются.",
     "libraryRecentImportLimit": "Количество партий для импорта",
     "providerImportSaved": "Сохранено новых партий: {{imported}} из {{total}} загруженных.",
