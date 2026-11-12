@@ -51,23 +51,56 @@ interface AuthState {
   setUser: (u: User | null) => void;
 }
 
-export const useAuth = create<AuthState>((set) => ({
-  loading: true,
-  setupRequired: null,
-  user: null,
-  refresh: async () => {
-    set({ loading: true });
-    try {
-      const status = await api.get<{ setup_required: boolean }>('/api/setup/status');
-      if (status.setup_required) {
-        set({ loading: false, setupRequired: true, user: null });
-        return;
+// One deadline for both startup requests; the UI must never show an endless
+// spinner when the backend or reverse proxy accepts a connection but stalls.
+const BOOTSTRAP_TIMEOUT_MS = 10_000;
+
+export const useAuth = create<AuthState>((set) => {
+  let currentRequest: AbortController | null = null;
+  let refreshGeneration = 0;
+
+  return {
+    loading: true,
+    setupRequired: null,
+    user: null,
+    refresh: async () => {
+      // Newer auth checks supersede stale ones (including a StrictMode mount).
+      const generation = ++refreshGeneration;
+      currentRequest?.abort();
+      const controller = new AbortController();
+      currentRequest = controller;
+      let expired = false;
+      const isCurrent = () => generation === refreshGeneration && !expired && !controller.signal.aborted;
+      const timeout = setTimeout(() => {
+        expired = true;
+        controller.abort();
+        if (generation === refreshGeneration) {
+          set({ loading: false, setupRequired: null, user: null });
+        }
+      }, BOOTSTRAP_TIMEOUT_MS);
+      set({ loading: true });
+
+      try {
+        const status = await api.get<{ setup_required: boolean }>('/api/setup/status', { signal: controller.signal });
+        if (!isCurrent()) return;
+        if (typeof status?.setup_required !== 'boolean') throw new Error('Invalid setup status');
+        if (status.setup_required) {
+          set({ loading: false, setupRequired: true, user: null });
+          return;
+        }
+        const me = await api.get<{ user: User | null }>('/api/auth/me', { signal: controller.signal });
+        if (!isCurrent()) return;
+        if (!me || !Object.prototype.hasOwnProperty.call(me, 'user')) {
+          throw new Error('Invalid session status');
+        }
+        set({ loading: false, setupRequired: false, user: me.user });
+      } catch {
+        if (isCurrent()) set({ loading: false, setupRequired: null, user: null });
+      } finally {
+        clearTimeout(timeout);
+        if (currentRequest === controller) currentRequest = null;
       }
-      const me = await api.get<{ user: User | null }>('/api/auth/me');
-      set({ loading: false, setupRequired: false, user: me.user });
-    } catch {
-      set({ loading: false, setupRequired: null, user: null });
-    }
-  },
-  setUser: (u) => set({ user: u }),
-}));
+    },
+    setUser: (u) => set({ user: u }),
+  };
+});

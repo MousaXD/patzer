@@ -251,3 +251,31 @@
 ### Next audit
 
 - Apply the same evidence-driven standard to **initial app bootstrap**. A hanging `/api/setup/status` or `/api/auth/me` request may hold the global `Starting Patzer…` splash indefinitely even though ordinary HTTP errors now have a useful recovery screen. Investigate in isolation before changes.
+
+## 2026-11-12: Bounded startup and safe auth-state refresh
+
+### Reproduced
+
+- Resumed from clean pushed `f60ae48` and investigated exactly the pending global startup issue.
+- Extended real Chromium `capture-bootstrap.mjs` with a simulated 20-second stall at both `/api/setup/status` and `/api/auth/me`. **Before the fix it failed after 15 seconds:** the global `Starting Patzer…` splash remained stuck without an outage message or retry.
+
+### Changes
+
+1. Added a **single 10-second deadline** spanning both startup requests in the shared auth store. On expiry, the active request is aborted and the app displays the existing translated, accessible `ServerUnavailable` retry screen instead of hanging.
+2. Retained legitimate first-time setup handling, authenticated responses, and sign-in flow. Invalid server status payloads also report a connection/status failure instead of silently treating malformed data as a logged-out session.
+3. Added a refresh generation guard and cancellation of older requests. Concurrent startup checks (including React StrictMode remount behavior), late responses after timeouts, and stale previous retries can no longer overwrite newer auth state.
+4. Added four isolated auth-state unit tests for hung setup, hung session, overlapping refreshes, and late results after timeout.
+5. Expanded Chromium checks for both stalled endpoints and retry recovery. All browser fixtures are local; no live authentication or game data was contacted.
+
+### Validation
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **393/393 passed across 66 files**.
+- `node web/src/components/navigation/capture-bootstrap.mjs`: **passed** including delayed setup/session request recovery; visually inspected the 320px dark outage screen.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**.
+- `node web/src/components/navigation/capture-auth.mjs`: **passed** (including expired capability probes).
+- `git diff --check`: **passed**.
+
+### Next audit
+
+- Examine the global top-level React Router error presentation. A render exception outside normal API errors may currently expose React Router's generic technical fallback instead of a helpful, branded and accessible recovery path; verify in an isolated fixture before changing the shared router.

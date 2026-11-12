@@ -43,11 +43,23 @@ try {
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/setup/status') {
+      if (failure === 'hangSetup') {
+        await sleep(20_000);
+        try { await route.fulfill({ status: 200, contentType: 'application/json', body: '{"setup_required":false}' }); }
+        catch { /* client may have aborted */ }
+        return;
+      }
       if (delaySetup) await sleep(delaySetup);
       if (failure === 'setup') return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' });
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"setup_required":false}' });
     }
     if (path === '/api/auth/me') {
+      if (failure === 'hangSession') {
+        await sleep(20_000);
+        try { await route.fulfill({ status: 200, contentType: 'application/json', body: '{"user":null}' }); }
+        catch { /* client may have aborted */ }
+        return;
+      }
       if (failure === 'session') return route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' });
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"user":null}' });
     }
@@ -85,6 +97,21 @@ try {
   await page.getByRole('status', { name: /starting|loading/i }).waitFor();
   await page.screenshot({ path: resolve(output, 'bootstrap-loading.png') });
   await page.getByRole('textbox', { name: 'Username' }).waitFor();
+
+  // API calls which never resolve should not leave a perpetual splash screen.
+  // After a bounded delay, present the same accessible retryable outage card.
+  delaySetup = 0;
+  for (const endpoint of ['hangSetup', 'hangSession']) {
+    failure = endpoint;
+    await page.goto(origin, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('status', { name: /starting|loading/i }).waitFor();
+    await page.getByRole('alert', { name: /server|connection|unavailable/i }).waitFor({ timeout: 15_000 });
+    await noOverflow(page, endpoint + ' timed-out bootstrap');
+    await page.screenshot({ path: resolve(output, `bootstrap-timeout-${endpoint}.png`) });
+    failure = 'none';
+    await page.getByRole('button', { name: /try again|retry/i }).click();
+    await page.getByRole('textbox', { name: 'Username' }).waitFor();
+  }
   console.log('Agent B bootstrap availability, loading and retry: Chromium checks passed.');
 } finally {
   await browser?.close();
