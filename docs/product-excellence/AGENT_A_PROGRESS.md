@@ -1234,3 +1234,21 @@
 ### Next independent keyboard audit
 
 - Game Review's global Home/End/Arrow shortcuts exclude native inputs, tablists, sliders, engine suggestion buttons and the move-symbol guide, but not the **Engine Lines/Threat/Master Games disclosure headers**. Test whether Home/ArrowRight on a focused, collapsed disclosure accidentally navigates the saved game, rather than preserving the user's control context. Fix only if a real browser reproduces it.
+
+## 2026-11-12: prevent global Review navigation from hijacking disclosure buttons
+
+### Verified real browser bug
+
+- Continued from clean pushed `1f5f0c3` and added an authenticated Chromium regression for an Engine Lines disclosure left collapsed and focused after following a valid `e4` line. **The test failed before the fix**: pressing Home on the header moved the *saved chess position* from `1 / 24` back to `0 / 24` without the user activating board navigation. The header stayed focused, creating a misleading control context.
+- The Game Review global keydown listener excluded native `summary`, sliders, tabs, inputs, and engine suggestion buttons but missed accessible disclosure buttons. Narrowly exempted only `button[aria-expanded][aria-controls]` from the global Review shortcuts, preserving native button interactions, the focused panel context, and all unrelated controls.
+- Expanded the actual-browser test to check Engine Lines, Threat, and Master Games disclosure headers with Home and ArrowRight while the saved game is at ply 1. All three retain focus and leave move progress unchanged. Crucially, focusing the board itself and pressing Home then ArrowRight still navigates correctly from ply 1 → 0 → 1. The original PGN remains byte-for-byte unchanged.
+
+### Verification and boundaries
+
+- `git diff --check`, `node --check scripts/review-polish-capture.mjs`, `npm run typecheck`, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive/theme/locale/engine keyboard/variation/source/PGN matrix: **PASS (exit 0)** on port 8965. No deployment, live database/service mutation, merge, or other-agent branch edits.
+
+### Next independent Game Review audit
+
+- Inspect keyboard behavior on the separate **Move details** expander and other focused Review toolbar actions (especially Home/End). Check whether those controls advertise disclosure semantics or can still trigger an unrelated chess move. Reproduce in Chromium at a nonzero saved ply and restrict any change to the precise control class that is affected.

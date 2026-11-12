@@ -1239,6 +1239,41 @@ try {
     assert.equal(engineRequests,3,
       'Initial request, explicit retry, and reopening the on-demand panel each fetch the displayed FEN');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+    // The disclosure button itself remains mounted, unlike the candidate
+    // buttons. Global Home/Arrow shortcuts must not unexpectedly navigate
+    // the saved PGN while the user is focused on this native control.
+    await linesDisclosure.click();
+    assert.equal(await linesDisclosure.getAttribute('aria-expanded'),'false');
+    await linesDisclosure.focus();
+    const disclosurePly=(await page.locator('[data-review-move-progress]').innerText()).trim();
+    await page.keyboard.press('Home');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+      'Home on a focused Engine Lines disclosure must not reset the saved chess position');
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+      'ArrowRight on a focused Engine Lines disclosure must not advance the saved chess position');
+    assert.ok(await linesDisclosure.evaluate(element=>document.activeElement===element),
+      'The disclosure must retain keyboard focus after Home and ArrowRight');
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    for(const name of [locale.threat.title,locale.explorer.title]){
+      const disclosure=page.getByRole('button',{name,exact:true});
+      await disclosure.focus();
+      await page.keyboard.press('Home');
+      await page.keyboard.press('ArrowRight');
+      assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+        `Global Review shortcuts must not navigate the saved game from focused ${name}`);
+      assert.ok(await disclosure.evaluate(element=>document.activeElement===element),
+        `Focused ${name} disclosure should keep keyboard focus during navigation keys`);
+    }
+    // The exclusion is narrow: global Review navigation still works when
+    // the board itself, not a disclosure control, has keyboard focus.
+    await page.locator('.review-board-square').focus();
+    await page.keyboard.press('Home');
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-progress]')?.textContent?.trim().startsWith('0 /'));
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),disclosurePly,
+      'Global Home and ArrowRight must still navigate the board outside disclosure controls');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
   // Engine Lines can be collapsed while an HTTP search is still in flight.
   // Opening the same FEN again starts a fresh request; a late response from
