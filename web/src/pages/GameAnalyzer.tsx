@@ -1651,6 +1651,27 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
         title={enabled ? t('review.linesHide', { defaultValue: 'Hide' }) : t('review.linesShow', { defaultValue: 'Show top engine lines' })} />
       <div ref={linesContentRef} id="review-engine-lines-content" role="region"
         aria-label={t('review.lines')} tabIndex={-1} hidden={!enabled}
+        onKeyDown={(event) => {
+          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          const focused = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLButtonElement>('button[data-review-engine-line]') : null;
+          if (!focused || !event.currentTarget.contains(focused)) return;
+          const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-review-engine-line]:not(:disabled)')];
+          const index = choices.indexOf(focused);
+          if (index < 0) return;
+          let next = index;
+          if (event.key === 'ArrowDown') next = Math.min(choices.length - 1, index + 1);
+          else if (event.key === 'ArrowUp') next = Math.max(0, index - 1);
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = choices.length - 1;
+          else if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          // This list previews moves in the *current* FEN. Global Review
+          // Arrow/Home/End shortcuts must never step the saved game while a
+          // candidate has focus. Vertical keys compare candidates instead.
+          event.preventDefault();
+          event.stopPropagation();
+          if (next !== index) choices[next]?.focus({ preventScroll: true });
+        }}
         className="space-y-1 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
         {enabled && (
           <>
@@ -1680,6 +1701,7 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
             return (
               <button
                 key={`${l.multipv}-${l.uci}`}
+                data-review-engine-line
                 type="button"
                 disabled={loading}
                 onClick={() => { if (isPlayed) onAdvance(); else onTryMove(l.uci); }}

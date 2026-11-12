@@ -1031,6 +1031,36 @@ try {
     console.log('Engine-line dark PV/played contrast:',JSON.stringify({pvContrast,playedContrast}));
     assert.ok(pvContrast>=4.5 && playedContrast>=4.5,
       `Projected SAN and played marker must be legible: ${JSON.stringify({pvContrast,playedContrast})}`);
+    // A focused engine suggestion describes the current position. Global
+    // Review Arrow/Home/End shortcuts must not silently change that position
+    // from inside an engine-line button, detaching its focused move context.
+    const engineFocusedPly=(await page.locator('[data-review-move-progress]').innerText()).trim();
+    await validMove.focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),engineFocusedPly,
+      'ArrowRight on a focused engine suggestion must not navigate its underlying saved PGN');
+    assert.ok(await validMove.evaluate(element=>document.activeElement===element),
+      'The same engine suggestion should retain focus after a blocked global shortcut');
+    assert.equal(await page.locator('.review-board-square').getAttribute('data-review-live-preview-uci'),'e2e4');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Try engine move d4'
+      && document.querySelector('.review-board-square')?.getAttribute('data-review-live-preview-uci')==='d2d4',
+      undefined,{timeout:3000});
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),engineFocusedPly,
+      'ArrowDown must compare live engine suggestions without playing a saved move');
+    await page.screenshot({path:join(output,'engine-line-keyboard-arrowdown-preview-390.png')});
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Follow played move e4'
+      && document.querySelector('.review-board-square')?.getAttribute('data-review-live-preview-uci')==='e2e4',
+      undefined,{timeout:3000});
+    await page.keyboard.press('End');
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Try engine move d4',
+      undefined,{timeout:3000});
+    await page.keyboard.press('Home');
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Follow played move e4',
+      undefined,{timeout:3000});
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),engineFocusedPly,
+      'Home/End on the engine list must not jump the original chessboard');
     await validMove.click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
     assert.equal(await page.locator('.review-board-square').getAttribute('data-review-live-preview-uci'),null,

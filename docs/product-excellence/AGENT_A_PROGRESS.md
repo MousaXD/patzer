@@ -976,3 +976,22 @@
 ### Next priority
 
 - Audit window-level Game Review Arrow/Home/End shortcuts while a live engine-line button has keyboard focus. Those shortcuts currently exclude native inputs/sliders/tablists but may silently navigate the saved chessboard from a focused engine suggestion, leaving its accessible action context and preview inconsistent. Reproduce a focused engine row and ArrowRight in Chromium before changing the handler. If genuine, exempt only Engine Lines focused buttons and preserve global board shortcuts and MoveList's dedicated arrow navigation.
+
+## 2026-11-12: focused engine suggestions retain keyboard context
+
+### Recovered unfinished fix and scoped interaction
+
+- Continued on Agent A's own worktree at clean pushed `e1bb11a`, recovering two pre-existing uncommitted files (`GameAnalyzer.tsx`, `review-polish-capture.mjs`). The global Game Review keydown listener operated on ArrowLeft/ArrowRight/Home/End unless focus was in a tablist, slider or editable control; engine suggestions are ordinary buttons, so those keys could move the saved PGN while the user's focused suggestion and board preview still represented the prior position.
+- Engine Lines' existing region now intercepts unmodified navigation keys **only when an enabled engine-line button is focused**, stopping those global shortcuts from changing saved moves. Up/Down focus adjacent verified suggestions, Home/End focus the first/last, and Left/Right leave the current suggestion in place. Focus transitions use the existing FEN-safe preview behavior. Inputs, tabs, board-level shortcuts, mouse actions, and saved-game navigation elsewhere remain unchanged.
+- The authenticated disposable Chromium fixture now checks that Right and Home/End never change the saved move counter under focused suggestions, that ArrowDown/Up change focus and switch the preview arrow `e2e4` to `d2d4` and back, and that the original PGN remains intact. A real dark 390px screenshot of the focused alternative is `qa-artifacts/agent-a/engine-lines-keyboard-shortcuts-20261112/engine-line-keyboard-arrowdown-preview-390.png`; the companion board-arrow capture was also visually inspected.
+
+### Verification and isolation
+
+- `git diff --check`: PASS; `npm run typecheck`: PASS; `npm run build`: PASS.
+- Focused source/score tests: **13 passed**; full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1001 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium responsive, locale, source-integrity, keyboard and saved-PGN matrix: **PASS (exit 0)** with isolated SQLite and port 8941. All test evaluations are synthetic presentation fixtures, not real Stockfish certification.
+- No merge, deployment, production DB, service or other-agent edits.
+
+### Next independent audit candidate
+
+- Inspect whether losing focus on the Engine Lines Retry button during a request (or collapsing its panel from within) creates a keyboard-focus trap or drops focus to the document body. Reproduce with real Chromium before making a UX change; preserve correct engine source guards.
