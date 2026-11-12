@@ -36,8 +36,8 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <AuthShell title={t('auth.resetTitle')}>
-        <p className="text-sm text-bad">{t('auth.errInvalidOrExpired')}</p>
+      <AuthShell title={t('auth.resetTitle')} focusTitle>
+        <p role="alert" className="text-sm text-bad">{t('auth.errInvalidOrExpired')}</p>
         <Link to="/forgot-password" className="btn-secondary min-h-11 w-full justify-center">{t('auth.requestNewLink')}</Link>
       </AuthShell>
     );
@@ -45,8 +45,8 @@ export default function ResetPassword() {
 
   if (done) {
     return (
-      <AuthShell title={t('auth.resetDoneTitle')}>
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <AuthShell title={t('auth.resetDoneTitle')} focusTitle>
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <CheckCircle2 className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.resetDoneBody')}</p>
         </div>

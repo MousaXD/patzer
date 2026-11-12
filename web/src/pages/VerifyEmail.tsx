@@ -27,16 +27,16 @@ export default function VerifyEmail() {
 
   if (token) {
     return (
-      <AuthShell title={t('auth.verifyTitle')}>
+      <AuthShell title={t('auth.verifyTitle')} focusTitle={state !== 'verifying'}>
         {state === 'verifying' && (
-          <div className="flex flex-col items-center gap-3 py-4 text-ink-500">
-            <Loader2 className="h-8 w-8 animate-spin" />
+          <div role="status" className="flex flex-col items-center gap-3 py-4 text-ink-500">
+            <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin motion-reduce:animate-none" />
             <p className="text-sm">{t('auth.verifying')}</p>
           </div>
         )}
         {state === 'ok' && (
           <>
-            <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
               <CheckCircle2 className="h-10 w-10 text-accent-600" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyOk')}</p>
             </div>
@@ -45,7 +45,7 @@ export default function VerifyEmail() {
         )}
         {state === 'fail' && (
           <>
-            <div className="flex flex-col items-center gap-3 py-2 text-center">
+            <div role="alert" className="flex flex-col items-center gap-3 py-2 text-center">
               <AlertCircle className="h-10 w-10 text-bad" />
               <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.verifyFail')}</p>
             </div>
@@ -79,8 +79,8 @@ function ResendForm() {
 
   if (sent) {
     return (
-      <AuthShell title={t('auth.resendSentTitle')}>
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <AuthShell title={t('auth.resendSentTitle')} focusTitle>
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.resendSentBody')}</p>
         </div>

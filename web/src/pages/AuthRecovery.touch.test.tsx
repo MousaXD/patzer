@@ -49,13 +49,18 @@ describe('public recovery touch targets', () => {
     mount('forgot', '/forgot-password');
     fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: 'tester@example.org' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
-    await screen.findByRole('heading', { name: 'Check your inbox' });
+    const heading = await screen.findByRole('heading', { name: 'Check your inbox' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute('tabindex')).toBe('-1');
+    expect(screen.getByRole('status').textContent).toContain('reset link is on its way');
     expect(post).toHaveBeenCalledWith('/api/auth/forgot', { email: 'tester@example.org' });
     expectTouchAction(screen.getByRole('link', { name: 'Back to sign in' }), '/login');
   });
 
   it('keeps the missing-token recovery action large and directed to a new reset request', () => {
     mount('reset', '/reset-password');
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Set a new password' }));
+    expect(screen.getByRole('alert').textContent).toContain('invalid or has expired');
     expectTouchAction(screen.getByRole('link', { name: 'Request a new link' }), '/forgot-password');
   });
 
@@ -77,7 +82,9 @@ describe('public recovery touch targets', () => {
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'strong-password-123' } });
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'strong-password-123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Set new password' }));
-    await screen.findByRole('heading', { name: 'Password updated' });
+    const heading = await screen.findByRole('heading', { name: 'Password updated' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByRole('status').textContent).toContain('Your password has been changed');
     expect(post).toHaveBeenCalledWith('/api/auth/reset', { token: 'unit-token', password: 'strong-password-123' });
     expectTouchAction(screen.getByRole('link', { name: 'Log in' }), '/login');
   });
@@ -95,7 +102,9 @@ describe('public recovery touch targets', () => {
     mount('verify', '/verify-email');
     fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: 'tester@example.org' } });
     fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }));
-    await screen.findByRole('heading', { name: 'Check your inbox' });
+    const heading = await screen.findByRole('heading', { name: 'Check your inbox' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByRole('status').textContent).toContain('a new link is on its way');
     expect(post).toHaveBeenCalledWith('/api/auth/resend-verification', { email: 'tester@example.org' });
     expectTouchAction(screen.getByRole('link', { name: 'Back to sign in' }), '/login');
   });
@@ -105,6 +114,9 @@ describe('public recovery touch targets', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/auth/verify', { token: 'unit-token' }));
     const link = await screen.findByRole('link', { name: 'Log in' });
     expectTouchAction(link, '/login');
+    const heading = screen.getByRole('heading', { name: 'Email confirmation' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByRole('status').textContent).toContain('Your email is confirmed');
   });
 
   it('preserves recovery when an email verification token is rejected', async () => {
@@ -112,5 +124,21 @@ describe('public recovery touch targets', () => {
     mount('verify', '/verify-email?token=bad-token');
     const link = await screen.findByRole('link', { name: 'Resend verification email' });
     expectTouchAction(link, '/verify-email');
+    const heading = screen.getByRole('heading', { name: 'Email confirmation' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.getByRole('alert').textContent).toContain('invalid or has expired');
+  });
+
+  it('does not steal focus from a language control after the result heading is announced', async () => {
+    mount('forgot', '/forgot-password');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: 'tester@example.org' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
+    const heading = await screen.findByRole('heading', { name: 'Check your inbox' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    const german = screen.getByRole('button', { name: 'Deutsch' });
+    german.focus();
+    fireEvent.click(german);
+    await waitFor(() => expect(document.documentElement.lang).toBe('de'));
+    expect(document.activeElement).toBe(german);
   });
 });

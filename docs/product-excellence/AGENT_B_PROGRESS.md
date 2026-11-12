@@ -1403,3 +1403,36 @@
 ### Next audit
 
 - Inspect **keyboard focus and announcement after asynchronous recovery success/failure**. The form is replaced by a confirmation screen or token failure state, which may leave keyboard focus on a removed submit button or body. Reproduce with Chromium and improve focus/announcements only if the actual DOM demonstrates the defect.
+
+## 2026-11-12: Announce recovery results and restore keyboard context after async transitions
+
+### Measured defect
+
+- Resumed from clean pushed `3b9731d` without repeating the previously completed touch-target audit.
+- A local Chromium probe drove Forgot Password, Reset Password and verification resend forms using actual keyboard Enter and also loaded verification success/failure tokens. **All five result paths dropped focus to `BODY`** once the submitted form was replaced or asynchronous verification settled.
+- The result screens had **no final `role=status`/`role=alert` announcements**. Keyboard and screen-reader users were not clearly informed of the completed step or where to navigate next, despite working action links.
+
+### Scoped implementation
+
+1. Add opt-in `focusTitle` to the shared `AuthShell`, implemented with a single heading ref and an effect that focuses the **result-only heading**, `tabIndex=-1` and `preventScroll`. Ordinary sign-in, signup and editable forms do **not** opt in, so their input autofocus remains intact.
+2. Enable result-heading focus for sent password reset, completed password change, missing reset token, verification success/failure, and resend-verification confirmation. Only `focusTitle` changes trigger the effect; a later language switch does not steal focus back from the selected language button.
+3. Label successful result bodies as `role=status`, rejected verification and missing reset token as `role=alert`, and verification progress as `role=status`. Mark the spinner decorative and respect reduced-motion preference.
+4. Extend unit tests to assert focused result headings, result roles/text, preserved route links, and no focus stealing after a German language switch.
+5. Extend the dedicated **108-case** Chromium recovery matrix to assert result heading focus, accessible status/alert and keyboard **Tab → next recovery link**, including genuine Enter-based form submission rather than mouse-only activation.
+
+### Verification
+
+- Original five-case Chromium negative control: **5/5 outcomes focused `BODY`** with no result announcement.
+- Post-fix Chromium probe: **5/5 outcomes focused the correct `H2`**, with success `role=status` or rejection `role=alert`; the heading has `tabIndex=-1`.
+- `node web/src/components/navigation/capture-auth-recovery.mjs`: **108/108 passed**, including keyboard navigation to the next action after result focus, both themes, both tested languages and enlarged text. A first assertion that expected `:focus-visible` after pointer submission was corrected to use keyboard Enter for keyboard-specific behavior.
+- Inspected `artifacts/agent-02/auth-recovery-forgot-sent-light-320.png` and `auth-recovery-verify-token-failed-dark-320.png`: the following action link receives a visibly outlined keyboard focus ring in both themes.
+- `npx vitest run web/src/pages/AuthRecovery.touch.test.tsx --maxWorkers=2`: **10/10 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** (complete existing global responsive shell regressions).
+- `npx vitest run web/src --maxWorkers=2`: **466/466 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No auth request logic, backend data, main branch, deployment or other agents' worktrees touched.
+
+### Next audit
+
+- Examine the **public Signup/first-owner Setup** experience at 320px and enlarged text, especially form inputs and submission buttons, to see whether the 44px minimum is applied consistently outside Login/Recovery. Avoid modifying their validation or account-creation logic; check real Chromium first.

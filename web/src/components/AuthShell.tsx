@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { BookOpenCheck, ChartNoAxesCombined, Swords } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,8 @@ type AuthShellProps = {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  /** Focus a replacement result heading after async success/failure, not ordinary entry forms. */
+  focusTitle?: boolean;
   /** Show the product introduction only on the public sign-in landing page. */
   variant?: 'standard' | 'welcome';
 };
@@ -16,8 +18,12 @@ type AuthShellProps = {
 // One design and language-switching contract for sign-in, registration, and
 // account recovery. Forms stay page-owned so server capabilities and security
 // behavior remain independent of the visual presentation.
-export default function AuthShell({ title, subtitle, children, variant = 'standard' }: AuthShellProps) {
+export default function AuthShell({ title, subtitle, children, focusTitle = false, variant = 'standard' }: AuthShellProps) {
   const { t, i18n } = useTranslation();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focusTitle) titleRef.current?.focus({ preventScroll: true });
+  }, [focusTitle]);
   const reduceMotion = useReducedMotion();
   const welcome = variant === 'welcome';
   const benefits = [
@@ -84,7 +90,9 @@ export default function AuthShell({ title, subtitle, children, variant = 'standa
           </div>
           <div className="ui-card space-y-4 p-5 shadow-ui-soft sm:p-7">
             <div>
-              <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+              <h2 ref={titleRef} tabIndex={focusTitle ? -1 : undefined}
+                data-auth-result-heading={focusTitle ? '' : undefined}
+                className="text-xl font-semibold tracking-tight">{title}</h2>
               {subtitle && <p className="mt-1 text-sm leading-relaxed text-ui-mutedText">{subtitle}</p>}
             </div>
             {children}

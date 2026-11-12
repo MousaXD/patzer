@@ -33,8 +33,8 @@ export default function ForgotPassword() {
 
   if (sent) {
     return (
-      <AuthShell title={t('auth.forgotSentTitle')}>
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
+      <AuthShell title={t('auth.forgotSentTitle')} focusTitle>
+        <div role="status" className="flex flex-col items-center gap-3 py-2 text-center">
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.forgotSentBody')}</p>
         </div>

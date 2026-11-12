@@ -75,7 +75,8 @@ try {
                   .fill('fixture@example.org');
               }
               const submit = page.locator('form button[type="submit"]');
-              await submit.click();
+              await submit.focus();
+              await page.keyboard.press('Enter');
               await submit.waitFor({ state: 'detached' });
             } else if (scenario.name.startsWith('verify-token')) {
               await page.locator(scenario.verificationFails
@@ -99,6 +100,36 @@ try {
             if (!state.targets.length || state.targets.some((target) => target.height < 44 || target.width < 44) ||
                 state.overflow > 1 || state.pageLanguage !== language) {
               throw new Error(`Recovery ${scenario.name}/${theme}/${language}/${width}px/root${font}: ${JSON.stringify(state)}`);
+            }
+            const resultScreen = Boolean(scenario.action) || scenario.name === 'reset-missing-token' ||
+              scenario.name.startsWith('verify-token');
+            if (resultScreen) {
+              const resultHeading = page.locator('[data-auth-result-heading]');
+              await resultHeading.waitFor({ state: 'visible' });
+              const result = await resultHeading.evaluate((heading) => ({
+                focused: document.activeElement === heading,
+                tabbable: heading.tabIndex,
+                visibleFocus: heading.matches(':focus-visible'),
+              }));
+              const expectAlert = scenario.name === 'reset-missing-token' || scenario.verificationFails;
+              const announcedResult = page.locator(expectAlert ? '[data-auth-shell] [role="alert"]' :
+                '[data-auth-shell] [role="status"]');
+              if (!result.focused || result.tabbable !== -1 ||
+                  (Boolean(scenario.action) && !result.visibleFocus) ||
+                  !(await announcedResult.isVisible())) {
+                throw new Error(`Recovery result focus/announcement ${scenario.name}/${theme}/${language}/${width}px/root${font}: ${JSON.stringify(result)}`);
+              }
+              // A real keyboard user's next Tab should reach the remaining
+              // recovery action, not leave them stranded on a removed form.
+              await page.keyboard.press('Tab');
+              const nextAction = await page.evaluate(() => ({
+                tag: document.activeElement?.tagName,
+                href: document.activeElement?.getAttribute('href'),
+                focusVisible: document.activeElement?.matches(':focus-visible'),
+              }));
+              if (nextAction.tag !== 'A' || !nextAction.href || !nextAction.focusVisible) {
+                throw new Error(`Recovery ${scenario.name} next keyboard action unavailable: ${JSON.stringify(nextAction)}`);
+              }
             }
             if (width === 320 && font === 16 && language === 'en') {
               await page.screenshot({ path: resolve(output, `auth-recovery-${scenario.name}-${theme}-320.png`) });
