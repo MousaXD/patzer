@@ -1312,3 +1312,33 @@
 ### Next audit
 
 - Check **public sign-in primary action and recovery links** at 320/390px and enlarged text: the normal-sized login button and small Create account / Forgot password links may be below 44px touch targets or become crowded in translated languages. Require actual Chromium measurements and avoid changes to authentication logic or backend capabilities.
+
+## 2026-11-12: Make public sign-in and recovery actions touch-accessible
+
+### Independent evidence
+
+- Resumed from clean pushed `289901e` and measured actual rendered `/login` controls using Chromium in **English/German/Spanish/Russian/Bulgarian**, light and dark, **320/390/1440px**, and **16px/24px root text sizes**.
+- The primary **Log in** button was only **36px tall** and both **Create account** and **Forgot password?** links only **20px tall** at default text size. At 150% root text, both links were still only **30px tall** unless text happened to wrap. All were below Patzer's 44px touch-target benchmark even though language buttons had just been corrected.
+- Confirmed user-facing recovery links exist only when server capabilities authorize them; no changes to authentication logic or capability checks.
+
+### Implementation
+
+1. Add `min-h-11` to the existing sign-in submit button, keeping its full-width style, disabled state until credentials are entered, form submission semantics and label.
+2. Change the two existing recovery links to `inline-flex min-h-11 max-w-full items-center`, keeping their destination URLs, text, colors, hover feedback and wrapping in long translated locales.
+3. Add Login unit regression assertions for the size classes, original submit semantics, disabled-until-filled state and both intact link destinations.
+4. Extend the end of Agent B's real Chromium shell fixture with a valid **local-only auth capabilities response**, then check the actual sign-in/recovery hit rectangles **before and after switching to German**, alongside the earlier Tab/Enter and language-button assertions. This fixture does not certify backend auth behavior.
+
+### Verification
+
+- Independent 50-case Chromium audit: **zero undersized controls** and **zero horizontal overflows** across all tested languages, themes, screen widths and root-font sizes. Minimum dimensions now **44px**, with 66px or taller controls at 150% scale.
+- Inspected `artifacts/agent-02/auth-actions-after-light-en-320.png` and `auth-actions-after-dark-de-320.png`: links retain clear separation and mobile layouts remain balanced.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed**, including actual login control sizes before/after locale change and all previous responsive, keyboard, accessibility, sign-out and localization regressions.
+- `npx vitest run web/src/pages/Login.test.tsx --maxWorkers=2`: **11/11 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **455/455 passed across 75 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' worktrees, production deployment, customer game data or main branch touched.
+
+### Next audit
+
+- Inspect **public sign-in username/password input target height and focus readability** in Chromium at 320px (the controls appear shorter than 44px in the audited screenshots), then examine the alternative SSO-only layout to avoid assuming all authentication configurations share the same form. Scope changes to visual/touch UI only and do not change validation or authentication flows.

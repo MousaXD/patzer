@@ -35,6 +35,10 @@ const profile = {
 
 const fixtures = (pathname) => {
   if (pathname === '/api/setup/status') return { setup_required: false };
+  if (pathname === '/api/auth/config') return {
+    signup_enabled: true, signup_mode: 'open', email_enabled: true,
+    oidc_enabled: false, oidc_only: false, oidc_button_text: null,
+  };
   if (pathname === '/api/auth/me') return {
     user: signedIn ? { id: 1, username: fixtureUsername, role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } } : null,
   };
@@ -1064,6 +1068,23 @@ try {
       await page.waitForFunction((isDark) =>
         document.documentElement.classList.contains('dark') === isDark, authTheme === 'dark');
       await page.addStyleTag({ content: `html { font-size: ${font}px !important; }` });
+      const authActionSizes = async () => {
+        const selectors = [
+          'form button[type="submit"]',
+          'a[href="/signup"]',
+          'a[href="/forgot-password"]',
+        ];
+        return Promise.all(selectors.map(async (selector) => {
+          const action = page.locator('[data-auth-shell]').locator(selector);
+          await action.waitFor({ state: 'visible' });
+          const bounds = await action.boundingBox();
+          return { selector, width: bounds?.width ?? 0, height: bounds?.height ?? 0 };
+        }));
+      };
+      const initialActions = await authActionSizes();
+      if (initialActions.some((action) => action.width < 44 || action.height < 44)) {
+        throw new Error(`Public login sign-in/recovery targets ${authTheme}/${width}px/root${font}: ${JSON.stringify(initialActions)}`);
+      }
       const buttons = languageChoices.getByRole('button');
       const sizes = await buttons.evaluateAll((elements) => elements.map((button) => {
         const rect = button.getBoundingClientRect();
@@ -1093,6 +1114,10 @@ try {
       const selectedGerman = page.getByRole('button', { name: 'Deutsch' });
       if (await selectedGerman.getAttribute('aria-pressed') !== 'true') {
         throw new Error(`Public login German selection not announced at ${authTheme}/${width}px/root${font}`);
+      }
+      const translatedActions = await authActionSizes();
+      if (translatedActions.some((action) => action.width < 44 || action.height < 44)) {
+        throw new Error(`Translated public sign-in/recovery targets ${authTheme}/${width}px/root${font}: ${JSON.stringify(translatedActions)}`);
       }
       await checkNoHorizontalOverflow(page, `public language controls ${authTheme}/${width}px/root${font}`);
       await page.screenshot({ path: resolve(output, `auth-language-${authTheme}-${width}-font${font}.png`) });

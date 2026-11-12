@@ -57,6 +57,23 @@ describe('Login page and single sign-on', () => {
     expect(german.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('gives sign-in and recovery actions a 44px minimum tap area without changing destinations', async () => {
+    renderLogin({});
+    const submit = await screen.findByRole('button', { name: 'Log in' });
+    expect(submit.className).toContain('min-h-11');
+    expect(submit.getAttribute('type')).toBe('submit');
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    for (const [label, target] of [
+      ['Create account', '/signup'],
+      ['Forgot password?', '/forgot-password'],
+    ]) {
+      const action = screen.getByRole('link', { name: label });
+      expect(action.getAttribute('href')).toBe(target);
+      expect(action.className).toContain('min-h-11');
+      expect(action.className).toContain('items-center');
+    }
+  });
+
   it('without SSO: the password form only, as before', async () => {
     renderLogin({});
     expect(await screen.findByLabelText('Username')).toBeTruthy();

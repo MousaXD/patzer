@@ -106,19 +106,19 @@ export default function Login() {
                   )}
                 </div>
               )}
-              <button type="submit" disabled={busy || !username || !password} className="btn-primary w-full">
+              <button type="submit" disabled={busy || !username || !password} className="btn-primary min-h-11 w-full">
                 <LogIn aria-hidden="true" className="h-4 w-4" />
                 {busy ? t('login.submitting') : t('login.submit')}
               </button>
               {(config.signup_enabled || config.email_enabled) && (
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-sm">
                   {config.signup_enabled
-                    ? <Link to="/signup" className="font-medium text-ui-primary hover:underline">
+                    ? <Link to="/signup" className="inline-flex min-h-11 max-w-full items-center font-medium text-ui-primary hover:underline">
                         {config.signup_mode === 'invite' ? t('auth.haveInvite') : t('auth.createAccount')}
                       </Link>
                     : <span />}
                   {config.email_enabled && (
-                    <Link to="/forgot-password" className="text-ui-mutedText hover:text-ui-foreground hover:underline">{t('auth.forgotPassword')}</Link>
+                    <Link to="/forgot-password" className="inline-flex min-h-11 max-w-full items-center text-ui-mutedText hover:text-ui-foreground hover:underline">{t('auth.forgotPassword')}</Link>
                   )}
                 </div>
               )}
