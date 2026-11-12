@@ -76,7 +76,7 @@ export default function Login() {
           )}
           {config.oidc_enabled && (
             // A real link preserves the provider redirect contract.
-            <a href="/api/auth/oidc/start" className={`${config.oidc_only ? 'btn-primary' : 'btn-secondary'} w-full`}>
+            <a href="/api/auth/oidc/start" className={`${config.oidc_only ? 'btn-primary' : 'btn-secondary'} min-h-11 w-full`}>
               <KeyRound aria-hidden="true" className="h-4 w-4" />
               {config.oidc_button_text || t('sso.signIn')}
             </a>
@@ -92,11 +92,11 @@ export default function Login() {
             <>
               <div>
                 <label className="label mb-1 block" htmlFor="login-username">{t('common.username')}</label>
-                <input id="login-username" className="input" autoComplete="username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
+                <input id="login-username" className="input min-h-11" autoComplete="username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} />
               </div>
               <div>
                 <label className="label mb-1 block" htmlFor="login-password">{t('common.password')}</label>
-                <input id="login-password" className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input id="login-password" className="input min-h-11" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               {error && (
                 <div role="alert" aria-live="assertive" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">

@@ -74,6 +74,17 @@ describe('Login page and single sign-on', () => {
     }
   });
 
+  it('keeps password fields touch-sized while retaining their input types and autocomplete', async () => {
+    renderLogin({});
+    const username = await screen.findByLabelText('Username');
+    const password = screen.getByLabelText('Password');
+    expect(username.className).toContain('min-h-11');
+    expect(password.className).toContain('min-h-11');
+    expect(username.getAttribute('autocomplete')).toBe('username');
+    expect(password.getAttribute('type')).toBe('password');
+    expect(password.getAttribute('autocomplete')).toBe('current-password');
+  });
+
   it('without SSO: the password form only, as before', async () => {
     renderLogin({});
     expect(await screen.findByLabelText('Username')).toBeTruthy();
@@ -91,7 +102,9 @@ describe('Login page and single sign-on', () => {
   it('SSO only: no password form, no sign-up or reset links, translated default label', async () => {
     await i18n.changeLanguage('de');
     renderLogin({ oidc_enabled: true, oidc_only: true, signup_enabled: false, email_enabled: false });
-    expect(await screen.findByText('Mit SSO anmelden')).toBeTruthy();
+    const sso = await screen.findByText('Mit SSO anmelden');
+    expect(sso.closest('a')?.getAttribute('href')).toBe('/api/auth/oidc/start');
+    expect(sso.closest('a')?.className).toContain('min-h-11');
     expect(screen.queryByLabelText('Passwort')).toBeNull();
     expect(screen.queryByRole('button', { name: /anmelden/i })).toBeNull();
     expect(screen.queryByText('oder')).toBeNull();

@@ -23,6 +23,7 @@ let fixtureUsername = 'sample-player';
 let fixtureGameResult = 'win';
 let fixtureUserColor = 'white';
 let fixtureAnalyzed = false;
+let fixtureAuthSSOOnly = false;
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '', language: 'en',
@@ -37,7 +38,7 @@ const fixtures = (pathname) => {
   if (pathname === '/api/setup/status') return { setup_required: false };
   if (pathname === '/api/auth/config') return {
     signup_enabled: true, signup_mode: 'open', email_enabled: true,
-    oidc_enabled: false, oidc_only: false, oidc_button_text: null,
+    oidc_enabled: fixtureAuthSSOOnly, oidc_only: fixtureAuthSSOOnly, oidc_button_text: null,
   };
   if (pathname === '/api/auth/me') return {
     user: signedIn ? { id: 1, username: fixtureUsername, role, created_at: '2026-01-01', profile: { ...profile, site_theme: theme } } : null,
@@ -1085,6 +1086,14 @@ try {
       if (initialActions.some((action) => action.width < 44 || action.height < 44)) {
         throw new Error(`Public login sign-in/recovery targets ${authTheme}/${width}px/root${font}: ${JSON.stringify(initialActions)}`);
       }
+      const fieldSizes = await page.locator('#login-username, #login-password').evaluateAll((inputs) =>
+        inputs.map((input) => {
+          const rect = input.getBoundingClientRect();
+          return { id: input.id, width: rect.width, height: rect.height };
+        }));
+      if (fieldSizes.length !== 2 || fieldSizes.some((input) => input.width < 44 || input.height < 44)) {
+        throw new Error(`Public login username/password fields undersized ${authTheme}/${width}px/root${font}: ${JSON.stringify(fieldSizes)}`);
+      }
       const buttons = languageChoices.getByRole('button');
       const sizes = await buttons.evaluateAll((elements) => elements.map((button) => {
         const rect = button.getBoundingClientRect();
@@ -1123,6 +1132,36 @@ try {
       await page.screenshot({ path: resolve(output, `auth-language-${authTheme}-${width}-font${font}.png`) });
     }
   }
+  // SSO-only installations intentionally remove the password form. The one
+  // remaining provider link must still be a full-sized touch target.
+  fixtureAuthSSOOnly = true;
+  for (const authTheme of ['light', 'dark']) {
+    for (const { width, font } of [
+      { width: 320, font: 16 }, { width: 320, font: 24 },
+      { width: 390, font: 16 }, { width: 1440, font: 16 },
+    ]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 700 });
+      await page.evaluate((mode) => {
+        localStorage.setItem('patzer-site-theme', mode);
+        localStorage.setItem('lang', 'de');
+      }, authTheme);
+      await page.goto(origin + '/login', { waitUntil: 'domcontentloaded' });
+      const provider = page.locator('a[href="/api/auth/oidc/start"]');
+      await provider.waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.documentElement.lang === 'de');
+      await page.waitForFunction((dark) =>
+        document.documentElement.classList.contains('dark') === dark, authTheme === 'dark');
+      await page.addStyleTag({ content: `html { font-size: ${font}px !important; }` });
+      const providerBounds = await provider.boundingBox();
+      if (!providerBounds || providerBounds.width < 44 || providerBounds.height < 44 ||
+          await page.locator('#login-username, #login-password').count() !== 0) {
+        throw new Error(`SSO-only login target or password form at ${authTheme}/${width}px/root${font}: ${JSON.stringify(providerBounds)}`);
+      }
+      await checkNoHorizontalOverflow(page, `SSO-only auth ${authTheme}/${width}px/root${font}`);
+      await page.screenshot({ path: resolve(output, `auth-sso-only-${authTheme}-${width}-font${font}.png`) });
+    }
+  }
+  fixtureAuthSSOOnly = false;
   console.log('Agent 02 shell: responsive Chromium smoke and screenshots passed.');
 } finally {
   await browser?.close();

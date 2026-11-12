@@ -1342,3 +1342,35 @@
 ### Next audit
 
 - Inspect **public sign-in username/password input target height and focus readability** in Chromium at 320px (the controls appear shorter than 44px in the audited screenshots), then examine the alternative SSO-only layout to avoid assuming all authentication configurations share the same form. Scope changes to visual/touch UI only and do not change validation or authentication flows.
+
+## 2026-11-12: Improve password-field and SSO-only sign-in touch targets
+
+### Independent Chromium reproduction and root cause
+
+- Resumed from clean pushed `43d2dc8`. Audited the actual public login using local API capability fixtures for both **password** and **SSO-only** configurations, in English and German, both themes, at **320/390/1440px** and root text sizes **16px and 24px**.
+- In password mode, both username and password input fields measured **38px tall** at default text size, below the 44px mobile control target. In SSO-only mode, the sole provider sign-in link measured **36px tall**.
+- Adding `min-h-11` alone did not fix the inputs: the existing legacy `:where(input,textarea,select):not(...):not(...):not(...):not(...):not(...)` CSS rule forced a 38px minimum and outranked the utility. Examined live Chromium matching style rules and computed `minHeight: 38px` before choosing the correction.
+
+### Scoped implementation
+
+1. Add a minimum 44px height to username and password inputs and the SSO provider link in `web/src/pages/Login.tsx`; do not modify any input value, field validation, accessibility names, password semantics, OIDC redirect URL, or server capability logic.
+2. Add a narrow `.auth-shell .input { min-height:2.75rem!important; }` override to `web/src/index.css` so the existing high-specificity global 38px rule cannot undo the login field minimum. This does not alter inputs outside the public authentication frame.
+3. Add Login test assertions preserving the field types, autocomplete attributes, and SSO-only destination and touch sizing.
+4. Extend the full Agent B Chromium shell fixture with password-field size assertions and an independent **SSO-only** browser matrix across both themes and widths. Assert SSO-only mode has no password form, a provider target at least 44×44px, and no horizontal overflow.
+
+### Verified outcomes
+
+- Pre-fix Chromium: **38px input targets; 36px SSO target** at normal font size.
+- After scoped CSS priority correction, Chromium computed **44px** for each password field (both themes), with matching 44px SSO provider targets.
+- Independent **32-case** Chromium password/SSO audit: **zero undersized targets, zero horizontal overflow**, with actual heights 44/66/84px depending on font size and wrapped translations.
+- Inspected real screenshots `artifacts/agent-02/auth-sso-only-light-320-font16.png` and `auth-sso-only-dark-320-font24.png`; the single SSO action remains prominent and the 150% German translation wraps without clipping.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** including prior responsive, keyboard, multilingual, logout and first-use coverage and new password/SSO assertions.
+- `npx vitest run web/src/pages/Login.test.tsx --maxWorkers=2`: **12/12 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **456/456 passed across 75 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No changes to backend auth, production data, deployment, main or other agents' worktrees.
+
+### Next audit
+
+- Audit the other **public account-recovery routes** (Forgot Password, Reset Password, Verify Email) for mobile touch-target consistency and meaningful keyboard-focus recovery in error/confirmation states. Reproduce actual shortcomings in Chromium first and prioritize the most noticeable one; leave auth request logic and server behavior unchanged.
