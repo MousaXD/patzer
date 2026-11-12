@@ -40,22 +40,26 @@ export default function App() {
   const { i18n } = useTranslation();
   const location = useLocation();
   const nav = useNavigate();
-  const lobby = useLobby();
+  const connectLobby = useLobby((s) => s.connect);
+  const disconnectLobby = useLobby((s) => s.disconnect);
+  const consumeAcceptedNav = useLobby((s) => s.consumeAcceptedNav);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  // Connect/disconnect lobby WS based on auth + apply sound setting
+  // A lobby WebSocket belongs to one authenticated account. Switching users
+  // must replace the old socket and discard its queued invitations; this is
+  // independent of profile sound-setting changes.
+  useEffect(() => {
+    if (user?.id) connectLobby(user.id);
+    else disconnectLobby();
+  }, [user?.id, connectLobby, disconnectLobby]);
+
   useEffect(() => {
     if (user) {
-      lobby.connect();
       setSoundEnabled(!!user.profile.sound_enabled);
       setSoundSet(user.profile.sound_set);
       setMoveSoundSet(user.profile.move_sound_set);
-    } else {
-      lobby.disconnect();
     }
-    return () => { /* keep connection during navigation; disconnect on logout */ };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.profile.sound_enabled, user?.profile.sound_set, user?.profile.move_sound_set]);
 
   // Unlock Web Audio on first user interaction (browser policy)
@@ -70,11 +74,11 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const id = setInterval(() => {
-      const nav$ = lobby.consumeAcceptedNav();
+      const nav$ = consumeAcceptedNav();
       if (nav$) nav(`/play?game=${nav$.game_id}`);
     }, 500);
     return () => clearInterval(id);
-  }, [user, lobby, nav]);
+  }, [user?.id, consumeAcceptedNav, nav]);
 
   // Sync UI language with profile language whenever the user changes
   useEffect(() => {

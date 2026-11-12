@@ -31,13 +31,21 @@ interface LobbyState {
   pendingAcceptedNav: AcceptedNav | null;
   consumeAcceptedNav: () => AcceptedNav | null;
 
-  connect: () => void;
+  connect: (userId: number) => void;
   disconnect: () => void;
   refreshUsers: () => Promise<void>;
   refreshChallenges: () => Promise<void>;
 }
 
-export const useLobby = create<LobbyState>((set, get) => ({
+export const useLobby = create<LobbyState>((set, get) => {
+  // Socket callbacks and REST refreshes can finish after logout, account
+  // switch or replacement of a broken connection. The generation stamp
+  // fences off all results from that superseded session.
+  let currentUserId: number | null = null;
+  let generation = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  return {
   ws: null,
   online: new Set(),
   users: [],
@@ -50,17 +58,25 @@ export const useLobby = create<LobbyState>((set, get) => ({
     return v;
   },
 
-  connect: () => {
-    if (get().ws) return;
+  connect: (userId) => {
+    if (!Number.isSafeInteger(userId) || userId <= 0) return;
+    if (currentUserId !== userId) {
+      get().disconnect();
+      currentUserId = userId;
+    }
+    if (get().ws || reconnectTimer !== null) return;
     if (typeof window === 'undefined') return;
+    const epoch = ++generation;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/ws/lobby`);
     set({ ws });
     ws.onopen = () => {
+      if (epoch !== generation || get().ws !== ws) return;
       void get().refreshUsers();
       void get().refreshChallenges();
     };
     ws.onmessage = (ev) => {
+      if (epoch !== generation || get().ws !== ws) return;
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === 'presence_update' && Array.isArray(msg.online)) {
@@ -79,35 +95,49 @@ export const useLobby = create<LobbyState>((set, get) => ({
       }
     };
     ws.onclose = () => {
+      if (epoch !== generation || get().ws !== ws) return;
       set({ ws: null, online: new Set() });
-      // Auto-reconnect with backoff
-      setTimeout(() => {
-        if (!get().ws) get().connect();
+      // Only an unexpectedly dropped *current* session may reconnect. An
+      // explicit logout and a switch to another player invalidate this epoch.
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (currentUserId === userId && generation === epoch && !get().ws) get().connect(userId);
       }, 3000);
     };
     ws.onerror = () => { /* swallow; close handler will reconnect */ };
   },
 
   disconnect: () => {
+    currentUserId = null;
+    generation++;
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
     const ws = get().ws;
+    set({ ws: null, online: new Set(), users: [], incoming: [], outgoing: [], pendingAcceptedNav: null });
     if (ws) try { ws.close(); } catch { /* ignore */ }
-    set({ ws: null, online: new Set() });
   },
 
   refreshUsers: async () => {
+    const userId = currentUserId;
+    const epoch = generation;
     try {
       const r = await api.get<{ users: LobbyUser[] }>('/api/lobby/users');
-      set({ users: r.users });
+      if (userId !== null && currentUserId === userId && epoch === generation) set({ users: r.users });
     } catch { /* ignore */ }
   },
 
   refreshChallenges: async () => {
+    const userId = currentUserId;
+    const epoch = generation;
     try {
       const [inc, out] = await Promise.all([
         api.get<{ challenges: Challenge[] }>('/api/challenges/incoming'),
         api.get<{ challenges: Challenge[] }>('/api/challenges/outgoing'),
       ]);
-      set({ incoming: inc.challenges, outgoing: out.challenges });
+      if (userId !== null && currentUserId === userId && epoch === generation) {
+        set({ incoming: inc.challenges, outgoing: out.challenges });
+      }
     } catch { /* ignore */ }
   },
-}));
+};
+});
