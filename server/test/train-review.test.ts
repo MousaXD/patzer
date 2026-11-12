@@ -115,7 +115,26 @@ describe('/api/train', () => {
       best_move_uci: 'd2d8', best_move_san: 'Qxd8+', best_pv: ['Qxd8+', 'Qxd8', 'Rxd8#'],
       centipawn_loss: 900, classification: 'miss',
     };
-    db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version) VALUES (1, 14, ?, ?)`).run(JSON.stringify([blunder]), SCORING_VERSION);
+    db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (1, 14, ?, ?, 'current-fixture-source', 0, 1)`)
+      .run(JSON.stringify([blunder]), SCORING_VERSION);
+
+    // Even a current and complete analysis is not a *personal* puzzle if the
+    // import lacks a trustworthy side attribution. Never assume White.
+    db.prepare(`INSERT INTO games (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (2, 1, 'chesscom', '', 'Unknown', 'Opponent', 'loss', '2026-09-02 10:00:00', NULL)`).run();
+    db.prepare(`INSERT INTO analyses
+      (game_id, depth, moves_json, scoring_version, source_hash, source_revision, analysis_generation)
+      VALUES (2, 14, ?, ?, 'current-fixture-source', 0, 1)`)
+      .run(JSON.stringify([blunder]), SCORING_VERSION);
+
+    // Legacy analysis with no provenance is never allowed to create new
+    // tactical positions even if it reports a recent classifier version.
+    db.prepare(`INSERT INTO games (id, user_id, source, pgn, white, black, result, end_time, user_color)
+      VALUES (3, 1, 'chesscom', '', 'Me', 'Opponent', 'loss', '2026-09-03 10:00:00', 'white')`).run();
+    db.prepare(`INSERT INTO analyses (game_id, depth, moves_json, scoring_version)
+      VALUES (3, 14, ?, ?)`).run(JSON.stringify([blunder]), SCORING_VERSION);
   });
 
   afterAll(() => {
@@ -167,5 +186,41 @@ describe('/api/train', () => {
       body: JSON.stringify({ game_id: 1, ply: 2, solved: true }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it('never invents a player color or uses a legacy unproven analysis', async () => {
+    for (const id of [2, 3]) {
+      const next = await call<Next>(`/next?game_id=${id}&today=${today}`);
+      expect(next.puzzle).toBeNull();
+      const res = await router.request('/attempt', {
+        method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_id: id, ply: 1, solved: true, today }),
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it('rejects stale training puzzles and excludes them from the review-due count after a source edit', async () => {
+    // Mark the existing practice attempt as due to check the Review counter.
+    db.prepare(`UPDATE puzzle_attempts SET solved = 0, due_on = '2000-01-01', last_day = '2000-01-01'
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).run();
+    expect((await call<Next>(`/next?today=${today}`)).puzzle).toMatchObject({ game_id: 1, ply: 1, review: true });
+
+    // Same scoring version, but a new authoritative PGN revision. Old engine
+    // moves must be invisible on every Training read/check/write path.
+    db.prepare(`UPDATE games SET pgn = '1. e4 e5 2. Nf3 Nc6 1-0' WHERE id = 1`).run();
+    const next = await call<Next>(`/next?today=${today}`);
+    expect(next).toMatchObject({ puzzle: null, due: 0 });
+    const attempt = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, today }),
+    });
+    expect(attempt.status).toBe(404);
+    const check = await router.request('/check', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8' }),
+    });
+    expect(check.status).toBe(404);
+    expect(await call<{ due: number }>(`/stats?today=${today}`)).toMatchObject({ due: 0 });
   });
 });

@@ -24,7 +24,7 @@ router.use('*', requireAuth);
 
 interface PuzzleCandidate {
   game_id: number;
-  user_color: 'white' | 'black' | null;
+  user_color: 'white' | 'black';
   end_time: string | null;
   white: string;
   black: string;
@@ -36,10 +36,16 @@ type AttemptRow = QueueState & { game_id: number; ply: number };
 // The browser's calendar day (?today= or { today }), like the opening trainer.
 const todayOf = (v: unknown) => dayOf(typeof v === 'string' ? v : null);
 
+// Training must use the same current-source provenance gates as detailed
+// analysis and Insights. A game edit invalidates its previous analysis, so
+// neither a new puzzle nor an old queued attempt may use those obsolete moves.
+const CURRENT_ANALYSIS_SQL = `a.scoring_version >= ? AND a.source_hash IS NOT NULL
+  AND a.source_revision = g.source_revision AND a.analysis_generation > 0`;
+
 const GAME_SQL = `
   SELECT g.id AS game_id, g.user_color, g.end_time, g.white, g.black, a.moves_json
   FROM analyses a JOIN games g ON g.id = a.game_id
-  WHERE g.user_id = ? AND a.scoring_version >= ?`;
+  WHERE g.user_id = ? AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})`;
 
 function toPuzzle(r: PuzzleCandidate, m: AnalyzedMove, review: boolean) {
   const line = puzzleLine(m.fen_before, m.best_move_uci!, m.best_pv ?? []);
@@ -75,16 +81,20 @@ function loadPuzzleMove(userId: number, gameId: number, ply: number): { game: Pu
   const game = db.prepare(`${GAME_SQL} AND g.id = ?`).get(userId, SCORING_VERSION, gameId) as PuzzleCandidate | undefined;
   if (!game) return null;
   const move = (JSON.parse(game.moves_json) as AnalyzedMove[]).find((m) => m.ply === ply);
-  if (!move || !isPuzzleMove(move, game.user_color ?? 'white')) return null;
+  if (!move || !isPuzzleMove(move, game.user_color)) return null;
   return { game, move };
 }
 
 function dueCount(userId: number, today: string): number {
   const r = db.prepare(`
     SELECT COUNT(*) AS n FROM puzzle_attempts
-    WHERE user_id = ? AND solved = 0
-      AND (due_on IS NULL OR due_on <= ?) AND (last_day IS NULL OR last_day < ?)
-  `).get(userId, today, today) as { n: number };
+    JOIN games g ON g.id = puzzle_attempts.game_id AND g.user_id = puzzle_attempts.user_id
+    JOIN analyses a ON a.game_id = g.id
+    WHERE puzzle_attempts.user_id = ? AND puzzle_attempts.solved = 0
+      AND (puzzle_attempts.due_on IS NULL OR puzzle_attempts.due_on <= ?)
+      AND (puzzle_attempts.last_day IS NULL OR puzzle_attempts.last_day < ?)
+      AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})
+  `).get(userId, today, today, SCORING_VERSION) as { n: number };
   return r.n;
 }
 
@@ -128,7 +138,7 @@ router.get('/next', (c) => {
 
   // Newest first so freshly analyzed games' lessons are the next puzzle.
   for (const r of rows) {
-    const userColor = r.user_color ?? 'white';
+    const userColor = r.user_color;
     const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
     for (const m of moves) {
       if (!isPuzzleMove(m, userColor)) continue;
