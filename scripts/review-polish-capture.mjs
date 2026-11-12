@@ -2525,7 +2525,7 @@ try {
   // last-move highlighting when a learner compares the sibling continuations.
   // Verify in actual chessground, on both phone and side-by-side desktop.
   for(const [width,height] of [[390,844],[1024,768]]){
-    const nestedContext=await browser.newContext({viewport:{width,height},colorScheme:'dark',reducedMotion:'reduce'});
+    const nestedContext=await browser.newContext({viewport:{width,height},colorScheme:'dark',reducedMotion:'reduce',acceptDownloads:true});
     try{
       await nestedContext.addCookies([{name:account.cookie.split('=')[0],
         value:account.cookie.split('=').slice(1).join('='),url:base}]);
@@ -2598,6 +2598,28 @@ try {
       const childSquares=await highlighted();
       assert.equal(childSquares.length,2);
       assert.notDeepEqual(childSquares,parentSquares,'The child move d2-d4 must have its own board highlight');
+      // Export while a nested unsaved line is visible: Copy FEN must use
+      // the actual branch board; Copy/Download PGN must NEVER fabricate a
+      // new source with those hypothetical moves.
+      const branchPosition=new Chess();
+      for(const san of ['e4','c5','d4']) assert.ok(branchPosition.move(san));
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async text=>{document.documentElement.dataset.qaBranchCopied=text;}},
+      }));
+      const exportRow=page.locator('[data-review-export-row]');
+      await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),branchPosition.fen(),
+        'Copy FEN must reflect the current nested variation, not the original PGN line');
+      await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.qaBranchCopied),savedPgn,
+        'Copy PGN during exploration must remain the untouched saved game');
+      if(width===390){
+        const downloadEvent=page.waitForEvent('download');
+        await exportRow.getByRole('button',{name:'Download',exact:true}).click();
+        const downloaded=await downloadEvent;
+        assert.equal(readFileSync(await downloaded.path(),'utf8'),savedPgn,
+          'PGN downloaded during exploration must not silently include hypothetical branch moves');
+      }
       const parent=page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true});
       const child=page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true});
       assert.ok((await parent.innerText()).includes('c5 Nf3'),

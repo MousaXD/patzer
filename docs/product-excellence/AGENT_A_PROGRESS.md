@@ -1614,3 +1614,13 @@
 ### Next independent Game Review audit
 
 - Verify **source-safe file export while an exploratory variation is selected**. Copy FEN should reflect the currently visible variation board, while Copy/Download PGN must remain the unchanged original saved game (not a silently fabricated PGN including hypothetical moves). Audit the three actions at a nonzero variation cursor in real Chromium and check that returning to the original game restores the selected saved FEN. Correct only a demonstrated mismatch or unclear affordance.
+
+## 2026-11-13: certify variation FEN versus saved-game PGN export identity
+
+- Continued from clean pushed `d9ef325`, reusing the existing nested-variation authenticated Chromium matrix rather than restarting any engine or source investigations. The learner begins at mainline ply 1, explores Black `c5`, branches from that continuation into White `d4`, and navigates to the live child cursor on 390px mobile and 1024px desktop.
+- The new browser regression verifies Copy FEN against a separately replayed legal `e4 c5 d4` variation position, while Copy PGN remains exactly the original, unmodified saved-game PGN. On mobile, Download produces a `.pgn` whose actual bytes match the original source rather than silently inserting hypothetical moves. The clipboard is captured in a disposable page-local instrumented API; no user clipboard or production file is touched. The existing graph-return case additionally confirms that Copy FEN switches back to the selected **saved** PGN position after leaving the variation.
+- Entire authenticated disposable Chromium responsive, locale, keyboard, Notes, bookmark, variation branch/cursor, source, engine and PGN matrix **PASS (exit 0)** on isolated port 9009. `git diff --check` and `node --check scripts/review-polish-capture.mjs`: PASS. This is **test-only** coverage, not a product change; preceding application checkpoint passed **1006 tests / 12 skipped**, typecheck and production build. No merge, deployment, real user data or edits to other agents' worktrees.
+
+### Next independent product audit
+
+- Evaluate Game Review's **Export row keyboard and screen-reader feedback** when clipboard permissions are denied while an exploratory branch is active. The existing manual fallback tests cover mainline FEN/PGN; confirm branch-specific FEN is selected and the fallback closes/replaces cleanly when the learner changes position. Fix only a real focus, stale-clipboard or source-integrity defect reproduced in Chromium.
