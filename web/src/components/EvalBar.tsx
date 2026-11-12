@@ -83,7 +83,12 @@ export default function EvalBar({ cp, mate, orientation = 'white', height, ariaL
         />}
       </div>
       {/* Floating score chip on the advantaged side, outside the bar. */}
-      {!unknown && <div
+      {/* The thin 18px rail has room for only a short score. Longer values
+          escape the viewport and cover board squares on 320px phones; the
+          full score remains visible in Review's move header and accessible
+          on this role=img. Do not truncate or shrink factual numbers. */}
+      {!unknown && label.length <= 4 && <div
+        data-review-eval-chip
         className={`pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-sm px-1 py-0.5 text-[11px] font-bold tabular-nums shadow-soft ${
           whiteAdvantage
             ? 'bg-white text-chesscom-900 ring-1 ring-chesscom-200'

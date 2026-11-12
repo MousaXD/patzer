@@ -27,8 +27,12 @@ describe('Game Review evaluation bar', () => {
     const losing = renderToStaticMarkup(createElement(EvalBar, { cp: -9970, mate: null }));
     expect(winning).toContain('aria-label="Evaluation +99.7 for White"');
     expect(losing).toContain('aria-label="Evaluation −99.7 for White"');
+    expect(winning).not.toContain('data-review-eval-chip');
+    expect(losing).not.toContain('data-review-eval-chip');
     expect(winning).not.toContain('>\u0023</div>');
     expect(losing).not.toContain('>-\u0023</div>');
+    const compact = renderToStaticMarkup(createElement(EvalBar, { cp: 70 }));
+    expect(compact).toContain('data-review-eval-chip');
   });
 
   it('allows Game Review to supply localized accessible names without changing score geometry', () => {

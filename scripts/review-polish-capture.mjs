@@ -2218,6 +2218,33 @@ try {
       'The saved score header must agree with the graph and not invent checkmate');
     await page.getByRole('img',{name:'Evaluation +99.70 for White',exact:true}).waitFor({state:'visible',timeout:4000});
     await page.screenshot({path:join(output,'review-mate-unproven-graph-390.png')});
+    // The former bare # fitted in the thin evaluation bar, but factual
+    // 5–6-character numerical labels cannot fit between the phone's edge
+    // and the chessboard. The redundant chip should disappear rather than
+    // clip, while the full visible score and bar's accessible name remain.
+    await page.setViewportSize({width:320,height:780});
+    for(const [moveLabel,accessibleScore,scoreText,capture] of [
+      [/^2\. White Nf3/,'Evaluation +100.00 for White','+100.00','review-numeric-score-plus-320.png'],
+      [/^2… Black Nc6/,'Evaluation −99.70 for White','−99.70','review-numeric-score-minus-320.png'],
+    ]){
+      await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:moveLabel}).click();
+      const bar=page.getByRole('img',{name:accessibleScore,exact:true});
+      await bar.waitFor({state:'visible',timeout:4000});
+      const geometry=await bar.evaluate(element=>{
+        const board=document.querySelector('.review-board-square');
+        const score=document.querySelector('[data-review-move-summary] .font-mono.text-base');
+        if(!board||!score)return null;
+        return {chipPresent:!!element.querySelector('[data-review-eval-chip]'),
+          boardLeft:board.getBoundingClientRect().left,
+          viewportWidth:window.innerWidth,documentWidth:document.documentElement.scrollWidth,
+          summaryScore:score.textContent?.trim()};
+      });
+      console.log('320px extreme numeric EvalBar chip:',JSON.stringify(geometry));
+      await page.screenshot({path:join(output,capture)});
+      assert.ok(geometry && !geometry.chipPresent && geometry.summaryScore===scoreText
+        && geometry.documentWidth<=geometry.viewportWidth+2,
+      `Wide numeric scores must remain visible in the header without an overflowing board chip: ${JSON.stringify(geometry)}`);
+    }
     assert.ok(sourceInjected,'This test must receive source-matched full saved move history');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalMatePgn);
   }finally{await mateContext.close();}

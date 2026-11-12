@@ -1194,3 +1194,22 @@
 ### Next independent audit
 
 - A 5-character numeric score replaces a single bare glyph in the narrow floating EvalBar chip. Test the **actual 320px and 390px board** with extreme signed numeric scores to ensure the chip stays inside the viewport and never obscures chess squares or keyboard focus. Fix only a measured clipping/overlap issue; don't alter the score again without new evidence.
+
+## 2026-11-12: keep wide honest scores from clipping over the 320px board
+
+### Actual layout failure and narrowly-scoped fix
+
+- Resumed from clean pushed `9509783` and added a real-Chromium 320px geometry assertion for the expanded numeric score chip. The first run **failed** with `+100.0`: the floating chip's bounding box was `left:-4, right:46` while the board began at `x:38`, meaning it clipped 4px outside the viewport and obscured 8px of the first board square. Visually inspected `qa-artifacts/agent-a/numeric-evalbar-chip-audit-20261112/review-numeric-score-plus-320.png`; the chip visibly protruded beyond the left edge.
+- The 18px evaluation rail cannot fit a 5–6-character number beside a full-width mobile board without truncation, unreadably small type, or covering a chess square. Kept the source-true **full numeric score** in the persistent Review move header, graph, and EvalBar `role=img` accessible label, but renders the redundant floating chip **only for short score labels of four characters or fewer**. Normal compact cp and verified mate chips remain visible. No score computation, board geometry or game data changed.
+- Unit renderer tests now assert that wide positive and negative cp-only scores retain accurate accessible labels **without** a floating chip, while a compact `+0.7` still gets its chip.
+
+### Verification and screenshots
+
+- Full authenticated, disposable Chromium matrix: **PASS (exit 0)** on port 8957. Tested 320px `+100.00` and `−99.70` after navigating real source-matched saved moves. Both reported `chipPresent:false`, `documentWidth:320`, `viewportWidth:320` and the correct visible header score. Inspected the 320px before/after screenshots under `qa-artifacts/agent-a/numeric-evalbar-chip-fixed-20261112/`: board squares are clear and the complete number remains legible below the board. Source PGN stays byte-for-byte unchanged.
+- Focused EvalBar + EvalGraph tests: **9 passed**. `git diff --check`, browser-script syntax, `npm run typecheck`, and `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- No merge, deployment, production database/service, or other-agent code modification.
+
+### Next Game Review audit candidate
+
+- Verify the opening and variation move evaluation score/header remain legible in **320px landscape and reduced-motion mode** when live variation scoring transitions from pending to ready. Check real browser focus and saved-PGN isolation, and avoid changing the UI without reproducing an issue.
