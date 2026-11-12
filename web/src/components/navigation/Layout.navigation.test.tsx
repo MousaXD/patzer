@@ -338,6 +338,22 @@ describe('Patzer navigation rail', () => {
     expect(document.querySelector('[data-navigation-rail]')?.className).toContain('w-20');
   });
 
+  it('allows long mobile navigation and changelog labels to wrap at enlarged text sizes', async () => {
+    harness.role = 'admin';
+    harness.longLabels = true;
+    mount('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const drawer = screen.getByRole('dialog', { name: 'Mobile navigation' });
+    const labels = within(drawer).getByRole('navigation', { name: 'Mobile navigation' });
+    for (const link of within(labels).getAllByRole('link')) {
+      expect(link.querySelector('span:last-child')?.className).toContain('break-words');
+    }
+    const changelog = await within(drawer).findByRole('button', { name: /Patzer version 7.19.0/i });
+    expect(changelog.className).toContain('min-w-0');
+    expect(changelog.querySelector('span')?.className).toContain('break-words');
+    expect(changelog.getAttribute('aria-label')).toContain('Patzer version 7.19.0');
+  });
+
   it('styles the same accessible shell in either theme without inline color overrides', () => {
     document.documentElement.classList.add('dark');
     const { unmount } = mount();

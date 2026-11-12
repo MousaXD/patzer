@@ -1496,3 +1496,34 @@
 ### Next audit
 
 - Return to the **global authenticated navigation shell**: verify real mobile menu/header behavior with 150%–200% font scaling, both themes and long translations at 320/390px. Look for clipped actions, horizontal overflow, obscured focus or inaccessible navigation; only change a defect demonstrated in Chromium.
+
+## 2026-11-13: Prevent 200% text scaling from horizontally scrolling mobile navigation
+
+### Actual browser reproduction
+
+- Continued from clean pushed `e001dff` and audited the **authenticated mobile drawer**, not feature-owned pages, at 320/390px with 16/24/32px root text sizes, all five supported languages and both themes.
+- In the 60-case Chromium matrix, the drawer developed **horizontal overflow at 320px and 200% text scaling** for German and Russian in both themes. German drawer `scrollWidth=314px` vs `clientWidth=287px`; Russian `292px` vs `287px`. The page itself did not scroll sideways, so a document-level overflow check alone missed the bug.
+- DOM inspection traced German overflow to unbreakable mobile navigation labels (`Partieanalyse` was 180px of text in a 132px label container), plus the changelog button (282px of content within 223px available). The logo and close button did **not** overlap, and focus containment, background scroll lock and touch sizes were healthy.
+
+### Scoped implementation
+
+1. Add `break-words` to the shared mobile `NavigationItem` label (desktop rail styling remains unchanged), allowing compound words and long translated labels to wrap within the allocated column.
+2. Give the mobile changelog button a shrinkable layout and a `min-w-0 break-words` text span, retaining its original accessible name, version, clickable area and handler.
+3. Add a navigation component test asserting mobile links and changelog have deliberate wrapping styles even when the language is configured with long labels.
+4. Add a durable, local-only `capture-scaled-drawer.mjs` Chromium regression with **60 combinations** (five languages × both themes × 320/390px × 100%/150%/200% text). Verify real drawer `scrollWidth`, nav/control hit areas, header geometry, document overflow, body scroll lock, focus on Close, and Escape restoration at 200%.
+
+### Verification
+
+- Original Chromium negative controls: **4/60** configurations had drawer-specific horizontal overflow despite page overflow remaining zero.
+- Post-fix `node web/src/components/navigation/capture-scaled-drawer.mjs`: **60/60 passed**, including Close focus and Escape-to-trigger restoration at 200% scale.
+- Inspected `artifacts/agent-02/drawer-scaled-verified-light-de-320-font32.png` and `drawer-scaled-verified-dark-de-320-font32.png`: compound labels now wrap rather than clipping; retained generous touch targets and stable drawer hierarchy.
+- `npx vitest run web/src/components/navigation/Layout.navigation.test.tsx --maxWorkers=2`: **18/18 passed**.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** (full existing authenticated shell visual/interaction regression).
+- `npx vitest run web/src --maxWorkers=2`: **469/469 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No navigation destination, customer data, production deployment, main branch or other agents' worktrees changed.
+
+### Next audit
+
+- Check **authenticated mobile header controls and discoverability** at 320px with 150%–200% text scaling and long localized labels. Measure whether header title, menu/search shortcuts, and account affordances become clipped or lose accessible focus; investigate other horizontal issues only if Chromium reproduces them.

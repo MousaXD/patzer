@@ -90,7 +90,7 @@ function NavigationItem({
             <span aria-hidden="true" className="absolute -left-0.5 h-7 w-[3px] rounded-r-full bg-green-500" />
           )}
           <Icon aria-hidden="true" className={cn('shrink-0', mobile ? 'h-[19px] w-[19px]' : 'h-[20px] w-[20px]')} />
-          <span className={cn('min-w-0', mobile ? 'flex-1' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
+          <span className={cn('min-w-0', mobile ? 'flex-1 break-words' : 'block w-full break-words text-center leading-[0.9rem] line-clamp-2')}>{label}</span>
         </>
       )}
     </NavLink>
@@ -543,9 +543,9 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               <LanguageSelector mobile value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} />
               {version && (
                 <button type="button" onClick={() => { setDrawerOpen(false); setShowChangelog(true); }}
-                  className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
+                  className="flex min-h-11 min-w-0 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-chesscom-500 hover:bg-chesscom-100 dark:hover:bg-chesscom-800"
                   title={t('common.viewChangelog')} aria-label={versionChangelogLabel}>
-                  Patzer v{version} · {t('common.viewChangelog')}
+                  <span className="min-w-0 break-words">Patzer v{version} · {t('common.viewChangelog')}</span>
                 </button>
               )}
               {onOpenShortcuts && (
