@@ -438,3 +438,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next highest-impact audit
 
 - Audit **import-file boundary detection around free-text comments, termination markers and single-game PGNs**: ensure valid annotations do not create phantom games and multi-game concatenation is never reported as a one-game success. Prefer deterministic parser regressions and indexed errors over permissive parsing. Preserve the existing 4 MiB / 1,000-game limits and all-or-nothing transaction semantics.
+
+## 2026-11-12 — Recognize standard SetUp 0 without weakening position safety
+
+- Recovered clean pushed `e78f88f` and probed the exact next PGN parser boundary. Reproduced a valid standard game with `[SetUp "0"]` being rejected as `unsupported_pgn_position`, despite chess.js accepting its ordinary opening moves. Another valid annotated PGN was falsely rejected because its multiline movetext comment contained example `[SetUp "1"]` and `[FEN "..."]` text, even though they were not actual PGN tags. A new targeted test failed on the original parser.
+- Replaced the global regex that searched all lines for setup tags with a **bounded inspection of the initial actual PGN tag section only**. `SetUp "0"` remains a standard game; missing/blank setup remains standard; genuine `SetUp "1"`, invalid setup values and actual FEN tags remain unsupported. This remains necessary because chess.js can normalize away even a declared start-position FEN, so relying only on normalized `getHeaders()` would weaken the explicit position safety rule.
+- Added parser and authenticated Hono tests: successful atomic import of standard SetUp 0 plus multiline annotations mentioning FEN, byte-identical PGN retention, rejection of genuine custom-position declarations with HTTP 422 and game index, and no accidental deletion of earlier accepted records. Extended the existing Chromium native-file-picker fixture so a reordered-header PGN also includes `SetUp "0"`.
+
+### Verification
+
+- Focused PGN/parser + authenticated API: **58/58 tests passed**. Full repository suite: **109 files passed, 2 skipped; 1,052 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`: passed. Real isolated Chromium covered PGN upload, 1440/390/320px in light/dark, empty library, search, source filters, cursor pagination, unknown players and Starred-only error recovery. No browser JS errors or horizontal overflow.
+- Original PGN bytes and deduplication semantics unchanged; all-or-nothing SQLite import and source/auth boundaries remain intact. No production accounts, providers or services touched.
+
+### Next audit
+
+- Continue testing actual multi-game PGN exports with comments and game termination markers that resemble headers. Explicitly confirm malformed or ambiguous archives never undercount real games, especially quoted header examples inside annotations. Only change behavior after a reproducible failing test and verify with the real browser.

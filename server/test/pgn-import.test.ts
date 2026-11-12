@@ -129,6 +129,25 @@ describe('explicit local PGN archive import', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:0});
   });
 
+  it('accepts explicit standard SetUp 0 and setup-like lines in comments, but rejects real custom setups', () => {
+    const db=fixture();
+    const standard='[Event "Ordinary game"]\n[SetUp "0"]\n[Variant "Standard"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const annotated='[Event "Annotated"]\n[White "Chris"]\n[Black "Dana"]\n\n1. d4 {These are examples, not headers:\n[SetUp "1"]\n[FEN "8/8/8/8/8/8/8/8 w - - 0 1"]\nContinue the normal game.} d5 *';
+    expect(importPgnArchive(db,1,`${standard}\n\n${annotated}`))
+      .toEqual({total:2,imported:2,duplicates:0});
+    expect(db.prepare('SELECT pgn FROM games ORDER BY id').all())
+      .toEqual([{pgn:standard},{pgn:annotated}]);
+
+    const custom='[Event "Custom"]\n[SetUp "1"]\n[White "A"]\n[Black "B"]\n\n1. e4 e5 *';
+    const declaredFen='[Event "FEN present"]\n[SetUp "0"]\n[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]\n\n1. e4 e5 *';
+    const malformedSetup='[Event "Invalid setup"]\n[SetUp "perhaps"]\n\n1. e4 e5 *';
+    for (const pgn of [custom,declaredFen,malformedSetup]) {
+      expect(() => importPgnArchive(db,1,pgn))
+        .toThrowError(new PgnImportError('unsupported_pgn_position',1));
+    }
+    expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:2});
+  });
+
   it('rejects ambiguous archives, oversized input and excessive game counts rather than truncating', () => {
     expect(() => splitPgnArchive('prefix\n' + one)).toThrowError(new PgnImportError('ambiguous_pgn_archive'));
     expect(() => splitPgnArchive('é'.repeat(MAX_PGN_ARCHIVE_BYTES / 2 + 1)))

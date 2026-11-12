@@ -94,6 +94,25 @@ interface ParsedGame {
   openingName: string | null;
 }
 
+/** Check only the PGN's initial tag section, not header-looking lines inside
+ * later move comments. chess.js can normalize away a declared FEN/SetUp tag
+ * when it matches the standard start, so normalized getHeaders() alone is
+ * insufficient for our explicit custom-position safety check.
+ */
+function declaredPositionHeaders(pgn: string): {hasFen: boolean; nonStandardSetup: boolean} {
+  let hasFen = false;
+  let nonStandardSetup = false;
+  for (const rawLine of pgn.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = /^\[([A-Za-z_][A-Za-z0-9_]*)[ \t]+"((?:[^"\\]|\\.)*)"\]$/.exec(line);
+    if (!match) break; // Movetext begins: later [FEN] examples are just comments.
+    if (match[1] === 'FEN') hasFen = true;
+    if (match[1] === 'SetUp' && match[2] !== '0') nonStandardSetup = true;
+  }
+  return {hasFen, nonStandardSetup};
+}
+
 function parsedGame(pgn: string, index: number): ParsedGame {
   if (!pgn || Buffer.byteLength(pgn, 'utf8') > MAX_SINGLE_PGN_BYTES) {
     throw new PgnImportError('pgn_game_too_large', index);
@@ -105,11 +124,13 @@ function parsedGame(pgn: string, index: number): ParsedGame {
   if (chess.history().length === 0 || chess.history().length > MAX_GAME_PLIES) {
     throw new PgnImportError('invalid_pgn', index);
   }
-  // chess.js may normalize away SetUp/FEN headers when the supplied FEN
-  // happens to equal the standard start. The raw PGN still records a custom
-  // setup, so reject from-position files *before* trusting normalized tags.
+  // A declared SetUp "0" is an ordinary standard game, not a custom start.
+  // Reject actual FEN/setup headers without rejecting tag-shaped examples
+  // inside annotated move comments.
+  const declaredPosition = declaredPositionHeaders(pgn);
   if ((headers.Variant && !['standard', 'chess'].includes(headers.Variant.toLowerCase())) ||
-      /^\[(?:SetUp|FEN)[ \t]+"/im.test(pgn) || headers.SetUp === '1' || headers.FEN) {
+      declaredPosition.hasFen || declaredPosition.nonStandardSetup ||
+      (headers.SetUp && headers.SetUp !== '0') || headers.FEN) {
     throw new PgnImportError('unsupported_pgn_position', index);
   }
   const name = (v: string | undefined) => {

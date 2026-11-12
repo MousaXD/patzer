@@ -475,6 +475,25 @@ describe('authenticated PGN archive upload', () => {
     } finally {cleanup();}
   });
 
+  it('accepts explicit standard setups and annotations without bypassing custom-position restrictions', async () => {
+    cleanup();
+    const standard='[Event "Standard"]\n[SetUp "0"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const annotated='[Event "Note"]\n[White "Carl"]\n[Black "Dani"]\n\n1. d4 {Not a real header:\n[FEN "8/8/8/8/8/8/8/8 w - - 0 1"]\n} d5 *';
+    const fromPosition='[Event "Unsafe"]\n[SetUp "1"]\n\n1. e4 e5 *';
+    try {
+      const accepted=await requestUpload(3,`${standard}\n\n${annotated}`);
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT pgn FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([{pgn:standard},{pgn:annotated}]);
+      const rejected=await requestUpload(3,fromPosition);
+      expect(rejected.status).toBe(422);
+      expect(await rejected.json()).toEqual({error:'unsupported_pgn_position',game_index:1});
+      expect(db.prepare("SELECT COUNT(*) AS n FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%'").get())
+        .toEqual({n:2});
+    } finally {cleanup();}
+  });
+
   it('refuses malformed second games, unsafe positions and oversized uploads with no partial commits', async () => {
     cleanup();
     try {

@@ -338,7 +338,7 @@ try {
     await page.getByText(/1 new games saved from 2 PGNs/).waitFor();
     assert.equal(seenPgnFiles.at(-1),unicodePgn,
       'Valid accented player names must retain their original Unicode text');
-    const reorderedPgn='[Site "Online"]\n[Event "Rated Rapid"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0\n\n'
+    const reorderedPgn='[Site "Online"]\n[Event "Rated Rapid"]\n[SetUp "0"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0\n\n'
       + '[White "Chris"]\n[Black "Dana"]\n\n1. d4 d5 0-1';
     const uploadCountBeforeReorder=seenPgnFiles.length;
     await input.setInputFiles({name:'reordered-headers.pgn',mimeType:'text/plain',buffer:Buffer.from(reorderedPgn)});
