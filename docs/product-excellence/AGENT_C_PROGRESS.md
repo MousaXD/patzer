@@ -931,3 +931,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Check whether **native `max` on the From date input and `min` on the Through date input prevent users from choosing a new boundary across the current one**. The Library's change handler intentionally clears the incompatible old boundary, but the HTML date-picker constraints may block that edit before the handler runs. Measure native input validity and current attributes in Chromium; remove only the obstructive Library-local bounds if confirmed, while preserving validation, URL normalization and date-range behavior.
+
+## 2026-11-13 — Let players adjust either native date boundary freely
+
+- Resumed clean pushed `67cb43f` and inspected date filter behavior after canonicalization. The Library already clears the *old* incompatible boundary in `updateDateFilter`, but native HTML `max={toDate}` on **From date** and `min={fromDate}` on **Through date** prevented the browser date picker from offering newer/earlier dates to trigger that cleanup. Added failing focused test expectations for unrestricted native inputs and a real-browser cross-boundary scenario before the change.
+- Removed only those two Library-local HTML picker bounds. The date values remain validated by `validCalendarDate`, and editing across an existing range still automatically drops the conflicting older URL filter. Both directions now work: choosing a start of **2026-11-09** after an end of **2026-11-08** clears `to_date`; subsequently choosing an end of **2026-11-07** clears `from_date`. Direct URLs with inverted ranges still canonicalize as in the prior fix.
+- Verified in Chromium that neither input has a blocking `min`/`max`, both edits update visible values and URL state without lingering filters, and reloads/deep links continue to behave. All prior import, pagination, bookmark, search and responsive acceptance scenarios stayed green.
+
+### Verification
+
+- Focused Library React tests: **57/57 passed**. Full repository suite: **109 passed files, 2 skipped; 1,125 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`). `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed.
+- Full Chromium 1440px desktop, 390/320px mobile light/dark, date-range crossings and inverted URLs, German import and PGN file handling, search, bookmarks, cursor pagination and recovery: passed with no browser errors or overflow.
+- Changes restricted to Agent C's Library date-picker props, focused React test, isolated Chromium fixture and progress report. No server, data mutation, other agents' branches, merge or deploy.
+
+### Next independent audit
+
+- Review **feedback when an existing date boundary gets cleared automatically**. Users should understand why their prior Through/From date disappeared after choosing a replacement date; currently `updateDateFilter` removes it silently. Check keyboard and screen-reader awareness in the actual browser before adding a minimal, localized, non-obtrusive explanation that does not compete with game-count announcements or change date semantics.

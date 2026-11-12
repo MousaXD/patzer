@@ -724,6 +724,8 @@ describe('Review library with large histories', () => {
     const end = screen.getByLabelText('Games through date') as HTMLInputElement;
     expect(start.value).toBe('2026-01-01');
     expect(end.value).toBe('2026-11-08');
+    expect(start.max).toBe('');
+    expect(end.min).toBe('');
     fireEvent.change(start, {target:{value:'2026-11-09'}});
     await waitFor(() => {
       expect(start.value).toBe('2026-11-09');

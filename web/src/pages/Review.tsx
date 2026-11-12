@@ -836,13 +836,13 @@ export default function Review() {
           <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
             <span className="mb-1 block">{t('review.fromDate', {defaultValue: 'From date'})}</span>
             <input aria-label={t('review.gamesFromDate', {defaultValue: 'Games from date'})} type="date" value={fromDate}
-              max={toDate || undefined} onChange={(e) => updateDateFilter('from_date', e.target.value)}
+              onChange={(e) => updateDateFilter('from_date', e.target.value)}
               className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
           <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
             <span className="mb-1 block">{t('review.throughDate', {defaultValue: 'Through date'})}</span>
             <input aria-label={t('review.gamesThroughDate', {defaultValue: 'Games through date'})} type="date" value={toDate}
-              min={fromDate || undefined} onChange={(e) => updateDateFilter('to_date', e.target.value)}
+              onChange={(e) => updateDateFilter('to_date', e.target.value)}
               className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
           </label>
         </div>

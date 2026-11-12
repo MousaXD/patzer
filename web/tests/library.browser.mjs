@@ -684,6 +684,31 @@ try {
     console.log('PASS inverted date range normalizes its URL and stays empty after reload and editing');
   } finally {await invertedDates.context.close();}
 
+  const editableDates=await newPage('light',390,844);
+  try {
+    const {page,pageErrors}=editableDates;
+    await page.goto(`${url}/review?from_date=2026-11-01&to_date=2026-11-08`);
+    const start=page.getByLabel('Games from date');
+    const end=page.getByLabel('Games through date');
+    assert.equal(await start.inputValue(),'2026-11-01');
+    assert.equal(await end.inputValue(),'2026-11-08');
+    const constraints=await start.evaluate(input=>({max:input.max,min:input.min}));
+    assert.equal(constraints.max,'',
+      `Native From-date picker must allow moving beyond the previous end: ${JSON.stringify(constraints)}`);
+    assert.equal(await end.getAttribute('min'),null,
+      'Native Through-date picker must allow moving before the previous start');
+    await start.fill('2026-11-09');
+    await page.waitForURL(href=>new URL(href).searchParams.get('from_date')==='2026-11-09' &&
+      !new URL(href).searchParams.has('to_date'));
+    assert.equal(await end.inputValue(),'');
+    await end.fill('2026-11-07');
+    await page.waitForURL(href=>new URL(href).searchParams.get('to_date')==='2026-11-07' &&
+      !new URL(href).searchParams.has('from_date'));
+    assert.equal(await start.inputValue(),'');
+    assert.deepEqual(pageErrors,[],'Editing cross-boundary date filters caused a browser error');
+    console.log('PASS both native date controls can cross an old boundary and clear the incompatible URL filter');
+  } finally {await editableDates.context.close();}
+
   const emptyGerman=await newPage('light',390,844,{locale:'de'});
   try {
     const {page,pageErrors}=emptyGerman;
