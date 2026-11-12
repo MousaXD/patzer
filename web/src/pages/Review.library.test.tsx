@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
             'review.pgnError.pgn_bad_file_type': 'Choose a .pgn or .txt file.',
             'review.pgnError.pgn_too_large': 'The PGN file exceeds the 4 MB limit. Split it into smaller files.',
             'review.pgnError.pgn_bad_encoding': 'This file is not valid UTF-8. Convert the PGN to UTF-8 and retry; no games were imported.',
+            'review.pgnError.pgn_invalid_summary': 'Import status could not be verified. Some games may already be saved. Retry the same file; identical PGNs will be skipped.',
           } as Record<string,string>)[key] ?? opts?.defaultValue ?? key,
   }),
 }));
@@ -191,6 +192,24 @@ describe('Review library with large histories', () => {
     expect(await screen.findByText(/2 new games saved from 2 PGNs/)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(mocks.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses to claim a successful PGN import when the API summary does not reconcile', async () => {
+    mocks.post.mockResolvedValueOnce({total:2,imported:1,duplicates:0});
+    mount();
+    const pgn='[Event "One"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    const file=new File([pgn],'archive.pgn',{type:'text/plain'});
+    Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode(pgn).buffer});
+    fireEvent.change(screen.getByLabelText('Choose a PGN file'),{target:{files:[file]}});
+    fireEvent.click(screen.getByRole('button',{name:'Import PGN file'}));
+    const alert=await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Import status could not be verified');
+    expect(alert.textContent).toContain('may already be saved');
+    expect(screen.queryByText(/new games saved from/)).toBeNull();
+    expect(screen.getByRole('button',{name:'Import PGN file'}).hasAttribute('disabled')).toBe(false);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    await waitFor(()=>expect(mocks.get.mock.calls.filter(([url])=>
+      String(url).startsWith('/api/games?')).length).toBeGreaterThan(1));
   });
 
   it('rejects non-PGN file types and oversized uploads before making a request', async () => {
@@ -687,6 +706,34 @@ describe('Review library with large histories', () => {
 
     expect(queryClient.getQueryData<{ games: { bookmarked: number }[] }>(otherHomeKey)?.games[0]?.bookmarked).toBe(0);
     expect(queryClient.getQueryData<{ pages: { games: { bookmarked: number }[] }[] }>(otherLibraryKey)?.pages[0]?.games[0]?.bookmarked).toBe(0);
+  });
+
+  it('isolates in-flight bookmark failures across account switches with the same game ID', async () => {
+    let failOldSave!: (error:Error) => void;
+    mocks.get.mockImplementation(async (url:string) => url==='/api/games/openings'
+      ? {total:1,classified:1,unclassified:0,openings:[{name:'Italian Game',games:1}]}
+      : {games:[makeGame(1)],total:1,offset:0,has_more:false});
+    mocks.patch.mockImplementationOnce(() => new Promise((_resolve,reject)=>{failOldSave=reject;}));
+    const {rerenderReview,queryClient}=mount();
+    await screen.findByText('1 of 1 games');
+    fireEvent.click(screen.getByRole('button',{name:'Bookmark game'}));
+    await waitFor(()=>expect(mocks.patch).toHaveBeenCalledTimes(1));
+    mocks.user={id:101,profile:{chesscom_username:null,lichess_username:null}};
+    rerenderReview();
+    const nextUserStar=await screen.findByRole('button',{name:'Bookmark game'});
+    expect(nextUserStar.hasAttribute('disabled')).toBe(false);
+    await act(async()=>failOldSave(new Error('old_account_bookmark_failed')));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(nextUserStar.getAttribute('aria-pressed')).toBe('false');
+    expect(nextUserStar.hasAttribute('disabled')).toBe(false);
+    // No new-account cache page may have been marked starred by the old save.
+    for(const entry of queryClient.getQueryCache().getAll()) {
+      const key=entry.queryKey;
+      if(key[0]==='games' && key[1]==='library' && key[2]===101) {
+        const data=entry.state.data as {pages?:{games?:{bookmarked:number}[]}[]} | undefined;
+        expect(data?.pages?.[0]?.games?.[0]?.bookmarked).toBe(0);
+      }
+    }
   });
 
   it('refreshes the importing account history, insights, plan and achievements without touching another account', async () => {

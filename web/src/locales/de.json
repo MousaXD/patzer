@@ -280,6 +280,7 @@
       "pgn_too_many_games": "Mehr als 1.000 Partien in dieser Datei. Bitte aufteilen.",
       "pgn_bad_file_type": "Wähle eine .pgn- oder .txt-Datei.",
       "pgn_bad_encoding": "Die Datei ist kein gültiges UTF-8. Konvertiere das PGN in UTF-8 und versuche es erneut; keine Partie wurde importiert.",
+      "pgn_invalid_summary": "Der Importstatus konnte nicht überprüft werden. Einige Partien wurden möglicherweise gespeichert. Versuche dieselbe Datei erneut; identische PGNs werden übersprungen.",
       "invalid_input": "Datei kann nicht als PGN gelesen werden. Wähle eine gültige Textdatei."
     },
     "libraryTopOpenings": "Deine Eröffnungen entdecken",

@@ -163,6 +163,8 @@ async function newPage(theme, width, height,
       if (pgn.includes('[Event "Broken"]')) {
         status = 422;
         json = {error:'invalid_pgn',game_index:2};
+      } else if (pgn.includes('[Event "Invalid summary"]')) {
+        json = {total:2,imported:1,duplicates:0};
       } else {
         json = {total:2, imported:1,duplicates:1};
         hasPgnImports = true;
@@ -325,8 +327,16 @@ try {
     await page.getByText(/1 new games saved from 2 PGNs/).waitFor();
     assert.equal(seenPgnFiles.at(-1),unicodePgn,
       'Valid accented player names must retain their original Unicode text');
+    const mismatched=good.replace('[Event "One"]','[Event "Invalid summary"]');
+    await input.setInputFiles({name:'uncertain-report.pgn',mimeType:'text/plain',buffer:Buffer.from(mismatched)});
+    await importButton.click();
+    await page.getByRole('alert').getByText(/Import status could not be verified/).waitFor();
+    assert.equal(await importButton.isDisabled(),false,
+      'Unverifiable import summary should retain the selected file for safe retry');
+    assert.equal(await page.getByText(/new games saved from/).count(),0,
+      'The UI falsely claimed a complete PGN import despite inconsistent server counts');
     assert.deepEqual(pageErrors, [], 'PGN import UI had a JavaScript exception');
-    console.log('PASS PGN file import, source filter, UTF-8 integrity, original content, partial failure and recovery');
+    console.log('PASS PGN file import, source filter, UTF-8 integrity, count validation, partial failure and recovery');
   } finally { await pgnFixture.context.close(); }
 
   // Real first-use path: account has no linked providers and no saved games.

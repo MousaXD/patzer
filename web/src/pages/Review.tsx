@@ -330,7 +330,20 @@ export default function Review() {
       // changed meanwhile, never submit the old account's selected file using
       // the new account's authentication cookie/session.
       if (accountIdRef.current !== accountId) throw new Error('account_changed');
-      return api.post<{total:number;imported:number;duplicates:number}>('/api/games/import/pgn', {pgn});
+      const summary = await api.post<{total:number;imported:number;duplicates:number}>(
+        '/api/games/import/pgn', {pgn});
+      // A malformed/partial HTTP success must never be announced as a
+      // confirmed complete upload. The server import is idempotent, so the
+      // user can safely retry even if some games were already committed.
+      if (!summary || !Number.isSafeInteger(summary.total) ||
+          !Number.isSafeInteger(summary.imported) ||
+          !Number.isSafeInteger(summary.duplicates) ||
+          summary.total < 1 || summary.total > 1000 ||
+          summary.imported < 0 || summary.duplicates < 0 ||
+          summary.imported + summary.duplicates !== summary.total) {
+        throw new Error('pgn_invalid_summary');
+      }
+      return summary;
     },
     onSuccess: (result, {accountId}) => {
       void qc.invalidateQueries({predicate:({queryKey})=>isOwnHistoryQuery(queryKey, accountId)});
@@ -347,8 +360,14 @@ export default function Review() {
       setSearchParams(new URLSearchParams({source:'imported'}));
     },
     onError: (error, {accountId}) => {
-      if (accountIdRef.current !== accountId) return;
       const code = error instanceof Error ? error.message : 'generic';
+      // The HTTP request may have committed games before an inconsistent
+      // summary reached the client. Refresh only this owner's views without
+      // claiming success or discarding the retryable source file.
+      if (code === 'pgn_invalid_summary') {
+        void qc.invalidateQueries({predicate:({queryKey})=>isOwnHistoryQuery(queryKey,accountId)});
+      }
+      if (accountIdRef.current !== accountId) return;
       const index = (error as {data?:{game_index?:unknown}})?.data?.game_index;
       const gameLabel = Number.isSafeInteger(index) && Number(index) > 0
         ? `${t('review.pgnGameIndex', {index, defaultValue:`Game ${index}`})}: ` : '';

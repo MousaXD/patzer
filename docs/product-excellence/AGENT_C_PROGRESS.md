@@ -374,3 +374,21 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Verify that bookmark updates or failures begun on account A cannot modify account B's cached Library or show stale errors when switching between accounts that contain identically numbered game IDs while a request is in flight. Existing tests cover some cached-game isolation; focus on cross-account *in-flight* behavior rather than repeating completed probes.
+
+## 2026-11-12 — Certify cross-account bookmark isolation and guard PGN import result integrity
+
+- Recovered clean pushed `2b2946c`. Audited an in-flight bookmark failure when account A starts a save and the UI switches to account B with the same game ID. The new deterministic regression passed without implementation changes: B's button remains enabled/unstarred, no stale error is shown, and B's account-scoped cached games stay unmodified. Kept this as an ongoing regression instead of inventing a bug.
+- Identified a separate **incorrect success-reporting** path in the PGN upload UI. An HTTP 200 containing inconsistent counts such as `{total:2, imported:1, duplicates:0}` previously displayed a completed import and cleared the selected file even though one game was unaccounted for. Added a focused test that failed against the old implementation.
+- Validate returned PGN totals as safe nonnegative integers, bounded to 1–1,000 games, with the invariant `total === imported + duplicates`. A malformed/partial reply now results in a clearly distinct **unverified import** warning; it does not claim success or that no games were saved, and retains the file for an idempotent retry. Refresh owned Library and history-derived caches since the server may already have committed games. No cross-account invalidation or false source navigation occurs.
+- Localized the uncertainty/retry guidance across all five supported languages. Existing backend atomic import, exact-PGN deduplication, authenticated ownership and data provenance remain unchanged.
+- Added Chromium coverage that returns an intentionally inconsistent HTTP 200 after ordinary successful imports. Asserted a visible unverified-status alert, no false success message, retained file/retry control, and normal history recovery. Existing browser flows for provider filters, 320/390/1440 layouts, cursor paging, starred-only recovery, PGN UTF-8 integrity, and first-use onboarding still passed.
+
+### Verification
+
+- Targeted Library React suite: **40/40 passed**, including the new count-invariant test and in-flight cross-account bookmark regression.
+- Full repository suite: **109 test files passed, 2 skipped; 1,045 tests passed, 12 skipped; zero failures**.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Chromium tested desktop/mobile in both themes and confirmed no horizontal overflow or console errors. Only disposable local API mocks; no production account, external import or database mutation.
+
+### Next independent audit
+
+- Verify the direct game-card-to-Game-Review transition from a filtered Library including user-uploaded PGNs, and document any cross-lane back-navigation issue for the Game Review agent rather than modifying their internals. A return link must not silently discard a deliberate filter or paginated-history context. Audit with the real browser first.
