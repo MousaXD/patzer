@@ -18,10 +18,12 @@ export class PgnImportError extends Error {
   }
 }
 
-/** Recognize standard multi-game exports, whose games begin with [Event ...].
- * Comments may contain header-like lines, especially in annotated training
- * PGNs. Find real headers at top level only; never slice out an Event line
- * quoted inside a brace comment. A headerless *single* PGN remains valid.
+/** Recognize standard multi-game exports through their top-level PGN tag
+ * blocks. Event normally comes first, but valid exports can put Site or a
+ * custom tag before it. A new header block after movetext starts a new game;
+ * a following tag in the same block does not. Comments may contain
+ * header-like lines; never split inside brace or semicolon comments.
+ * A headerless *single* PGN remains valid.
  */
 export function splitPgnArchive(input: string): string[] {
   if (!input || Buffer.byteLength(input, 'utf8') > MAX_PGN_ARCHIVE_BYTES) {
@@ -30,6 +32,7 @@ export function splitPgnArchive(input: string): string[] {
   const text = input.replace(/^\uFEFF/, '').trim();
   if (!text) throw new PgnImportError('invalid_pgn', 1);
   const markers: number[] = [];
+  let lastHeaderEnd: number | null = null;
   let scanAt = 0;
   let braceDepth = 0;
   let lineComment = false;
@@ -38,7 +41,7 @@ export function splitPgnArchive(input: string): string[] {
   let tagEscape = false;
   // This lexer is linear in the original 4 MiB bound. It does not interpret
   // chess moves; chess.js validates every resulting whole PGN before insert.
-  const header = /^\[Event[ \t]+"(?:[^"\\\r\n]|\\.)*"\][ \t]*\r?$/gm;
+  const header = /^\[[A-Za-z_][A-Za-z0-9_]*[ \t]+"(?:[^"\\\r\n]|\\.)*"\][ \t]*\r?$/gm;
   for (const match of text.matchAll(header)) {
     const index = match.index!;
     for (; scanAt < index; scanAt++) {
@@ -65,7 +68,15 @@ export function splitPgnArchive(input: string): string[] {
       else if (ch === ';') lineComment = true;
       else if (ch === '[') inTag = true;
     }
-    if (braceDepth === 0 && !lineComment && !inTag) markers.push(index);
+    if (braceDepth === 0 && !lineComment && !inTag) {
+      // PGN tags are consecutive at the start of a game. Non-whitespace
+      // between two actual tags means the intervening game had movetext, so
+      // the next tag begins another game even if it is not [Event ...].
+      if (lastHeaderEnd === null || text.slice(lastHeaderEnd, index).trim()) {
+        markers.push(index);
+      }
+      lastHeaderEnd = index + match[0].length;
+    }
   }
   if (!markers.length) return [text];
   if (markers[0] !== 0) throw new PgnImportError('ambiguous_pgn_archive');

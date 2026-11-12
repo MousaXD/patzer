@@ -402,3 +402,22 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next work owned by Agent C
 
 - Continue auditing user-owned PGN import and large-history cards, especially whether custom headers with playable standard moves are surfaced with an actionable explanation instead of silently dropped. Avoid modifying Review analysis internals or making claims of historical account import completeness.
+
+## 2026-11-12 — Import valid PGNs with reordered and non-Event headers
+
+- Recovered clean pushed `490e195`, including the existing cross-agent Review back-navigation handoff. The next PGN integrity audit reproduced a real false rejection: chess.js accepts a legal standard game with `[Site "..."]` or a custom tag before `[Event "..."]`, but the Library parser assumed every new game begins with Event at byte zero and returned `ambiguous_pgn_archive`. Mixed exports with a later game using Site-first headers also failed.
+- First wrote failing regressions for a single Site-first game, mixed Site-first/Event-first/custom-tag-first archives, and a real second game after an annotated move comment that contains fake Site/Event lines.
+- Generalized the bounded, single-pass PGN tag lexer to detect **complete top-level header blocks** rather than Event tags alone. Consecutive tag lines belong to one game even if Event comes later; a new top-level tag following movetext begins the next game. The lexer retains existing brace/semicolon-comment protection and quoted-header escaping, preserves each parsed PGN exactly as before, and validates *every* separated game before one atomic SQLite transaction. An untagged single game remains supported; truly ambiguous untagged concatenations still fail instead of silently losing games.
+- Updated a legacy assertion that had expected two perfectly valid explicitly tagged games without Event headers to fail. The corrected test now requires both games to import, with byte-identical PGN storage and accurate counts. Added an authenticated Hono route test verifying two reordered/no-Event games are saved only for the correct user with no invented user side or result, and that retry counts both as duplicates.
+- Extended the real 390px dark-mode Chromium file picker scenario to upload an archive with a Site-first first game and Event-less second game. Verified the transmitted file text was unchanged and the import success UI remained legible; inspected `qa-artifacts/agent-c-library/library-pgn-reordered-headers-dark-390.png`. All existing browser cases at 1440/390/320 in both themes still passed.
+
+### Verification
+
+- Targeted SQLite + authenticated Hono suite: **55/55 passed**. Full repository suite: **109 files passed, 2 skipped; 1,048 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w server`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium browser passed with synthetic APIs; no production or external provider requests.
+- Disposable in-memory benchmark: 1,000 alternating Site-first and Event-less PGNs (70,833 UTF-8 bytes) split into **exactly 1,000 byte-identical games** (~3.47 ms splitter), saved **1,000/1,000** (~569 ms overall); idempotent retry reported 1,000 duplicates and zero new games. Numbers are local smoke measurements only, not performance guarantees.
+- No migrations, Game Review internals, production data, merges, deploys, or other agent worktrees modified.
+
+### Next highest-impact inspection
+
+- Audit imported-game **player name metadata** when a valid PGN has long names, non-English characters, or placeholder headers. Confirm Library game cards never silently discard a valid player name or misidentify a player's side; preserve source PGN and authenticated ownership. Reproduce first; prefer conservative display handling over ungrounded inference.

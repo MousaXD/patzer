@@ -457,6 +457,24 @@ describe('authenticated PGN archive upload', () => {
     } finally {cleanup();}
   });
 
+  it('imports an authenticated standard PGN archive with reordered or missing Event headers', async () => {
+    cleanup();
+    const reordered = '[Site "Online"]\n[Event "Rated Rapid"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0';
+    const withoutEvent = '[White "Carl"]\n[Black "Dani"]\n\n1. d4 d5 0-1';
+    try {
+      const uploaded=await requestUpload(3,`${reordered}\n\n${withoutEvent}`);
+      expect(uploaded.status).toBe(200);
+      expect(await uploaded.json()).toEqual({total:2,imported:2,duplicates:0});
+      expect(db.prepare("SELECT white,black,pgn,result,user_color FROM games WHERE source='imported' AND user_id=3 AND external_id LIKE 'sha256:%' ORDER BY id").all())
+        .toEqual([
+          {white:'Alice',black:'Bob',pgn:reordered,result:null,user_color:null},
+          {white:'Carl',black:'Dani',pgn:withoutEvent,result:null,user_color:null},
+        ]);
+      expect(await (await requestUpload(3,`${reordered}\n\n${withoutEvent}`)).json())
+        .toEqual({total:2,imported:0,duplicates:2});
+    } finally {cleanup();}
+  });
+
   it('refuses malformed second games, unsafe positions and oversized uploads with no partial commits', async () => {
     cleanup();
     try {

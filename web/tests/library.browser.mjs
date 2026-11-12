@@ -327,6 +327,16 @@ try {
     await page.getByText(/1 new games saved from 2 PGNs/).waitFor();
     assert.equal(seenPgnFiles.at(-1),unicodePgn,
       'Valid accented player names must retain their original Unicode text');
+    const reorderedPgn='[Site "Online"]\n[Event "Rated Rapid"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0\n\n'
+      + '[White "Chris"]\n[Black "Dana"]\n\n1. d4 d5 0-1';
+    const uploadCountBeforeReorder=seenPgnFiles.length;
+    await input.setInputFiles({name:'reordered-headers.pgn',mimeType:'text/plain',buffer:Buffer.from(reorderedPgn)});
+    await importButton.click();
+    for(let i=0;i<30 && seenPgnFiles.length===uploadCountBeforeReorder;i++) await sleep(50);
+    assert.equal(seenPgnFiles.at(-1),reorderedPgn,
+      'The browser altered a PGN archive with valid non-Event-first headers');
+    await page.getByText(/1 new games saved from 2 PGNs/).waitFor();
+    await page.screenshot({path:join(output,'library-pgn-reordered-headers-dark-390.png')});
     const mismatched=good.replace('[Event "One"]','[Event "Invalid summary"]');
     await input.setInputFiles({name:'uncertain-report.pgn',mimeType:'text/plain',buffer:Buffer.from(mismatched)});
     await importButton.click();

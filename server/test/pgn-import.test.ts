@@ -38,15 +38,21 @@ describe('explicit local PGN archive import', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:4});
   });
 
-  it('supports one headerless PGN and refuses disguised concatenated games', () => {
+  it('supports one headerless PGN and separates explicitly tagged games without Event', () => {
     const db = fixture();
     expect(importPgnArchive(db, 1, '1. e4 e5 *')).toEqual({total:1,imported:1,duplicates:0});
     expect(() => importPgnArchive(db, 1, `${one}\n\n${invalid}`))
       .toThrowError(new PgnImportError('invalid_pgn',2));
-    expect(() => importPgnArchive(db, 1,
-      '[White "One"]\n\n1. e4 e5 *\n\n[White "Two"]\n\n1. d4 d5 *'))
-      .toThrow(PgnImportError);
-    expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:1});
+    const first='[White "One"]\n\n1. e4 e5 *';
+    const second='[White "Two"]\n\n1. d4 d5 *';
+    expect(importPgnArchive(db, 1, `${first}\n\n${second}`))
+      .toEqual({total:2,imported:2,duplicates:0});
+    expect(db.prepare('SELECT pgn FROM games WHERE user_id=1 ORDER BY id').all())
+      .toEqual([{pgn:'1. e4 e5 *'},{pgn:first},{pgn:second}]);
+    // No header boundary means a concatenated archive is still ambiguous;
+    // do not save the first game and silently discard the second.
+    expect(() => importPgnArchive(db, 1,'1. e4 e5 *\n\n1. d4 d5 *')).toThrow(PgnImportError);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM games').get()).toEqual({n:3});
   });
 
   it('never treats an Event tag quoted inside a multiline move comment as a new game', () => {
@@ -69,6 +75,29 @@ describe('explicit local PGN archive import', () => {
       .toEqual({total:2,imported:2,duplicates:0});
     expect(db.prepare('SELECT pgn FROM games WHERE user_id=1 ORDER BY id').all())
       .toEqual([{pgn:crlf},{pgn:two}]);
+  });
+
+  it('accepts standard PGNs whose valid headers precede Event, without losing a game or altering the PGN', () => {
+    const db = fixture();
+    const siteFirst = '[Site "Online Chess"]\n[Event "Rated Rapid"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 1-0';
+    const customFirst = '[StudyId "session-42"]\n[Event "Study Game"]\n[White "Chris"]\n[Black "Daria"]\n\n1. d4 d5 0-1';
+    expect(splitPgnArchive(siteFirst)).toEqual([siteFirst]);
+    expect(splitPgnArchive(`${siteFirst}\n\n${two}\n\n${customFirst}`))
+      .toEqual([siteFirst, two, customFirst]);
+    expect(importPgnArchive(db, 1, `${siteFirst}\n\n${two}\n\n${customFirst}`))
+      .toEqual({total:3,imported:3,duplicates:0});
+    expect(db.prepare('SELECT pgn FROM games WHERE user_id=1 ORDER BY id').all())
+      .toEqual([{pgn:siteFirst},{pgn:two},{pgn:customFirst}]);
+    expect(importPgnArchive(db, 1, `${siteFirst}\n\n${two}\n\n${customFirst}`))
+      .toEqual({total:3,imported:0,duplicates:3});
+  });
+
+  it('ignores tag-like lines inside comments, but recognizes the next real reordered header block', () => {
+    const annotated='[Event "Annotated"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 {These are just notes:\n[Site "Not a new game"]\n[Event "Also not a game"]\nStill one game.} e5 1-0';
+    const siteFirst = '[Site "Real new game"]\n[Event "Round Two"]\n[White "Chris"]\n[Black "Daria"]\n\n1. d4 d5 0-1';
+    expect(splitPgnArchive(`${annotated}\n\n${siteFirst}`)).toEqual([annotated,siteFirst]);
+    expect(() => splitPgnArchive('Unexpected preamble\n'+siteFirst))
+      .toThrowError(new PgnImportError('ambiguous_pgn_archive'));
   });
 
   it('rejects mixed valid/corrupt files atomically with the failing game index', () => {
