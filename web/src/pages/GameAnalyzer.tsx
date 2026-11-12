@@ -1701,6 +1701,23 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
   const { t } = useTranslation();
   const [copied, setCopied] = useState<'fen' | 'pgn' | null>(null);
   const [manualCopy, setManualCopy] = useState<'fen' | 'pgn' | null>(null);
+  const [manualCopyAttempt, setManualCopyAttempt] = useState(0);
+  const previousExportRef = useRef({ fen, pgn });
+
+  useEffect(() => {
+    const previous = previousExportRef.current;
+    const fenChanged = previous.fen !== fen;
+    const pgnChanged = previous.pgn !== pgn;
+    previousExportRef.current = { fen, pgn };
+    if (!fenChanged && !pgnChanged) return;
+    // A failed FEN copy describes one *visible board position*. Never leave
+    // that old/manual value active when a variation or saved move changes.
+    // PGN export is source-based, so keep that fallback across board moves.
+    const noLongerCurrent = (kind: 'fen' | 'pgn' | null) =>
+      (kind === 'fen' && fenChanged) || (kind === 'pgn' && pgnChanged) ? null : kind;
+    setManualCopy(noLongerCurrent);
+    setCopied(noLongerCurrent);
+  }, [fen, pgn]);
 
   async function copy(kind: 'fen' | 'pgn', text: string) {
     try {
@@ -1710,8 +1727,10 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
       setTimeout(() => setCopied(null), 1400);
     } catch {
       // Clipboard can be unavailable on self-hosted HTTP or denied by the
-      // browser. Show the exact source text without altering the saved game.
+      // browser. Give each failure a new mounted fallback so even switching
+      // FEN -> PGN (or repeating Copy FEN) focuses and selects the new value.
       setManualCopy(kind);
+      setManualCopyAttempt((current) => current + 1);
     }
   }
 
@@ -1738,7 +1757,7 @@ function ExportRow({ pgn, fen, fileBase }: { pgn: string; fen: string; fileBase:
         <span className="min-w-0 truncate">{t('common.download')}</span>
       </button>
       {manualCopy && <div className="col-span-3 min-w-0">
-        <ClipboardManualFallback label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
+        <ClipboardManualFallback key={manualCopyAttempt} label={t(manualCopy === 'fen' ? 'review.copyFenTitle' : 'review.copyPgnTitle')}
           value={manualCopy === 'fen' ? fen : pgn} />
       </div>}
     </div>

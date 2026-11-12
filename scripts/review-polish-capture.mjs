@@ -2620,6 +2620,63 @@ try {
         assert.equal(readFileSync(await downloaded.path(),'utf8'),savedPgn,
           'PGN downloaded during exploration must not silently include hypothetical branch moves');
       }
+      // Denied clipboard permissions are common on self-hosted HTTP. The
+      // recovery textarea must select the exact branch FEN, reselect source
+      // PGN when the user changes Copy action, and never strand a stale FEN
+      // field after switching to another visible variation position.
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async()=>{throw new DOMException('Clipboard denied','NotAllowedError');}},
+      }));
+      const exportFallback=exportRow.locator('[data-review-clipboard-fallback]');
+      const fallbackField=exportFallback.locator('textarea');
+      const assertSelectedFallback=async(expected,message)=>{
+        assert.equal(await fallbackField.inputValue(),expected,message);
+        const selection=await fallbackField.evaluate(el=>({
+          focused:document.activeElement===el,
+          selected:el.selectionStart===0 && el.selectionEnd===el.value.length,
+        }));
+        assert.ok(selection.focused && selection.selected,
+          `${message}: keyboard focus and whole-value selection ${JSON.stringify(selection)}`);
+      };
+      await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      await exportFallback.waitFor({state:'visible',timeout:3000});
+      await assertSelectedFallback(branchPosition.fen(),
+        'Denied branch Copy FEN must focus and select the current hypothetical position');
+      await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();
+      await assertSelectedFallback(savedPgn,
+        'Switching denied Copy FEN to Copy PGN must reselect the source PGN');
+      await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      await assertSelectedFallback(branchPosition.fen(),
+        'Switching denied Copy PGN back to Copy FEN must reselect the branch FEN');
+      await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      await assertSelectedFallback(branchPosition.fen(),
+        'Repeating denied Copy FEN must reselect the value even if its text has not changed');
+      await page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true}).click();
+      await expectProgress('Var 1 / 2');
+      await exportFallback.waitFor({state:'hidden',timeout:3000});
+      const ancestorPosition=new Chess();
+      // Parent variation restores its own remembered cursor at 1 / 2;
+      // Nf3 is the *next*, still unplayed parent move.
+      for(const san of ['e4','c5']) assert.ok(ancestorPosition.move(san));
+      await exportRow.getByRole('button',{name:'Copy FEN',exact:true}).click();
+      await assertSelectedFallback(ancestorPosition.fen(),
+        'Copy FEN after a variation switch must use the currently visible ancestor board');
+      await page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true}).click();
+      await expectProgress('Var 1 / 1');
+      await exportFallback.waitFor({state:'hidden',timeout:3000});
+      await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();
+      await assertSelectedFallback(savedPgn,'Denied PGN fallback must show original source');
+      await page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true}).click();
+      await expectProgress('Var 1 / 2');
+      assert.equal(await fallbackField.inputValue(),savedPgn,
+        'Saved PGN manual fallback must remain valid across variation navigation');
+      await page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true}).click();
+      await expectProgress('Var 1 / 1');
+      await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{
+        configurable:true,value:{writeText:async()=>{}},
+      }));
+      await exportRow.getByRole('button',{name:'Copy PGN',exact:true}).click();
+      await exportFallback.waitFor({state:'hidden',timeout:3000});
       const parent=page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true});
       const child=page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true});
       assert.ok((await parent.innerText()).includes('c5 Nf3'),
