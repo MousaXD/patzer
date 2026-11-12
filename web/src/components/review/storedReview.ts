@@ -35,6 +35,13 @@ const stringArray = (x: unknown): x is string[] =>
 const classification = (x: unknown): boolean =>
   typeof x === 'string' && classes.has(x);
 
+/** The absolute Lichess win-chance swing used by the server's Key Moments
+ * extractor. The absolute delta is independent of which player moved. */
+function winChanceSwing(beforeCp: number, afterCp: number): number {
+  const winPct = (cp: number) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+  return Math.abs(winPct(beforeCp) - winPct(afterCp));
+}
+
 /** Validate the values that the timeline, explanation and report actually
  * render. Checking only that the array exists can still cause a render-time
  * crash, e.g. unknown classifications or null centipawn_loss. */
@@ -134,6 +141,15 @@ export function decodeStoredReviewJson(
         || moment.best_pv.length !== source.best_pv.length
         || moment.best_pv.some((san, index) => san !== source.best_pv[index])
         || moment.win_pct_delta < 0 || moment.win_pct_delta > 100) return null;
+      // A claimed 90% win-chance swing backed by two scores implying only
+      // 18% is misleading coaching, even when SAN/FEN/classification match.
+      // Historical caches can round to whole percentage points, so allow
+      // half a point plus a small margin. Without both engine scores, the UI
+      // already suppresses the wp comparison; keep such legacy games usable.
+      if (source.eval_before_cp != null && source.eval_after_cp != null
+        && Math.abs(moment.win_pct_delta - winChanceSwing(
+          source.eval_before_cp, source.eval_after_cp,
+        )) > 0.55) return null;
       seenMomentPlies.add(moment.ply);
     }
     if (!validPhases(phases)) return null;

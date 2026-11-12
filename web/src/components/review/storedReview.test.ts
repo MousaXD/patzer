@@ -93,6 +93,22 @@ describe('cached review analysis decoder', () => {
     expect(decodeStoredReviewJson(withMoment([moment, moment]))).toBeNull();
   });
 
+  it('does not trust a Key Moment win-chance swing that contradicts two known engine evaluations', () => {
+    const winPct = (cp: number) => 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+    const actualDelta = Math.abs(winPct(-100) - winPct(100));
+    const scored = { ...move, eval_before_cp: -100, eval_after_cp: 100 };
+    const data = (win_pct_delta: number, before: number | null = -100) => ({
+      ...valid,
+      moves_json: JSON.stringify([{ ...scored, eval_before_cp: before }]),
+      key_moments_json: JSON.stringify([{ ...moment, win_pct_delta }]),
+    });
+    expect(decodeStoredReviewJson(data(actualDelta))).not.toBeNull();
+    expect(decodeStoredReviewJson(data(90))).toBeNull();
+    // Missing source evaluation must not become a fabricated comparison, but
+    // legacy cached moments remain replayable; the UI hides their wp label.
+    expect(decodeStoredReviewJson(data(90, null))).not.toBeNull();
+  });
+
   it('accepts only analyses whose moves match the saved PGN, including valid partial analysis', () => {
     const expected = [{ fen: 'before' },
       { uci: 'e2e4', san: 'e4', fen: 'after' },

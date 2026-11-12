@@ -152,7 +152,7 @@ async function measure(page,width,height,theme) {
 
 try {
   ({db}=await import('../server/dist/db.js'));
-  const {SCORING_VERSION}=await import('../server/dist/chess/classifier.js');
+  const {SCORING_VERSION,cpToWinPct}=await import('../server/dist/chess/classifier.js');
   const {analysisSourceHash,loadAnalysisGameSource}=await import('../server/dist/chess/analysisSource.js');
   await import('../server/dist/index.js');
   let health=false;
@@ -759,6 +759,37 @@ try {
     await page.screenshot({path:join(output,'stored-key-moment-mismatch-rejected-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
   }finally{await mismatchedMomentContext.close();}
+  // A Key Moment can match SAN/FEN/classification while advertising an
+  // impossible win-chance swing. The underlying before/after engine scores
+  // are the only evidence for that percentage; reject a contradictory 90wp.
+  const inflatedWinContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await inflatedWinContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await inflatedWinContext.newPage();
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let tampered=false;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const details=await response.json();
+      const scored=JSON.parse(details.analysis.moves_json)[1];
+      assert.ok(scored && scored.eval_before_cp!=null && scored.eval_after_cp!=null);
+      assert.ok(Math.abs(cpToWinPct(scored.eval_before_cp)-cpToWinPct(scored.eval_after_cp))<10);
+      details.analysis.key_moments_json=JSON.stringify([{
+        ply:scored.ply,side:'black',san:scored.san,fen_before:scored.fen_before,
+        classification:scored.classification,cp_loss:scored.centipawn_loss,
+        win_pct_delta:90,best_san:scored.best_move_san,best_pv:scored.best_pv,
+      }]);
+      tampered=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+    });
+    await page.goto(`${base}/review/${id}?ply=2`,{waitUntil:'domcontentloaded'});
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByText(locale.review.storedAnalysisUnreadable,{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.ok(tampered,'The browser must receive the inflated Key Moment swing');
+    await page.screenshot({path:join(output,'stored-key-moment-inflated-odds-rejected-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await inflatedWinContext.close();}
   // A position-matched engine result can still lie about the move itself:
   // UCI e2e4 with a visible d4 label, or an illegal projected SAN line. The
   // board must not offer that result as a truthful clickable engine move.
@@ -1088,6 +1119,7 @@ try {
     fen_after:blackGame.fen(),eval_before_cp:-100,eval_after_cp:100,
     best_move_uci:'c7c5',best_move_san:'c5',best_pv:['c5'],
     centipawn_loss:200,classification:'inaccuracy'};
+  const blackWinDelta=Math.abs(cpToWinPct(blackMove.eval_before_cp)-cpToWinPct(blackMove.eval_after_cp));
   db.prepare(`INSERT INTO analyses
     (game_id,depth,moves_json,accuracy_white,accuracy_black,scoring_version,
     source_hash,source_revision,analysis_generation)
@@ -1099,7 +1131,7 @@ try {
   db.prepare('UPDATE analyses SET key_moments_json = ? WHERE game_id = ?')
     .run(JSON.stringify([{
       ply:1,side:'white',san:'e5',fen_before:before,classification:'inaccuracy',
-      cp_loss:200,win_pct_delta:9,best_san:'c5',best_pv:['c5'],
+      cp_loss:200,win_pct_delta:blackWinDelta,best_san:'c5',best_pv:['c5'],
     }]),blackId);
   const blackContext=await browser.newContext({viewport:{width:390,height:844}});
   try{
@@ -1227,7 +1259,7 @@ try {
     skill_assessment:'Test-only text; not an engine or AI assessment',
     phases:{opening:null,middlegame:null,endgame:null},
     key_moments:[{ply:1,side:'black',san:'e5',classification:'inaccuracy',
-      cp_loss:200,win_pct_delta:9,best_san:'c5',title:'Black played e5',
+      cp_loss:200,win_pct_delta:blackWinDelta,best_san:'c5',title:'Black played e5',
       prose:'Synthetic explanation to test navigation, not a real chess claim',by_user:false}],
   };
   assert.ok(saveReviewIfFresh(db,blackId,reportSource,reportSource,syntheticProse,
@@ -1281,7 +1313,7 @@ try {
     const moment=page.getByRole('button',{name:/#12…\s*e5/});
     await moment.waitFor({state:'visible'});
     const text=await moment.innerText();
-    assert.ok(text.includes('200cp') && !text.includes('9wp'),
+    assert.ok(text.includes('200cp') && !text.includes('wp'),
       `Missing engine evidence must not appear as measured win-chance change: ${text}`);
     await page.screenshot({path:join(output,'black-first-key-moments-no-evaluation.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(blackId).pgn,blackGame.pgn(),

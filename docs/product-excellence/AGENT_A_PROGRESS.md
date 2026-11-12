@@ -234,3 +234,24 @@
 ### Next source-integrity candidate
 
 - The Key Moment `win_pct_delta` is currently range-checked but not verified against its source move's before/after engine evaluations; the black-first QA fixture shows a historical 9wp while the displayed complete -100 to +100 scores imply a different swing. Audit actual presentation and source calculation, preserve the explicit missing-evaluation fallback, and reproduce before adding a targeted check. Avoid altering server scoring semantics.
+
+## 2026-11-12: reject impossible Key Moment win-chance swings
+
+### Resumed unfinished task
+
+- Recovered the exact dirty Agent A worktree at `c6ef245` with three unfinished files (`storedReview.ts`, decoder test and Chromium capture script). The prior run had already produced a complete browser matrix and negative screenshot; continued that work rather than restarting it. Original product-excellence worktree and other agent branches were not touched.
+- A Key Moment `win_pct_delta` was previously only range-checked. Unit regression showed a cached moment claiming **90wp** was accepted even when two authoritative scored evaluations imply approximately 18wp. The focused regression intentionally failed before the fix.
+- The stored-review decoder now checks the cached moment's absolute win-chance swing against the same Lichess centipawn-to-win-probability formula used by the server `extractKeyMoments`. Allows 0.55 percentage-point tolerance for historical whole-number rounding. Missing before/after scores keep the original replayable report path, while `KeyMomentsList` continues suppressing unsupported win-percentage labels.
+- Updated the disposable black-to-move QA fixture's previously inconsistent hardcoded 9wp to the value calculated from its own scores; preserved missing-score fixture and its no-wp display check. No scoring version or server classification semantics changed.
+
+### Validation evidence
+
+- Focused stored review unit tests: **10 passed**, including known-evidence rejection and missing-evidence compatibility.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **978 passed / 12 skipped**, 107 passing test files.
+- Full disposable authenticated Chromium matrix: completed without assertion errors, covering the new intercepted 90wp negative test, the historical Black-first FEN case, five locales, variation/keyboard/source integrity, 320/390/1024px and saved PGN immutability. Real capture: `qa-artifacts/agent-a/key-moment-win-20261112/stored-key-moment-inflated-odds-rejected-390.png`; full matrix contains 96 screenshots. Browser scores and odds in the injected test are synthetic fixtures, not Stockfish accuracy certification.
+- Never touched production SQLite, did not merge or deploy.
+
+### Next Game Review issue
+
+- Review the cached best-move/continuation display for unsupported or impossible coaching lines. `verifiedBestAlternative` protects its clickable preview, but `MoveExplanation` and the move header still show stored best SAN/PV as prose without proving the whole line matches the saved starting position. First reproduce a genuinely conflicting best-move label or illegal PV, then make the narrowest correction without changing real engine scoring.
