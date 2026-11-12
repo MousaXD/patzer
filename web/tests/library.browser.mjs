@@ -180,6 +180,13 @@ try {
     `Filter changes did not reach the paginated API: url=${page.url()} recent=${JSON.stringify(queries.slice(-6))}`);
     await page.getByRole('button', {name:'Clear filters'}).click();
     await page.getByText('40 of 620 games').waitFor();
+    // Opening discovery should search all saved games, not only visible cards.
+    await page.getByRole('searchbox').fill('Italian Game');
+    await page.getByText('40 of 310 games').waitFor();
+    assert.ok(queries.some(p => new URLSearchParams(p).get('q') === 'Italian Game'),
+      'Opening search never reached the paginated backend');
+    await page.getByRole('searchbox').fill('');
+    await page.getByText('40 of 620 games').waitFor();
     // Calendar-day filtering must search the server-side full history and
     // include the entire selected ending day, not just midnight.
     await page.getByLabel('Games from date').fill('2026-10-01');

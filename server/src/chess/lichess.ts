@@ -6,6 +6,7 @@
 
 import { classifyTimeControl, type TimeClass } from './timeClass.js';
 import { Chess } from 'chess.js';
+import { importOpeningMetadata } from './importOpening.js';
 
 const UA = 'patzer (+https://github.com/SikamikanikoBG/patzer)';
 const BASE = 'https://lichess.org';
@@ -51,6 +52,8 @@ export interface ImportRow {
   time_class: TimeClass | null;
   end_time: string;
   user_color: 'white' | 'black' | null;
+  eco: string | null;
+  opening_name: string | null;
 }
 
 // Statuses of games that never really happened or never finished — nothing
@@ -113,6 +116,7 @@ export function toImportRow(g: LichessGame, username: string): ImportRow | null 
     timeControl = 'untimed';
     timeClass = null;
   }
+  const opening = importOpeningMetadata(g.pgn);
 
   return {
     external_id: g.id,
@@ -124,6 +128,8 @@ export function toImportRow(g: LichessGame, username: string): ImportRow | null 
     time_class: timeClass,
     end_time: new Date(endedAt).toISOString(),
     user_color: userColor,
+    eco: opening.eco,
+    opening_name: opening.openingName,
   };
 }
 

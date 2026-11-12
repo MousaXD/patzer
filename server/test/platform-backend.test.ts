@@ -390,6 +390,27 @@ describe('manual Chess.com import resilience', () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
+  it('makes a recent Chess.com game searchable by its actual opening before analysis', async () => {
+    const sampleId = 99521;
+    const expectedUrl = sample(sampleId).url;
+    mockFetch([sample(sampleId)]);
+    try {
+      expect((await (await postImport()).json())).toMatchObject({imported:1, total:1});
+      const row = db.prepare("SELECT eco, opening_name, pgn FROM games WHERE user_id = 6 AND source = 'chesscom' AND external_id = ?")
+        .get(expectedUrl) as {eco: string|null; opening_name: string|null; pgn: string};
+      expect(row).toMatchObject({eco:'C20', opening_name:"King's Pawn Game", pgn:sample(sampleId).pgn});
+      const {createSession,SESSION_COOKIE_NAME} = await import('../src/auth/sessions.js');
+      const found = await gamesRoute.request(`/?q=${encodeURIComponent("King's Pawn")}&source=chesscom`, {
+        headers:{Cookie:`${SESSION_COOKIE_NAME}=${encodeURIComponent(createSession(6))}`},
+      });
+      expect(found.status).toBe(200);
+      expect((await found.json() as {games:{external_id:string}[]}).games.map(g => g.external_id)).toContain(expectedUrl);
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'chesscom' AND external_id = ?").run(expectedUrl);
+    }
+  });
+
   it('bounds concurrent manual imports per user and releases the slot after completion', async () => {
     let release = () => {};
     let entered = () => {};
@@ -493,6 +514,19 @@ describe('manual Lichess import integrity', () => {
     } finally {
       vi.unstubAllGlobals();
       db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess'").run();
+    }
+  });
+  it('preserves a Lichess PGN while making its opening searchable without analysis', async () => {
+    const game = lichessGame('agentc_lc_opening_1');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(game),{status:200})));
+    try {
+      expect((await (await importLichess()).json())).toMatchObject({imported:1,total:1});
+      const saved = db.prepare("SELECT eco, opening_name, pgn FROM games WHERE user_id = 6 AND source = 'lichess' AND external_id = ?")
+        .get(game.id) as {eco:string|null;opening_name:string|null;pgn:string};
+      expect(saved).toMatchObject({eco:'C20', opening_name:"King's Pawn Game", pgn:game.pgn.trim()});
+    } finally {
+      vi.unstubAllGlobals();
+      db.prepare("DELETE FROM games WHERE user_id = 6 AND source = 'lichess' AND external_id = ?").run(game.id);
     }
   });
   it('rejects truncated export responses before committing any game', async () => {

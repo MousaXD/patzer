@@ -8,7 +8,7 @@
  */
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { getMonth, listArchives, type ChessComGame } from './chesscom.js';
-import { lookupOpeningFromPgn } from './openings.js';
+import { importOpeningMetadata } from './importOpening.js';
 import { Chess } from 'chess.js';
 
 export interface HistoryProgress {
@@ -101,10 +101,7 @@ function gameRow(game: ChessComGame, username: string) {
   try { new Chess().loadPgn(game.pgn, { strict: false }); } catch { return null; }
   const result = gameResult(game, userColor);
   if (result === null) return null;
-  const ecoHeader = /^\[ECO\s+"([A-E][0-9]{2})"\]/m.exec(game.pgn)?.[1] ?? null;
-  const recognized = lookupOpeningFromPgn(game.pgn);
-  const eco = ecoHeader ?? recognized?.eco ?? null;
-  const openingName = recognized && recognized.eco === eco ? recognized.name : null;
+  const {eco, openingName} = importOpeningMetadata(game.pgn);
   return {
     externalId: game.url,
     pgn: game.pgn,

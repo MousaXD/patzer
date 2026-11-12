@@ -130,3 +130,21 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 1. Benchmark date/search/sort SQL on a large synthetic SQLite library. Measure before optimizing; use disposable fixtures only.
 2. Audit how users move between opening, opponent, and bookmarked games to identify real discoverability gaps in the Library screen without adding fake metadata.
 3. Keep full-history UI workflow out of scope until its durable checkpoints, cancellation, and progress contract are designed and validated.
+
+## 2026-11-12 — Opening search available immediately after import
+
+- Resumed the unfinished opening metadata investigation on clean `308bd0c` (no other agent worktree used).
+- **Reproduced before the fix:** A valid, newly imported Chess.com or Lichess game with known moves stored `eco=NULL, opening_name=NULL`, so a Library search by opening could miss games until an expensive full analysis ran. Two authenticated import/SQLite tests failed before changes.
+- **Fixed:** Manual recent Chess.com and Lichess imports now classify validated PGNs using the same curated opening lookup already employed by the existing Chess.com historical catch-up. Added `importOpeningMetadata` as a shared display-only helper; the historical path delegates to the same logic without changing its behavior. Opening name is provided only when the recognized ECO agrees with any original ECO header; custom-start positions are never misclassified. Original PGN, ownership, ratings, result, source revision and prior analyses remain unchanged. No synthetic game results or guessed opening names.
+- Added import-route tests proving source PGNs survive verbatim and imported games become searchable by opening immediately, even before analysis. Dedicated tests cover named openings, contradictory ECO headers and custom-start positions. The isolated Chromium fixture exercises opening text search across a paginated 620-game library.
+
+### Verification
+
+- Targeted server tests: **60 passed** over 4 files. Full suite (`npm test -- --maxWorkers=3`): **108 passed files, 2 skipped; 1,003 passed tests, 12 skipped**; zero failures.
+- `npm run typecheck` and `npm run build -w server`: passed.
+- Isolated Chromium browser: 1440/390/320 widths, light/dark, pagination, opening search, date filtering, imports and error recovery: passed. No production service or external provider accessed.
+- `git diff --check`: passed.
+
+### Next highest-impact issue
+
+- **Previously imported games:** The new insert-only enrichment does not fill opening metadata on existing duplicate IDs (`ON CONFLICT DO NOTHING`), so older collections may remain undiscoverable by opening. Investigate a carefully scoped PGN-identity-preserving enrichment strategy for duplicate imports, with regression tests proving no original PGN, user ownership, analysis provenance or conflicting existing ECO is changed. Do not claim a full-history metadata backfill unless it is explicitly implemented and tested.

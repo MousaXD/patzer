@@ -296,8 +296,8 @@ router.post('/import/lichess', async (c) => {
   // Same rules as the chess.com importer: never rated in Patzer's pool, and
   // the (user, source, external_id) key makes a re-import a no-op.
   const stmt = db.prepare(`
-    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated)
-    VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated, eco, opening_name)
+    VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
   const rows: NonNullable<ReturnType<typeof toImportRow>>[] = [];
@@ -315,7 +315,7 @@ router.post('/import/lichess', async (c) => {
       let duplicates = 0;
       for (const row of rows) {
         const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
-          row.time_control, row.time_class, row.end_time, row.user_color);
+          row.time_control, row.time_class, row.end_time, row.user_color, row.eco, row.opening_name);
         if (r.changes > 0) imported++;
         else duplicates++;
       }

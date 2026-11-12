@@ -4,14 +4,15 @@
 import { db } from '../db.js';
 import { fetchRecentGames, type ChessComGame } from './chesscom.js';
 import { Chess } from 'chess.js';
+import { importOpeningMetadata } from './importOpening.js';
 
 export async function importChessComGames(userId: number, username: string, limit: number): Promise<{ imported: number; total: number; skipped: number; duplicates: number }> {
   const games = await fetchRecentGames(username, limit);
   // Imported chess.com games are NEVER rated in Patzer's pool — they have their
   // own chess.com rating that lives there. Only PvP games inside Patzer count.
   const stmt = db.prepare(`
-    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated)
-    VALUES (?, 'chesscom', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated, eco, opening_name)
+    VALUES (?, 'chesscom', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
   // Validate PGNs before taking SQLite's writer lock. Only the short insert
@@ -35,7 +36,7 @@ export async function importChessComGames(userId: number, username: string, limi
     let duplicates = 0;
     for (const row of rows) {
       const r = stmt.run(userId, row.url, row.pgn, row.white, row.black, row.result,
-        row.timeControl, row.timeClass, row.endTime, row.userColor);
+        row.timeControl, row.timeClass, row.endTime, row.userColor, row.eco, row.openingName);
       if (r.changes > 0) imported++;
       else duplicates++;
     }
@@ -54,6 +55,8 @@ interface ImportRow {
   timeClass: string | null;
   endTime: string;
   userColor: 'white' | 'black';
+  eco: string | null;
+  openingName: string | null;
 }
 
 function validImportRow(game: ChessComGame, username: string): ImportRow | null {
@@ -90,5 +93,6 @@ function validImportRow(game: ChessComGame, username: string): ImportRow | null 
     result, timeControl: typeof game.time_control === 'string' ? game.time_control : null,
     timeClass: ['bullet', 'blitz', 'rapid', 'daily'].includes(game.time_class) ? game.time_class : null,
     endTime: endDate.toISOString(), userColor,
+    ...importOpeningMetadata(game.pgn),
   };
 }
