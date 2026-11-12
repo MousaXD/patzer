@@ -270,6 +270,13 @@ router.get('/', (c) => {
       middlegame: phaseAcc.middlegame.n ? Math.round((phaseAcc.middlegame.sum / phaseAcc.middlegame.n) * 10) / 10 : 0,
       endgame: phaseAcc.endgame.n ? Math.round((phaseAcc.endgame.sum / phaseAcc.endgame.n) * 10) / 10 : 0,
     },
+    // An absent phase must not be presented as a genuine 0% accuracy.
+    // Each count is analyzed games with a measured player-side phase.
+    phase_samples: {
+      opening: phaseAcc.opening.n,
+      middlegame: phaseAcc.middlegame.n,
+      endgame: phaseAcc.endgame.n,
+    },
     accuracy_trend: accTrend.slice(0, 50).reverse(),
     move_quality: { counts: quality, brilliant },
   });

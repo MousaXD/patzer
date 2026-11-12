@@ -12,6 +12,7 @@ import { api } from '../api';
 import { useAuth } from '../state/auth';
 import type { Classification } from '../types';
 import ClassificationIcon from '../components/ClassificationIcon';
+import { buildActivityGrid } from '../lib/insightsActivity';
 
 type Achievement = {
   id: string;
@@ -40,6 +41,7 @@ interface InsightsV2 {
     one_move_blunders: number; promising_to_losing: number;
   };
   phase_accuracy: { opening: number; middlegame: number; endgame: number };
+  phase_samples?: { opening: number; middlegame: number; endgame: number };
   accuracy_trend: { t: string; acc: number; result: string | null }[];
   move_quality?: {
     counts: Record<string, number>;
@@ -90,8 +92,11 @@ export default function Insights() {
       <div className="card flex flex-col items-center gap-2 p-10 text-center">
         <BarChart3 className="h-8 w-8 text-chesscom-400" />
         <div className="text-base font-semibold">{t('insights.empty', { defaultValue: 'No insights yet' })}</div>
-        <div className="text-sm text-chesscom-500">{t('insights.emptyDesc', { defaultValue: 'Analyze a few games and your weak spots will show up here.' })}</div>
-        <Link to="/review" className="btn-primary mt-2 text-sm">{t('review.title')}</Link>
+        <div className="max-w-md text-sm text-chesscom-500">{t('insights.emptyDesc', { defaultValue: 'Play a game or import your history to see your results here. Analyze saved games to explore move quality and mistakes.' })}</div>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Link to="/play" className="btn-primary text-sm">{t('home.playTitle', { defaultValue: 'Play a game' })}</Link>
+          <Link to="/review" className="btn-secondary text-sm">{t('review.title', { defaultValue: 'Game Library' })}</Link>
+        </div>
       </div>
     );
   }
@@ -111,13 +116,16 @@ export default function Insights() {
         </p>
       </header>
 
+      {/* Facts from current-version analyses, translated into a next action. */}
+      <NextStepCard data={data} />
+
       {/* Achievements */}
       <AchievementsSection sectionRef={achievementsRef} achievements={achievementsData?.achievements ?? null}
         loading={achievementsPending} error={achievementsError} retry={() => void refetchAchievements()} />
 
       {/* Phase accuracy + Time-class breakdown side-by-side */}
       <div className="grid gap-4 md:grid-cols-2">
-        {data.games_analyzed ? <PhaseAccuracyCard data={data.phase_accuracy} /> : (
+        {data.games_analyzed ? <PhaseAccuracyCard data={data.phase_accuracy} samples={data.phase_samples} /> : (
           <div className="card flex flex-col justify-center gap-2 p-4">
             <h2 className="text-sm font-semibold">Accuracy requires game analysis</h2>
             <p className="text-xs text-chesscom-500">Your results are already counted below. Analyze a game to unlock move-level accuracy and mistakes.</p>
@@ -144,6 +152,68 @@ export default function Insights() {
         <OpeningRepertoireCard data={data.opening_repertoire} />
       </div>
     </div>
+  );
+}
+
+/** The categories are counted from analyzed moves; one move can match more than one. */
+function NextStepCard({ data }: { data: InsightsV2 }) {
+  const { t } = useTranslation();
+  const patterns: { key: keyof InsightsV2['mistake_taxonomy']; label: string }[] = [
+    { key: 'hung_pieces', label: t('insights.tax.hung', { defaultValue: 'Hung pieces' }) },
+    { key: 'one_move_blunders', label: t('insights.tax.oneMove', { defaultValue: 'One-move blunders' }) },
+    { key: 'back_rank', label: t('insights.tax.backRank', { defaultValue: 'Back-rank weakness' }) },
+    { key: 'missed_mate', label: t('insights.tax.missedMate', { defaultValue: 'Missed wins / mates' }) },
+    { key: 'opening_pitfalls', label: t('insights.tax.openingTrap', { defaultValue: 'Opening pitfalls' }) },
+    { key: 'endgame_drift', label: t('insights.tax.endgameDrift', { defaultValue: 'Endgame drift' }) },
+    { key: 'promising_to_losing', label: t('insights.tax.promisingLosing', { defaultValue: 'Squandered advantages' }) },
+  ];
+  const leading = patterns.reduce<(typeof patterns)[number] | null>((best, row) => {
+    const count = data.mistake_taxonomy[row.key] ?? 0;
+    return count > 0 && (!best || count > (data.mistake_taxonomy[best.key] ?? 0)) ? row : best;
+  }, null);
+  const count = leading ? data.mistake_taxonomy[leading.key] : 0;
+
+  return (
+    <section className="card border-board-dark/25 p-4 sm:p-5" aria-labelledby="insights-next-step">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-board-dark">
+            <Target className="h-4 w-4" aria-hidden="true" />
+            <h2 id="insights-next-step">{t('insights.nextStep', { defaultValue: 'Your next chess step' })}</h2>
+          </div>
+          {leading ? (
+            <>
+              <p className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">{leading.label}</p>
+              <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+                {t('insights.nextPattern', {
+                  defaultValue: '{{count}} tagged moves across your analyzed games. This is the most frequent listed pattern to investigate.',
+                  count,
+                })}
+              </p>
+              <p className="text-xs text-chesscom-500">{t('insights.nextPatternCaveat', { defaultValue: 'Categories are based on move analysis and can overlap; this does not automatically mean a recurring habit.' })}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-chesscom-900 dark:text-chesscom-100">
+                {data.games_analyzed === 0
+                  ? t('insights.nextAnalyzeTitle', { defaultValue: 'Review a game to find useful practice positions' })
+                  : t('insights.nextNoPatternTitle', { defaultValue: 'No major mistake category recorded yet' })}
+              </p>
+              <p className="text-sm text-chesscom-600 dark:text-chesscom-300">
+                {data.games_analyzed === 0
+                  ? t('insights.nextAnalyzeDesc', { defaultValue: 'Your results are available now. Analyze a saved game to unlock personal mistake patterns and practice positions.' })
+                  : t('insights.nextNoPatternDesc', { defaultValue: 'Keep analyzing games and use practice to build confidence. A missing pattern here is not a performance score.' })}
+              </p>
+            </>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:max-w-[14rem] sm:justify-end">
+          {data.games_analyzed > 0 && <Link to="/train" className="btn-primary text-sm">{t('insights.practicePositions', { defaultValue: 'Practice my positions' })}</Link>}
+          <Link to="/review" className={data.games_analyzed > 0 ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>{t('review.title', { defaultValue: 'Review games' })}</Link>
+          <Link to="/learn" className="btn-ghost text-sm">{t('learn.title', { defaultValue: 'Explore lessons' })} <ChevronRight className="h-4 w-4" aria-hidden="true" /></Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -227,7 +297,9 @@ function MoveQualityCard({ data }: { data: NonNullable<InsightsV2['move_quality'
 }
 
 /* ───── Phase accuracy ─────────────────────────────────────────────────── */
-function PhaseAccuracyCard({ data }: { data: InsightsV2['phase_accuracy'] }) {
+function PhaseAccuracyCard({ data, samples }: {
+  data: InsightsV2['phase_accuracy']; samples?: InsightsV2['phase_samples'];
+}) {
   const { t } = useTranslation();
   return (
     <section className="card p-4">
@@ -236,20 +308,28 @@ function PhaseAccuracyCard({ data }: { data: InsightsV2['phase_accuracy'] }) {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-chesscom-500">{t('insights.phaseAccuracy', { defaultValue: 'Phase accuracy' })}</h2>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <PhaseStat label={t('review.opening', { defaultValue: 'Opening' })} value={data.opening} />
-        <PhaseStat label={t('review.middlegame', { defaultValue: 'Middlegame' })} value={data.middlegame} />
-        <PhaseStat label={t('review.endgame', { defaultValue: 'Endgame' })} value={data.endgame} />
+        <PhaseStat label={t('review.opening', { defaultValue: 'Opening' })} value={data.opening} samples={samples?.opening ?? 0} />
+        <PhaseStat label={t('review.middlegame', { defaultValue: 'Middlegame' })} value={data.middlegame} samples={samples?.middlegame ?? 0} />
+        <PhaseStat label={t('review.endgame', { defaultValue: 'Endgame' })} value={data.endgame} samples={samples?.endgame ?? 0} />
       </div>
+      <p className="mt-3 text-xs text-chesscom-500">{t('insights.phaseCoverage', { defaultValue: 'Each score averages analyzed games with moves in that phase. A dash means there are no measured games for that phase.' })}</p>
     </section>
   );
 }
 
-function PhaseStat({ label, value }: { label: string; value: number }) {
-  const tone = value >= 80 ? 'text-board-dark' : value >= 60 ? 'text-gold-600' : 'text-mistake';
+function PhaseStat({ label, value, samples }: { label: string; value: number; samples: number }) {
+  const { t } = useTranslation();
+  const measured = samples > 0 && Number.isFinite(value);
+  const tone = !measured ? 'text-chesscom-400' : value >= 80 ? 'text-board-dark' : value >= 60 ? 'text-gold-600' : 'text-mistake';
   return (
     <div className="rounded-md bg-chesscom-50/70 px-3 py-3 text-center dark:bg-chesscom-900/40">
       <div className="text-[11px] uppercase tracking-wide text-chesscom-500">{label}</div>
-      <div className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${tone}`}>{value.toFixed(1)}<span className="text-xs opacity-70">%</span></div>
+      <div className={`mt-0.5 font-mono text-2xl font-bold tabular-nums ${tone}`}>{measured ? <>{value.toFixed(1)}<span className="text-xs opacity-70">%</span></> : '—'}</div>
+      <div className="mt-0.5 text-[11px] text-chesscom-500">
+        {measured
+          ? t('insights.phaseGames', { defaultValue: '{{count}} analyzed games', count: samples })
+          : t('insights.phaseUnavailable', { defaultValue: 'Not measured' })}
+      </div>
     </div>
   );
 }
@@ -304,30 +384,7 @@ function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
 /* ───── Activity heatmap ───────────────────────────────────────────────── */
 function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
   const { t } = useTranslation();
-  // Build a 53-week × 7-day grid ending today.
-  const grid = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const end = new Date(today);
-    // Fill back exactly 52 weeks + today's column.
-    const totalDays = 53 * 7;
-    const start = new Date(today);
-    start.setDate(start.getDate() - (totalDays - 1));
-    const dayMap = new Map<string, { games: number; wins: number }>();
-    for (const r of data) dayMap.set(r.day, { games: r.games, wins: r.wins });
-
-    const cells: { date: string; day: number; games: number; wins: number }[] = [];
-    let max = 0;
-    for (let i = 0; i < totalDays; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const iso = d.toISOString().slice(0, 10);
-      const v = dayMap.get(iso) ?? { games: 0, wins: 0 };
-      max = Math.max(max, v.games);
-      cells.push({ date: iso, day: d.getDay(), games: v.games, wins: v.wins });
-    }
-    return { cells, max, end };
-  }, [data]);
+  const grid = useMemo(() => buildActivityGrid(data), [data]);
 
   function tone(games: number, max: number): string {
     if (games === 0) return 'fill-chesscom-100 dark:fill-chesscom-900';
@@ -341,7 +398,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
   const totalGames = data.reduce((a, b) => a + b.games, 0);
   const totalWins = data.reduce((a, b) => a + b.wins, 0);
 
-  // 53 cols × 7 rows. Cell 12px, gap 2px. Width ≈ 53*14 = 742, fits 760 board col.
+  // 53 complete Sunday–Saturday columns, with out-of-range dates left blank.
   const cellSize = 11;
   const cellGap = 2;
   const cols = 53;
@@ -362,7 +419,7 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
       </div>
       <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t('insights.activity', { defaultValue: 'Activity chart' })}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block" role="img"
-          aria-label={t('insights.activityChart', { defaultValue: 'Daily games played during the past year; details for each day appear on hover.' })}>
+          aria-label={t('insights.activityChart', { defaultValue: 'Games played by UTC date during the last 365 days; hover over a day for details.' })}>
           {grid.cells.map((c, i) => {
             const col = Math.floor(i / 7);
             const row = i % 7;
@@ -376,14 +433,15 @@ function ActivityHeatmap({ data }: { data: InsightsV2['activity_heatmap'] }) {
                 width={cellSize}
                 height={cellSize}
                 rx={2}
-                className={tone(c.games, grid.max)}
+                className={c.inRange ? tone(c.games, grid.max) : 'fill-transparent'}
               >
-                <title>{t('insights.dayGames', { date: c.date, count: c.games }) + (c.games > 0 ? t('insights.dayWins', { wins: c.wins }) : '')}</title>
+                {c.inRange && <title>{t('insights.dayGames', { date: c.date, count: c.games }) + (c.games > 0 ? t('insights.dayWins', { wins: c.wins }) : '')}</title>}
               </rect>
             );
           })}
         </svg>
       </div>
+      <p className="mt-2 text-[11px] text-chesscom-500">{t('insights.activityUtcNote', { defaultValue: 'Dates use UTC to match saved game timestamps. Blank edges are outside the 365-day period.' })}</p>
       <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-chesscom-400">
         <span>{t('insights.less', { defaultValue: 'Less' })}</span>
         <span className="h-2.5 w-2.5 rounded-sm bg-chesscom-100 dark:bg-chesscom-900" />

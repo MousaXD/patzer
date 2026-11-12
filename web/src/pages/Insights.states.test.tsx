@@ -68,4 +68,28 @@ describe('Insights data states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Play and analyze games to start earning badges.')).toBeTruthy();
   });
+
+  it('grounds the suggested next step in observed move categories and distinguishes missing phase data', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 8, games_analyzed: 3, activity_heatmap: [], rating_trajectory: {},
+        time_class_stats: {}, opening_repertoire: [], accuracy_trend: [],
+        phase_accuracy: { opening: 72.4, middlegame: 0, endgame: 80.2 },
+        phase_samples: { opening: 3, middlegame: 0, endgame: 1 },
+        mistake_taxonomy: {
+          hung_pieces: 2, one_move_blunders: 0, back_rank: 0, missed_mate: 0,
+          opening_pitfalls: 4, endgame_drift: 1, promising_to_losing: 0,
+        },
+      });
+    });
+    mount();
+    expect(await screen.findByText('Your next chess step')).toBeTruthy();
+    expect(screen.getAllByText('Opening pitfalls').length).toBeGreaterThan(0);
+    // The test translation mock returns default templates verbatim.
+    expect(screen.getByText(/tagged moves across your analyzed games/)).toBeTruthy();
+    expect(screen.getByText('Not measured')).toBeTruthy();
+    expect(screen.queryByText('0.0%')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Practice my positions' }).getAttribute('href')).toBe('/train');
+  });
 });

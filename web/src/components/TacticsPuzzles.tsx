@@ -40,27 +40,40 @@ type Status = 'play' | 'wrong' | 'solved' | 'shown';
 
 export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?: boolean; onLeaveDaily?: () => void }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [theme, setTheme] = useState<string | null>(null);
   const [run, setRun] = useState(0);
-  const { data: stats } = useQuery({ queryKey: STATS_KEY, queryFn: () => api.get<Stats>('/api/tactics/stats') });
-  const { data: today } = useQuery({
-    queryKey: ['tactics-daily-play', run],
-    queryFn: () => api.get<Daily>(`/api/tactics/daily?today=${localDay()}`),
-    enabled: daily,
+  const todayKey = localDay();
+  const { data: stats } = useQuery({
+    queryKey: [...STATS_KEY, user?.id],
+    enabled: user?.id != null,
+    queryFn: () => api.get<Stats>('/api/tactics/stats'),
+  });
+  const { data: today, isLoading: dailyLoading, isError: dailyError, refetch: retryDaily } = useQuery({
+    queryKey: ['tactics-daily-play', user?.id, todayKey, run],
+    queryFn: () => api.get<Daily>(`/api/tactics/daily?today=${todayKey}`),
+    enabled: daily && user?.id != null,
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
-  const { data: next, isLoading, isError } = useQuery({
-    queryKey: ['tactics-next', theme, run],
+  const { data: next, isLoading, isError, refetch: retryNext } = useQuery({
+    queryKey: ['tactics-next', user?.id, theme, run],
     queryFn: () => api.get<{ puzzle: TacticsPuzzle | null }>(`/api/tactics/next${theme ? `?theme=${theme}` : ''}`),
-    enabled: !daily,
+    enabled: !daily && user?.id != null,
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
   const data = daily ? today : next;
-  const loading = daily ? !today : isLoading;
+  const loading = user?.id == null || (daily ? dailyLoading : isLoading);
+
+  if (daily && dailyError) return (
+    <div role="alert" className="card flex flex-col items-center gap-3 p-8 text-center">
+      <p className="text-sm text-chesscom-600 dark:text-chesscom-200">{t('train.puzzles.loadError')}</p>
+      <button type="button" onClick={() => void retryDaily()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+    </div>
+  );
 
   if (daily && today) {
     return (
@@ -80,7 +93,7 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
           </div>
         )}
         {today.puzzle && (
-          <Puzzle key={`${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day} onNext={() => onLeaveDaily?.()} />
+          <Puzzle key={`${user?.id}:${today.puzzle.id}-${run}`} puzzle={today.puzzle} stats={stats ?? null} daily={today.day} onNext={() => onLeaveDaily?.()} />
         )}
       </div>
     );
@@ -95,8 +108,13 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
         ))}
       </div>
 
-      {loading && <div className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>}
-      {!daily && isError && <div className="card p-10 text-center text-sm text-move-mistake">{t('train.puzzles.loadError')}</div>}
+      {loading && <div role="status" className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>}
+      {!daily && isError && (
+        <div role="alert" className="card flex flex-col items-center gap-3 p-8 text-center">
+          <p className="text-sm text-chesscom-600 dark:text-chesscom-200">{t('train.puzzles.loadError')}</p>
+          <button type="button" onClick={() => void retryNext()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+        </div>
+      )}
       {data && !data.puzzle && (
         <div className="card flex flex-col items-center gap-2 p-10 text-center">
           <Trophy className="h-8 w-8 text-gold-500" />
@@ -105,7 +123,7 @@ export default function TacticsPuzzles({ daily = false, onLeaveDaily }: { daily?
         </div>
       )}
       {data?.puzzle && (
-        <Puzzle key={`${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null} onNext={() => setRun((r) => r + 1)} />
+        <Puzzle key={`${user?.id}:${data.puzzle.id}-${run}`} puzzle={data.puzzle} stats={stats ?? null} onNext={() => setRun((r) => r + 1)} />
       )}
     </div>
   );

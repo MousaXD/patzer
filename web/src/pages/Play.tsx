@@ -761,8 +761,12 @@ export default function Play() {
   useEffect(() => {
     if (phase !== 'playing') return;
     function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Rewind shortcuts only apply when the player isn't using another
+      // control. In particular, arrow keys belong to a focused button/menu,
+      // contenteditable field or a screen-reader-operated slider, not Play.
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented) return;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.closest('input, textarea, select, button, a, [contenteditable="true"], [role="slider"], [role="textbox"], [role="combobox"], [role="menu"]')) return;
       if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
       else if (e.key === 'Home') { e.preventDefault(); setBrowseIndex(0); }

@@ -64,19 +64,25 @@ export default function Train() {
 
 function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [run, setRun] = useState(0);
+  const today = localDay();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['train-next', run],
-    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number }>(`/api/train/next?today=${localDay()}`),
+  const { data, isLoading, isError, refetch } = useQuery({
+    // A personal puzzle contains the player's private game position. Never
+    // reuse it across accounts on a shared browser or after the day changes.
+    queryKey: ['train-next', user?.id, today, run],
+    enabled: user?.id != null,
+    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number }>(`/api/train/next?today=${today}`),
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
 
-  const { data: stats } = useQuery({
-    queryKey: ['train-stats'],
-    queryFn: () => api.get<Stats>(`/api/train/stats?today=${localDay()}`),
+  const { data: stats, isError: statsError, refetch: retryStats } = useQuery({
+    queryKey: ['train-stats', user?.id, today],
+    enabled: user?.id != null,
+    queryFn: () => api.get<Stats>(`/api/train/stats?today=${today}`),
   });
 
   const puzzle = data?.puzzle ?? null;
@@ -93,10 +99,27 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
           <Stat label={t('train.accuracy', { defaultValue: 'Accuracy' })} value={`${stats.accuracy}%`} />
         </div>
       )}
+      {statsError && (
+        <div role="alert" className="flex items-center gap-2 text-xs text-chesscom-500">
+          <span>{t('train.statsUnavailable', { defaultValue: 'Practice totals are unavailable.' })}</span>
+          <button type="button" onClick={() => void retryStats()} className="underline underline-offset-2">{t('common.retry', { defaultValue: 'Retry' })}</button>
+        </div>
+      )}
     </header>
   );
 
-  if (isLoading) return <div className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
+  if (isLoading || user?.id == null) return <div role="status" className="card p-10 text-center text-sm text-chesscom-500">{t('common.loading')}</div>;
+
+  if (isError || !data) return (
+    <div className="mx-auto max-w-2xl space-y-4">
+      {header}
+      <div role="alert" className="card flex flex-col items-center gap-3 p-8 text-center">
+        <div className="text-base font-semibold">{t('train.loadFailed', { defaultValue: 'Your personal puzzles could not be loaded' })}</div>
+        <p className="max-w-md text-sm text-chesscom-500">{t('train.loadFailedDesc', { defaultValue: 'This is a loading problem, not a completed practice queue. Your games and earlier attempts are safe.' })}</p>
+        <button type="button" onClick={() => void refetch()} className="btn-primary text-sm">{t('common.retry', { defaultValue: 'Retry' })}</button>
+      </div>
+    </div>
+  );
 
   if (!puzzle) {
     return (
@@ -119,7 +142,7 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
   return (
     <div className="mx-auto max-w-5xl">
       {header}
-      <OwnPuzzle key={`${puzzle.game_id}:${puzzle.ply}:${run}`} puzzle={puzzle} onNext={() => setRun((r) => r + 1)} />
+      <OwnPuzzle key={`${user.id}:${puzzle.game_id}:${puzzle.ply}:${run}`} puzzle={puzzle} onNext={() => setRun((r) => r + 1)} />
     </div>
   );
 }
@@ -159,7 +182,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
     api.post<AttemptResult>('/api/train/attempt', {
       game_id: puzzle.game_id, ply: puzzle.ply, solved, attempted_uci: attempted, today: localDay(),
     })
-      .then((r) => { setResult(r); void qc.invalidateQueries({ queryKey: ['train-stats'] }); })
+      .then((r) => { setResult(r); void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] }); })
       .catch(() => { /* the puzzle goes on; it just isn't in the queue */ });
   }
   function lose(attempted?: string) {
