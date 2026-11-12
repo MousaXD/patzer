@@ -793,7 +793,9 @@
       "unsavedTitle": "Dein Übungsversuch ist noch nicht gespeichert",
       "unsavedDesc": "Du kannst bleiben und auf das Speichern warten, es erneut versuchen oder den Bereich ohne Aufzeichnung verlassen.",
       "stay": "Hierbleiben",
-      "leaveUnsaved": "Ohne Speichern verlassen"
+      "leaveUnsaved": "Ohne Speichern verlassen",
+      "puzzleChanged": "Diese Partie wurde während deiner Übung aktualisiert. Dein Versuch wurde für die neue Stellung nicht gespeichert.",
+      "loadUpdated": "Aktualisierte Aufgabe laden"
     },
     "tabs": {
       "mine": "Aus deinen Partien",

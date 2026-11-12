@@ -25,6 +25,8 @@ router.use('*', requireAuth);
 interface PuzzleCandidate {
   game_id: number;
   user_color: 'white' | 'black';
+  source_revision: number;
+  analysis_generation: number;
   end_time: string | null;
   white: string;
   black: string;
@@ -52,7 +54,8 @@ const CURRENT_ANALYSIS_SQL = `a.scoring_version >= ? AND a.source_hash IS NOT NU
   AND a.source_revision = g.source_revision AND a.analysis_generation > 0`;
 
 const GAME_SQL = `
-  SELECT g.id AS game_id, g.user_color, g.end_time, g.white, g.black, a.moves_json
+  SELECT g.id AS game_id, g.user_color, g.end_time, g.white, g.black,
+         a.source_revision, a.analysis_generation, a.moves_json
   FROM analyses a JOIN games g ON g.id = a.game_id
   WHERE g.user_id = ? AND g.user_color IN ('white', 'black') AND (${CURRENT_ANALYSIS_SQL})`;
 
@@ -62,6 +65,8 @@ function toPuzzle(r: PuzzleCandidate, m: AnalyzedMove, review: boolean) {
   return {
     game_id: r.game_id,
     ply: m.ply,
+    source_revision: r.source_revision,
+    analysis_generation: r.analysis_generation,
     fen: m.fen_before,
     side_to_move: m.ply % 2 === 1 ? 'white' : 'black',
     played_san: m.san,
@@ -173,12 +178,25 @@ router.get('/next', (c) => {
 
 const uciSchema = z.string().regex(/^[a-h][1-8][a-h][1-8][nbrq]?$/i);
 
+// The client must attest to the analysis it actually displayed. Game/ply
+// alone is not sufficient: an open tab can outlive a source edit and a fresh
+// analysis, and submitting its old result could mark a new puzzle learned.
+const snapshotSchema = {
+  source_revision: z.number().int().nonnegative(),
+  analysis_generation: z.number().int().positive(),
+};
+function matchesSnapshot(game: PuzzleCandidate, snapshot: { source_revision: number; analysis_generation: number }) {
+  return game.source_revision === snapshot.source_revision
+    && game.analysis_generation === snapshot.analysis_generation;
+}
+
 // POST /api/train/attempt — the first try at a puzzle: solved or not. The
 // page checks the moves itself (it has the line); a second go the same day is
 // practice and isn't sent.
 const attemptSchema = z.object({
   game_id: z.number().int().positive(),
   ply: z.number().int().positive(),
+  ...snapshotSchema,
   solved: z.boolean(),
   attempted_uci: uciSchema.optional(),
   today: z.string().max(10).optional(),
@@ -193,7 +211,8 @@ router.post('/attempt', async (c) => {
 
   const found = loadPuzzleMove(me.id, game_id, ply);
   if (!found) return c.json({ error: 'not_found' }, 404);
-  const { move } = found;
+  const { game, move } = found;
+  if (!matchesSnapshot(game, parsed.data)) return c.json({ error: 'stale_puzzle' }, 409);
 
   const before = db.prepare(`
     SELECT game_id, ply, fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts WHERE user_id = ? AND game_id = ? AND ply = ?
@@ -239,6 +258,7 @@ const checkInflight = new Set<number>();
 const checkSchema = z.object({
   game_id: z.number().int().positive(),
   ply: z.number().int().positive(),
+  ...snapshotSchema,
   step: z.number().int().min(0).max(8),
   uci: uciSchema,
 });
@@ -252,7 +272,8 @@ router.post('/check', async (c) => {
 
   const found = loadPuzzleMove(me.id, game_id, ply);
   if (!found) return c.json({ error: 'not_found' }, 404);
-  const { move } = found;
+  const { game, move } = found;
+  if (!matchesSnapshot(game, parsed.data)) return c.json({ error: 'stale_puzzle' }, 409);
   const line = puzzleLine(move.fen_before, move.best_move_uci!, move.best_pv ?? []).uci;
   if (step % 2 !== 0 || step >= line.length) return c.json({ error: 'invalid_input' }, 400);
 
@@ -294,6 +315,10 @@ router.post('/check', async (c) => {
     };
     const wantWin = await winFor(want);
     const altWin = await winFor(alt);
+    // An engine check can take seconds. Do not validate an alternative for a
+    // puzzle that became obsolete while Stockfish was evaluating it.
+    const current = loadPuzzleMove(me.id, game_id, ply);
+    if (!current || !matchesSnapshot(current.game, parsed.data)) return c.json({ error: 'stale_puzzle' }, 409);
     return c.json({ ok: wantWin - altWin < ALT_MAX_DROP });
   } catch {
     // No engine: the line's move is the only one we can vouch for.

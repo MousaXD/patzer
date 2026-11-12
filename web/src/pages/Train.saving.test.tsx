@@ -14,13 +14,16 @@ vi.mock('../components/BetaBadge', () => ({ default: () => null }));
 vi.mock('../components/TacticsPuzzles', () => ({ default: () => null }));
 vi.mock('../components/CoachPanel', () => ({ default: () => null }));
 vi.mock('../components/ChessBoard', () => ({ default: ({ onMove }: { onMove: (uci: string) => void }) => (
-  <button type="button" onClick={() => onMove('e2e4')}>Play e4</button>
+  <>
+    <button type="button" onClick={() => onMove('e2e4')}>Play e4</button>
+    <button type="button" onClick={() => onMove('g1f3')}>Play Nf3</button>
+  </>
 ) }));
 
 import Train from './Train';
 
 const puzzle = {
-  game_id: 101, ply: 1,
+  game_id: 101, ply: 1, source_revision: 0, analysis_generation: 1,
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
   side_to_move: 'white', played_san: 'd4', played_uci: 'd2d4',
   best_san: 'e4', best_uci: 'e2e4', best_pv: ['e4'],
@@ -52,6 +55,45 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('personal puzzle attempt persistence', () => {
+  it('does not save an old-tab solve to a newly analyzed game and reloads the updated position', async () => {
+    let updated = false;
+    mocks.get.mockImplementation((url: string) => {
+      if (url.startsWith('/api/train/next')) return Promise.resolve({
+        puzzle: updated ? { ...puzzle, played_san: 'Nf3', classification: 'blunder', source_revision: 2, analysis_generation: 3 } : puzzle,
+        due: 0,
+      });
+      if (url.startsWith('/api/train/stats')) return Promise.resolve({ total: 0, solved: 0, failed: 0, accuracy: 0, due: 0 });
+      if (url === '/api/coach/status') return Promise.resolve({ configured: false });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    mocks.post.mockRejectedValue(Object.assign(new Error('stale_puzzle'), { status: 409 }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Play e4' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Your attempt was not recorded for the new position');
+    expect(screen.queryByRole('button', { name: 'Retry saving' })).toBeNull();
+    expect((screen.getByRole('button', { name: /Next puzzle/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.post.mock.calls[0]?.[1]).toMatchObject({ source_revision: 0, analysis_generation: 1, solved: true });
+    updated = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Load updated puzzle' }));
+    expect(await screen.findByText('blunder')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mark an obsolete alternative move wrong or submit an attempt', async () => {
+    mocks.post.mockRejectedValue(Object.assign(new Error('stale_puzzle'), { status: 409 }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Play Nf3' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Your attempt was not recorded for the new position');
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    expect(mocks.post.mock.calls[0]?.[0]).toBe('/api/train/check');
+    expect(mocks.post.mock.calls[0]?.[1]).toMatchObject({ source_revision: 0, analysis_generation: 1, step: 0, uci: 'g1f3' });
+    expect(screen.queryByText('train.puzzles.wrong')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'train.puzzles.hint' })).toBeNull();
+  });
+
   it('retries the same failed first attempt instead of changing its outcome', async () => {
     mocks.post.mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ counted: true, done: false, due_on: '2026-11-13' });
@@ -61,6 +103,7 @@ describe('personal puzzle attempt persistence', () => {
     expect(warning.textContent).toContain('Your first attempt was not saved');
     expect(mocks.post).toHaveBeenCalledTimes(1);
     expect(mocks.post.mock.calls[0]?.[1]).toMatchObject({ game_id: 101, ply: 1, solved: false });
+    expect(mocks.post.mock.calls[0]?.[1]).toMatchObject({ source_revision: 0, analysis_generation: 1 });
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));

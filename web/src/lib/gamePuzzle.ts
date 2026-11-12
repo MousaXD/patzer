@@ -4,6 +4,9 @@
 export interface GamePuzzle {
   game_id: number;
   ply: number;
+  /** The authoritative source and analysis version used to build this puzzle. */
+  source_revision: number;
+  analysis_generation: number;
   fen: string;
   side_to_move: 'white' | 'black';
   played_san: string;

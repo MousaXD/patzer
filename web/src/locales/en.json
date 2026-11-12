@@ -793,7 +793,9 @@
       "unsavedTitle": "Your practice attempt is not saved yet",
       "unsavedDesc": "You can stay while it saves, retry a failed save, or leave without recording this attempt.",
       "stay": "Stay here",
-      "leaveUnsaved": "Leave without saving"
+      "leaveUnsaved": "Leave without saving",
+      "puzzleChanged": "This game was updated while you practiced. Your attempt was not recorded for the new position.",
+      "loadUpdated": "Load updated puzzle"
     },
     "tabs": {
       "mine": "From your games",

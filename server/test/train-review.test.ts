@@ -89,10 +89,22 @@ describe('/api/train', () => {
     db.prepare(`UPDATE puzzle_attempts SET last_day = date(last_day, '-1 day'), due_on = date(due_on, '-1 day')`).run();
   }
 
+  function stamp(gameId = 1): { source_revision: number; analysis_generation: number } {
+    return db.prepare(`SELECT source_revision, analysis_generation FROM analyses WHERE game_id = ?`).get(gameId) as {
+      source_revision: number; analysis_generation: number;
+    };
+  }
+
   async function call<T>(path: string, body?: unknown): Promise<T> {
+    // All first-party clients send the authoritative analysis snapshot that
+    // was attached to the served puzzle; a stale-tab test uses raw requests
+    // below to send a deliberately obsolete snapshot instead.
+    const payload = body && (path === '/attempt' || path === '/check')
+      ? { ...stamp(), ...body as object }
+      : body;
     const res = await router.request(path, body === undefined
       ? { headers: { Cookie: cookie } }
-      : { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      : { method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return res.json() as Promise<T>;
   }
 
@@ -145,6 +157,7 @@ describe('/api/train', () => {
   it('serves the whole line', async () => {
     const next = await call<Next>(`/next?today=${today}`);
     expect(next.puzzle).toMatchObject({ game_id: 1, ply: 1, line: ['d2d8', 'f6d8', 'd1d8'], line_san: ['Qxd8+', 'Qxd8', 'Rxd8#'], review: false });
+    expect(next.puzzle).toMatchObject(stamp());
     expect(next.due).toBe(0);
   });
 
@@ -183,7 +196,7 @@ describe('/api/train', () => {
   it('says not_found for a move that is no puzzle', async () => {
     const res = await router.request('/attempt', {
       method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_id: 1, ply: 2, solved: true }),
+      body: JSON.stringify({ game_id: 1, ply: 2, solved: true, ...stamp() }),
     });
     expect(res.status).toBe(404);
   });
@@ -194,7 +207,7 @@ describe('/api/train', () => {
       expect(next.puzzle).toBeNull();
       const res = await router.request('/attempt', {
         method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_id: id, ply: 1, solved: true, today }),
+        body: JSON.stringify({ game_id: id, ply: 1, solved: true, today, ...stamp() }),
       });
       expect(res.status).toBe(404);
     }
@@ -213,12 +226,12 @@ describe('/api/train', () => {
     expect(next).toMatchObject({ puzzle: null, due: 0 });
     const attempt = await router.request('/attempt', {
       method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, today }),
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, today, ...stamp() }),
     });
     expect(attempt.status).toBe(404);
     const check = await router.request('/check', {
       method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8' }),
+      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8', ...stamp() }),
     });
     expect(check.status).toBe(404);
     expect(await call<{ due: number }>(`/stats?today=${today}`)).toMatchObject({ due: 0 });
@@ -264,5 +277,55 @@ describe('/api/train', () => {
       .toMatchObject({ counted: true, done: false });
     expect(db.prepare(`SELECT fen, solution_uci, solved FROM puzzle_attempts WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get())
       .toEqual({ fen: BACK_RANK, solution_uci: 'd2d8', solved: 0 });
+  });
+
+  it('rejects a stale browser attempt and alternative-move check after fresh reanalysis', async () => {
+    const snapshot = db.prepare(`SELECT source_revision, analysis_generation FROM analyses WHERE game_id = 1`).get() as {
+      source_revision: number; analysis_generation: number;
+    };
+    const old = db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get();
+    db.prepare(`UPDATE games SET pgn = '1. Nf3 d5 2. g3 c5 1-0' WHERE id = 1`).run();
+    const replacement = {
+      ply: 1, san: 'Qd5', uci: 'e5d5', fen_before: CHECKS, fen_after: CHECKS,
+      eval_before_cp: 900, eval_after_cp: 100, mate_before: null, mate_after: null,
+      best_move_uci: 'e5e4', best_move_san: 'Qe4+', best_pv: ['Qe4+'],
+      centipawn_loss: 700, classification: 'blunder',
+    };
+    db.prepare(`UPDATE analyses SET moves_json=?, source_hash='third-reanalysis',
+      source_revision=(SELECT source_revision FROM games WHERE id=1),
+      analysis_generation=analysis_generation+1 WHERE game_id=1`).run(JSON.stringify([replacement]));
+
+    const staleAttempt = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, attempted_uci: 'd2d8', today, ...snapshot }),
+    });
+    expect(staleAttempt.status).toBe(409);
+    expect(await staleAttempt.json()).toEqual({ error: 'stale_puzzle' });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(old);
+
+    const staleCheck = await router.request('/check', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, step: 0, uci: 'd2d8', ...snapshot }),
+    });
+    expect(staleCheck.status).toBe(409);
+    expect(await staleCheck.json()).toEqual({ error: 'stale_puzzle' });
+
+    // Reanalysis of the *same* PGN also changes the authoritative engine
+    // generation. Matching the source revision alone must not be sufficient.
+    const afterEdit = stamp();
+    db.prepare(`UPDATE analyses SET analysis_generation = analysis_generation + 1 WHERE game_id = 1`).run();
+    const priorGeneration = await router.request('/attempt', {
+      method: 'POST', headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game_id: 1, ply: 1, solved: true, attempted_uci: 'e5e4', today, ...afterEdit }),
+    });
+    expect(priorGeneration.status).toBe(409);
+    expect(await priorGeneration.json()).toEqual({ error: 'stale_puzzle' });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(old);
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({
+      puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
+    });
   });
 });

@@ -153,8 +153,16 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
 type Status = 'play' | 'checking' | 'wrong' | 'solved' | 'shown';
 
 interface AttemptResult { counted: boolean; done: boolean; due_on: string | null }
-interface AttemptPayload { game_id: number; ply: number; solved: boolean; attempted_uci?: string; today: string }
-type AttemptSaveState = 'idle' | 'pending' | 'saved' | 'error';
+interface AttemptPayload {
+  game_id: number; ply: number; source_revision: number; analysis_generation: number;
+  solved: boolean; attempted_uci?: string; today: string;
+}
+type AttemptSaveState = 'idle' | 'pending' | 'saved' | 'error' | 'stale';
+
+function isObsoletePuzzleError(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return status === 404 || status === 409;
+}
 
 function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
   const { t } = useTranslation();
@@ -186,7 +194,12 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
         setSaveState('saved');
         void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] });
       })
-      .catch(() => setSaveState('error'));
+      .catch((error: unknown) => {
+        if (isObsoletePuzzleError(error)) {
+          setSaveState('stale');
+          void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] });
+        } else setSaveState('error');
+      });
   }
 
   const retrySave = () => {
@@ -214,12 +227,14 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
 
   const pos = useMemo(() => positionAt(line, n), [line, n]);
   const done = n >= puzzle.line.length;
-  const yourTurn = !done && n % 2 === 0 && (status === 'play' || status === 'wrong');
+  const yourTurn = !done && saveState !== 'stale' && n % 2 === 0 && (status === 'play' || status === 'wrong');
 
   function send(solved: boolean, attempted?: string) {
     if (attemptRef.current) return;
     const body: AttemptPayload = {
-      game_id: puzzle.game_id, ply: puzzle.ply, solved, attempted_uci: attempted, today: localDay(),
+      game_id: puzzle.game_id, ply: puzzle.ply,
+      source_revision: puzzle.source_revision, analysis_generation: puzzle.analysis_generation,
+      solved, attempted_uci: attempted, today: localDay(),
     };
     attemptRef.current = body;
     persist(body);
@@ -296,7 +311,11 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
     const tried = { san: m.san, fen: chess.fen(), lastMove: [m.from, m.to] as [string, string] };
     setTrying(tried);
     setStatus('checking');
-    api.post<{ ok: boolean }>('/api/train/check', { game_id: puzzle.game_id, ply: puzzle.ply, step: n, uci })
+    api.post<{ ok: boolean }>('/api/train/check', {
+      game_id: puzzle.game_id, ply: puzzle.ply,
+      source_revision: puzzle.source_revision, analysis_generation: puzzle.analysis_generation,
+      step: n, uci,
+    })
       .then((r) => {
         if (!r.ok) { wrong(uci); return; }
         soundForMove(inferMoveFlagsFromSan(tried.san));
@@ -305,7 +324,15 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
         setHint('none');
         solve();
       })
-      .catch(() => wrong(uci));
+      .catch((error: unknown) => {
+        if (isObsoletePuzzleError(error)) {
+          setTrying(null);
+          setStatus('play');
+          setBoardKey((k) => k + 1);
+          setSaveState('stale');
+          void qc.invalidateQueries({ queryKey: ['train-stats', user?.id] });
+        } else wrong(uci);
+      });
   }
 
   function showHint() {
@@ -436,6 +463,17 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
               </button>
             </div>
           )}
+          {saveState === 'stale' && (
+            <div role="alert" className="mt-3 space-y-2 rounded-md border border-gold-500/40 bg-gold-500/5 p-3 text-xs">
+              <p className="text-chesscom-700 dark:text-chesscom-200">
+                {t('train.mine.puzzleChanged', { defaultValue: 'This game was updated while you practiced. Your attempt was not recorded for the new position.' })}
+              </p>
+              <button type="button" onClick={onNext} className="btn-primary min-h-10 text-xs">
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {t('train.mine.loadUpdated', { defaultValue: 'Load updated puzzle' })}
+              </button>
+            </div>
+          )}
 
           {finished && (
             <div className="mt-2 text-xs text-chesscom-500">
@@ -443,7 +481,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
             </div>
           )}
 
-          {!finished && status !== 'shown' && status !== 'checking' && (
+          {!finished && saveState !== 'stale' && status !== 'shown' && status !== 'checking' && (
             <div className="mt-3 flex gap-2">
               <button onClick={showHint} disabled={hint === 'move'} className="btn-secondary flex-1 text-sm">
                 <Lightbulb className="h-4 w-4" /> {hint === 'none' ? t('train.puzzles.hint') : t('train.puzzles.hintMove')}
@@ -460,7 +498,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
                   <RotateCcw className="h-4 w-4" /> {t('train.puzzles.tryIt')}
                 </button>
               )}
-              <button onClick={onNext} disabled={(!done && !alt) || unsaved} className="btn-primary flex-1 text-sm">
+              <button onClick={onNext} disabled={(!done && !alt) || unsaved || saveState === 'stale'} className="btn-primary flex-1 text-sm">
                 {t('train.nextPuzzle', { defaultValue: 'Next puzzle' })} <ArrowRight className="h-4 w-4" />
               </button>
             </div>
