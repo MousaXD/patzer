@@ -129,4 +129,14 @@ describe('review position-safe suggestions', () => {
     expect(verifiedPositionEngineLines({ fen, lines: [{ ...legal, cp: -200 }] }, fen)).toBeNull();
     expect(verifiedPositionEngineLines({ fen, lines: [{ ...legal, mate: -2, cp: 200 }] }, fen)).toBeNull();
   });
+
+  it('accepts only bounded integer distances for a live mate verdict', () => {
+    const fen = new Chess().fen();
+    const good = { uci: 'e2e4', san: 'e4', pv_san: ['e4'], cp: null, mate: 2, multipv: 1 };
+    expect(verifiedPositionEngineLines({ fen, lines: [good] }, fen)).toEqual([good]);
+    expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, mate: -3 }] }, fen)).toEqual([{ ...good, mate: -3 }]);
+    for (const mate of [1.5, -0.5, Number.MAX_SAFE_INTEGER + 1, 1000, -1000]) {
+      expect(verifiedPositionEngineLines({ fen, lines: [{ ...good, mate }] }, fen), `mate ${mate}`).toBeNull();
+    }
+  });
 });

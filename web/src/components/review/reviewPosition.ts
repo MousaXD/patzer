@@ -96,6 +96,10 @@ export function verifiedPositionEngineLines<T>(
       || !record.pv_san.every((san: unknown) => typeof san === 'string')
       || (record.cp !== null && (typeof record.cp !== 'number' || !Number.isFinite(record.cp)))
       || (record.mate !== null && (typeof record.mate !== 'number' || !Number.isFinite(record.mate)))
+      // A UCI mate distance is a signed count of moves, never a fraction or
+      // an arbitrary floating-point score. Keep this aligned with the live
+      // renderer's exact, bounded mate-distance display.
+      || (record.mate !== null && (!Number.isSafeInteger(record.mate) || Math.abs(record.mate) > 999))
       || (record.cp === null && record.mate === null)
       // Stockfish UCI and the hosted engine return one scored verdict per
       // line, not a nonzero mate *and* cp. Do not promote contradictory

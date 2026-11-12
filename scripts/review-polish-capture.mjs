@@ -1105,10 +1105,14 @@ try {
           // not fabricate a checkmate marker from the number's magnitude.
           {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:9500,mate:null,multipv:1},
           {uci:'d2d4',san:'d4',pv_san:['d4','d5'],cp:-9500,mate:null,multipv:2},
-        ] : [
+        ] : requests===3 ? [
           // A corrupted response claims White mates in two while its cp
           // score favors Black. The supported adapters emit one or the other.
           {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:-200,mate:2,multipv:1},
+        ] : [
+          // A fractional mate distance is not a scored UCI checkmate claim.
+          // Never promote it into a best-ranked board hint.
+          {uci:'e2e4',san:'e4',pv_san:['e4','e5'],cp:null,mate:1.5,multipv:1},
         ],
       })});
     });
@@ -1144,6 +1148,15 @@ try {
     await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-line-contradictory-mate-rejected-390.png')});
     assert.equal(requests,3);
+    const fourthResponse=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position') && response.status()===200);
+    await page.getByRole('button',{name:'Retry',exact:true}).click();
+    await fourthResponse;
+    await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'visible',timeout:5000});
+    assert.equal(await page.getByRole('button',{name:'Follow played move e4'}).count(),0,
+      'A fractional mate must not masquerade as a scored engine recommendation');
+    assert.equal(requests,4);
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-line-fractional-mate-rejected-390.png')});
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalRankPgn);
   }finally{await duplicateRankContext.close();}
   // Stockfish and the hosted adapter both return live MultiPV scores from

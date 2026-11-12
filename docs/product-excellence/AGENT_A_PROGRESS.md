@@ -1065,3 +1065,22 @@
 ### Next Game Review audit candidate
 
 - Live `verifiedPositionEngineLines` presently accepts finite **fractional** mating distances (e.g. `mate:1.5,cp:null`), although Stockfish and hosted engines define an integer number of moves to mate. Check if this can misleadingly rank/preview a recommendation without authoritative mate evidence; validate via adversarial tests and preserve the existing neutral rendering until it is proven meaningful.
+
+## 2026-11-12: reject fractional and unrenderable live mate distances
+
+### Narrow engine-contract finding and reproduction
+
+- Continued from clean pushed `c754e23`. The live `verifiedPositionEngineLines` verifier checked only that `mate` was finite. It accepted a position-matched legal PV and `mate:1.5,cp:null`, even though engine mate distances are signed **whole moves**, and the Game Review renderer deliberately cannot show a fractional checkmate (`—`). The result could still be ranked/previewed as a real scored best line. New focused adversarial test **failed before fix**.
+- Added a score-contract gate requiring a non-null mate value to be a safe integer of magnitude at most 999 (the renderer's exact distance range). A zero-distance unsigned terminal marker is still accepted and rendered neutrally. Both positive/negative bounded integer mate values and numeric centipawn-only lines remain valid. No algorithm, engine process, ranking formula, original PGN or source hash changed.
+
+### Verification and visual evidence
+
+- Added a **fourth** HTTP challenge to the existing authenticated disposable Chromium engine-line sequence: duplicate ranks rejected → valid extreme numeric cp accepted → contradictory cp/mate rejected → fractional mate rejected after keyboard-recoverable Retry. All four use the same FEN, preserved saved PGN and existing localized error/Retry controls. Inspected `qa-artifacts/agent-a/engine-line-mate-distance-20261112/engine-line-fractional-mate-rejected-390.png` showing accessible error recovery at 390px dark mode.
+- `git diff --check`: PASS, `node --check scripts/review-polish-capture.mjs`: PASS, **16 focused review source/score tests** PASS, `npm run typecheck`: PASS, `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000 --maxWorkers=4`: **1004 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium responsive/theme/locale/review-source/keyboard/variation/PGN suite: **PASS (exit 0)** on port 8947. Test scores are synthetic browser presentation fixtures, not Stockfish certification.
+- No merge, deployment, production service, active SQLite, or edits to other agent worktrees.
+
+### Next independent review investigation
+
+- Audit on-demand Engine Lines when its disclosure is closed/reopened rapidly while an HTTP request is in flight. The effect aborts old requests and checks request-local cancellation, but the browser matrix has not explicitly proven a delayed stale success cannot replace the new FEN's valid suggestions. Exercise genuine delayed intercepted responses, focus, visible loading/error state, and original PGN integrity before changing code.
