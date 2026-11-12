@@ -83,6 +83,36 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('offers one clear first-use choice to upload PGN or connect a chess provider when no games exist', async () => {
+    mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
+      ? {total:0,classified:0,unclassified:0,openings:[]}
+      : {games:[],total:0,offset:0,limit:40,has_more:false});
+    mount();
+    expect(await screen.findByText('Your game history starts here')).toBeTruthy();
+    expect(screen.getByText(/Import a PGN from your computer or link Chess.com\/Lichess/)).toBeTruthy();
+    const connect = screen.getAllByRole('link',{name:'Connect a chess account'});
+    expect(connect).toHaveLength(1);
+    expect(connect[0]?.getAttribute('href')).toBe('/settings');
+    const pickFile = screen.getByRole('button',{name:'Choose a PGN file to get started'});
+    const chooser = screen.getByLabelText('Choose a PGN file') as HTMLInputElement;
+    const onPicker = vi.spyOn(chooser,'click').mockImplementation(() => {});
+    fireEvent.click(pickFile);
+    expect(onPicker).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button',{name:'Import PGN file'}).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('guides linked chess players toward recent imports without duplicating account setup', async () => {
+    mocks.user.profile.chesscom_username='linkedplayer';
+    mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
+      ? {total:0,classified:0,unclassified:0,openings:[]}
+      : {games:[],total:0,offset:0,limit:40,has_more:false});
+    mount();
+    expect(await screen.findByText('Your game history starts here')).toBeTruthy();
+    expect(screen.getByText(/Import recent games above, or choose a PGN file/)).toBeTruthy();
+    expect(screen.queryByRole('link',{name:'Connect a chess account'})).toBeNull();
+    expect(screen.getByRole('button',{name:'Choose a PGN file to get started'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:/@linkedplayer/})).toBeTruthy();
+  });
   it('uploads a local PGN without linked provider accounts, reports actual saved/duplicate counts and clears selection', async () => {
     mocks.post.mockResolvedValue({total:2,imported:1,duplicates:1});
     mount();
@@ -584,6 +614,9 @@ describe('Review library with large histories', () => {
     rerenderReview();
     await act(async () => { resolveImport({ imported: 17, total: 20 }); });
     expect(screen.queryByText('review.imported')).toBeNull();
+    // The post-switch game list for account 101 is loaded asynchronously;
+    // the old account's setup link should not persist while it is loading.
+    await screen.findByText(/40 of 1,000 games/);
     expect(screen.getByRole('link', { name: /Set Chess.com username/ })).toBeTruthy();
   });
 });

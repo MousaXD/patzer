@@ -249,6 +249,11 @@
   "review": {
     "title": "Анализ на партия",
     "pgnImportHeading": "Импорт на PGN файл",
+    "firstUseTitle": "Историята на партиите ти започва тук",
+    "firstUseUnlinked": "Импортирай PGN от компютъра си или свържи Chess.com/Lichess за последните си партии.",
+    "firstUseLinked": "Импортирай скорошни партии по-горе или избери PGN файл от компютъра си.",
+    "firstUsePickPgn": "Избери PGN файл за начало",
+    "firstUseConnect": "Свържи шахматен акаунт",
     "pgnImportHelp": "Импортирай до 1 000 стандартни партии от .pgn или .txt (до 4 MB). Еднакви PGN файлове не се презаписват.",
     "pgnChooseFile": "Избери PGN файл",
     "pgnImportButton": "Импортирай PGN",

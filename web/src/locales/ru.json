@@ -258,6 +258,11 @@
   "review": {
     "title": "Разбор партии",
     "pgnImportHeading": "Импорт файла PGN",
+    "firstUseTitle": "Здесь начинается история ваших партий",
+    "firstUseUnlinked": "Импортируйте PGN с компьютера или подключите Chess.com/Lichess, чтобы загрузить недавние партии.",
+    "firstUseLinked": "Импортируйте недавние партии выше или выберите файл PGN с компьютера.",
+    "firstUsePickPgn": "Выбрать PGN для начала",
+    "firstUseConnect": "Подключить шахматный аккаунт",
     "pgnImportHelp": "Импортируйте до 1 000 стандартных партий из файла .pgn или .txt (макс. 4 МБ). Одинаковые PGN не перезаписываются.",
     "pgnChooseFile": "Выбрать файл PGN",
     "pgnImportButton": "Импортировать PGN",

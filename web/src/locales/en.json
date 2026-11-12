@@ -258,6 +258,11 @@
   "review": {
     "title": "Game Review",
     "pgnImportHeading": "Import a PGN file",
+    "firstUseTitle": "Your game history starts here",
+    "firstUseUnlinked": "Import a PGN from your computer or link Chess.com/Lichess to bring in recent games.",
+    "firstUseLinked": "Import recent games above, or choose a PGN file from your computer.",
+    "firstUsePickPgn": "Choose a PGN file to get started",
+    "firstUseConnect": "Connect a chess account",
     "pgnImportHelp": "Import up to 1,000 standard games from a .pgn or .txt file (4 MB max). Existing identical PGNs are not overwritten.",
     "pgnChooseFile": "Choose a PGN file",
     "pgnImportButton": "Import PGN file",

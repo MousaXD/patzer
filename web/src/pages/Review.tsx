@@ -353,6 +353,8 @@ export default function Review() {
     : (lastPage?.games ?? []);
   const total = lastPage?.total ?? 0;
   const initialError = isError && games.length === 0;
+  const firstUseEmpty = !isLoading && !initialError && games.length === 0 &&
+    !q && !activeFilters && !bookmarkedOnly;
 
   function toggleBookmarkedOnly() {
     const next = new URLSearchParams(searchParams);
@@ -367,7 +369,7 @@ export default function Review() {
           <h1 className="page-h1">{t('review.title')}</h1>
           <p className="page-sub">{t('review.subtitle', { defaultValue: 'Browse, analyze and learn from your games.' })}</p>
         </div>
-        {linked.length === 0 && (
+        {linked.length === 0 && (total > 0 || !!q || activeFilters || bookmarkedOnly || initialError) && (
           <Link to="/settings" className="btn-secondary text-sm">
             <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
           </Link>
@@ -434,6 +436,35 @@ export default function Review() {
           : 'border-board-dark/30 bg-board-dark/10 text-board-dark dark:text-chesscom-100')}>
           {importMsg.text}
         </div>
+      )}
+
+      {firstUseEmpty && (
+        <section aria-labelledby="library-first-use-title" className="card flex flex-col items-center justify-center gap-3 p-5 text-center sm:p-8">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800">
+            <Inbox className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <h2 id="library-first-use-title" className="text-base font-semibold">
+            {t('review.firstUseTitle', {defaultValue:'Your game history starts here'})}
+          </h2>
+          <p className="max-w-lg text-sm leading-relaxed text-chesscom-500 dark:text-chesscom-300">
+            {linked.length === 0
+              ? t('review.firstUseUnlinked', {defaultValue:'Import a PGN from your computer or link Chess.com/Lichess to bring in recent games.'})
+              : t('review.firstUseLinked', {defaultValue:'Import recent games above, or choose a PGN file from your computer.'})}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button type="button" className="btn-primary min-h-11 text-sm"
+              onClick={() => pgnInputRef.current?.click()} disabled={pgnMut.isPending}>
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              {t('review.firstUsePickPgn', {defaultValue:'Choose a PGN file to get started'})}
+            </button>
+            {linked.length === 0 && (
+              <Link to="/settings" className="btn-secondary min-h-11 text-sm">
+                <SettingsIcon className="h-4 w-4" aria-hidden="true" />
+                {t('review.firstUseConnect', {defaultValue:'Connect a chess account'})}
+              </Link>
+            )}
+          </div>
+        </section>
       )}
 
       {openingSummaryError && exploreMode === 'openings' && (
@@ -684,26 +715,20 @@ export default function Review() {
         </div>
       )}
 
-      {!isLoading && !initialError && games.length === 0 && (
+      {!isLoading && !initialError && games.length === 0 && !firstUseEmpty && (
         <div className="card flex flex-col items-center justify-center gap-3 p-12 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-chesscom-100 text-chesscom-400 dark:bg-chesscom-800">
             <Inbox className="h-6 w-6" />
           </div>
           <div className="text-base font-semibold">
-            {q || activeFilters ? t('review.noMatches', { defaultValue: 'No games match your search' }) : bookmarkedOnly ? t('review.noStarred', { defaultValue: 'No starred games yet' }) : t('review.noGames')}
+            {q || activeFilters ? t('review.noMatches', { defaultValue: 'No games match your search' }) : t('review.noStarred', { defaultValue: 'No starred games yet' })}
           </div>
           {q || activeFilters ? (
             <button type="button" onClick={clearLibraryFilters} className="btn-secondary text-sm">
               Clear filters
             </button>
-          ) : bookmarkedOnly ? (
-            <button onClick={toggleBookmarkedOnly} className="btn-secondary text-sm">{t('review.showAll', { defaultValue: 'Show all games' })}</button>
           ) : (
-            linked.length === 0 && (
-              <Link to="/settings" className="btn-secondary text-sm">
-                <SettingsIcon className="h-4 w-4" /> {t('review.noUsername')}
-              </Link>
-            )
+            <button onClick={toggleBookmarkedOnly} className="btn-secondary text-sm">{t('review.showAll', { defaultValue: 'Show all games' })}</button>
           )}
         </div>
       )}

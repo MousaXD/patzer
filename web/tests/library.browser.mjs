@@ -77,7 +77,8 @@ async function awaitUp() {
   throw new Error('Private Vite preview did not start');
 }
 
-async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
+async function newPage(theme, width, height,
+  {failOpeningsOnce = false, emptyLibrary = false, noLinked = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
@@ -92,14 +93,18 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
     let status = 200, json;
     if (path === '/api/setup/status') json = {setup_required: false};
     else if (path === '/api/auth/me') json = {user: {
-      id: 7, username: 'fixture', role: 'user', created_at: '2026-11-10', profile: {...profile, site_theme: theme},
+      id: 7, username: 'fixture', role: 'user', created_at: '2026-11-10', profile: {...profile,
+        site_theme: theme, ...(noLinked ? {chesscom_username:null,lichess_username:null} : {})},
     }};
     else if (path === '/api/games/openings') {
       if (openingFailuresRemaining > 0) {
         openingFailuresRemaining--;
         status = 503;
         json = {error:'temporary_fixture_failure'};
-      } else json = {
+      } else json = emptyLibrary
+        ? {total:hasPgnImports ? 2 : 0,classified:hasPgnImports ? 2 : 0,
+          unclassified:0,openings:hasPgnImports ? [{name:"King's Pawn Game",games:1},{name:"Queen's Pawn Game",games:1}] : []}
+        : {
         total: 620, classified: 620, unclassified: 0,
         openings: [{name:'Italian Game',games:310}, {name:'Queen’s Gambit',games:310}],
       };
@@ -117,7 +122,7 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
           {id:9002, source:'imported',white:'Chris',black:'Dana',result:null,time_control:null,
             end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"Queen's Pawn Game",notes:''},
         ], total:2,offset:0,limit:40,has_more:false};
-      } else json = list(parsed.searchParams);
+      } else json = emptyLibrary ? {games:[],total:0,offset:0,limit:40,has_more:false} : list(parsed.searchParams);
     } else if (path === '/api/games/import/pgn' && request.method() === 'POST') {
       const pgn = request.postDataJSON().pgn;
       seenPgnFiles.push(pgn);
@@ -140,9 +145,14 @@ async function newPage(theme, width, height, {failOpeningsOnce = false} = {}) {
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
-  if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
-  else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
-  await page.getByText('40 of 620 games').waitFor();
+  if (emptyLibrary) {
+    await page.getByText('Your game history starts here').waitFor();
+    await page.getByText('0 of 0 games').waitFor();
+  } else {
+    if (failOpeningsOnce) await page.getByRole('button', {name:'Retry opening highlights'}).waitFor();
+    else await page.getByRole('button', {name:'Show 310 saved games in Italian Game'}).waitFor();
+    await page.getByText('40 of 620 games').waitFor();
+  }
   return {page,context,pageErrors,seenPgnFiles};
 }
 function metrics(page) {
@@ -259,6 +269,39 @@ try {
     assert.deepEqual(pageErrors, [], 'PGN import UI had a JavaScript exception');
     console.log('PASS PGN file import, source filter, original content, partial failure and recovery');
   } finally { await pgnFixture.context.close(); }
+
+  // Real first-use path: account has no linked providers and no saved games.
+  // The empty-state CTA must open the native file picker and then navigate
+  // directly to the imported games, rather than sending users to Settings.
+  const firstUse = await newPage('light', 320, 700, {emptyLibrary:true,noLinked:true});
+  try {
+    const {page,pageErrors,seenPgnFiles}=firstUse;
+    assert.equal(await page.getByRole('link',{name:'Connect a chess account'}).count(),1);
+    assert.equal(await page.getByRole('link',{name:/Set Chess.com username/}).count(),0,
+      'Empty-state account setup must not be duplicated in the header');
+    const heroPicker = page.getByRole('button',{name:'Choose a PGN file to get started'});
+    const heroBox = await heroPicker.boundingBox();
+    assert.ok(heroBox && heroBox.y >= 0 && heroBox.y + heroBox.height <= 700,
+      `First-use PGN action should be visible in the 320px mobile viewport: ${JSON.stringify(heroBox)}`);
+    await page.screenshot({path:join(output,'library-firstuse-light-320.png')});
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),heroPicker.click(),
+    ]);
+    const pgn='[Event "First"]\n[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';
+    await fileChooser.setFiles({name:'first-games.pgn',mimeType:'text/plain',buffer:Buffer.from(pgn)});
+    await page.getByRole('button',{name:'Import PGN file'}).click();
+    await page.getByText('2 of 2 games').waitFor();
+    await page.locator('a[href="/review/9001"]').waitFor();
+    assert.equal(seenPgnFiles.at(-1),pgn);
+    assert.equal(new URL(page.url()).searchParams.get('source'),'imported');
+    assert.equal(await page.getByText('Your game history starts here').count(),0);
+    await page.getByText('Date unavailable').first().waitFor();
+    const m=await metrics(page);
+    assert.ok(m.overflow <= 2, 'First PGN import introduced horizontal mobile overflow');
+    assert.deepEqual(pageErrors,[], 'First-use flow threw a browser exception');
+    await page.screenshot({path:join(output,'library-firstuse-imported-light-320.png')});
+    console.log('PASS first-use empty unlinked library through PGN picker to first reviewable game');
+  } finally {await firstUse.context.close();}
 
   const {page, context, pageErrors} = await newPage('light', 1440, 900);
   try {

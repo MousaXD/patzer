@@ -248,3 +248,24 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 - This is an explicit **PGN-file** import, not account-wide Chess.com sync; the existing in-app provider import still fetches up to 200 recent games. The original one-time Chess.com historical CLI has verified archive checkpoints and backups, but exposing it as an in-app job still needs durable progress state, cancellation, rate limits, recovery and backup validation. Do not claim full-history sync or run production bulk imports.
 - Multi-game PGN files must have conventional `[Event "..."]` headers per game; single headerless PGNs are supported. Mixed/ambiguous exports fail clearly rather than dropping unknown entries. Variants and setup positions are deliberately unsupported until their analysis pipeline is certified.
 - Next audit: review the first-use library screen with **no linked provider** and a real PGN upload, particularly its source-filter discoverability and clear missing-date/results semantics. Then independently certify any in-app full-history design before implementation.
+
+## 2026-11-12 — First-use Library onboarding with no linked provider
+
+- Recovered clean `6545aee` and finished the first-use audit left as the previous checkpoint. Reproduced a genuine UX dead end: an empty account without linked Chess.com/Lichess had redundant Settings setup links while the new PGN import option was not explained in the empty-state action. Two targeted tests failed against the original UI.
+- Made the zero-game, unfiltered first-use state offer two explicit paths: **Choose a PGN file to get started** (opens the real existing file picker) or **Connect a chess account** (one link to Settings). Already-linked users see guidance to the recent-game import above instead of an unnecessary setup link. Filtered no-match and no-bookmark recovery remain separate and unchanged.
+- Avoided a loading-state/account-switch regression by hiding the Settings header shortcut only on true unfiltered empty libraries; restored the existing account-switching test to wait for that account's new library query to settle.
+- **Visual QA caught a second defect:** initially the new first-use choice appeared below all search/filter controls on a 320px mobile screen. Moved the true empty state above the filter controls and reduced padding, while keeping filtered recovery next to the filters. The native PGN picker action is now visible within the initial **320×700 viewport**.
+- Added translated first-use title, actions, and explanations across en/es/de/ru/bg. Existing PGN import, status, opening/opponent discovery, ownership, library search and review URLs are unchanged.
+
+### Verification
+
+- Library component suite: **33/33 passed**, including two new first-use cases, real picker trigger, linked/unlinked paths, account-switching, and filtered-state recovery.
+- Full repository suite (`npm test -- --maxWorkers=3`): **109 test files passed, 2 skipped; 1,031 tests passed, 12 skipped**. No failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: **passed**.
+- Isolated Chromium: existing 1440/390/320 light/dark layouts and interactive imports/search/filters passed, as did a new true-empty, no-linked account at **320×700**. Clicked the onboarding CTA, handled a real native file chooser, supplied a PGN, verified the original text reached only the mocked API, saw the resulting `source=imported` list and valid `/review/9001` link; no horizontal overflow or JavaScript error. Inspected before/after 320px screenshots under `qa-artifacts/agent-c-library/library-firstuse-*.png`.
+- No production data, external provider requests, service restarts, merges, or changes to other agents' branches.
+
+### Next highest-impact audit
+
+- Independently test the reliability of **multi-game PGN boundaries and accurate success counts** for unusual but realistic exported headers and comments. Reject ambiguous files explicitly rather than saving only the first game. Focus on a reproducible failure; preserve byte-exact original PGNs and avoid migrations unless justified.
+- The in-app full Chess.com historical-import job remains intentionally unimplemented pending persistent checkpoints, consent, throttle, cancellation and backup verification.

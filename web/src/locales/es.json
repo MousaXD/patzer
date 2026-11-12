@@ -249,6 +249,11 @@
   "review": {
     "title": "Análisis de partida",
     "pgnImportHeading": "Importar archivo PGN",
+    "firstUseTitle": "Tu historial de partidas empieza aquí",
+    "firstUseUnlinked": "Importa un PGN desde tu ordenador o vincula Chess.com/Lichess para traer partidas recientes.",
+    "firstUseLinked": "Importa las partidas recientes arriba o elige un archivo PGN de tu ordenador.",
+    "firstUsePickPgn": "Elegir un archivo PGN para empezar",
+    "firstUseConnect": "Vincular una cuenta de ajedrez",
     "pgnImportHelp": "Importa hasta 1.000 partidas estándar desde un archivo .pgn o .txt (máximo 4 MB). Los PGN idénticos no se sobrescriben.",
     "pgnChooseFile": "Elegir un archivo PGN",
     "pgnImportButton": "Importar archivo PGN",
