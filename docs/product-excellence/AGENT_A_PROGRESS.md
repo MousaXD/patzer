@@ -788,3 +788,28 @@
 ### Next highest-value investigation
 
 - Mate-in-N source presentation: `EvalBar` already supports an explicit `mate` prop, but GameAnalyzer currently passes only a centipawn value and prints `fmtCp` in the move summary even if its verified saved/variation analysis includes `mate_after`. Reproduce this with exact source-backed mate fields in a browser fixture, verify White/Black score sign and orientation, and show mate labels without fabricating checkmates. Avoid modifying scoring algorithms or source identity.
+
+## 2026-11-12: preserve exact source-bound mate distance in Game Review board scores
+
+### Recovered task and source audit
+
+- Continued from clean pushed `a05cc23`; no previous investigations repeated. The authoritative analysis and variation scorers store signed, White-perspective `mate_after` alongside normalized `eval_after_cp`, but GameAnalyzer fed only cp to an `EvalBar` that already accepted a mate field. The board and current move summary thereby collapsed exact `M3` / `−M2` into generic `#` / `−#` even when a consistent mate count existed. The original build **failed** authenticated Chromium waiting for `Mate in 3 for White` at source-aligned saved `1.e4`.
+- Traced both `server/src/routes/analyze.ts` and `server/src/chess/variationScoring.ts`: nonzero mate values use White-perspective sign, and `mate_after=0` can denote a terminal checkmated side-to-move without containing the winner's sign. A blind `mate<=0 => Black wins` interpretation would be false.
+
+### Correction and source-integrity self-audit
+
+- Added Game Review-only `reviewMateScore.ts` to interpret finite, signed, nonzero integer mate counts; the existing normalized cp score remains fallback for an ambiguous terminal zero. Source-consistent mate counts show exact `M3` / `−M2` in the current-move summary and are passed through the EvalBar's existing mate interface, which exposes accessible `Mate in 3 for White` / `Mate in 2 for Black` labels.
+- Independent audit found another potential false-positive path: a cached `mate_after` can disagree with its own white-perspective `eval_after_cp` despite passing finite-value decoding. The final helper refuses **precise** mate counts unless they match the server's normalized `±(10000−10*N)` cp proxy when cp evidence is present; a contradictory cache falls back to the existing generic cp label instead of stating an unsupported mating side/count. A valid isolated mate without a numeric cp proxy is still supported.
+- The mate test fixture modifies only a disposable HTTP response with all 24 unchanged, source-matched saved plies; White `mate=3/cp=9970`, Black `mate=-2/cp=-9980`, terminal `mate=0/cp=10000`, and intentionally contradictory `mate=3/cp=-9970`. No real Stockfish mate was claimed or written to SQLite.
+
+### Verification
+
+- Focused mate/bar/stored-source tests: **17 passed**, including invalid/zero/inconsistent annotations. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **993 passed / 12 skipped**, 109 passing test files.
+- Full disposable authenticated Chromium matrix **PASS (exit 0)**. Verified exact board `M3` and White mating-side accessibility, `−M2` and Black mating-side accessibility, no invented `Mate in 0`, and the contradictory cache's non-precise `−#` fallback. Previous source/keyboard/variation/recovery/phase/mobile checks stayed green; saved PGN remained unchanged.
+- Opened/inspected `qa-artifacts/agent-a/mate-score-consistency-verified-20261112/review-mate-{white,black,contradictory}-390.png`: scores match the selected move and the evaluation bar, readable at 390px, without board clipping. All scores are **synthetic browser test annotations**, not Stockfish accuracy certification.
+- No merge, deployment, production SQLite mutation, or other-agent area modified.
+
+### Next highest-value Game Review issue
+
+- The evaluation timeline graph receives only normalized cp values; mate count is available in authoritative saved move evidence but the graph's screen-reader slider text still treats mate as a cp proxy. Audit actual `aria-valuetext` for source-consistent M3/−M2 in the same authenticated browser fixture, and distinguish precise valid mate counts from contradictory cached fields. Keep the graph's current bar/plot geometry and original-game timeline semantics unchanged; use the same source-safe mate helper.

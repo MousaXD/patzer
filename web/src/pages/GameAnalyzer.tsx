@@ -19,6 +19,7 @@ import { isCompleteReviewPayload } from '../components/review/reviewStream';
 import { reviewSourceKey } from '../components/review/reviewSource';
 import MoveList from '../components/MoveList';
 import ReviewClassificationGuide from '../components/review/ReviewClassificationGuide';
+import { displayableMate, formatReviewMate } from '../components/review/reviewMateScore';
 import CoachPanel from '../components/CoachPanel';
 import GameReportCard, { type MovePick } from '../components/GameReportCard';
 import MoveExplanation from '../components/MoveExplanation';
@@ -661,13 +662,16 @@ function GameAnalyzerView() {
     : userColor;
   // Never claim a drawn (0.00) position when a variation has not been scored.
   const currentEvalCp = isVariation ? (variationQuality?.eval_after_cp ?? null) : (move?.eval_after_cp ?? null);
+  // Saved and source-matched exploratory reports use White-perspective mate
+  // signs. Zero is ambiguous after checkmate, so leave that to the signed cp
+  // fallback rather than mistakenly showing a Black mate.
+  const currentMate = displayableMate(isVariation ? variationQuality?.mate_after : move?.mate_after, currentEvalCp);
   const variationScorePending = isVariation && !!branchMove && !qualityError && !variationQuality;
-  const evalStatusText = currentEvalCp === null
-    ? (variationScorePending ? t('review.variationAnalyzing') : '—')
-    : fmtCp(currentEvalCp);
-  const evalStatusAccessible = currentEvalCp === null
+  const currentScoreLabel = formatReviewMate(currentMate) ?? (currentEvalCp === null ? null : fmtCp(currentEvalCp));
+  const evalStatusText = currentScoreLabel ?? (variationScorePending ? t('review.variationAnalyzing') : '—');
+  const evalStatusAccessible = currentScoreLabel === null
     ? (variationScorePending ? t('review.variationAnalyzing') : t('review.variationEvalUnavailable'))
-    : t('review.variationEvalLabel', { score: fmtCp(currentEvalCp) });
+    : t('review.variationEvalLabel', { score: currentScoreLabel });
 
   const historySoFar = analysis?.moves.slice(0, ply - 1).map((m) => m.san) ?? [];
   const coachReq = move ? () => ({
@@ -892,7 +896,7 @@ function GameAnalyzerView() {
           {/* The board fills its responsive grid track. Page-level scrolling
               replaces a short viewport's clipped workspace. */}
           <div className="relative my-2 flex items-stretch justify-center gap-2">
-            <EvalBar cp={currentEvalCp} orientation={orientation} />
+            <EvalBar cp={currentEvalCp} mate={currentMate} orientation={orientation} />
             <div
               ref={boardFocusRef}
               role="group"

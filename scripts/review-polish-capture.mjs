@@ -1723,6 +1723,53 @@ try {
         'The phase-badge placement audit must not mutate the saved PGN');
     }finally{await phaseContext.close();}
   }
+  // Mate scores are white-perspective, source-aligned evidence: the Review
+  // bar and visible score must preserve the engine's count and winning side,
+  // not collapse M3/-M2 into an undifferentiated +/-# cp proxy. Test-only
+  // annotations exercise presentation, never assert a real Stockfish mate.
+  const mateContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await mateContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await mateContext.newPage();
+    let sourceInjected=false;
+    const originalMatePgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const detail=await response.json();
+      const moves=JSON.parse(detail.analysis.moves_json);
+      assert.equal(moves.length,24);
+      for(const [index,mate,cp] of [[0,3,9970],[1,-2,-9980],[2,0,10000],[3,3,-9970]]){
+        moves[index].mate_after=mate;
+        moves[index].eval_after_cp=cp;
+      }
+      detail.analysis.moves_json=JSON.stringify(moves);
+      sourceInjected=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(detail)});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    const score=page.locator('[data-review-move-summary] .font-mono.text-base');
+    await page.getByRole('img',{name:'Mate in 3 for White',exact:true}).waitFor({state:'visible',timeout:4000});
+    assert.equal((await score.innerText()).trim(),'M3','White mate score must show its exact distance');
+    assert.equal(await score.getAttribute('aria-label'),'Evaluation M3');
+    await page.screenshot({path:join(output,'review-mate-white-390.png')});
+    await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^1… Black e5/}).click();
+    await page.getByRole('img',{name:'Mate in 2 for Black',exact:true}).waitFor({state:'visible',timeout:4000});
+    assert.equal((await score.innerText()).trim(),'−M2','Black mate score must carry the negative White-perspective sign');
+    assert.equal(await score.getAttribute('aria-label'),'Evaluation −M2');
+    await page.screenshot({path:join(output,'review-mate-black-390.png')});
+    await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^2\. White Nf3/}).click();
+    await page.waitForFunction(()=>document.querySelector('[data-review-move-summary] .font-mono.text-base')?.textContent?.trim()==='#');
+    assert.equal(await page.getByRole('img',{name:/Mate in 0/}).count(),0,
+      'A terminal mate 0 has no winning-side sign; never invent Black as the mating side');
+    await page.getByRole('region',{name:'Moves'}).getByRole('button',{name:/^2… Black Nc6/}).click();
+    await page.getByRole('img',{name:'Evaluation -# for White',exact:true}).waitFor({state:'visible',timeout:4000});
+    assert.equal((await score.innerText()).trim(),'-#',
+      'Contradictory cached mate and cp evidence must not advertise a precise White M3');
+    await page.screenshot({path:join(output,'review-mate-contradictory-390.png')});
+    assert.ok(sourceInjected,'This test must receive source-matched full saved move history');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalMatePgn);
+  }finally{await mateContext.close();}
   // Evidence-gap regression: a cached analysis may legitimately lack one
   // evaluation even when its recorded move classification is present. In a
   // disposable fixture only, remove the before score from an inaccuracy and
