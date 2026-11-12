@@ -97,3 +97,23 @@
 ### Next highest-impact visual issue
 
 - The real dark-mode engine-lines screenshots reveal visually weak secondary text in the error/Retry and active line row. Measure actual Chromium contrast of error guidance, move score, PV, and action text before adjusting only the review Engine Lines panel; avoid global theme changes owned by Agent B.
+
+## 2026-11-12: Engine Lines dark-mode legibility and recovery touch targets
+
+### Reproduction and visual audit
+
+- Continued from `4006a3b` after inspecting the actual Chromium 390px Engine Lines screenshots. Added an explicit computed-style audit of the panel instead of relying only on visual impressions.
+- Baseline dark error guidance measured **1.94:1 text contrast** against its computed background; Retry measured only **48×26px**. The browser regression intentionally failed. The projected SAN text and played marker also appeared faint in the original real screenshot.
+- Scoped the change entirely to the Game Review Engine Lines panel: improved dark secondary text colors for loading, empty, error, PV, played and refreshing states; enlarged the Retry control and added a keyboard-visible focus ring. No shared theme, navigation or server code was changed.
+- Added renderer-measured assertions for dark error text contrast, Retry target geometry, projected SAN contrast and played-label contrast.
+
+### Verified results
+
+- Actual dark Chromium: **error text 8.97:1**, **Retry 56×44px**, **PV 7.83:1**, **played marker 7.83:1**. Original error 1.94:1 / Retry 48×26px.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- `npm test -- --testTimeout=20000`: **965 passed / 12 skipped**, 107 passing files.
+- Disposable authenticated Chromium matrix: **PASS (exit 0)** with previous source-integrity, variation, keyboard, PGN, locale and viewport checks. Opened and inspected real `qa-artifacts/agent-a/line-readability-fixed-20261112/engine-line-wrong-san-rejected-390.png` and `engine-line-matched-after-retry-390.png` against earlier captures. No PGN/database mutation outside disposable test DB and no live Stockfish accuracy claim.
+
+### Next issue
+
+- Audit the Engine Lines interactive rows at 320/390px: labels remain English in translated review, and the live-line row has a small hit target. Reproduce in localized actual Chromium before deciding the smallest coherent fix. Other agents own the global design system.

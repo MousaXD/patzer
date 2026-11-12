@@ -1478,17 +1478,18 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
         {enabled && (
           <>
           {loading && lines.length === 0 && (
-            <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500">
+            <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500 dark:text-chesscom-200">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
             </div>
           )}
           {!loading && !error && lines.length === 0 && (
-            <div className="px-2 py-3 text-xs text-chesscom-400">—</div>
+            <div className="px-2 py-3 text-xs text-chesscom-500 dark:text-chesscom-200">—</div>
           )}
           {error && (
-            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-500">
+            <div role="status" className="flex flex-wrap items-center justify-between gap-2 px-2 py-3 text-xs text-chesscom-600 dark:text-chesscom-200">
               <span>{error === 'busy' ? 'Stockfish is busy with another request.' : 'Engine lines are unavailable.'}</span>
-              <button type="button" onClick={onRetry} disabled={loading} className="btn-secondary px-2 py-1 text-xs">Retry</button>
+              <button type="button" onClick={onRetry} disabled={loading}
+                className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">Retry</button>
             </div>
           )}
           {lines.map((l) => {
@@ -1516,13 +1517,13 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
                   {l.mate != null ? (l.mate > 0 ? `#${l.mate}` : `-#${Math.abs(l.mate)}`) : fmtCp(l.cp)}
                 </span>
                 <span className="w-12 shrink-0 truncate font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{l.san}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-500">{pv}</span>
-                {isPlayed && <span className="shrink-0 text-[10px] uppercase text-board-dark">{t('review.linesPlayed', { defaultValue: 'played' })}</span>}
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>
+                {isPlayed && <span className="shrink-0 text-[10px] uppercase text-board-dark dark:text-chesscom-200">{t('review.linesPlayed', { defaultValue: 'played' })}</span>}
               </button>
             );
           })}
           {loading && lines.length > 0 && (
-            <div className="flex items-center gap-2 px-2 pt-1 text-[11px] text-chesscom-400">
+            <div className="flex items-center gap-2 px-2 pt-1 text-[11px] text-chesscom-500 dark:text-chesscom-200">
               <Loader2 className="h-3 w-3 animate-spin" /> {t('review.linesRefreshing', { defaultValue: 'refreshing…' })}
             </div>
           )}

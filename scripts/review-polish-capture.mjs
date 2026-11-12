@@ -70,6 +70,32 @@ function seed(userId, scoringVersion, analysisSourceHash, loadAnalysisGameSource
   return id;
 }
 
+/** Chromium-rendered text contrast against composite ancestor backgrounds.
+ * Read actual theme colors; never hardcode an assumed dark surface. */
+async function renderedContrast(page, selector) {
+  return page.evaluate((selector)=>{
+    const el=document.querySelector(selector);
+    assertPresent(el);
+    const parse=(css)=>{
+      const values=css.match(/[\d.]+/g)?.map(Number) ?? [];
+      return values.length>=3 ? [...values.slice(0,3),values[3]??1] : [0,0,0,0];
+    };
+    const ancestors=[];
+    for(let p=el;p;p=p.parentElement)ancestors.unshift(p);
+    const bg=ancestors.reduce((base,node)=>{
+      const [r,g,b,a]=parse(getComputedStyle(node).backgroundColor);
+      return [r,g,b].map((v,i)=>v*a+base[i]*(1-a));
+    },[255,255,255]);
+    const rgb=parse(getComputedStyle(el).color).slice(0,3);
+    const lum=([r,g,b])=>[r,g,b].map(v=>{
+      const n=v/255;return n<=.04045?n/12.92:Math.pow((n+.055)/1.055,2.4);
+    }).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+    const a=lum(rgb),b=lum(bg);
+    return +((Math.max(a,b)+.05)/(Math.min(a,b)+.05)).toFixed(2);
+    function assertPresent(node){if(!node)throw new Error('Missing visible text for contrast audit: '+selector);}
+  },selector);
+}
+
 async function measure(page,width,height,theme) {
   await page.locator('[data-review-workspace]').waitFor({state:'visible'});
   await page.locator('cg-board').first().waitFor({state:'visible'});
@@ -690,6 +716,16 @@ try {
       'A legal UCI must never be displayed under another move name');
     await page.getByText('Engine lines are unavailable.',{exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'engine-line-wrong-san-rejected-390.png')});
+    const retryHit=await page.getByRole('button',{name:'Retry',exact:true}).boundingBox();
+    const contrastAndSize={
+      errorContrast:await renderedContrast(page,'#review-engine-lines-content [role="status"] span'),
+      retryWidth:retryHit?.width,retryHeight:retryHit?.height,
+    };
+    console.log('Engine-line dark-mode error legibility:',JSON.stringify(contrastAndSize));
+    assert.ok(contrastAndSize.errorContrast>=4.5,
+      `Engine error text must be readable against its dark card: ${JSON.stringify(contrastAndSize)}`);
+    assert.ok(contrastAndSize.retryWidth>=44 && contrastAndSize.retryHeight>=44,
+      `Engine recovery Retry must have a 44px minimum touch target: ${JSON.stringify(contrastAndSize)}`);
     const scoredAgain=page.waitForResponse(response=>response.url().endsWith('/api/analyze/position')&&response.status()===200);
     await page.getByRole('button',{name:'Retry',exact:true}).click();
     await scoredAgain;
@@ -697,6 +733,11 @@ try {
     await validMove.waitFor({state:'visible',timeout:5000});
     await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'hidden'});
     await page.screenshot({path:join(output,'engine-line-matched-after-retry-390.png')});
+    const pvContrast=await renderedContrast(page,'#review-engine-lines-content button[aria-label="Follow played move e4"] span:nth-child(4)');
+    const playedContrast=await renderedContrast(page,'#review-engine-lines-content button[aria-label="Follow played move e4"] span:nth-child(5)');
+    console.log('Engine-line dark PV/played contrast:',JSON.stringify({pvContrast,playedContrast}));
+    assert.ok(pvContrast>=4.5 && playedContrast>=4.5,
+      `Projected SAN and played marker must be legible: ${JSON.stringify({pvContrast,playedContrast})}`);
     await validMove.click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
     assert.equal(engineRequests,2);
