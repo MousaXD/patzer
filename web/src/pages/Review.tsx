@@ -579,7 +579,7 @@ export default function Review() {
                       className={cn('min-w-0 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
                         selectedOpening === name
                           ? 'border-gold-500 bg-gold-500/10 text-chesscom-900 dark:text-chesscom-100'
-                          : 'border-chesscom-200 bg-white hover:border-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:border-gold-500')}>
+                          : 'border-chesscom-200 bg-white hover:border-chesscom-400 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:border-chesscom-500')}>
                       <span className="block truncate text-xs font-semibold" title={name}>{name}</span>
                       <span className="mt-1 block text-xs text-chesscom-500 dark:text-chesscom-300">
                         {t('review.libraryOpeningGames', {count, defaultValue: `${count.toLocaleString()} games`})}
@@ -632,7 +632,7 @@ export default function Review() {
                           defaultValue: `Show ${count} ${provider} games against ${name}`})}
                         className={cn('min-w-0 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500',
                           active ? 'border-gold-500 bg-gold-500/10 text-chesscom-900 dark:text-chesscom-100'
-                            : 'border-chesscom-200 bg-white hover:border-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:border-gold-500')}>
+                            : 'border-chesscom-200 bg-white hover:border-chesscom-400 dark:border-chesscom-700 dark:bg-chesscom-800 dark:hover:border-chesscom-500')}>
                         <span className="block truncate text-xs font-semibold" title={name}>{name}</span>
                         <span className="mt-1 block text-xs leading-snug text-chesscom-500 dark:text-chesscom-300">
                           {t('review.libraryOpponentGames', {provider, count,

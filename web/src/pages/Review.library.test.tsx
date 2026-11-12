@@ -552,6 +552,54 @@ describe('Review library with large histories', () => {
     expect(await screen.findByRole('button', {name:'Show 250 saved games in Italian Game'})).toBeTruthy();
   });
 
+  it('switches between opening and provider-qualified opponent discovery without reviving old search or filters', async () => {
+    mocks.get.mockImplementation(async (url:string) => {
+      if (url==='/api/games/openings') return {total:120,classified:120,unclassified:0,
+        openings:[{name:'Italian Game',games:50}]};
+      if (url==='/api/games/opponents') return {total:120,identified:120,unidentified:0,
+        opponents:[{source:'lichess',name:'Nepo',games:8}]};
+      const params=new URLSearchParams(url.split('?')[1] ?? '');
+      if (params.has('opponent') || params.has('opening')) return {
+        games:[makeGame(1)],total:1,offset:0,has_more:false,
+      };
+      return {games:[makeGame(1)],total:120,offset:0,has_more:false};
+    });
+    mount('/review?source=chesscom&opponent=Nepo&bookmarked=1&q=old&sort=oldest');
+    await screen.findByText('Showing Chess.com games against Nepo');
+    fireEvent.click(await screen.findByRole('button',{name:'Openings'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Show 50 saved games in Italian Game'}));
+    await screen.findByText('Showing games in Italian Game');
+    expect((screen.getByRole('combobox',{name:'Sort games'}) as HTMLSelectElement).value).toBe('oldest');
+    expect((screen.getByRole('combobox',{name:'Game source'}) as HTMLSelectElement).value).toBe('');
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+
+    // An unfinished keystroke must not be sent later as a hidden filter after
+    // the user intentionally chooses a different discovery collection.
+    fireEvent.change(screen.getByRole('searchbox'),{target:{value:'unsubmitted'}});
+    fireEvent.click(screen.getByRole('button',{name:'Opponents'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Show 8 Lichess games against Nepo'}));
+    await screen.findByText('Showing Lichess games against Nepo');
+    await new Promise(resolve=>setTimeout(resolve,420));
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+    const matching=mocks.get.mock.calls.filter(([url])=>String(url).startsWith('/api/games?'))
+      .map(([url])=>new URLSearchParams(String(url).split('?')[1] ?? ''));
+    expect(matching.at(-1)?.get('source')).toBe('lichess');
+    expect(matching.at(-1)?.get('opponent')).toBe('Nepo');
+    expect(matching.at(-1)?.get('sort')).toBe('oldest');
+    expect(matching.at(-1)?.has('q')).toBe(false);
+    expect(matching.at(-1)?.has('opening')).toBe(false);
+    expect(matching.at(-1)?.has('bookmarked')).toBe(false);
+
+    // Provider changes clear the old provider's opponent identity rather than
+    // claiming a similarly named account is the same person on Chess.com.
+    fireEvent.change(screen.getByRole('combobox',{name:'Game source'}),{target:{value:'chesscom'}});
+    await waitFor(()=>expect(mocks.get.mock.calls.some(([url])=>{
+      const p=new URLSearchParams(String(url).split('?')[1] ?? '');
+      return p.get('source')==='chesscom' && !p.has('opponent') && !p.has('opening');
+    })).toBe(true));
+    expect(screen.queryByText('Showing Lichess games against Nepo')).toBeNull();
+  });
+
   it('honors deep-linked opponents and does not invent identities for unidentifiable online games', async () => {
     mocks.get.mockImplementation(async (url: string) => {
       if (url === '/api/games/openings') return {total:12,classified:0,unclassified:12,openings:[]};

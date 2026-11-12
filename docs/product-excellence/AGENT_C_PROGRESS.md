@@ -518,3 +518,20 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next product audit
 
 - Independently review the Library search/deep-filter interaction for **source-qualified opponent names and exact openings** when switching between a normal search and a discovery chip. Ensure no stale filters stay selected in the URL or hide desired games. Coordinate Review back-navigation through the already documented cross-lane handoff rather than editing GameAnalyzer.
+
+## 2026-11-12 — Correct false selection styling after discovery/provider switches
+
+- Recovered clean pushed `663e23b`, and continued the exact outstanding search/deep-filter audit. Added a targeted React regression for switching from a provider-qualified opponent to an exact opening and back with a **pending unsubmitted search**, bookmarked-only filter and oldest-first sort. It passed after waiting for async discovery data: the chip actions clear stale search/source/opponent/bookmark/date filters while keeping deliberate sort; manually switching providers clears the previous provider's opponent identity.
+- Real 390px dark-mode Chromium uncovered an additional, **reproducible visual defect**: after switching from a selected Lichess opponent to the Chess.com source, the old Lichess chip had `aria-pressed=false` but retained the *same gold border as a selected chip* when the pointer remained over it (a likely sticky-hover mobile problem). Added a browser regression comparing computed selected and unselected-hover border colors; it failed on the old implementation (`rgb(255, 201, 52)` in both states).
+- Changed only Library-local opening/opponent discovery chips so **gold borders uniquely indicate selection**, while an unselected hovered chip uses neutral `chesscom-400` / `chesscom-500` contrast-appropriate borders. Preserved focus-visible rings and existing `aria-pressed` semantics. Did not edit the global design system or Game Review internals.
+- Confirmed the browser now displays a clearly neutral old Lichess chip after selecting Chess.com, with the URL no longer carrying `opponent` or `opening`. Screenshots: `qa-artifacts/agent-c-library/library-discovery-filter-handoff-dark-390.png`, visually inspected.
+
+### Verification
+
+- Library React component suite: **44/44 passed**; full repository suite: **109 passed files, 2 skipped; 1,057 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium desktop and 390px/320px light/dark, provider/source switching, search debounce, import retry, first-use, large-history cursor, Starred-only and Unicode search: passed with zero browser JS exceptions or horizontal overflow.
+- No external provider calls, real account imports, production SQLite, merges, deploys or other agent branches changed.
+
+### Next independent audit
+
+- Audit **imported-game date and sort previews** for large mixed-provider libraries: undated local PGNs must stay accessible and recognizably undated when users sort oldest-first or combine date filters. Ensure the server never silently excludes undated games from an unfiltered page while reporting a misleading total; verify with a disposable dataset and the actual Library UI before changing anything.

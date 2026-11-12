@@ -439,6 +439,50 @@ try {
     console.log('PASS Unicode player searches through saved-game cards, URL params and empty-query recovery');
   } finally {await internationalHistory.context.close();}
 
+  const discoverySwitch=await newPage('dark',390,844);
+  try {
+    const {page,pageErrors}=discoverySwitch;
+    await page.getByRole('combobox',{name:'Sort games'}).selectOption('oldest');
+    await page.getByRole('searchbox').fill('transient-search');
+    await page.getByRole('button',{name:'Show 310 saved games in Italian Game'}).click();
+    await page.getByText('Showing games in Italian Game').waitFor();
+    await sleep(430); // No pending search debounce may revive stale text.
+    const openingUrl=new URL(page.url()).searchParams;
+    assert.equal(openingUrl.get('opening'),'Italian Game');
+    assert.equal(openingUrl.get('sort'),'oldest');
+    for(const stale of ['q','source','opponent','bookmarked']) assert.equal(openingUrl.has(stale),false,
+      `Opening discovery unexpectedly retained ${stale}`);
+    await page.getByRole('button',{name:'Opponents'}).click();
+    const lichessChip=page.getByRole('button',{name:'Show 31 Lichess games against Nepo'});
+    await lichessChip.click();
+    await page.getByText('Showing Lichess games against Nepo').waitFor();
+    await sleep(230);
+    const selectedBorder=await lichessChip.evaluate(el=>getComputedStyle(el).borderTopColor);
+    assert.equal(await lichessChip.getAttribute('aria-pressed'),'true');
+    const opponentUrl=new URL(page.url()).searchParams;
+    assert.equal(opponentUrl.get('source'),'lichess');
+    assert.equal(opponentUrl.get('opponent'),'Nepo');
+    assert.equal(opponentUrl.get('sort'),'oldest');
+    assert.equal(opponentUrl.has('opening'),false);
+    assert.equal(opponentUrl.has('q'),false);
+    await page.getByRole('combobox',{name:'Game source'}).selectOption('chesscom');
+    await page.getByText('Showing Lichess games against Nepo').waitFor({state:'detached'});
+    const otherProvider=new URL(page.url()).searchParams;
+    assert.equal(otherProvider.get('source'),'chesscom');
+    assert.equal(otherProvider.has('opponent'),false,
+      'A Lichess opponent identity leaked into a Chess.com filter');
+    await lichessChip.hover();
+    await sleep(230);
+    assert.equal(await lichessChip.getAttribute('aria-pressed'),'false');
+    const staleHoverBorder=await lichessChip.evaluate(el=>getComputedStyle(el).borderTopColor);
+    assert.notEqual(staleHoverBorder,selectedBorder,
+      'An unselected former opponent still uses the gold selected border while hovered');
+    await page.getByRole('searchbox').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-discovery-filter-handoff-dark-390.png')});
+    assert.deepEqual(pageErrors,[], 'Discovery filter switching produced a browser exception');
+    console.log('PASS opening/opponent discovery handoffs with pending search and provider change');
+  } finally {await discoverySwitch.context.close();}
+
   // Real first-use path: account has no linked providers and no saved games.
   // The empty-state CTA must open the native file picker and then navigate
   // directly to the imported games, rather than sending users to Settings.
