@@ -592,7 +592,7 @@ function GameAnalyzerView() {
   const [linesRetry, setLinesRetry] = useState(0);
   const [linesLoading, setLinesLoading] = useState(false);
   const [linesError, setLinesError] = useState<'busy' | 'unavailable' | null>(null);
-  const [linesHover, setLinesHover] = useState<EngineLine | null>(null);
+  const [linesHover, setLinesHover] = useState<{ fen: string; uci: string } | null>(null);
   const [explorerHover, setExplorerHover] = useState<string | null>(null);
   const pos = data ? (positions[ply] ?? positions[0]) : undefined;
   const currentFen = variations.currentFen || pos?.fen || '';
@@ -720,7 +720,15 @@ function GameAnalyzerView() {
     dest: bestUci.slice(2, 4) as never,
     brush: 'paleBlue',
   }] : [];
-  const hoverUci = linesHover?.uci ?? explorerHover;
+  // A hover/focus preview is valid only for the FEN from which that engine
+  // line was verified. Moving to another saved ply or exploratory branch may
+  // unmount the old button without a mouseleave event; never draw its arrow
+  // on an unrelated position, even if the same UCI happens to be legal.
+  const activeLinesHoverUci = linesEnabled && !linesLoading && !linesError
+    && linesHover?.fen === currentFen
+    && freshLines.some((candidate) => candidate.uci === linesHover.uci)
+    ? linesHover.uci : null;
+  const hoverUci = activeLinesHoverUci ?? explorerHover;
   const hoverArrow = hoverUci ? [{
     orig: hoverUci.slice(0, 2) as never,
     dest: hoverUci.slice(2, 4) as never,
@@ -908,6 +916,7 @@ function GameAnalyzerView() {
               role="group"
               tabIndex={-1}
               aria-label={t('review.boardLabel', { defaultValue: 'Chessboard' })}
+              data-review-live-preview-uci={activeLinesHoverUci ?? undefined}
               className={`review-board-square relative aspect-square w-full min-w-0 scroll-mt-16 board-theme-${user?.profile.board_theme ?? 'green'}`}
             >
               <ChessBoard
@@ -1332,7 +1341,7 @@ function GameAnalyzerView() {
                 playedUci={!isVariation ? positions[ply + 1]?.uci ?? null : null}
                 onAdvance={forward}
                 onTryMove={onAnalysisMove}
-                onHover={setLinesHover}
+                onHover={(line) => setLinesHover(line ? { fen: currentFen, uci: line.uci } : null)}
               />
 
               <GameReportCard
@@ -1678,6 +1687,8 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
                 aria-describedby={`${scoreId} ${pvId}`}
                 onMouseEnter={() => onHover(l)}
                 onMouseLeave={() => onHover(null)}
+                onFocus={() => onHover(l)}
+                onBlur={() => onHover(null)}
                 className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${
                   isPlayed
                     ? 'cursor-pointer bg-board-dark/10 hover:bg-board-dark/15'

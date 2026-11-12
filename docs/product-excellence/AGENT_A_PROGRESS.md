@@ -956,3 +956,23 @@
 ### Next Game Review interaction audit
 
 - Engine-line mouse hover calls `onHover` to preview a live candidate on the board, but the same focusable line button does not call `onHover` on keyboard focus or clear it on blur. Investigate the real board-preview arrow/line reaction with keyboard Tab/Shift+Tab on a source-valid live line. If confirmed, make keyboard focus preview equivalent to pointer hover without changing selection, PGN or accessible description.
+
+## 2026-11-12: keyboard-focus engine-line board previews bound to current FEN
+
+### Exact recovery and actual interaction issue
+
+- Continued from clean pushed `f00ebc9` with two already-uncommitted changes scoped only to Game Review's Engine Lines interaction and its Chromium regression. The saved button's `onMouseEnter/onMouseLeave` previewed a pale-green move arrow, but keyboard focus/Tab did not call the same handler. A further source problem existed: raw `linesHover?.uci` could outlive an updated FEN when a focused/hovered button unmounted without a corresponding `mouseleave`, leaving a stale arrow on an unrelated saved or exploratory position.
+- A line-focused preview is now triggered by `onFocus` and cleared by `onBlur` (mouse behavior preserved). Hover state stores the exact verified FEN and first UCI, not the full arbitrary response. It becomes active only when Engine Lines is enabled, not loading/in error, the displayed FEN exactly matches the originating FEN, and that UCI still appears in `freshLines` after the independent FEN validation. Other board/explorer arrow behavior is unchanged.
+- Exposed a small noninteractive `data-review-live-preview-uci` diagnostic on the saved board container for real Chromium assertion; it reflects only the actual, position-safe preview arrow. No saved PGN or scoring source was modified.
+
+### Verification and self-audit
+
+- Focused existing review source and live-score tests: **13 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **1001 passed / 12 skipped**, 110 passing test files.
+- The original full authenticated disposable Chromium matrix **PASS (exit 0)**, then a second full matrix **PASS (exit 0)** after adding visual board inspection. Tab from the prior Retry region focused the source-verified `e4` engine button and displayed its `e2e4` preview; focusing the other legal `d4` button switched the preview to `d2d4`; focusing the board cleared it without playing any move. After returning focus to `e4`, selecting the saved move advanced the actual board to 1/24 while the old first-position preview was removed, proving no stale FEN carryover. The full previous source, PGN, scoring, keyboard, translation, responsive and variation scenarios remained green.
+- Independently opened `qa-artifacts/agent-a/engine-lines-keyboard-preview-board-20261112/engine-line-keyboard-board-arrow-390.png` and observed the pale-green `e2→e4` arrow drawn from the original starting board when the row had keyboard focus, with no board move or score changes. `engine-line-keyboard-preview-390.png` shows the focused accessible row on mobile. All engine evaluations remain disposable browser fixtures, **not** Stockfish scoring certification.
+- No merge, deploy, production SQLite mutation or cross-agent file edits.
+
+### Next priority
+
+- Audit window-level Game Review Arrow/Home/End shortcuts while a live engine-line button has keyboard focus. Those shortcuts currently exclude native inputs/sliders/tablists but may silently navigate the saved chessboard from a focused engine suggestion, leaving its accessible action context and preview inconsistent. Reproduce a focused engine row and ArrowRight in Chromium before changing the handler. If genuine, exempt only Engine Lines focused buttons and preserve global board shortcuts and MoveList's dedicated arrow navigation.

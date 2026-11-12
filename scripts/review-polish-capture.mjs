@@ -1008,6 +1008,22 @@ try {
     await page.keyboard.press('Tab');
     assert.ok(await validMove.evaluate(el=>document.activeElement===el),
       'Tab from recovered engine content should enter the first playable engine line');
+    await page.waitForFunction(()=>document.querySelector('.review-board-square')
+      ?.getAttribute('data-review-live-preview-uci')==='e2e4',undefined,{timeout:3000});
+    await page.screenshot({path:join(output,'engine-line-keyboard-preview-390.png')});
+    await page.locator('.review-board-square').scrollIntoViewIfNeeded();
+    assert.ok(await validMove.evaluate(el=>document.activeElement===el),
+      'Revealing the board preview must keep keyboard focus on the chosen engine line');
+    await page.screenshot({path:join(output,'engine-line-keyboard-board-arrow-390.png')});
+    await unsignedLine.focus();
+    await page.waitForFunction(()=>document.querySelector('.review-board-square')
+      ?.getAttribute('data-review-live-preview-uci')==='d2d4',undefined,{timeout:3000});
+    await page.locator('.review-board-square').focus();
+    await page.waitForFunction(()=>!document.querySelector('.review-board-square')
+      ?.hasAttribute('data-review-live-preview-uci'),undefined,{timeout:3000});
+    await validMove.focus();
+    await page.waitForFunction(()=>document.querySelector('.review-board-square')
+      ?.getAttribute('data-review-live-preview-uci')==='e2e4',undefined,{timeout:3000});
     await page.getByText('Engine lines are unavailable.',{exact:true}).waitFor({state:'hidden'});
     await page.screenshot({path:join(output,'engine-line-matched-after-retry-390.png')});
     const pvContrast=await renderedContrast(page,'#review-engine-lines-content button[aria-label="Follow played move e4"] span:nth-child(4)');
@@ -1017,6 +1033,8 @@ try {
       `Projected SAN and played marker must be legible: ${JSON.stringify({pvContrast,playedContrast})}`);
     await validMove.click();
     await page.waitForFunction(()=>document.querySelector('[data-move-transport]')?.textContent?.replace(/\s+/g,' ').trim().startsWith('1 /'));
+    assert.equal(await page.locator('.review-board-square').getAttribute('data-review-live-preview-uci'),null,
+      'A line-focused preview from the starting FEN must not survive navigation to Black-to-move');
     assert.equal(engineRequests,2);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
