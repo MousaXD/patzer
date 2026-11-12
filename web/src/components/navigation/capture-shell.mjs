@@ -161,6 +161,8 @@ try {
     { width: 1920, height: 1080 },
     { width: 1440, height: 900 },
     { width: 1024, height: 768 },
+    { width: 768, height: 1024 },
+    { width: 640, height: 900 },
     { width: 390, height: 844 },
     { width: 320, height: 700 },
   ];
@@ -170,6 +172,25 @@ try {
       await openWithFixture(page, viewport);
       await page.waitForFunction((mode) => document.documentElement.classList.contains('dark') === (mode === 'dark'), nextTheme);
       await page.screenshot({ path: resolve(output, `${nextTheme}-${viewport.width}x${viewport.height}.png`) });
+      if (viewport.width >= 640 && viewport.width <= 1024) {
+        const tabletControls = [
+          ['Search', page.getByRole('button', { name: /Command palette/ })],
+          ['Keyboard shortcuts', page.getByRole('button', { name: 'Keyboard shortcuts' })],
+          ['Profile', page.locator('[data-workspace-header] a[href="/settings"]')],
+        ];
+        if (viewport.width >= 768) {
+          tabletControls.push(
+            ['Language', page.getByRole('combobox', { name: 'Language' })],
+            ['Log out', page.getByRole('button', { name: 'Log out' })],
+          );
+        }
+        for (const [name, control] of tabletControls) {
+          const rect = await control.boundingBox();
+          if (!rect || rect.height < 44 || rect.width < 44) {
+            throw new Error(`${nextTheme} ${viewport.width}px: tablet header touch target ${name} is undersized ${JSON.stringify(rect)}`);
+          }
+        }
+      }
       if (viewport.width <= 390) {
         const open = page.getByRole('button', { name: 'Open menu' });
         const touchControls = [

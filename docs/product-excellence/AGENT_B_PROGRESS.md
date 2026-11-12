@@ -747,3 +747,29 @@
 ### Next audit
 
 - Check touch-target sizing of shared shell controls in **640–1024px tablet layouts**. Some header actions adopt compact 36px controls from the `sm` breakpoint even when a tablet is touch-operated. Measure actual browser rectangles and available header width before changing component sizing.
+
+## 2026-11-12: Tablet header touch targets without desktop density regression
+
+### Recovery and measured defect
+
+- Recovered clean, pushed `09f6477`, continuing the exact documented shared tablet touch-target audit.
+- In real Chromium at **1024x768**, the header Search control measured **91×36px**; the `sm` breakpoint also made keyboard-help, profile, language and logout controls 36px tall or wide despite tablet touch input.
+- The original 390/320 mobile checks already required 44px targets. The missing coverage was specifically the **640–1024px** intermediate layout.
+
+### Implementation
+
+1. Kept shared search, shortcuts, profile, language and logout header actions at **44px minimum in both dimensions** through tablet breakpoints; at `xl` desktop sizes, existing compact 36px sizing is retained to preserve information density.
+2. Extended the local real-Chromium shell fixture at **640×900, 768×1024, 1024×768** in light and dark themes to assert visible header controls' actual bounding rectangles are at least 44×44px and to check existing no-overflow/route integrity behavior.
+3. Inspected screenshot output at 640px, 768px and 1024px in light and dark modes. Controls remain readable, properly spaced, and do not overlap the heading or rail; layout transitions remain coherent.
+
+### Verification
+
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** across the expanded responsive matrix, including touch target and overflow assertions.
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **418/418 passed across 71 files**.
+- `git diff --check`: **passed**.
+- Only the shared Layout, Agent B browser fixture and progress report changed. No main merge, deployment, production data, or other agents' feature worktrees were touched.
+
+### Next audit
+
+- Check global header accessibility and discoverability across language changes and unusually long translated section headings on **640/768px tablet layouts**, including whether the title, search and settings controls remain identifiable without overlap. Reproduce with real localized browser screenshots before editing shared shell typography or breakpoints.

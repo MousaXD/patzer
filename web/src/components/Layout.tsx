@@ -113,7 +113,7 @@ function LanguageSelector({ value, label, onChange, mobile = false, disabled = f
         onChange={(event) => onChange(event.target.value)}
         className={cn(
           'w-full cursor-pointer appearance-none rounded-lg border border-chesscom-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-chesscom-700 disabled:cursor-wait disabled:opacity-60',
-          mobile ? 'h-11' : 'h-9',
+          mobile ? 'h-11' : 'h-11 xl:h-9',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-900 dark:text-chesscom-100',
         )}
       >
@@ -364,7 +364,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
             <button
               type="button"
               onClick={onOpenPalette}
-              className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:h-9 sm:min-w-9 sm:px-3"
+              className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:px-3 xl:h-9 xl:min-w-9"
               aria-label={searchLabel}
               title={searchLabel}
             >
@@ -379,7 +379,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               onClick={onOpenShortcuts}
               aria-label={shortcutsLabel}
               title={shortcutsLabel}
-              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex"
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 sm:flex xl:h-9 xl:w-9"
             >
               <Keyboard aria-hidden="true" className="h-[18px] w-[18px]" />
             </button>
@@ -387,7 +387,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           <div className="hidden md:block"><LanguageSelector value={uiLang} label={languageLabel} disabled={languageSaving} onChange={(value) => { void changeLanguage(value); }} /></div>
           <NavLink
             to="/settings"
-            className="hidden h-9 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex"
+            className="hidden h-11 min-w-11 max-w-44 shrink-0 items-center gap-2 rounded-lg border border-transparent px-2 text-xs transition-colors hover:border-chesscom-200 hover:bg-chesscom-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:hover:border-chesscom-700 dark:hover:bg-chesscom-800 sm:flex xl:h-9 xl:min-w-0"
             aria-label={profileLabel}
             title={profileLabel}
           >
@@ -398,7 +398,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
             type="button"
             disabled={logoutPending}
             onClick={() => { void logout(); }}
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex"
+            className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-200 dark:hover:bg-chesscom-800 md:flex xl:h-9 xl:w-9"
             title={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
             aria-label={logoutPending ? t('navigation.logoutBusy', { defaultValue: 'Signing out…' }) : logoutLabel}
           >
