@@ -337,6 +337,15 @@ try {
     await importButton.click();
     await page.getByRole('alert').getByText(/Game 2: Invalid or incomplete PGN/).waitFor();
     await page.getByText('2 of 2 games').waitFor();
+    await page.getByRole('button',{name:'Hide import options'}).click();
+    await page.getByRole('alert').getByText(/Game 2: Invalid or incomplete PGN/).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Import PGN file'}).count(),0,
+      'Collapsed imports must not expose hidden actions to the accessibility tree');
+    await page.getByRole('button',{name:'Import more games'}).click();
+    assert.equal(await input.evaluate(el=>el.files?.[0]?.name),'broken.pgn',
+      'Closing import options discarded the selected file needed for retry');
+    assert.equal(await importButton.isDisabled(),false,
+      'The recoverable PGN import should still be retryable when reopened');
     const uploadsBeforeEncodingCheck = seenPgnFiles.length;
     const invalidEncoding = Buffer.concat([
       Buffer.from('[Event "Legacy"]\n[White "Jos'),

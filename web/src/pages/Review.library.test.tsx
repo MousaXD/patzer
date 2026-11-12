@@ -106,6 +106,33 @@ describe('Review library with large histories', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('button',{name:'Import PGN file'})).toBeNull();
   });
+  it('preserves a selected PGN and its retry after hiding and reopening the import options', async () => {
+    mocks.post.mockRejectedValueOnce(new Error('invalid_pgn'))
+      .mockResolvedValueOnce({total:1,imported:1,duplicates:0});
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    openImportOptions();
+    const pgn='[Event "Retry"]\n[White "A"]\n[Black "B"]\n\n1. e4 e5 *';
+    const file=new File([pgn],'retry.pgn',{type:'text/plain'});
+    Object.defineProperty(file,'arrayBuffer',{value:async()=>new TextEncoder().encode(pgn).buffer});
+    const input=screen.getByLabelText('Choose a PGN file');
+    fireEvent.change(input,{target:{files:[file]}});
+    const upload=screen.getByRole('button',{name:'Import PGN file'});
+    expect(upload.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('button',{name:'Hide import options'}));
+    expect(screen.queryByRole('button',{name:'Import PGN file'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Import more games'}));
+    expect(screen.getByRole('button',{name:'Import PGN file'}).hasAttribute('disabled')).toBe(false);
+    fireEvent.click(upload);
+    expect((await screen.findByRole('alert')).textContent).toContain('Invalid or incomplete PGN');
+    fireEvent.click(screen.getByRole('button',{name:'Hide import options'}));
+    expect(screen.getByRole('alert').textContent).toContain('Invalid or incomplete PGN');
+    fireEvent.click(screen.getByRole('button',{name:'Import more games'}));
+    fireEvent.click(screen.getByRole('button',{name:'Import PGN file'}));
+    expect(await screen.findByText(/1 new games saved from 1 PGNs/)).toBeTruthy();
+    expect(mocks.post).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
   it('shows the known opening in mobile card metadata without removing its review link', async () => {
     const opening='King’s Indian Defense: Fianchetto Variation, Panno Variation';
     mocks.get.mockImplementation(async (url:string)=>url==='/api/games/openings'

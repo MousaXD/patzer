@@ -471,3 +471,17 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next audit within Agent C
 
 - Check retained native PGN selection and stale error feedback when the disclosure is closed and reopened during a recoverable upload error. Ensure browser and keyboard paths remain accessible, especially on 320px mobile; reproduce and test before implementing changes.
+
+## 2026-11-12 — Audit disclosure retry without changing functioning product behavior
+
+- Recovered clean pushed `32f8fba` and verified the exact open item: a user-selected native PGN must survive hiding/reopening the new compact import disclosure, including after an invalid-PGN error. This path **already behaved correctly**; no speculative product fix was made.
+- Added a deterministic React regression that selects a file, collapses/reopens import options, receives a recoverable error, confirms the alert is still accessible while collapsed, then reopens and retries the same original file successfully. Added real Chromium assertions for the browser file input retaining `broken.pgn`, a visible retry button, and hidden actions staying out of the collapsed accessibility tree. The remaining browser import, navigation, filters and mobile layouts passed.
+
+### Verification
+
+- Focused disclosure regression passed. Full repository suite: **109 files passed, 2 skipped; 1,054 tests passed, 12 skipped**, no failures. Existing production web build and typecheck from `32f8fba` passed; only regression tests and documentation changed. `git diff --check` and the isolated Chromium browser run passed.
+- No production accounts, bulk imports, deployment, schema changes or other agents' worktrees touched.
+
+### Next audit
+
+- Search international chess-player names accurately. SQLite's built-in `LOWER()` is ASCII-only: in disposable probes `JOSÉ` did not match `josé`, and `БОРИС` did not match `борис`. The Library uses `instr(LOWER(...),q)` for literal search, so this is a reproducible mismatch between browser expectations and the authenticated backend. Design a bounded, performant Unicode-aware search without introducing SQL wildcards, authentication changes or expensive full-library JS materialization; add regression and run a disposable large-library benchmark before pushing.
