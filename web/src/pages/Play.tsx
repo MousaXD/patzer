@@ -139,6 +139,21 @@ interface ServerMsg {
   online?: boolean;
 }
 
+function isUsableGameSnapshot(msg: ServerMsg): boolean {
+  // The server sends a complete replayable position at the start of each
+  // session/reconnection. A malformed snapshot must not unlock the board,
+  // overwrite its last good FEN, or throw while rebuilding move history.
+  if (typeof msg.fen !== 'string' || !Array.isArray(msg.history)
+    || !msg.history.every((san: unknown) => typeof san === 'string' && san.length > 0)
+    || (msg.start_fen != null && typeof msg.start_fen !== 'string')) return false;
+  try {
+    new Chess(msg.fen);
+    const replay = new Chess(msg.start_fen ?? undefined);
+    for (const san of msg.history) replay.move(san, { strict: false });
+    return true;
+  } catch { return false; }
+}
+
 interface ResumableBot {
   difficulty: Difficulty;
   user_color: 'white' | 'black';
@@ -656,6 +671,7 @@ export default function Play() {
     switch (msg.type) {
       case 'game_started':
       case 'pvp_hello': {
+        if (!isUsableGameSnapshot(msg)) return;
         // A reconnect that lands on a game we already saw finish must not put
         // the result away and hand the board back — the server replays the
         // position either way, and a checkmate is still a checkmate.

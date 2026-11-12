@@ -150,6 +150,29 @@ describe('Play authoritative game readiness', () => {
     expect(ws.disconnectCalls).toBe(0);
   });
 
+  it('ignores an incomplete authoritative game snapshot without unlocking or corrupting its board', async () => {
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    const ws = socketHarness.current!;
+    act(() => ws.accept());
+    const board = screen.getByTestId('chess-board') as HTMLButtonElement;
+    for (const bad of [
+      { ...snapshot, fen: 'not-a-fen' },
+      { ...snapshot, history: [null] },
+      { ...snapshot, start_fen: 'not-a-fen', history: ['e4'] },
+      { ...snapshot, history: 'e4' },
+      { ...snapshot, history: ['not-a-legal-move'] },
+    ]) {
+      expect(() => act(() => ws.receive(bad))).not.toThrow();
+      expect(board.disabled).toBe(true);
+      expect(board.dataset.fen).toBe(START);
+    }
+    act(() => ws.receive(snapshot));
+    expect(board.disabled).toBe(false);
+    expect(board.dataset.fen).toBe(START);
+  });
+
   it.each(['Infinity', 'abc', '-1', '1.5', '0', '9999999999999999999999'])(
     'rejects malformed direct PvP game ID %s without creating a reconnecting socket', async (value) => {
       render(<MemoryRouter initialEntries={[`/play?game=${value}`]}>
