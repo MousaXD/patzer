@@ -1290,3 +1290,22 @@
 ### Next scoped keyboard audit
 
 - Inspect the **transient bookmark Retry** control on a delayed second request. Like the original Star, it uses native disabled during save, and its alert disappears after success. Confirm whether keyboard focus falls to document BODY and, if genuine, recover it to the persistent Star control without breaking retry/error semantics. Reuse this source-attested browser fixture before editing product code.
+
+## 2026-11-12: restore focus after keyboard-initiated bookmark Retry
+
+### Browser reproduction and focused fix
+
+- Continued from clean pushed `180dae2`, modifying only the established isolated bookmark-failure Chromium scenario. After Star's first synthetic failure, keyboard focus on its error-banner Retry and pressing Enter resulted in a successful bookmark PATCH, but the transient alert unmounted and keyboard focus did **not** recover to the persistent Star action. The regression **failed before changing app code** (`After a keyboard-initiated bookmark retry removes its own alert, focus must recover to Star`).
+- Added a stable native Star button ref within the GameMetaToolbar. Only keyboard/synthetic activation (`event.detail === 0`) of the transient Retry moves focus **synchronously** to that mounted Star control before the async mutation clears the error alert. Pointer Retry remains in-place with no unexpected scroll/focus jump. The retry target, aria-pressed/aria-busy semantics, in-flight lock, optimistic rollback, stored PGN and server mutation flow are unchanged.
+- Browser regression changed the first failed bookmark Retry to a keyboard Enter, awaited the HTTP 200 and hidden alert, then confirmed `document.activeElement` is Star; the existing `false` unbookmark Retry still tests pointer activation. All four calls retain exact intended bookmark states `[true,true,false,false]`; persisted flag returns to false and original PGN is unchanged.
+
+### Verification and boundaries
+
+- `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium responsive, locale, source-integrity, keyboard, engine and variation matrix: **PASS (exit 0)** on isolated port 8972.
+- No merge, deployment, production services/data access, or other agents' branch edits.
+
+### Next independent product audit
+
+- Inspect whether **user notes** silently lose focus or display premature "Saved" while two rapid blur/save PATCHes are queued. Existing mutations are serialized, but a previous successful request can still set the Saved indicator while a newer draft is pending. Verify with deliberate delayed responses in the disposable notes scenario before changing status semantics or persisting real user data.

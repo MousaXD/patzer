@@ -1407,6 +1407,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
   const [draft, setDraft] = useState(notes);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
+  const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
   // Keep the action focusable while its PATCH is pending. The synchronous
   // ref also prevents repeated Enter/Space from queuing duplicate toggles
   // before the pending React render has committed.
@@ -1458,6 +1459,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
     <div className="card overflow-hidden" data-review-meta-toolbar>
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
         <button
+          ref={bookmarkButtonRef}
           type="button"
           aria-pressed={isStarred}
           aria-disabled={star.isPending}
@@ -1494,7 +1496,14 @@ function GameMetaToolbar({ gameId, bookmarked, notes, onFlip, onShare, shareUrl,
         <span>{t('review.bookmarkSaveFailed')}</span>
         <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs"
           disabled={star.isPending}
-          onClick={() => submitBookmark(bookmarkRetryTarget)}>{t('review.bookmarkRetry')}</button>
+          onClick={(event) => {
+            // The Retry lives in a transient error alert that disappears
+            // when the request starts. Keyboard activation must land on a
+            // persistent control before this focused button unmounts;
+            // pointer users keep their scroll/focus position.
+            if (event.detail === 0) bookmarkButtonRef.current?.focus({ preventScroll: true });
+            submitBookmark(bookmarkRetryTarget);
+          }}>{t('review.bookmarkRetry')}</button>
       </div>}
       {shareCopyFailed && <ClipboardManualFallback
         label={sharingVariation ? t('review.shareBranchTitle') : t('shortcuts.share')}

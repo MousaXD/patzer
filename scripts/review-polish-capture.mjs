@@ -700,12 +700,14 @@ try {
     assert.ok((await retry.boundingBox())?.height>=44,'Bookmark retry needs a 44px touch target');
     await retry.scrollIntoViewIfNeeded();
     await page.screenshot({path:join(output,'bookmark-save-failure-390.png')});
-    await Promise.all([
-      page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/bookmark`) && response.status()===200),
-      retry.click(),
-    ]);
+    const keyboardRetryResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/bookmark`) && response.status()===200);
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await keyboardRetryResponse;
     assert.equal(bookmarkAttempts,2);
     await page.locator('[data-review-bookmark-error]').waitFor({state:'hidden'});
+    assert.ok(await starButton.evaluate(element=>document.activeElement===element),
+      'After a keyboard-initiated bookmark retry removes its own alert, focus must recover to Star');
     assert.equal(db.prepare('SELECT bookmarked FROM games WHERE id=?').get(id).bookmarked,1);
     // The reverse operation (unstar) must retry false, never accidentally
     // re-star a game because a failed optimistic toggle was rolled back.
