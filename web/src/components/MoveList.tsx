@@ -58,12 +58,18 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
         let target: number;
         if (event.key === 'ArrowRight') target = Math.min(maxPly, focusedPly + 1);
         else if (event.key === 'ArrowLeft') target = Math.max(0, focusedPly - 1);
+        else if (event.key === 'ArrowDown') target = focusedPly === 0
+          ? Math.min(1, maxPly)
+          : focusedPly + 2 <= maxPly ? focusedPly + 2 : focusedPly;
+        else if (event.key === 'ArrowUp') target = focusedPly <= 2 ? 0 : focusedPly - 2;
         else if (event.key === 'Home') target = 0;
         else if (event.key === 'End') target = maxPly;
         else return;
         // The window-level Game Review shortcuts update the board, but leave
         // focus on the previous SAN. Keep selection and focus together while
-        // navigating *inside* the move history; don't intercept other areas.
+        // navigating *inside* the move history; up/down follow the same side
+        // across rows, rather than unexpectedly moving to the other color
+        // when the final saved row is incomplete. Don't intercept other areas.
         event.preventDefault();
         event.stopPropagation();
         onSelect(target, 'keyboard');

@@ -35,6 +35,7 @@ describe('Game Review move history', () => {
     expect((html.match(/aria-current="step"/g) ?? []).length).toBe(1);
     expect(html).toContain('1… review.black e5');
     expect(html).toContain('max-h-[20rem]');
+    expect(html).toContain('data-review-ply="2"');
   });
 
   it('shows the real fullmove number and Black column for a Black-to-move FEN', () => {

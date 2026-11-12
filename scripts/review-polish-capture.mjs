@@ -1436,6 +1436,13 @@ try {
       await childPicker.click();
       await expectProgress('Var 9 / 9');
       const savedList=page.getByRole('region',{name:'Moves'});
+      const expectMoveFocus=async(ply)=>{
+        // The move counter commits before the keyboard handler's requested
+        // animation-frame focus correction. Check the actual rendered target
+        // after that frame rather than racing the React state update.
+        await page.waitForFunction(ply=>document.activeElement===
+          document.querySelector(`button[data-review-ply="${ply}"]`),ply,{timeout:3000});
+      };
       const firstSaved=savedList.getByRole('button',{name:/^1\. White e4/});
       await firstSaved.scrollIntoViewIfNeeded();
       const beforeMoveClick=await page.evaluate(()=>window.scrollY);
@@ -1468,23 +1475,56 @@ try {
       await expectProgress(`2 / ${savedMoves.length}`);
       assert.ok(await secondSaved.evaluate(el=>document.activeElement===el),
         'Successive keyboard SAN selections must not steal focus');
+      // In the two-column move list, vertical arrows should navigate to the
+      // next/previous move made by the same side, unlike left/right which
+      // step one ply. This also works for Black-first saved games.
+      const nextBlack=savedList.getByRole('button',{name:/^2… Black Nc6/});
+      await page.keyboard.press('ArrowDown');
+      await expectProgress(`4 / ${savedMoves.length}`);
+      await expectMoveFocus(4);
+      assert.ok(await nextBlack.evaluate(el=>document.activeElement===el),
+        'ArrowDown on e5 must focus Black’s next played move Nc6');
+      await page.keyboard.press('ArrowUp');
+      await expectProgress(`2 / ${savedMoves.length}`);
+      await expectMoveFocus(2);
+      assert.ok(await secondSaved.evaluate(el=>document.activeElement===el),
+        'ArrowUp on Nc6 must return focus to Black’s e5');
       const thirdSaved=savedList.getByRole('button',{name:/^2\. White Nf3/});
       await page.keyboard.press('ArrowRight');
       await expectProgress(`3 / ${savedMoves.length}`);
+      await expectMoveFocus(3);
       assert.equal(await thirdSaved.getAttribute('aria-current'),'step',
         'ArrowRight in the move list must select the next saved SAN');
       assert.ok(await thirdSaved.evaluate(el=>document.activeElement===el),
         'ArrowRight must move keyboard focus to the newly selected SAN, not leave it on e5');
       await page.keyboard.press('Home');
       await expectProgress(`0 / ${savedMoves.length}`);
+      await expectMoveFocus(0);
       const startingPosition=savedList.getByRole('button',{name:'starting position',exact:true});
       assert.ok(await startingPosition.evaluate(el=>document.activeElement===el),
         'Home in move history must focus the starting-position button');
       await page.keyboard.press('End');
       await expectProgress(`${savedMoves.length} / ${savedMoves.length}`);
+      await expectMoveFocus(savedMoves.length);
       const finalSaved=savedList.getByRole('button',{name:/^12… Black Rad8/});
       assert.ok(await finalSaved.evaluate(el=>document.activeElement===el),
         'End in move history must focus the actual last saved move');
+      await page.keyboard.press('ArrowDown');
+      await expectProgress(`${savedMoves.length} / ${savedMoves.length}`);
+      await expectMoveFocus(savedMoves.length);
+      assert.ok(await finalSaved.evaluate(el=>document.activeElement===el),
+        'ArrowDown at the final Black move must not switch into the other column or lose focus');
+      const priorBlack=savedList.getByRole('button',{name:/^11… Black Qd7/});
+      await page.keyboard.press('ArrowUp');
+      await expectProgress(`${savedMoves.length-2} / ${savedMoves.length}`);
+      await expectMoveFocus(savedMoves.length-2);
+      assert.ok(await priorBlack.evaluate(el=>document.activeElement===el),
+        'ArrowUp from the final Black move must focus the previous Black move');
+      await page.keyboard.press('ArrowDown');
+      await expectProgress(`${savedMoves.length} / ${savedMoves.length}`);
+      await expectMoveFocus(savedMoves.length);
+      assert.ok(await finalSaved.evaluate(el=>document.activeElement===el),
+        'ArrowDown must restore the next move in the same column');
       await page.screenshot({path:join(output,`variation-movelist-keyboard-${width}.png`)});
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
     }finally{await nestedContext.close();}

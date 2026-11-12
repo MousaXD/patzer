@@ -632,3 +632,23 @@
 ### Next candidate
 
 - Audit the static MoveList empty state and phase separators for screen-reader discoverability. The empty message is currently hard-coded `No recorded moves.` in English, while every other Game Review state is localized, and phase dividers are plain text instead of navigable section labels. Confirm a genuine user-facing localization/accessibility defect in a five-language rendered test and fix narrowly in MoveList rather than touching the global shell.
+
+## 2026-11-12: same-side Up/Down keyboard navigation in saved move history
+
+### Exact unfinished resume and browser reproduction
+
+- Continued from clean pushed `02ee331` and the uncommitted next keyboard check. In the two-column move list, Left/Right/Home/End already kept focus aligned with the selected SAN; ArrowDown on Black `1…e5` did nothing instead of navigating vertically to Black `2…Nc6`. A new authenticated Chromium assertion **failed** waiting for the actual saved ply `4 / 24` after ArrowDown.
+- Added MoveList-scoped ArrowDown/ArrowUp behavior: move two plies to the same side's next/previous row, clamp at the actual saved-game final ply, and return to Starting Position when moving above the first row. The existing left/right one-ply navigation and Home/End behavior remain. Stopped propagation to the global Review keyboard handler only for focused saved move buttons. No changes to board, saved PGN, analysis sources, or other agents' key handlers.
+- The first post-fix browser run passed selection/progress but raced the animation-frame focus adjustment when returning from `Nc6` to `e5`. **Not a persistent product focus failure**; the corrected browser regression waits for the actual focused `data-review-ply` after React updates and the next animation frame. All subsequent focus checks use this observed DOM condition rather than an immediate assertion.
+
+### Verification
+
+- Focused MoveList/MoveRow/saved-timeline tests: **10 passed**, typecheck PASS, production build PASS.
+- Full `npm test -- --testTimeout=20000`: **984 passed / 12 skipped**, 107 passing test files.
+- Full authenticated disposable Chromium matrix **PASS (exit 0)**. On both 390px and 1024px, test covered Black's `e5 → Nc6 → e5` with Up/Down and focus synchronized, Left/Right/Home/End, Down at final `12…Rad8` staying on the same valid move, Up to `11…Qd7`, and Down back to `12…Rad8`. Previous nested-variation, loading, source-integrity, mobile, and PGN invariance tests also passed.
+- Independently opened `qa-artifacts/agent-a/movelist-vertical-verified-20261112/variation-movelist-keyboard-{390,1024}.png`: actual browser highlight, focus outline and last saved move all agree. No horizontal overflow or mobile navigation regression. Browser classifications/score values remain QA fixtures, not live Stockfish certification.
+- Did not merge, deploy or touch production SQLite. Work confined to Agent A's dedicated worktree.
+
+### Next scope issue
+
+- The MoveList empty message `No recorded moves.` is hard-coded English while Game Review's other empty states support all five locales. Verify in a component render for an analysis-less/empty saved game and improve only this Review-specific text. Investigate whether phase banners and starting-position announcements stay sensible for a valid zero-move PGN, without changing PGN or analysis source requirements.
