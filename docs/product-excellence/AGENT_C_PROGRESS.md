@@ -1058,3 +1058,17 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Verify **account switching while multiple bookmark requests are pending and failures settle late**. Existing component coverage isolates one bookmark update, but the new multi-failure collection should also remain empty for the next signed-in account even if two old-account mutations reject after the account has switched. Reproduce with account-switching React tests and prevent account-specific cache or error leakage without introducing global state.
+
+## 2026-11-13 — Verify concurrent bookmark failures remain isolated on account changes
+
+- Recovered clean pushed `5a94042`, reused the existing focused React account-switch harness and added two nonduplicative regressions: (1) two old-account bookmark PATCHes reject in reverse order after a new account signs in, and (2) one hidden failure has already displayed its recovery link before the switch, while the second request remains pending and rejects afterward. Both tests assert the new player sees no old-account error or link and its starred state/cache remains unchanged.
+- The Library already clears the entire multi-failure collection on `user.id` change and checks the active-account ref before accepting a late failure callback. Both targeted tests **passed without runtime changes**, confirming the new collection does not undermine the earlier account-isolation guard. No production API, auth, or Game Review code was modified.
+
+### Verification
+
+- Focused Library suite: **59/59 passed**. Full repository suite: **109 passed files, 2 skipped; 1,137 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`), `git diff --check` passed.
+- Existing complete synthetic Chromium matrix for the unchanged multi-failure UI was green at `5a94042`; the two newly introduced account-switch cases were verified in the React component harness because it can swap the active auth user without reloading/remounting the app. No other-agent code, merge, deployment or production data touched.
+
+### Next independent audit
+
+- Audit **large-result Library count/selection coherence when a bookmark response arrives during a rapid search or sort change**. Use a delayed server response and a distinct filtered query to ensure old optimistic writes do not alter the new query's visible rows or count; avoid broad cache invalidation if the existing React Query scoping already covers it. Keep any fix within the Library branch.

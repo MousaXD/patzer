@@ -988,6 +988,61 @@ describe('Review library with large histories', () => {
     }
   });
 
+  it('does not show late concurrent old-account bookmark errors to a newly signed-in player', async () => {
+    const failSaves: ((error:Error)=>void)[]=[];
+    mocks.get.mockImplementation(async (url:string) => url==='/api/games/openings'
+      ? {total:2,classified:2,unclassified:0,openings:[{name:'Italian Game',games:2}]}
+      : {games:[makeGame(1),makeGame(2)],total:2,offset:0,has_more:false});
+    mocks.patch.mockImplementation(() => new Promise((_resolve,reject)=>{failSaves.push(reject);}));
+    const {rerenderReview,queryClient}=mount();
+    await screen.findByText('2 of 2 games');
+    for (const star of screen.getAllByRole('button',{name:'Bookmark game'})) fireEvent.click(star);
+    await waitFor(()=>expect(failSaves).toHaveLength(2));
+    mocks.user={id:101,profile:{chesscom_username:null,lichess_username:null}};
+    rerenderReview();
+    await screen.findByText('2 of 2 games');
+    await act(async()=>{
+      failSaves[1]!(new Error('second_old_account_save_failed'));
+      failSaves[0]!(new Error('first_old_account_save_failed'));
+    });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getAllByRole('button',{name:'Bookmark game'})).toHaveLength(2);
+    for (const entry of queryClient.getQueryCache().getAll()) {
+      if (entry.queryKey[0]==='games' && entry.queryKey[1]==='library' && entry.queryKey[2]===101) {
+        const data=entry.state.data as {pages?:{games?:{bookmarked:number}[]}[]} | undefined;
+        expect(data?.pages?.[0]?.games?.map(game=>game.bookmarked)).toEqual([0,0]);
+      }
+    }
+  });
+
+  it('clears an existing hidden bookmark error during an account switch and ignores a later old save failure', async () => {
+    const failSaves: ((error:Error)=>void)[]=[];
+    mocks.get.mockImplementation(async (url:string) => {
+      if (url==='/api/games/openings') return {total:2,classified:2,unclassified:0,openings:[{name:'Italian Game',games:2}]};
+      const params=new URLSearchParams(url.split('?')[1] ?? '');
+      return params.get('bookmarked')==='1'
+        ? {games:[{...makeGame(11),bookmarked:1}],total:1,offset:0,has_more:false}
+        : {games:[makeGame(1),makeGame(2)],total:2,offset:0,has_more:false};
+    });
+    mocks.patch.mockImplementation(() => new Promise((_resolve,reject)=>{failSaves.push(reject);}));
+    const {rerenderReview}=mount();
+    await screen.findByText('2 of 2 games');
+    for (const star of screen.getAllByRole('button',{name:'Bookmark game'})) fireEvent.click(star);
+    await waitFor(()=>expect(failSaves).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button',{name:'All games'}));
+    await screen.findByText('1 of 1 games');
+    await act(async()=>failSaves[0]!(new Error('first_old_save_failed')));
+    expect((await screen.findByRole('alert')).textContent).toContain('Bookmark could not be saved');
+    expect(screen.getByRole('link',{name:'Open game to retry'}).getAttribute('href')).toBe('/review/1');
+    mocks.user={id:101,profile:{chesscom_username:null,lichess_username:null}};
+    rerenderReview();
+    await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
+    await act(async()=>failSaves[1]!(new Error('second_old_save_failed')));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('link',{name:'Open game to retry'})).toBeNull();
+    expect(screen.getByRole('button',{name:'Remove bookmark'}).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('refreshes the importing account history, insights, plan and achievements without touching another account', async () => {
     mocks.user.profile.chesscom_username = 'tester';
     mocks.post.mockResolvedValue({ imported: 12, total: 20 });
