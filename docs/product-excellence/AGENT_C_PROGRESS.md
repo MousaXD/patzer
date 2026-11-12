@@ -11,10 +11,11 @@
 1. The game list API already implements `source`, `time_class`, `result`, `analyzed`, and `sort`, but library visitors could only search text or show bookmarks. Added accessible, URL-persistent controls for all five server-side fields. The query cache key now distinguishes each filter combination so cached pages never leak between searches. Unknown deep-link values are constrained to supported options.
 2. Manual imports always requested only 20 recent games despite each provider route supporting up to 200 per request. Added a 20/100/200 selector, defaulting to 200, with explicit recent-history language and a result message that distinguishes new games from retrieved games. The UI does **not** claim a complete import of a larger history.
 3. Added tests for deep-link filter/query propagation and bounded import feedback.
+4. Follow-up `6d19156`: a filtered zero-result library now provides a clear-filters recovery action rather than a misleading empty-account onboarding action. Preserves the separate header account-setup link where appropriate.
 
 ### Verification
 
-- `npm test -- web/src/pages/Review.library.test.tsx`: **15 passed**.
+- `npm test -- web/src/pages/Review.library.test.tsx`: **16 passed**.
 - `npm run typecheck`: **passed**.
 - `git diff --check`: **passed**.
 - Rendered browser screenshots (desktop/mobile/light/dark): **not yet collected**; no browser certification claimed.
