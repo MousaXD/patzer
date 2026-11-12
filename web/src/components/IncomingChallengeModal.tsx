@@ -118,7 +118,7 @@ export default function IncomingChallengeModal() {
         </div>
       )}
       <AnimatePresence>
-      {c && !activePlaySession && (
+      {c && !activePlaySession && snoozedChallengeId !== c.id && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           role="dialog" aria-modal="true" aria-labelledby="challenge-dialog-title"
@@ -148,8 +148,8 @@ export default function IncomingChallengeModal() {
                 <div id="challenge-dialog-title" className="font-semibold leading-tight">{t('challenge.incoming')}</div>
                 <div className="text-xs text-ink-500">{t('challenge.someoneChallenges')}</div>
               </div>
-              <button type="button" onClick={() => decline(c.id)} disabled={busy !== null}
-                aria-label={t('challenge.decline')} className="btn-ghost min-h-11 min-w-11 p-2">
+              <button type="button" onClick={() => setSnoozedChallengeId(c.id)} disabled={busy !== null}
+                aria-label={t('common.close')} className="btn-ghost min-h-11 min-w-11 p-2">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -178,7 +178,10 @@ export default function IncomingChallengeModal() {
                   ? 'Could not accept this challenge. Try again.'
                   : 'Could not decline this challenge. Try again.' })}
               </p>}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setSnoozedChallengeId(c.id)} disabled={busy !== null} className="btn-ghost min-h-11 flex-1">
+                  {t('challenge.joinLater', { defaultValue: 'Not now' })}
+                </button>
                 <button type="button" onClick={() => decline(c.id)} disabled={busy !== null} className="btn-secondary min-h-11 flex-1">{t('challenge.decline')}</button>
                 <button type="button" onClick={() => accept(c.id)} disabled={busy !== null} className="btn-primary min-h-11 flex-1">
                   {busy === 'accept' && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}

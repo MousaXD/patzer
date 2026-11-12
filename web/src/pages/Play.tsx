@@ -1186,7 +1186,7 @@ export default function Play() {
           </div>
         )}
 
-        {setupTab === 'friend' && <FriendTab key={user?.id} onChallengeAccepted={(gid) => connectPvp(gid)} />}
+        {setupTab === 'friend' && <FriendTab key={user?.id} onChallengeAccepted={(gid) => nav(`/play?game=${gid}`)} />}
 
         <AnimatePresence>
           {savedBotConfirm && live?.bot && (

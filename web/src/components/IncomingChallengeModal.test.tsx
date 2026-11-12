@@ -65,6 +65,24 @@ afterEach(() => {
 });
 
 describe('incoming challenge modal failure recovery', () => {
+  it('lets a player close the unsolicited popup without silently declining the invitation', () => {
+    mount();
+    const dialog = screen.getByRole('dialog', { name: 'challenge.incoming' });
+    fireEvent.click(dialog.querySelector('button[aria-label="common.close"]')!);
+    expect(screen.queryByRole('dialog', { name: 'challenge.incoming' })).toBeNull();
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it('lets Not now keep an invitation available for a later decision', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(screen.queryByRole('dialog', { name: 'challenge.incoming' })).toBeNull();
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([20]);
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
   it('does not cover an active timed game with a blocking invitation dialog', () => {
     useLobby.setState({ activePlaySession: true } as never);
     mount();
@@ -107,7 +125,7 @@ describe('incoming challenge modal failure recovery', () => {
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'challenge.accept' }));
     fireEvent.keyDown(dialog, { key: 'Tab' });
-    expect(document.activeElement).toBe(screen.getAllByRole('button', { name: 'challenge.decline' })[0]);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'common.close' }));
   });
 
   it('retains an invitation after a failed acceptance and retries without starting a game', async () => {

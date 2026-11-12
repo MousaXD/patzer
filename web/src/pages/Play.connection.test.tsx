@@ -19,10 +19,11 @@ const socketHarness = vi.hoisted(() => ({
 const lobbyHarness = vi.hoisted(() => ({
   refreshUsers: vi.fn(), refreshChallenges: vi.fn(),
   setActivePlaySession: vi.fn(),
-  online: new Set<number>(), users: [], incoming: [], outgoing: [],
+  forgetChallenge: vi.fn(), recordSentChallenge: vi.fn(),
+  online: new Set<number>(), users: [] as unknown[], incoming: [] as unknown[], outgoing: [] as unknown[],
 }));
 const authHarness = vi.hoisted(() => ({ id: 1 }));
-const liveHarness = vi.hoisted(() => ({ getLive: vi.fn(), del: vi.fn() }));
+const liveHarness = vi.hoisted(() => ({ getLive: vi.fn(), del: vi.fn(), post: vi.fn() }));
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ user: {
@@ -35,6 +36,7 @@ vi.mock('../state/lobby', () => ({ useLobby: (selector?: (state: typeof lobbyHar
 vi.mock('../api', () => ({ api: {
   get: (url: string) => url === '/api/games/live' ? liveHarness.getLive() : Promise.resolve({ configured: false }),
   del: liveHarness.del,
+  post: liveHarness.post,
 } }));
 vi.mock('../lib/sounds', () => ({ soundForMove: vi.fn(), inferMoveFlagsFromSan: vi.fn(), playSound: vi.fn() }));
 // These tests exercise socket and dialog state, not animation. happy-dom's
@@ -114,12 +116,40 @@ function CurrentRoute() {
 
 beforeEach(() => {
   lobbyHarness.setActivePlaySession.mockReset();
+  lobbyHarness.refreshUsers.mockReset().mockResolvedValue(undefined);
+  lobbyHarness.refreshChallenges.mockReset().mockResolvedValue(undefined);
+  lobbyHarness.forgetChallenge.mockReset();
+  lobbyHarness.recordSentChallenge.mockReset();
+  lobbyHarness.incoming = [];
+  lobbyHarness.outgoing = [];
   liveHarness.getLive.mockReset().mockResolvedValue({ bot: null, pvp: [] });
   liveHarness.del.mockReset().mockResolvedValue({ ok: true });
+  liveHarness.post.mockReset();
 });
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('routes a confirmed incoming friend challenge to its PvP URL and preserves the actual PvP controls', async () => {
+    lobbyHarness.incoming = [{
+      id: 53, color: 'white', time_control: 'rapid', status: 'pending', game_id: null,
+      created_at: '2026-11-12 18:00:00',
+      from: { id: 2, username: 'friend', display_name: 'Friendly rival', avatar_emoji: '♟' },
+      to: { id: 1, username: 'tester', display_name: 'Tester', avatar_emoji: '♟' },
+    }];
+    liveHarness.post.mockResolvedValue({ game_id: 650 });
+    render(<MemoryRouter initialEntries={['/play']}><Play /><CurrentRoute /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'play.tabFriend' }));
+    fireEvent.click(screen.getByRole('button', { name: 'challenge.accept' }));
+    await waitFor(() => expect(liveHarness.post).toHaveBeenCalledWith('/api/challenges/53/accept'));
+    await waitFor(() => expect(socketHarness.current?.urls.at(-1)).toContain('/ws/play?game=650'));
+    expect(screen.getByTestId('current-route').textContent).toBe('/play?game=650');
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', your_color: 'white', opponent: { display_name: 'Friendly rival', online: true } }); });
+    expect(screen.getByText('Friendly rival')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'play.offerDraw' })).toBeTruthy();
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('reopens a directly linked PvP game after Strict Mode replays effect setup and cleanup', () => {
     render(<StrictMode><MemoryRouter initialEntries={['/play?game=735']}>
       <Play /><CurrentRoute />
