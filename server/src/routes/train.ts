@@ -127,12 +127,24 @@ function dueCount(userId: number, today: string): number {
 //   ?exclude_solved=1     skip puzzles already done or not due yet (default 1)
 //   ?game_id=N            only puzzles from this game
 //   ?today=YYYY-MM-DD     the browser's calendar day
+//   ?skip=game:ply,...     client-only unsaved skips for this single request
 router.get('/next', (c) => {
   const me = c.get('user');
   const today = todayOf(c.req.query('today'));
   const excludeSolved = c.req.query('exclude_solved') !== '0';
   const gameIdQ = c.req.query('game_id');
   const filterGameId = gameIdQ ? Number(gameIdQ) : null;
+  const skipText = c.req.query('skip') ?? '';
+  if (skipText.length > 4096) return c.json({ error: 'invalid_input' }, 400);
+  const skipped = new Set<string>();
+  if (skipText) {
+    for (const key of skipText.split(',')) {
+      const match = /^([1-9]\d*):([1-9]\d*)$/.exec(key);
+      if (!match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2]))
+        || skipped.size >= 200) return c.json({ error: 'invalid_input' }, 400);
+      skipped.add(key);
+    }
+  }
   const due = dueCount(me.id, today);
 
   const tried = new Map<string, AttemptRow>();
@@ -144,7 +156,7 @@ router.get('/next', (c) => {
   // scanned below.
   if (excludeSolved && filterGameId == null) {
     const dueRows = [...tried.values()]
-      .filter((r) => isDue(r, today))
+      .filter((r) => isDue(r, today) && !skipped.has(`${r.game_id}:${r.ply}`))
       .sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? ''));
     for (const r of dueRows) {
       const found = loadPuzzleMove(me.id, r.game_id, r.ply);
@@ -171,6 +183,7 @@ router.get('/next', (c) => {
     for (const r of rows) {
       const moves = JSON.parse(r.moves_json) as AnalyzedMove[];
       for (const m of moves) {
+        if (skipped.has(`${r.game_id}:${m.ply}`)) continue;
         if (!isPuzzleMove(m, r.user_color)) continue;
         const previous = tried.get(`${r.game_id}:${m.ply}`);
         const before = previous && samePuzzle(previous, m) ? previous : null;

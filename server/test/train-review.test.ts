@@ -349,4 +349,16 @@ describe('/api/train', () => {
       puzzle: { game_id: 1, ply: 1, review: false, line: ['e5e4'] }, due: 0,
     });
   });
+
+  it('skips an unsaved puzzle for this request without recording or deleting its learning state', async () => {
+    const original = await call<Next>(`/next?today=${today}`);
+    expect(original.puzzle).toMatchObject({ game_id: 1, ply: 1 });
+    const previous = db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get();
+    const skipped = await call<Next>(`/next?today=${today}&skip=1:1`);
+    expect(skipped).toMatchObject({ puzzle: null, due: 0 });
+    expect(await call<Next>(`/next?today=${today}`)).toMatchObject({ puzzle: { game_id: 1, ply: 1 } });
+    expect(db.prepare(`SELECT fen, solution_uci, solved, due_on, last_day FROM puzzle_attempts
+      WHERE user_id = 1 AND game_id = 1 AND ply = 1`).get()).toEqual(previous);
+  });
 });

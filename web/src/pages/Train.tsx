@@ -66,14 +66,30 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [run, setRun] = useState(0);
+  // Only suppress attempts the player explicitly chose to leave unsaved.
+  // This is an account-scoped, in-memory queue filter, NOT saved progress.
+  const [skipState, setSkipState] = useState<{ userId: number | null; keys: string[] }>({ userId: null, keys: [] });
+  const skipped = skipState.userId === user?.id ? skipState.keys : [];
+  const skipParam = skipped.join(',');
   const today = localDay();
+
+  function leaveUnsaved(puzzle: Puzzle) {
+    const key = `${puzzle.game_id}:${puzzle.ply}`;
+    setSkipState((prev) => {
+      const keys = prev.userId === user?.id ? prev.keys : [];
+      return { userId: user?.id ?? null, keys: [...new Set([...keys, key])].slice(-200) };
+    });
+    setRun((r) => r + 1);
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     // A personal puzzle contains the player's private game position. Never
     // reuse it across accounts on a shared browser or after the day changes.
-    queryKey: ['train-next', user?.id, today, run],
+    queryKey: ['train-next', user?.id, today, run, skipParam],
     enabled: user?.id != null,
-    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number }>(`/api/train/next?today=${today}`),
+    queryFn: () => api.get<{ puzzle: Puzzle | null; due: number }>(
+      `/api/train/next?today=${today}${skipParam ? `&skip=${encodeURIComponent(skipParam)}` : ''}`,
+    ),
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
@@ -126,10 +142,25 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
       <div className="mx-auto max-w-2xl space-y-4">
         {header}
         <div className="card flex flex-col items-center gap-3 p-10 text-center">
-          <Trophy className="h-8 w-8 text-gold-500" />
-          <div className="text-base font-semibold">{t('train.allClear', { defaultValue: "Nothing to train — you're caught up." })}</div>
-          <p className="max-w-md text-sm text-chesscom-500">{t('train.allClearDesc', { defaultValue: 'Play more games and analyze them to unlock new puzzles. Every blunder you fix here is a pattern you stop repeating in real games.' })}</p>
+          {skipped.length > 0
+            ? <RotateCcw className="h-8 w-8 text-chesscom-500" aria-hidden="true" />
+            : <Trophy className="h-8 w-8 text-gold-500" aria-hidden="true" />}
+          <div className="text-base font-semibold">{skipped.length
+            ? t('train.mine.sessionSkippedTitle', { defaultValue: 'No more unskipped puzzles in this session' })
+            : t('train.allClear', { defaultValue: "Nothing to train — you're caught up." })}</div>
+          <p className="max-w-md text-sm text-chesscom-600 dark:text-chesscom-300">{skipped.length
+            ? t('train.mine.sessionSkippedDesc', {
+              defaultValue: 'You chose to continue without recording {{count}} attempts. They are still available when you retry or return later.',
+              count: skipped.length,
+            })
+            : t('train.allClearDesc', { defaultValue: 'Play more games and analyze them to unlock new puzzles. Every blunder you fix here is a pattern you stop repeating in real games.' })}</p>
           <div className="mt-2 flex flex-wrap justify-center gap-2">
+            {skipped.length > 0 && (
+              <button type="button" onClick={() => { setSkipState({ userId: user?.id ?? null, keys: [] }); setRun((r) => r + 1); }} className="btn-primary text-sm">
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                {t('train.mine.retrySkipped', { defaultValue: 'Retry skipped puzzles' })}
+              </button>
+            )}
             <button onClick={onPuzzles} className="btn-primary text-sm"><Zap className="h-4 w-4" /> {t('train.tabs.puzzles')}</button>
             <Link to="/play" className="btn-secondary text-sm">{t('home.playTitle')}</Link>
             <Link to="/review" className="btn-secondary text-sm">{t('review.title')}</Link>
@@ -142,7 +173,8 @@ function FromYourGames({ onPuzzles }: { onPuzzles: () => void }) {
   return (
     <div className="mx-auto w-full min-w-0 max-w-5xl">
       {header}
-      <OwnPuzzle key={`${user.id}:${puzzle.game_id}:${puzzle.ply}:${run}`} puzzle={puzzle} onNext={() => setRun((r) => r + 1)} />
+      <OwnPuzzle key={`${user.id}:${puzzle.game_id}:${puzzle.ply}:${run}`} puzzle={puzzle}
+        onNext={() => setRun((r) => r + 1)} onLeaveUnsaved={() => leaveUnsaved(puzzle)} />
     </div>
   );
 }
@@ -164,7 +196,7 @@ function isObsoletePuzzleError(error: unknown): boolean {
   return status === 404 || status === 409;
 }
 
-function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
+function OwnPuzzle({ puzzle, onNext, onLeaveUnsaved }: { puzzle: Puzzle; onNext: () => void; onLeaveUnsaved: () => void }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -504,7 +536,7 @@ function OwnPuzzle({ puzzle, onNext }: { puzzle: Puzzle; onNext: () => void }) {
             </div>
           )}
           {finished && saveState === 'error' && (
-            <button type="button" onClick={onNext} className="mt-2 min-h-10 w-full text-xs text-chesscom-600 underline underline-offset-2 dark:text-chesscom-300">
+            <button type="button" onClick={onLeaveUnsaved} className="mt-2 min-h-10 w-full text-xs text-chesscom-600 underline underline-offset-2 dark:text-chesscom-300">
               {t('train.mine.continueUnsaved', { defaultValue: 'Continue without saving (this puzzle may repeat)' })}
             </button>
           )}

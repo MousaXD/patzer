@@ -55,6 +55,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('personal puzzle attempt persistence', () => {
+  it('continues past an unsaved attempt without relabeling the session as completed, and lets the player retry it', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url.startsWith('/api/train/next')) {
+        return Promise.resolve({ puzzle: url.includes('skip=101%3A1') ? null : puzzle, due: 0 });
+      }
+      if (url.startsWith('/api/train/stats')) return Promise.resolve({ total: 0, solved: 0, failed: 0, accuracy: 0, due: 0 });
+      if (url === '/api/coach/status') return Promise.resolve({ configured: false });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    mocks.post.mockRejectedValue(new Error('offline'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Play e4' }));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue without saving (this puzzle may repeat)' }));
+    expect(await screen.findByText('No more unskipped puzzles in this session')).toBeTruthy();
+    expect(screen.queryByText(/Nothing to train/)).toBeNull();
+    expect(mocks.get.mock.calls.some(([url]) => typeof url === 'string' && url.includes('skip=101%3A1'))).toBe(true);
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry skipped puzzles' }));
+    expect(await screen.findByRole('button', { name: 'Play e4' })).toBeTruthy();
+    expect(screen.queryByText('No more unskipped puzzles in this session')).toBeNull();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
   it('does not save an old-tab solve to a newly analyzed game and reloads the updated position', async () => {
     let updated = false;
     mocks.get.mockImplementation((url: string) => {
