@@ -152,6 +152,32 @@ describe('Review library with large histories', () => {
     }, { timeout: 3000 });
   });
 
+  it('exposes server-side history filters and date sorting in a shareable URL', async () => {
+    mount('/review?source=lichess&result=win&time_class=rapid&sort=oldest&analyzed=0');
+    await screen.findByText(/40 of 1,000 games/);
+    const params = new URLSearchParams(String(mocks.get.mock.calls[0]?.[0]).split('?')[1]);
+    expect(params.get('source')).toBe('lichess');
+    expect(params.get('result')).toBe('win');
+    expect(params.get('time_class')).toBe('rapid');
+    expect(params.get('sort')).toBe('oldest');
+    expect(params.get('analyzed')).toBe('0');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Game result' }), { target: { value: 'loss' } });
+    await waitFor(() => expect(mocks.get.mock.calls.some(([url]) =>
+      new URLSearchParams(String(url).split('?')[1]).get('result') === 'loss')).toBe(true));
+  });
+
+  it('requests a clearly bounded recent import batch rather than silently fetching only 20', async () => {
+    mocks.user.profile.chesscom_username = 'tester';
+    mocks.post.mockResolvedValue({ imported: 150, total: 200 });
+    mount();
+    await screen.findByText(/40 of 1,000 games/);
+    expect((screen.getByRole('combobox', { name: 'Recent games to fetch' }) as HTMLSelectElement).value).toBe('200');
+    fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
+    expect(await screen.findByText(/150 new games saved from 200 retrieved/)).toBeTruthy();
+    expect(screen.getByText(/not your entire history/)).toBeTruthy();
+  });
+
   it('bounds URL deep links and text entry to the API maximum search length', async () => {
     mount(`/review?q=${'x'.repeat(180)}`);
     await screen.findByText(/40 of 1,000 games/);
@@ -248,7 +274,7 @@ describe('Review library with large histories', () => {
     for (const key of [...ownKeys, ...otherKeys]) queryClient.setQueryData(key, { value: 'cached' });
 
     fireEvent.click(screen.getByRole('button', { name: /review\.import \(@tester\)/ }));
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 20 }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom', { limit: 200 }));
     await waitFor(() => expect(ownKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated)).toBe(true));
     expect(otherKeys.every((key) => queryClient.getQueryState(key)?.isInvalidated === false)).toBe(true);
   });

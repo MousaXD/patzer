@@ -16,6 +16,19 @@ type ImportSource = 'chesscom' | 'lichess';
 const PAGE_SIZE = 40;
 const LEGACY_MAX_VISIBLE = 200;
 const MAX_SEARCH_LENGTH = 120;
+const IMPORT_BATCH_SIZES = [20, 100, 200] as const;
+const FILTER_OPTIONS = {
+  source: [['', 'All sources'], ['chesscom', 'Chess.com'], ['lichess', 'Lichess'], ['played', 'Played'], ['pvp', 'Friends'], ['imported', 'PGN import']],
+  time_class: [['', 'All speeds'], ['bullet', 'Bullet'], ['blitz', 'Blitz'], ['rapid', 'Rapid'], ['daily', 'Daily']],
+  result: [['', 'All results'], ['win', 'Wins'], ['draw', 'Draws'], ['loss', 'Losses']],
+  analyzed: [['', 'Any review status'], ['1', 'Analyzed'], ['0', 'Not analyzed']],
+  sort: [['newest', 'Newest first'], ['oldest', 'Oldest first']],
+} as const;
+type FilterName = keyof typeof FILTER_OPTIONS;
+function validFilter<K extends FilterName>(key: K, value: string | null): string {
+  return FILTER_OPTIONS[key].some(([candidate]) => candidate === value)
+    ? value! : FILTER_OPTIONS[key][0][0];
+}
 type GamePage = { games: GameRow[]; total: number; offset?: number; has_more?: boolean };
 type PageRequest = { offset: number; limit: number };
 
@@ -57,6 +70,7 @@ export default function Review() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [importMsg, setImportMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const importMessageTimer = useRef<number | null>(null);
   useEffect(() => {
     // A previously signed-in account's import result must not remain visible
@@ -81,6 +95,21 @@ export default function Review() {
   const q = (searchParams.get('q') ?? '').slice(0, MAX_SEARCH_LENGTH);
   const [searchDraft, setSearchDraft] = useState(q);
   const bookmarkedOnly = searchParams.get('bookmarked') === '1';
+  const filters = {
+    source: validFilter('source', searchParams.get('source')),
+    time_class: validFilter('time_class', searchParams.get('time_class')),
+    result: validFilter('result', searchParams.get('result')),
+    analyzed: validFilter('analyzed', searchParams.get('analyzed')),
+    sort: validFilter('sort', searchParams.get('sort')),
+  };
+  const filterSignature = Object.values(filters).join('|');
+
+  function updateFilter(key: FilterName, value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (!value || (key === 'sort' && value === 'newest')) next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next);
+  }
 
   // URL state survives navigating into a game and back; network search is
   // debounced while typing and covers the full library on the server.
@@ -100,7 +129,7 @@ export default function Review() {
     isFetchNextPageError, hasNextPage, fetchNextPage, refetch,
   } = useInfiniteQuery({
     // Never reuse another account's cached library after a logout/login.
-    queryKey: ['games', 'library', user?.id, { bookmarkedOnly, q }],
+    queryKey: ['games', 'library', user?.id, { bookmarkedOnly, q, filterSignature }],
     enabled: user?.id != null,
     initialPageParam: { offset: 0, limit: PAGE_SIZE } satisfies PageRequest,
     queryFn: ({ pageParam }) => {
@@ -108,6 +137,9 @@ export default function Review() {
       if (pageParam.offset) params.set('offset', String(pageParam.offset));
       if (bookmarkedOnly) params.set('bookmarked', '1');
       if (q.trim()) params.set('q', q.trim());
+      for (const [key, value] of Object.entries(filters)) {
+        if (value && !(key === 'sort' && value === 'newest')) params.set(key, value);
+      }
       return api.get<GamePage>(`/api/games?${params.toString()}`);
     },
     getNextPageParam: (lastPage, _pages, lastRequest): PageRequest | undefined => {
@@ -127,12 +159,12 @@ export default function Review() {
   });
 
   const importMut = useMutation({
-    mutationFn: ({ source }: { source: ImportSource; accountId: number }) =>
-      api.post<{ imported: number; total: number }>(`/api/games/import/${source}`, { limit: 20 }),
+    mutationFn: ({ source, limit }: { source: ImportSource; accountId: number; limit: number }) =>
+      api.post<{ imported: number; total: number; skipped?: number }>(`/api/games/import/${source}`, { limit }),
     onSuccess: (r, { accountId }) => {
       void qc.invalidateQueries({ predicate: ({ queryKey }) => isOwnHistoryQuery(queryKey, accountId) });
       if (accountIdRef.current !== accountId) return;
-      showImportResult({ text: t('review.imported', { n: r.imported }) }, 3000);
+      showImportResult({ text: `${r.imported} new games saved from ${r.total} retrieved${r.skipped ? ` (${r.skipped} unsupported or invalid)` : ''}. This imports recent games only, not your entire history.` }, 9000);
     },
     onError: (e, { accountId }) => {
       if (accountIdRef.current !== accountId) return;
@@ -169,9 +201,14 @@ export default function Review() {
           <p className="page-sub">{t('review.subtitle', { defaultValue: 'Browse, analyze and learn from your games.' })}</p>
         </div>
         {linked.length > 0 ? (
-          <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <label htmlFor="library-import-limit" className="text-xs text-chesscom-500">Recent games to fetch</label>
+            <select id="library-import-limit" className="input w-auto text-sm" value={importLimit} disabled={importMut.isPending}
+              onChange={(e) => setImportLimit(Number(e.target.value) as typeof importLimit)}>
+              {IMPORT_BATCH_SIZES.map((limit) => <option key={limit} value={limit}>{limit}</option>)}
+            </select>
             {linked.map((s) => (
-              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id })} disabled={importMut.isPending || !user} className="btn-primary">
+              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id, limit: importLimit })} disabled={importMut.isPending || !user} className="btn-primary">
                 <Download className="h-4 w-4" />
                 {importMut.isPending && importMut.variables?.source === s.source ? t('review.importing') : `${s.label} (@${s.username})`}
               </button>
@@ -236,6 +273,19 @@ export default function Review() {
             : `${games.length.toLocaleString()} of ${total.toLocaleString()} ${t('review.games', { defaultValue: 'games' })}`}
           {isFetching && !isLoading && <span className="sr-only"> · Updating</span>}
         </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filter and sort games">
+        {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => (
+          <label key={key} className="flex items-center gap-1 text-xs text-chesscom-500">
+            <span className="sr-only">{key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}</span>
+            <select aria-label={key === 'time_class' ? 'Game speed' : key === 'sort' ? 'Sort games' : key === 'analyzed' ? 'Review status' : key === 'result' ? 'Game result' : 'Game source'}
+              className="input w-auto max-w-full text-xs" value={filters[key]}
+              onChange={(e) => updateFilter(key, e.target.value)}>
+              {FILTER_OPTIONS[key].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        ))}
       </div>
 
       {initialError && (
