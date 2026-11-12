@@ -30,12 +30,16 @@ afterEach(() => {
 describe('first-use setup accessibility', () => {
   it('keeps language choices and account fields correctly labeled', () => {
     mount();
+    expect(document.querySelector('.setup-shell')).toBeTruthy();
     const languages = screen.getByRole('group', { name: 'Language' });
     expect(languages.querySelectorAll('button')).toHaveLength(5);
     expect(languages.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1);
     expect(screen.getByRole('textbox', { name: 'Username' })).toBeTruthy();
     expect(screen.getByRole('textbox', { name: 'Display name' })).toBeTruthy();
     expect(screen.getByLabelText('Password').getAttribute('aria-describedby')).toBe('setup-password-hint');
+    for (const name of ['Username', 'Display name', 'Password']) {
+      expect(screen.getByLabelText(name).closest('.setup-shell')).toBeTruthy();
+    }
     expect(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled')).toBe(true);
   });
 
@@ -49,6 +53,7 @@ describe('first-use setup accessibility', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'fixture-password-123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByRole('textbox', { name: 'Ollama URL' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Ollama URL' }).closest('.setup-shell')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: /Connect Ollama/ }));
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));

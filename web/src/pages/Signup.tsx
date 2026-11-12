@@ -122,7 +122,7 @@ export default function Signup() {
     return (
       <AuthShell title={t('auth.signupTitle')}>
         <AuthOptionsUnavailable onRetry={retryConfig} />
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -132,7 +132,7 @@ export default function Signup() {
     return (
       <AuthShell title={t('auth.signupTitle')}>
         <p className="text-sm text-ink-500">{t('auth.signupDisabledNotice')}</p>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -144,7 +144,7 @@ export default function Signup() {
           <MailCheck className="h-10 w-10 text-accent-600" />
           <p className="text-sm text-ink-600 dark:text-ink-300">{t('auth.checkInboxBody', { email: form.email })}</p>
         </div>
-        <Link to="/login" className="btn-secondary w-full justify-center">{t('auth.backToLogin')}</Link>
+        <Link to="/login" className="btn-secondary min-h-11 w-full justify-center">{t('auth.backToLogin')}</Link>
       </AuthShell>
     );
   }
@@ -194,12 +194,12 @@ export default function Signup() {
           <p className={`mt-1 text-xs ${form.password.length > 0 && form.password.length < 10 ? 'text-bad' : 'text-ink-400'}`}>{t('auth.passwordHint')}</p>
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
-        <button type="submit" disabled={!canSubmit} className="btn-primary w-full">
+        <button type="submit" disabled={!canSubmit} className="btn-primary min-h-11 w-full">
           <UserPlus className="h-4 w-4" />
           {busy ? t('auth.creating') : t('auth.createAccount')}
         </button>
-        <div className="pt-1 text-center text-sm text-ink-500">
-          {t('auth.haveAccount')} <Link to="/login" className="font-medium text-accent-600 hover:underline">{t('login.submit')}</Link>
+        <div className="flex flex-wrap items-center justify-center gap-x-1 pt-1 text-center text-sm text-ink-500">
+          {t('auth.haveAccount')} <Link to="/login" className="inline-flex min-h-11 min-w-11 max-w-full items-center justify-center font-medium text-accent-600 hover:underline">{t('login.submit')}</Link>
         </div>
       </form>
     </AuthShell>

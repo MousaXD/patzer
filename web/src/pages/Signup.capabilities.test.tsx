@@ -29,6 +29,20 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe('Signup capability checks', () => {
+  it('keeps account creation and its sign-in escape route touch-sized', async () => {
+    get.mockResolvedValueOnce(openSignup);
+    render(<MemoryRouter initialEntries={['/signup']}><Signup /></MemoryRouter>);
+    await screen.findByRole('textbox', { name: 'Username' });
+    const submit = screen.getByRole('button', { name: 'Create account' });
+    expect(submit.className).toContain('min-h-11');
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    const login = screen.getByRole('link', { name: 'Log in' });
+    expect(login.getAttribute('href')).toBe('/login');
+    expect(login.className).toContain('min-h-11');
+    expect(login.className).toContain('min-w-11');
+    expect(screen.getByRole('textbox', { name: 'Username' }).closest('.auth-shell')).toBeTruthy();
+  });
+
   it('never confuses failed capability checks with disabled registration', async () => {
     get.mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(openSignup);
     render(<MemoryRouter initialEntries={['/signup']}><Signup /></MemoryRouter>);
@@ -46,7 +60,9 @@ describe('Signup capability checks', () => {
       ...openSignup, signup_enabled: false, signup_mode: 'closed',
     });
     render(<MemoryRouter initialEntries={['/signup']}><Signup /></MemoryRouter>);
-    expect(await screen.findByRole('link', { name: 'Back to sign in' })).toBeTruthy();
+    const back = await screen.findByRole('link', { name: 'Back to sign in' });
+    expect(back.getAttribute('href')).toBe('/login');
+    expect(back.className).toContain('min-h-11');
     expect(screen.queryByLabelText('Username')).toBeNull();
     expect(screen.queryByRole('alert', { name: 'Sign-in options unavailable' })).toBeNull();
   });

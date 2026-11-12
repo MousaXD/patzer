@@ -1436,3 +1436,33 @@
 ### Next audit
 
 - Examine the **public Signup/first-owner Setup** experience at 320px and enlarged text, especially form inputs and submission buttons, to see whether the 44px minimum is applied consistently outside Login/Recovery. Avoid modifying their validation or account-creation logic; check real Chromium first.
+
+## 2026-11-13: Consistent touch targets for Signup and first-owner Setup
+
+### Reproduced usability defect
+
+- Continued from clean pushed `75329c5` and its documented next audit; preserved three existing, uncommitted scoped fixes rather than restarting or resetting them.
+- Independent local Chromium negative control covered Signup (open and closed capabilities) and both Setup wizard steps, in English and German, both themes, 320px normal/enlarged and 1440px normal font sizes.
+- **56 undersized control instances** were measured across 48 cases. Open Signup's Create account button measured **36px tall**, the inline Log in escape link **17px tall**, and the closed-registration Back to sign in button **38px tall**. Setup's username, display-name, password and optional Ollama URL inputs measured **38px** at normal font size. Setup step actions were already 44px.
+- Initial fix raised clickable heights but a second Chromium run still found four instances of the English Log in link at **40px width**, under the 44px benchmark.
+
+### Changes in Agent B's scope
+
+1. Add 44px minimum height to the Signup submit and sign-in return links across open, disabled, capability-error and verification-required states. Make the inline Log in link `inline-flex min-h-11 min-w-11` with centered contents; preserve link destinations, text and sign-up guards.
+2. Add `setup-shell` to the owner wizard root and a **scoped** `.setup-shell .input { min-height:2.75rem!important; }` in the shared stylesheet. This overcomes the pre-existing high-specificity legacy 38px input minimum without affecting forms elsewhere in Patzer.
+3. Extend Signup capability tests to cover untouched disabled submission and 44px sign-in escape; extend Setup accessibility tests to assert that initial and AI connection fields belong to the scoped setup shell.
+4. Commit a dedicated `capture-auth-onboarding.mjs` local-only Chromium fixture for all **48 Signup/Setup cases**, asserting every actual input/action is at least **44×44px**, no horizontal overflow, and correct interface/document language. It only mocks local API responses and does not create accounts.
+
+### Verification
+
+- Post-fix **48/48 Chromium cases passed**, **0 undersized** and **0 overflowing** controls.
+- Inspected `artifacts/agent-02/signup-setup-verified-signup-open-light.png`, `signup-setup-verified-setup-step1-dark.png` and `signup-setup-verified-setup-step2-light.png`; spacing, translated labels, focus outlines and action grouping remain balanced on narrow phones.
+- Focused Signup/Setup tests: **7/7 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **467/467 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No account creation, auth capability, Ollama request logic, main branch, production data, deployment or other agents' worktrees changed.
+
+### Next audit
+
+- Verify **Signup's asynchronous registration confirmation** in actual Chromium. When a registration requires email verification, its editable form is replaced by Check your inbox; check whether the active form control loses focus and whether the result is announced. If confirmed, reuse the existing opt-in AuthShell result focus approach, keeping the account-creation logic unchanged.

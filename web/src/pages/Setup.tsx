@@ -84,7 +84,7 @@ export default function Setup() {
   }
 
   return (
-    <div className="relative isolate flex min-h-dvh items-center justify-center overflow-x-clip bg-ui-bg px-4 py-8 text-ui-foreground sm:px-6 sm:py-10">
+    <div className="setup-shell relative isolate flex min-h-dvh items-center justify-center overflow-x-clip bg-ui-bg px-4 py-8 text-ui-foreground sm:px-6 sm:py-10">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[480px] w-[480px] rounded-full bg-amber-200/30 blur-3xl dark:bg-amber-700/10" />
         <div className="absolute -bottom-40 -right-40 h-[480px] w-[480px] rounded-full bg-emerald-200/30 blur-3xl dark:bg-emerald-700/10" />
