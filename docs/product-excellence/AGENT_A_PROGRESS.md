@@ -723,3 +723,23 @@
 ### Next high-impact candidate
 
 - The Game Review move list renders opening/middlegame/endgame boundaries as plain styled `div` labels. The report offers phase breakdowns, but keyboard/screen-reader players cannot jump between phase headings inside the move history itself. Audit DOM semantics and actual marker positions for black-to-move/FEN-start games before adding any in-list heading semantics. Avoid changing phase calculations or redundant global navigation.
+
+## 2026-11-12: zero-move Game Review never launches empty full-game engine jobs
+
+### Reproduction and narrow correction
+
+- Continued from clean pushed `df29155`. The existing 390px Spanish browser screenshot for a valid PGN `*` showed `0 / 0` and `No recorded moves` but also offered a green `Run engine analysis` action. Source inspection confirmed the current backend still launches an initial Stockfish evaluation for this zero-ply PGN despite having no played move to classify or learn from; it was a misleading, wasteful full-game action. No backend mutation was needed.
+- Only in Game Review, hide the full-game engine button when the authoritative replay has <=1 position (zero played moves), and guard `analyze()` against a zero-move call, including an automatic stale-refetch path. Keep the actual chessboard and legal starting-position exploration functional; keep the recorded PGN untouched.
+- Reused the existing PGN-only history and its localized `No recorded moves` state. Added five-language `review.noMovesToAnalyze` guidance explaining that there are no played moves to score and the initial position is still explorable. A nonempty saved game retains the normal analysis action and explanation.
+
+### Verification
+
+- Focused locale, MoveList and legal zero-PGN replay tests: **59 passed**. Typecheck PASS; production build PASS.
+- Full `npm test -- --testTimeout=20000`: **987 passed / 12 skipped** over 108 passing files.
+- Full authenticated disposable Chromium matrix **PASS (exit 0)**. For a 24-ply Spanish PGN without engine evidence, verified the normal run-analysis action and playable SANs remain. For a legal zero-ply Spanish PGN, verified the localized no-moves guidance, absence of the Run Engine button, `0 / 0` progress, correct selected Starting Position and no English fallback. Previous 320/390/1024 responsive/source/variation/error/keyboard tests remained green; no persisted PGN changed.
+- Opened `qa-artifacts/agent-a/zero-move-engine-guard-20261112/saved-pgn-without-engine-{unscored,empty}-es-390.png`: no misleading analysis action for the zero-move game, board still readable and initial position offered, and the normal game keeps its green analysis action.
+- All engine evaluations in browser tests are fixtures, not live Stockfish accuracy certification. No merge, deployment, production SQLite change or edits outside Agent A's worktree.
+
+### Next scoped issue
+
+- Inspect MoveList's phase boundaries for a start ply on Black's half of a paired row, or for a SetUp/FEN game starting with Black to move: the phase banner currently snaps to the whole row, which can place the label before a White move that belongs to the prior phase. First reproduce with synthetic `phaseSplit` source coordinates and actual rendered DOM, then fix only if the boundary is demonstrably misplaced. Preserve the two-column history, semantic headings and PGN identity.

@@ -2502,12 +2502,14 @@ try {
       });
       await page.goto(`${base}/review/${id}?ply=0`,{waitUntil:'domcontentloaded'});
       await page.locator('cg-board').waitFor({state:'visible'});
-      await page.getByRole('button',{name:spanishWithoutEngine.review.runEngine}).waitFor({state:'visible'});
       assert.equal(await page.locator('[data-review-classification-guide]').count(),0,
         'Without actual engine classifications, a saved PGN must not display a classification guide');
       const moveList=page.getByRole('region',{name:spanishWithoutEngine.review.moves});
       await moveList.waitFor({state:'visible',timeout:4000});
       if(label==='unscored'){
+        await page.getByRole('button',{name:spanishWithoutEngine.review.runEngine}).waitFor({state:'visible'});
+        await page.getByText(spanishWithoutEngine.review.savedMovesWithoutAnalysis,{exact:true})
+          .waitFor({state:'visible'});
         const first=moveList.getByRole('button',{name:/^1\. Blancas e4/});
         const second=moveList.getByRole('button',{name:/^1… Negras e5/});
         await first.waitFor({state:'visible'});
@@ -2519,6 +2521,10 @@ try {
         assert.equal(await page.locator('[data-review-move-summary]').getByText('0.00',{exact:true}).count(),0,
           'Unscored saved moves must never be presented as engine-evaluated equality');
       }else{
+        await page.getByText(spanishWithoutEngine.review.noMovesToAnalyze,{exact:true})
+          .waitFor({state:'visible'});
+        assert.equal(await page.getByRole('button',{name:spanishWithoutEngine.review.runEngine}).count(),0,
+          'A zero-ply PGN must not offer a full-game engine job without any played moves');
         await page.getByText(spanishWithoutEngine.review.noRecordedMoves,{exact:true})
           .waitFor({state:'visible'});
         const starting=moveList.getByRole('button',{name:spanishWithoutEngine.review.startingPosition});

@@ -283,6 +283,7 @@
     "accuracy": "Genauigkeit",
     "moves": "Züge",
     "noRecordedMoves": "In dieser Partie wurden keine Züge aufgezeichnet.",
+    "noMovesToAnalyze": "Noch keine gespielten Züge zum Analysieren. Du kannst trotzdem die Ausgangsstellung erkunden.",
     "savedMovesWithoutAnalysis": "Du kannst gespeicherte Züge auch ansehen, bevor die Engine-Analyse bereit ist.",
     "partialMoveUnavailable": "Dieser gespeicherte Zug wurde von der Engine noch nicht bewertet.",
     "partialReanalyze": "Gesamte Partie erneut analysieren",

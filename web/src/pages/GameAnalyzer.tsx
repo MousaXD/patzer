@@ -555,6 +555,10 @@ function GameAnalyzerView() {
   }, []);
 
   async function analyze(depth: number, force = false) {
+    // A saved PGN with no played moves has no move classifications, accuracy,
+    // or learning report to compute. Keep position exploration available,
+    // but never launch an expensive full-game job for an empty history.
+    if (positions.length <= 1) return;
     if (analysisRequestRef.current || analyzing) return;
     const controller = new AbortController();
     analysisRequestRef.current = controller;
@@ -1078,7 +1082,7 @@ function GameAnalyzerView() {
           </section>
           {analysisError && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-200">{t(analysisError)}</div>}
           {data.analysis_unverified && <p role="status" className="text-sm text-chesscom-600 dark:text-chesscom-300">{t('review.legacyEvidence')}</p>}
-          {!analysis && (
+          {!analysis && positions.length > 1 && (
             <button ref={runAnalysisButtonRef} onClick={() => void analyze(requestedDepth, cachedAnalysisInvalid)} disabled={analyzing} className="btn-primary w-full">
               <Sparkles className="h-4 w-4" />
               {analyzing
@@ -1093,8 +1097,8 @@ function GameAnalyzerView() {
           {!analysis && (
             <div className="card p-3">
               <h2 id="review-unscored-moves-heading" className="text-sm font-semibold">{t('review.moves')}</h2>
-              <p className="mb-3 mt-1 text-xs text-chesscom-500 dark:text-chesscom-300">
-                {t('review.savedMovesWithoutAnalysis')}
+              <p role="status" className="mb-3 mt-1 text-xs text-chesscom-500 dark:text-chesscom-300">
+                {positions.length > 1 ? t('review.savedMovesWithoutAnalysis') : t('review.noMovesToAnalyze')}
               </p>
               <MoveList moves={timeline.moves} current={isVariation ? -1 : ply}
                 onSelect={selectSavedFromRail} startFen={positions[0]?.fen} />

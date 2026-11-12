@@ -283,6 +283,7 @@
     "accuracy": "Accuracy",
     "moves": "Moves",
     "noRecordedMoves": "No recorded moves.",
+    "noMovesToAnalyze": "No played moves to analyze yet. You can still explore the starting position.",
     "savedMovesWithoutAnalysis": "You can replay saved moves even before engine analysis is ready.",
     "partialMoveUnavailable": "This saved move has not been evaluated by the engine yet.",
     "partialReanalyze": "Reanalyze full game",

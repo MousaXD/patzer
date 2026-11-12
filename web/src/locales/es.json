@@ -274,6 +274,7 @@
     "accuracy": "Precisión",
     "moves": "Jugadas",
     "noRecordedMoves": "Esta partida no tiene jugadas registradas.",
+    "noMovesToAnalyze": "Todavía no hay jugadas para analizar. Puedes explorar la posición inicial.",
     "savedMovesWithoutAnalysis": "Puedes repasar las jugadas guardadas aunque el análisis del motor aún no esté listo.",
     "partialMoveUnavailable": "Esta jugada está guardada, pero todavía no tiene evaluación del motor.",
     "partialReanalyze": "Volver a analizar toda la partida",
