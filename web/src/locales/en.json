@@ -359,6 +359,7 @@
     "linesRetry": "Retry",
     "linesFollowMove": "Follow played move {{san}}",
     "linesTryMove": "Try engine move {{san}}",
+    "linesScorePerspective": "Positive scores favor White; negative scores favor Black.",
     "phases": "Phases",
     "opening": "Opening",
     "middlegame": "Middlegame",

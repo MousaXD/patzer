@@ -350,6 +350,7 @@
     "linesRetry": "Опитай отново",
     "linesFollowMove": "Продължи с изиграния ход {{san}}",
     "linesTryMove": "Изпробвай хода на двигателя {{san}}",
+    "linesScorePerspective": "Положителната оценка е за белите, отрицателната — за черните.",
     "importLichess": "Внеси от Lichess",
     "importError": {
       "player_not_found": "Не е намерен играч с това потребителско име.",

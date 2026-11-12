@@ -1011,6 +1011,49 @@ try {
     assert.equal(engineRequests,2);
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await engineLineContext.close();}
+  // Stockfish and the hosted adapter both return live MultiPV scores from
+  // the side to move's perspective. When Black is to move a positive live
+  // score means Black is better; the rest of Review reports White's POV.
+  // Confirm normalized cp and mate signs on a genuine saved Black-to-move FEN.
+  const blackLinesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await blackLinesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await blackLinesContext.newPage();
+    const sourcePgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    const blackPosition=new Chess();
+    assert.ok(blackPosition.move('e4'));
+    const blackFen=blackPosition.fen();
+    let requests=0;
+    await page.route('**/api/analyze/position',async route=>{
+      assert.equal(route.request().postDataJSON().fen,blackFen,
+        'Live engine lines must be tied to the displayed Black-to-move FEN');
+      requests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        fen:blackFen,depth:18,lines:[
+          {uci:'e7e5',san:'e5',pv_san:['e5','Nf3'],cp:75,mate:null,multipv:1},
+          {uci:'c7c5',san:'c5',pv_san:['c5','Nf3'],cp:null,mate:2,multipv:2},
+          {uci:'d7d5',san:'d5',pv_san:['d5','exd5'],cp:null,mate:-1,multipv:3},
+        ],
+      })});
+    });
+    await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Engine lines',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelectorAll('#review-engine-lines-content [data-review-engine-line-score]').length===3,
+      undefined,{timeout:5000});
+    const scores=await page.locator('#review-engine-lines-content [data-review-engine-line-score]').allTextContents();
+    assert.deepEqual(scores.map(value=>value.trim()),['−0.75','-#2','#1'],
+      `On Black's turn, all live cp/mate labels must match White's perspective: ${JSON.stringify(scores)}`);
+    const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    await page.getByText(locale.review.linesScorePerspective,{exact:true}).waitFor({state:'visible'});
+    for(const san of ['e5','c5','d5']){
+      assert.ok(await page.getByRole('button',{name:new RegExp(`^(Follow played move|Try engine move) ${san}$`)}).isEnabled());
+    }
+    await page.locator('#review-engine-lines-content').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'engine-lines-black-turn-white-perspective-390.png')});
+    assert.equal(requests,1,'One displayed FEN must produce one live MultiPV request');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,sourcePgn);
+  }finally{await blackLinesContext.close();}
   // The Game Review shell is localized, but Engine Lines used to expose raw
   // English-only 503/retry and move-action labels inside a German review. Its
   // clickable engine rows also had hitboxes under 44px on actual phones.
@@ -1047,6 +1090,8 @@ try {
     await scored;
     const row=page.getByRole('button',{name:'Dem gespielten Zug e4 folgen',exact:true});
     await row.waitFor({state:'visible'});
+    const de=JSON.parse(readFileSync(new URL('../web/src/locales/de.json',import.meta.url),'utf8'));
+    await page.getByText(de.review.linesScorePerspective,{exact:true}).waitFor({state:'visible'});
     const hit=await row.boundingBox();
     assert.ok(hit && hit.height>=44 && hit.width>=44,
       `A playable engine line should have a 44px touch target: ${JSON.stringify(hit)}`);

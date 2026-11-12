@@ -1325,6 +1325,7 @@ function GameAnalyzerView() {
                 enabled={linesEnabled}
                 onToggle={() => setLinesEnabled((s) => !s)}
                 lines={freshLines}
+                scoreTurn={currentFen.split(' ')[1] === 'b' ? 'b' : 'w'}
                 loading={linesLoading}
                 error={linesError}
                 onRetry={() => setLinesRetry((n) => n + 1)}
@@ -1613,10 +1614,11 @@ function ClipboardManualFallback({ label, value }: { label: string; value: strin
   );
 }
 
-function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
+function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRetry, playedUci, onAdvance, onTryMove, onHover }: {
   enabled: boolean;
   onToggle: () => void;
   lines: EngineLine[];
+  scoreTurn: 'w' | 'b';
   loading: boolean;
   error: 'busy' | 'unavailable' | null;
   onRetry: () => void;
@@ -1643,6 +1645,9 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
         className="space-y-1 p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">
         {enabled && (
           <>
+          {lines.length > 0 && <p className="px-2 text-[11px] text-chesscom-500 dark:text-chesscom-300">
+            {t('review.linesScorePerspective')}
+          </p>}
           {loading && lines.length === 0 && (
             <div className="flex items-center gap-2 px-2 py-3 text-xs text-chesscom-500 dark:text-chesscom-200">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('review.linesFetching', { defaultValue: 'fetching…' })}
@@ -1680,7 +1685,7 @@ function LinesPanel({ enabled, onToggle, lines, loading, error, onRetry, playedU
                   l.multipv === 1 ? 'bg-gold-500/20 text-gold-600' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800'
                 }`}>{l.multipv}</span>
                 <span data-review-engine-line-score className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
-                  {formatReviewEngineLineScore(l)}
+                  {formatReviewEngineLineScore(l, scoreTurn)}
                 </span>
                 <span className="w-12 shrink-0 truncate font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{l.san}</span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>

@@ -74,6 +74,7 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
       expect(locale.review.moveNavigation?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.keyboardShortcuts?.trim().length, lang).toBeGreaterThan(0);
       expect(locale.review.detailSections?.trim().length, lang).toBeGreaterThan(0);
+      expect(locale.review.linesScorePerspective?.trim().length, lang).toBeGreaterThan(0);
       expect(placeholders(locale.review.why.showBestOnBoard), lang).toEqual(['{{san}}']);
       if (lang !== 'en') {
         expect(locale.review.startingPosition).not.toEqual(en.review.startingPosition);
@@ -81,6 +82,7 @@ describe.each([['en', en], ['de', de], ['es', es], ['ru', ru], ['bg', bg]] as co
         expect(locale.review.moveNavigation).not.toEqual(en.review.moveNavigation);
         expect(locale.review.keyboardShortcuts).not.toEqual(en.review.keyboardShortcuts);
         expect(locale.review.detailSections).not.toEqual(en.review.detailSections);
+        expect(locale.review.linesScorePerspective).not.toEqual(en.review.linesScorePerspective);
         expect(locale.review.why.showBestOnBoard).not.toEqual(en.review.why.showBestOnBoard);
       }
     });

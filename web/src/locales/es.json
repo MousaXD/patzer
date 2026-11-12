@@ -354,6 +354,7 @@
     "linesRetry": "Reintentar",
     "linesFollowMove": "Seguir la jugada realizada {{san}}",
     "linesTryMove": "Probar la jugada del motor {{san}}",
+    "linesScorePerspective": "Los valores positivos favorecen a las blancas; los negativos, a las negras.",
     "importLichess": "Importar de Lichess",
     "importError": {
       "player_not_found": "No se encontró ningún jugador con ese nombre de usuario.",

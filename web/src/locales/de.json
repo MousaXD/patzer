@@ -359,6 +359,7 @@
     "linesRetry": "Erneut versuchen",
     "linesFollowMove": "Dem gespielten Zug {{san}} folgen",
     "linesTryMove": "Engine-Zug {{san}} ausprobieren",
+    "linesScorePerspective": "Positive Werte begünstigen Weiß, negative Schwarz.",
     "phases": "Partiephasen",
     "opening": "Eröffnung",
     "middlegame": "Mittelspiel",

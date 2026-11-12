@@ -893,3 +893,27 @@
 ### Next issue to investigate
 
 - The live `verifiedPositionEngineLines` contract checks cp and mate *individually* for finite values but does not guard incompatible signs when a nonzero mate and an extreme cp are both present. Audit whether the live engine contract can legitimately output conflicting signs; if not, withhold a precise mating-side claim from contradictory cached/HTTP line evidence while keeping a legal PV navigable. Do not impose saved-report `±(10000-10*N)` normalization on live Stockfish scores without source evidence.
+
+## 2026-11-12: normalize live MultiPV scores to White perspective on Black's turn
+
+### Source audit and reproduced inconsistency
+
+- Continued from clean pushed `6743f33` and its live-score semantics audit. Inspected both concrete engine implementations: `server/src/chess/stockfish.ts` documents candidate `cp`/`mate` as **side-to-move** scores, and `server/src/chess/engine.ts` converts the hosted chess-api.com's response to that same side-to-move convention. The server position route forwards those candidate scores without normalization. In contrast, the Game Review board, saved move report, and graph display **White-perspective** evaluations. Previously, Black-to-move live `cp:+75` appeared as `+0.75` even though it meant Black favored, contradicting the board convention.
+- Added focused source-convention regression expecting Black-to-move `+75` → `−0.75`, `−80` → `+0.80`, Black mate in 2 → `-#2`, and White mate in 1 → `#1`. **Before fix the test failed** with `+0.75` instead of `−0.75`. Did not incorrectly apply the stored full-game mate cp proxy formula to raw live engine scores.
+
+### Scoped fix
+
+- Extended Agent A's pure `formatReviewEngineLineScore` helper to accept the analyzed FEN's side to move, defaulting to White for existing callers/tests. In `LinesPanel`, invert signed cp and nonzero mate only when the verified displayed/requested `currentFen` says Black to move. Board flipping does not affect sign. Existing `mate=0 → —` and legal PV availability remain unchanged.
+- Added a short localized explanation that positive scores favor White and negative scores favor Black, only when Engine Lines have content. Natural strings and locale-parity regression cover English, German, Spanish, Russian and Bulgarian. Does not touch global navigation, board evaluation storage, or engine adapters.
+
+### Verification
+
+- Focused engine-score/source/locales tests: **63 passed**; `npm run typecheck` PASS; `npm run build` PASS.
+- Full `npm test -- --testTimeout=20000`: **1000 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium matrix **PASS (exit 0)**. New isolated saved Black-to-move FEN after `1.e4` with 3 *test-only* live candidate responses verified exact rendered White-perspective score trio `−0.75`, `-#2`, `#1`, the explanation, all legal line buttons enabled, and no change to saved PGN. Also verified German explanation in the preexisting localized engine-retry matrix. Earlier source, navigation, variation, mate, and responsive checks remained green.
+- Independently inspected `qa-artifacts/agent-a/engine-line-white-perspective-20261112/engine-lines-black-turn-white-perspective-390.png`: score signs, PV/move labels and explanation are legible in a 390px two-column rail without horizontal overflow. Browser scores were deliberately injected for UI QA, **not** Stockfish accuracy certification.
+- No merge, deploy, production SQLite mutation, or edits outside Agent A's worktree.
+
+### Next higher-value accessibility issue
+
+- In `LinesPanel`, each live engine line is a button whose explicit `aria-label` says only "Try engine move e5" or "Follow played move e5". That label can suppress descendant score and PV in the accessible name, making the newly corrected score and preview invisible to screen-reader users. Audit the actual DOM/accessibility relationship and add a source-safe description of each line's signed score and legal PV via `aria-describedby` without changing the established button action name or keyboard navigation. Keep explanations localized and avoid announcing fabricated mate winners.

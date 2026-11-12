@@ -20,4 +20,12 @@ describe('Game Review live engine-line score presentation', () => {
     expect(formatReviewEngineLineScore({ cp: 30, mate: 1.5 })).toBe('+0.30');
     expect(formatReviewEngineLineScore({ cp: null, mate: Number.POSITIVE_INFINITY })).toBe('—');
   });
+
+  it('normalizes side-to-move engine scores to the White-perspective Game Review convention', () => {
+    expect(formatReviewEngineLineScore({ cp: 75, mate: null }, 'b')).toBe('−0.75');
+    expect(formatReviewEngineLineScore({ cp: -80, mate: null }, 'b')).toBe('+0.80');
+    expect(formatReviewEngineLineScore({ cp: null, mate: 2 }, 'b')).toBe('-#2');
+    expect(formatReviewEngineLineScore({ cp: null, mate: -1 }, 'b')).toBe('#1');
+    expect(formatReviewEngineLineScore({ cp: null, mate: 0 }, 'b')).toBe('—');
+  });
 });
