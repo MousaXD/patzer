@@ -109,7 +109,7 @@ async function awaitUp() {
 async function newPage(theme, width, height,
   {failOpeningsOnce = false, emptyLibrary = false, noLinked = false,
     changingHistory = false, starredOnlyScenario = false,
-    unknownImportedNames = false, unicodeLibrary = false} = {}) {
+    unknownImportedNames = false, unicodeLibrary = false, longPlayerNames = false} = {}) {
   const context = await browser.newContext({viewport: {width,height}, colorScheme: theme});
   const page = await context.newPage();
   const pageErrors = [];
@@ -134,7 +134,9 @@ async function newPage(theme, width, height,
         openingFailuresRemaining--;
         status = 503;
         json = {error:'temporary_fixture_failure'};
-      } else json = unicodeLibrary
+      } else json = longPlayerNames
+        ? {total:1,classified:1,unclassified:0,openings:[{name:'Italian Game',games:1}]}
+        : unicodeLibrary
         ? {total:3,classified:3,unclassified:0,openings:[{name:'ÉCHEC',games:1},{name:'King’s Pawn Game',games:1},{name:'Queen’s Gambit',games:1}]}
         : unknownImportedNames
         ? {total:1,classified:1,unclassified:0,openings:[{name:"King's Pawn Game",games:1}]}
@@ -152,7 +154,11 @@ async function newPage(theme, width, height,
     };
     else if (path === '/api/games' && request.method() === 'GET') {
       queries.push(parsed.searchParams.toString());
-      if (hasPgnImports && parsed.searchParams.get('source') === 'imported') {
+      if (longPlayerNames) json = {games:[{
+        ...games[0],id:9003,source:'imported',white:'棋手名'.repeat(40),
+        black:'JOSÉ-'.repeat(22),user_color:null,result:null,end_time:null,
+      }],total:1,offset:0,limit:40,has_more:false};
+      else if (hasPgnImports && parsed.searchParams.get('source') === 'imported') {
         json = { games: [
           {id:9001, source:'imported', white:'Alice',black:'Bob',result:null,time_control:null,
             end_time:null,user_color:null,bookmarked:0,analyzed:0,opening_name:"King's Pawn Game",notes:''},
@@ -202,7 +208,9 @@ async function newPage(theme, width, height,
   });
   await page.goto(`${url}/review`, {waitUntil: 'domcontentloaded'});
   await page.getByRole('combobox', {name:'Game source'}).waitFor();
-  if (unicodeLibrary) {
+  if (longPlayerNames) {
+    await page.getByText('1 of 1 games').waitFor();
+  } else if (unicodeLibrary) {
     await page.getByText('3 of 3 games').waitFor();
   } else if (unknownImportedNames) {
     await page.getByText('1 of 1 games').waitFor();
@@ -407,14 +415,38 @@ try {
     assert.equal(await card.getByText('Unknown player',{exact:true}).count(),2,
       'An imported game with no known players should not show empty player labels');
     await card.getByText('Date unavailable').waitFor();
+    const missingLabels=await card.getByText('Unknown player',{exact:true}).evaluateAll(nodes=>nodes.map(node=>({
+      scrollWidth:node.scrollWidth,clientWidth:node.clientWidth,whiteSpace:getComputedStyle(node).whiteSpace,
+    })));
+    assert.ok(missingLabels.length===2 && missingLabels.every(label=>label.whiteSpace==='normal' &&
+      label.scrollWidth<=label.clientWidth+1),
+      `Unknown-player labels must wrap in full, not be cut off: ${JSON.stringify(missingLabels)}`);
     const cardBounds=await card.boundingBox();
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'library-unknown-players-light-320.png')});
     assert.ok(cardBounds && cardBounds.x>=0 && cardBounds.x+cardBounds.width<=322,
       'Unknown-player labels overflow a narrow mobile game card');
     assert.deepEqual(pageErrors,[], 'Unknown-player card produced a JavaScript error');
-    await card.scrollIntoViewIfNeeded();
-    await page.screenshot({path:join(output,'library-unknown-players-light-320.png')});
     console.log('PASS imported PGN without player headers has explicit mobile player labels');
   } finally { await unknownNames.context.close(); }
+
+  const longPlayers=await newPage('light',320,700,{longPlayerNames:true});
+  try {
+    const {page,pageErrors}=longPlayers;
+    const card=page.locator('a[href="/review/9003"]');
+    await card.scrollIntoViewIfNeeded();
+    const m=await metrics(page);
+    assert.ok(m.overflow<=2,`Long imported player names create horizontal overflow: ${m.overflow}px`);
+    const playerNames=await card.locator('span.truncate.font-semibold').evaluateAll(nodes=>nodes.map(node=>({
+      contentWidth:node.scrollWidth,visibleWidth:node.clientWidth,box:node.getBoundingClientRect().toJSON(),
+    })));
+    assert.equal(playerNames.length,2);
+    assert.ok(playerNames.every(name=>name.box.x>=0 && name.box.right<=322),
+      `Long player names escaped the mobile game card: ${JSON.stringify(playerNames)}`);
+    await page.screenshot({path:join(output,'library-long-player-names-light-320.png')});
+    assert.deepEqual(pageErrors,[], 'Long player names caused a browser exception');
+    console.log('PASS long Unicode/Latin player names fit the 320px mobile game card');
+  } finally {await longPlayers.context.close();}
 
   const internationalHistory=await newPage('dark',390,844,{unicodeLibrary:true});
   try {

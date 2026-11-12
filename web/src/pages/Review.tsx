@@ -786,7 +786,7 @@ export default function Review() {
       )}
 
       {!isLoading && !initialError && games.length > 0 && (
-        <div className="grid gap-2" aria-busy={isFetching}>
+        <div className="grid min-w-0 grid-cols-1 gap-2" aria-busy={isFetching}>
           {games.map((g) => <GameCard key={g.id} g={g} accountId={user?.id} starredOnly={bookmarkedOnly} />)}
         </div>
       )}
@@ -849,9 +849,11 @@ function GameCard({ g, accountId, starredOnly }: { g: GameRow; accountId: number
         <ResultIcon r={g.result} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className={cn('truncate font-semibold', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.white?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
-            <span className="text-chesscom-400">{t('players.vs')}</span>
-            <span className={cn('truncate font-semibold', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.black?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
+            <span className="inline-flex max-w-full min-w-0 items-baseline gap-x-2">
+              <span title={g.white?.trim() || undefined} className={cn('min-w-0 font-semibold', g.white?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'white' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.white?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
+              <span className="shrink-0 text-chesscom-400">{t('players.vs')}</span>
+              <span title={g.black?.trim() || undefined} className={cn('min-w-0 font-semibold', g.black?.trim() ? 'truncate' : 'whitespace-normal break-words text-xs leading-snug', g.user_color === 'black' ? 'text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200')}>{g.black?.trim() || t('review.unknownPlayer', {defaultValue:'Unknown player'})}</span>
+            </span>
             <span className="text-xs text-chesscom-400">· {fmtTimeControl(g.time_control, t)}</span>
             {g.opening_name && <span className="hidden truncate text-xs text-chesscom-400 sm:inline">· {g.opening_name}</span>}
           </div>

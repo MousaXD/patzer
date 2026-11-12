@@ -158,6 +158,25 @@ describe('Review library with large histories', () => {
     expect(card.textContent).toContain('Date unavailable');
   });
 
+  it('keeps long international player names inside a truncatable card label with the full text available', async () => {
+    const white='棋手名'.repeat(40);
+    const black='JOSÉ-'.repeat(22);
+    mocks.get.mockImplementation(async (url:string)=>url==='/api/games/openings'
+      ? {total:1,classified:1,unclassified:0,openings:[{name:'Italian Game',games:1}]}
+      : {games:[{...makeGame(1),source:'imported',white,black,user_color:null}],
+        total:1,offset:0,has_more:false});
+    mount();
+    await screen.findByText('1 of 1 games');
+    const card=document.querySelector('a[href="/review/1"]')!;
+    const names=[...card.querySelectorAll<HTMLSpanElement>('span.truncate.font-semibold')];
+    expect(names).toHaveLength(2);
+    expect(names.map(n=>n.title)).toEqual([white,black]);
+    expect(names.every(n=>n.className.includes('min-w-0'))).toBe(true);
+    expect(names[0]?.parentElement?.className).toContain('max-w-full');
+    expect(card.textContent).toContain(white);
+    expect(card.textContent).toContain(black);
+  });
+
   it('keeps the bookmark state consistent in Starred only while a removal is pending or fails', async () => {
     let saved = true;
     let rejectSave!: (error: Error) => void;

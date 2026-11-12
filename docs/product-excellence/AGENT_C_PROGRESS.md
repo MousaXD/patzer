@@ -535,3 +535,21 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **imported-game date and sort previews** for large mixed-provider libraries: undated local PGNs must stay accessible and recognizably undated when users sort oldest-first or combine date filters. Ensure the server never silently excludes undated games from an unfiltered page while reporting a misleading total; verify with a disposable dataset and the actual Library UI before changing anything.
+
+## 2026-11-12 — Keep long international player names inside mobile game cards
+
+- Recovered clean pushed `26eb2a3` and checked the planned mixed-date Library audit against existing coverage **before** repeating it. The Hono suite already certifies oldest/newest pagination across `NULL` game dates, sort boundaries after removals and inclusive date filters; undated PGNs remain marked **Date unavailable** in the Library. Moved to the next untested UI integrity risk: recently improved international player-name metadata may exceed narrow game-card widths.
+- Added a new isolated 320px Chromium fixture with a **120-character CJK White name** and a long accented Latin Black name. It reproduced a genuine bug: the rendered names measured **1,680px and 969px** wide, and escaped the card even though the overall document-overflow check reported zero. The browser failed before implementation.
+- Fixed the **root cause** by explicitly using a shrinkable `minmax(0,1fr)` single-column Library grid rather than the implicit min-content grid track. Grouped player names in a constrained inline-flex name pair with individual shrinkable truncation, retaining original visible/accessibility text and adding `title` for the full saved metadata. Normal short-name and dated/provider card layouts remain intact.
+- First visual pass revealed that applying truncation to both **Unknown player** placeholders would unnecessarily shorten them, despite the wider-page defect being fixed. Gave missing-player labels a wrap-friendly text style rather than ellipsis, so both **Unknown player** labels remain fully legible over two lines on 320px mobile. Existing language translations and identity provenance stay unchanged.
+- Added React coverage for 120-character Unicode and long accented Latin names, full title and link text, and min-width constraints. Strengthened Chromium assertions for **both** missing player labels to be visibly uncut (`white-space: normal`, no horizontal clipping), plus page/card/name geometry for the very long player names. Inspected `qa-artifacts/agent-c-library/library-long-player-names-light-320.png` and `qa-artifacts/agent-c-library/library-unknown-players-light-320.png` after the final build.
+
+### Verification
+
+- Focused Library suite: **45/45 tests passed**. Full repository suite: **109 files passed, 2 skipped; 1,058 tests passed, 12 skipped**, zero failures.
+- `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Isolated Chromium desktop and 390/320px light/dark, long/unknown names, searches, provider and opening switching, imports, first-use, bookmark recovery and cursor pagination: passed without JS errors or horizontal overflow.
+- No provider calls, production SQLite, merge, deploy, schema change, or other agent code/worktrees touched.
+
+### Next independent audit
+
+- Audit **keyboard and touch access to full long-name identity and the adjacent bookmark/review actions** on densely populated mobile cards. Verify focus, hit areas and correct navigation with a disposable fixture before changing UI behavior; preserve the Review ownership boundary and the account-local bookmark error semantics.
