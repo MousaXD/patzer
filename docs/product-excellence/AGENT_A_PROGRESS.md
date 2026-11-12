@@ -743,3 +743,29 @@
 ### Next scoped issue
 
 - Inspect MoveList's phase boundaries for a start ply on Black's half of a paired row, or for a SetUp/FEN game starting with Black to move: the phase banner currently snaps to the whole row, which can place the label before a White move that belongs to the prior phase. First reproduce with synthetic `phaseSplit` source coordinates and actual rendered DOM, then fix only if the boundary is demonstrably misplaced. Preserve the two-column history, semantic headings and PGN identity.
+
+## 2026-11-12: show phase transitions at the exact saved move, including Black replies
+
+### Reproduction
+
+- Continued from clean, pushed `24ff442` and the recorded phase placement audit. Game Review's two-column `MoveList` previously reduced `phase_split.{middlegame,endgame}.from_ply` to the *pair* containing that ply and rendered its banner above the entire pair. When a phase began with Black's reply, its banner appeared **before the prior White move**; this incorrectly assigned the White move to the next game phase.
+- Added two static HTML regressions with exact saved ply boundaries, including a game starting Black to move from a SetUp/FEN fullmove 12. Both intentionally **failed before the correction** because their phase headings preceded the preceding White SAN.
+
+### Minimal correction
+
+- Replaced pair-index-based phase placement with an exact `from_ply` map. At a normal start-of-pair transition, keep the existing row/banner layout. If a phase begins at Black's half of a pair, render White's half-row, the phase banner, then Black's half-row; hide the repeated visual move number on the second row without changing its saved SAN/accessible move number. Keep two columns and the existing MoveRow navigation, classifications, scoring, focus and click handlers.
+- Use native `<h3>` phase headings, so keyboard/screen-reader users can navigate actual section headings. No new phase computation, synthetic scoring policy, or PGN/source changes.
+
+### Verification and visual evidence
+
+- Focused MoveList, MoveRow, and pairing-model tests: **13 passed** including two new exact-boundary/FEN regressions.
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **989 passed / 12 skipped**, 108 passed test files.
+- Full authenticated disposable Chromium matrix **PASS (exit 0)**. Injected a test-only `phase_split_json` with an Endgame starting at saved Black ply 22 of the same source-aligned 24-ply PGN. At 320px, 390px, and 1024px, asserted DOM order `White ply 21 → Endgame heading → Black ply 22`, all three navigable phase headings, continued selected Black SAN, and unchanged saved PGN. Existing source, variation, keyboard, retry, review and responsive checks stayed green.
+- The first browser run passed the new DOM/visual assertions but hit a **test variable scope error** in the final PGN invariance check; corrected the fixture to capture its own original PGN, then reran the entire browser matrix successfully.
+- Opened/inspected `qa-artifacts/agent-a/phase-boundary-verified-20261112/phase-boundary-black-{390,1024}.png` and the initial 320px reproduction screenshot. The phase section appears clearly between `11.Nf1` and `11...Qd7`, and the latter remains highlighted; no overlapping symbols or horizontal overflow.
+- Phase scores in HTTP fixtures are illustrative test metadata only, **not** Stockfish scoring certification. No merge, deployment, production SQLite mutation or cross-agent edits.
+
+### Next candidate
+
+- Recheck Game Review's short-keyboard workflow around a split phase row: From Black's selected phase-start SAN, ArrowLeft should move to the preceding White SAN, and ArrowRight should restore Black's selected position and keyboard focus. Existing keyboard tests cover ordinary rows; add a focused test with a phase boundary and repair only if the split changed keyboard behavior. Then investigate source-safe move detail labels if no focus defect is found.

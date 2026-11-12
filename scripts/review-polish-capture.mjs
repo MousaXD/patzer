@@ -1666,6 +1666,55 @@ try {
       assert.equal(db.prepare('SELECT pgn FROM games WHERE id = ?').get(id).pgn,originalPgn);
     }finally{await filterContext.close();}
   }
+  // A phase can begin with Black's reply in the same two-column move pair.
+  // Its section heading belongs between the preceding White SAN and that
+  // Black SAN, not before both. Keep phase metadata disposable; the actual
+  // PGN and saved analysis evidence remain unchanged in the database.
+  const savedPgnForPhase=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+  for(const width of [320,390,1024]){
+    const phaseContext=await browser.newContext({viewport:{width,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await phaseContext.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await phaseContext.newPage();
+      let phaseInjected=false;
+      await page.route(`**/api/games/${id}`,async route=>{
+        const response=await route.fetch();
+        const details=await response.json();
+        assert.equal(JSON.parse(details.analysis.moves_json).length,24);
+        const segment=(from_ply,to_ply)=>({from_ply,to_ply,
+          accuracy_white:80,accuracy_black:80,acpl_white:15,acpl_black:15});
+        details.analysis.phase_split_json=JSON.stringify({
+          opening:segment(1,14),middlegame:segment(15,21),endgame:segment(22,24),
+        });
+        phaseInjected=true;
+        await route.fulfill({response,contentType:'application/json',body:JSON.stringify(details)});
+      });
+      await page.goto(`${base}/review/${id}?ply=22`,{waitUntil:'domcontentloaded'});
+      const history=page.getByRole('region',{name:'Moves'});
+      const endgame=history.getByRole('heading',{name:'Endgame',exact:true});
+      await endgame.waitFor({state:'visible',timeout:4000});
+      assert.ok(phaseInjected,'A source-aligned saved PGN must display the injected phase boundary');
+      const placement=await endgame.evaluate(heading=>{
+        const history=heading.closest('[role="region"]');
+        const prior=history?.querySelector('button[data-review-ply="21"]');
+        const next=history?.querySelector('button[data-review-ply="22"]');
+        const follows=(a,b)=>!!a && !!b && !!(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING);
+        return {priorBeforeHeading:follows(prior,heading),headingBeforeNext:follows(heading,next),
+          headings:history?.querySelectorAll('h3').length,
+          selected:next?.getAttribute('aria-current'),
+          priorSan:prior?.textContent?.trim(),nextSan:next?.textContent?.trim()};
+      });
+      assert.ok(placement.priorBeforeHeading && placement.headingBeforeNext,
+        `Endgame header must appear between saved plies 21 and 22: ${JSON.stringify(placement)}`);
+      assert.equal(placement.headings,3,'The original game should expose three navigable phase headings');
+      assert.equal(placement.selected,'step','A split phase row must preserve the selected Black SAN');
+      await endgame.scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`phase-boundary-black-${width}.png`)});
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgnForPhase,
+        'The phase-badge placement audit must not mutate the saved PGN');
+    }finally{await phaseContext.close();}
+  }
   // Evidence-gap regression: a cached analysis may legitimately lack one
   // evaluation even when its recorded move classification is present. In a
   // disposable fixture only, remove the before score from an inaccuracy and

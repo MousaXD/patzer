@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import MoveRow from './MoveRow';
-import { buildMovePairs, pairIndexForPly } from './review/moveHistoryModel';
+import { buildMovePairs } from './review/moveHistoryModel';
 import type { PhaseSplit } from '../types';
 
 interface Move { ply: number; san: string; classification?: string }
@@ -32,16 +32,18 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
   }, [current]);
   const rows = buildMovePairs(moves, startFen);
 
-  // Build a map from "move-pair number" to "phase label to insert BEFORE it".
-  // The first phase label sits at the top (no insertion above row 1 needed —
-  // chess.com renders OPENING as a banner above the list).
-  const phaseAtPair: Map<number, 'opening' | 'middlegame' | 'endgame'> = new Map();
+  // Phase evidence is tied to an exact saved PGN ply, not its containing
+  // two-column display pair. A phase can begin on Black's half of a row;
+  // placing a divider before that whole row would mislabel White's move.
+  const phaseAtPly: Map<number, 'middlegame' | 'endgame'> = new Map();
   if (phaseSplit?.middlegame?.from_ply) {
-    phaseAtPair.set(pairIndexForPly(phaseSplit.middlegame.from_ply, startFen), 'middlegame');
+    phaseAtPly.set(phaseSplit.middlegame.from_ply, 'middlegame');
   }
   if (phaseSplit?.endgame?.from_ply) {
-    phaseAtPair.set(pairIndexForPly(phaseSplit.endgame.from_ply, startFen), 'endgame');
+    phaseAtPly.set(phaseSplit.endgame.from_ply, 'endgame');
   }
+  const phaseLabel = (phase: 'middlegame' | 'endgame') =>
+    t(phase === 'middlegame' ? 'review.middlegame' : 'review.endgame');
 
   return (
     <div
@@ -102,20 +104,22 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
         <PhaseDivider label={t('review.opening')} />
       )}
       {rows.map((r) => {
-        const phaseHere = phaseAtPair.get(r.pairIndex);
+        const firstPly = r.white?.ply ?? r.black?.ply;
+        const phaseHere = firstPly == null ? undefined : phaseAtPly.get(firstPly);
+        const phaseAtBlack = r.white && r.black ? phaseAtPly.get(r.black.ply) : undefined;
         return (
-          <Fragment key={r.num}>
+          <Fragment key={r.pairIndex}>
             {phaseHere && (
-              <PhaseDivider label={phaseHere === 'middlegame' ? t('review.middlegame') : t('review.endgame')} />
+              <PhaseDivider label={phaseLabel(phaseHere)} />
             )}
-            <MoveRow
-              num={r.num}
-              white={r.white}
-              black={r.black}
-              current={current}
-              onSelect={onSelect}
-              highlight={highlight}
-            />
+            {phaseAtBlack ? <>
+              <MoveRow num={r.num} white={r.white} current={current}
+                onSelect={onSelect} highlight={highlight} />
+              <PhaseDivider label={phaseLabel(phaseAtBlack)} />
+              <MoveRow num={r.num} black={r.black} hideNumber current={current}
+                onSelect={onSelect} highlight={highlight} />
+            </> : <MoveRow num={r.num} white={r.white} black={r.black}
+              current={current} onSelect={onSelect} highlight={highlight} />}
           </Fragment>
         );
       })}
@@ -125,8 +129,8 @@ export default function MoveList({ moves, current, onSelect, phaseSplit, startFe
 
 function PhaseDivider({ label }: { label: string }) {
   return (
-    <div className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
+    <h3 className="border-b border-t border-chesscom-200 bg-chesscom-50/70 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
       {label}
-    </div>
+    </h3>
   );
 }
