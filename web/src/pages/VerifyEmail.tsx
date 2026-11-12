@@ -93,8 +93,8 @@ function ResendForm() {
     <AuthShell title={t('auth.resendTitle')} subtitle={t('auth.resendSubtitle')}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label mb-1 block">{t('common.email')}</label>
-          <input className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="label mb-1 block" htmlFor="verify-email-address">{t('common.email')}</label>
+          <input id="verify-email-address" className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <button type="submit" disabled={!valid || busy} className="btn-primary w-full">
           <Mail className="h-4 w-4" />

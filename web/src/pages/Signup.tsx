@@ -101,6 +101,20 @@ export default function Signup() {
     }
   }
 
+  // Never flash a registration form on a server that may forbid signup.
+  // Capabilities are authoritative and may enable invite-only or SSO-only mode.
+  if (!loaded) {
+    return (
+      <AuthShell title={t('auth.signupTitle')}>
+        <div role="status" aria-live="polite" className="space-y-3" data-auth-config-loading>
+          <div aria-hidden="true" className="ui-skeleton h-10 w-full motion-reduce:animate-none" />
+          <div aria-hidden="true" className="ui-skeleton h-10 w-full motion-reduce:animate-none" />
+          <p className="text-sm text-ui-mutedText">{t('authShell.loadingAuth', { defaultValue: 'Checking sign-in options…' })}</p>
+        </div>
+      </AuthShell>
+    );
+  }
+
   // Signup turned off server-side: don't show a form that will only 403.
   if (loaded && !config.signup_enabled) {
     return (
@@ -148,23 +162,23 @@ export default function Signup() {
           </div>
         )}
         <div>
-          <label className="label mb-1 block">{t('common.username')}</label>
-          <input className="input" autoComplete="username" autoFocus={!showInvite || !!linkCode} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-username">{t('common.username')}</label>
+          <input id="signup-username" className="input" autoComplete="username" autoFocus={!showInvite || !!linkCode} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
         </div>
         <div>
-          <label className="label mb-1 block">{t('common.displayName')}</label>
-          <input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-display-name">{t('common.displayName')}</label>
+          <input id="signup-display-name" className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
         </div>
         <div>
-          <label className="label mb-1 block">
+          <label className="label mb-1 block" htmlFor="signup-email">
             {t('common.email')} <span className="text-ink-400">{config.email_enabled ? t('auth.emailRecommended') : t('common.optional')}</span>
           </label>
-          <input className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input id="signup-email" className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           {config.email_enabled && <p className="mt-1 text-xs text-ink-400">{t('auth.emailWhy')}</p>}
         </div>
         <div>
-          <label className="label mb-1 block">{t('common.password')}</label>
-          <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <label className="label mb-1 block" htmlFor="signup-password">{t('common.password')}</label>
+          <input id="signup-password" className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <p className={`mt-1 text-xs ${form.password.length > 0 && form.password.length < 10 ? 'text-bad' : 'text-ink-400'}`}>{t('auth.passwordHint')}</p>
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}

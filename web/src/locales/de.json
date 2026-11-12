@@ -16,6 +16,17 @@
     "gameAnalysis": "Partiedetails",
     "playerProfile": "Spielerprofil"
   },
+  "authShell": {
+    "intro": "Über Patzer",
+    "eyebrow": "Ein Ort, um besser Schach zu spielen",
+    "headline": "Mach deinen nächsten Zug zum Fortschritt.",
+    "description": "Spiele, analysiere deine Partien und verbessere dein Schach in deinem eigenen Tempo.",
+    "play": "Spiele in deinem Tempo",
+    "review": "Verstehe deine Entscheidungen",
+    "progress": "Erkenne deine Fortschritte",
+    "footer": "Dein Schach. Dein Weg.",
+    "loadingAuth": "Anmeldeoptionen werden geladen…"
+  },
   "common": {
     "save": "Speichern",
     "cancel": "Abbrechen",

@@ -13,7 +13,7 @@ vi.mock('framer-motion', async () => {
     ({ initial: _initial, animate: _animate, transition: _transition,
       variants: _variants, custom: _custom, ...props }: Record<string, unknown>) =>
       createElement(tag, props);
-  return { motion: { div: staticElement('div'), section: staticElement('section') } };
+  return { useReducedMotion: () => true, motion: { div: staticElement('div'), section: staticElement('section') } };
 });
 vi.mock('../api', () => ({ api: { get: mocks.get } }));
 vi.mock('../state/auth', () => ({

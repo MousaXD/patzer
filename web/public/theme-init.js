@@ -1,6 +1,6 @@
-/* Synchronous pre-paint theme bootstrap: light is the anonymous/default theme. */
+/* Synchronous pre-paint bootstrap: anonymous visits follow the OS theme. */
 (function () {
-  var choice = 'light';
+  var choice = 'auto';
   try {
     var stored = window.localStorage.getItem('patzer-site-theme');
     if (stored === 'dark' || stored === 'light' || stored === 'auto') choice = stored;

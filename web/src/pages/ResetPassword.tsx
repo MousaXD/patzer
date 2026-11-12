@@ -59,13 +59,13 @@ export default function ResetPassword() {
     <AuthShell title={t('auth.resetTitle')} subtitle={t('auth.resetSubtitle')}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label mb-1 block">{t('auth.newPassword')}</label>
-          <input className="input" type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+          <label className="label mb-1 block" htmlFor="reset-password">{t('auth.newPassword')}</label>
+          <input id="reset-password" className="input" type="password" autoComplete="new-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
           <p className={`mt-1 text-xs ${password.length > 0 && !lengthOk ? 'text-bad' : 'text-ink-400'}`}>{t('auth.passwordHint')}</p>
         </div>
         <div>
-          <label className="label mb-1 block">{t('auth.confirmPassword')}</label>
-          <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          <label className="label mb-1 block" htmlFor="reset-confirm">{t('auth.confirmPassword')}</label>
+          <input id="reset-confirm" className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           {confirm.length > 0 && !matchOk && <p className="mt-1 text-xs text-bad">{t('auth.passwordsNoMatch')}</p>}
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}

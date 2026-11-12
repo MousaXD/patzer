@@ -127,12 +127,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [user, nav]);
 
-  // Reconcile the saved profile with the pre-paint bootstrap. The explicit
-  // legacy "auto" setting continues to follow OS changes.
+  // Reconcile the signed-in profile with the pre-paint bootstrap. On sign-out,
+  // keep the last theme choice for the public/auth shell; on a first visit,
+  // follow the system preference instead of forcing a light login screen.
   useEffect(() => {
     if (loading) return;
     const saved = user?.profile?.site_theme;
-    const choice = saved === 'light' || saved === 'dark' || saved === 'auto' ? saved : 'light';
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem('patzer-site-theme'); } catch { /* private browsing */ }
+    const remembered = stored === 'light' || stored === 'dark' || stored === 'auto' ? stored : 'auto';
+    const choice = saved === 'light' || saved === 'dark' || saved === 'auto'
+      ? saved : user ? 'light' : remembered;
     const query = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       const dark = choice === 'dark' || (choice === 'auto' && query.matches);
@@ -145,7 +150,6 @@ export default function App() {
     };
     try {
       if (user) window.localStorage.setItem('patzer-site-theme', choice);
-      else window.localStorage.removeItem('patzer-site-theme');
     } catch { /* storage may be unavailable */ }
     apply();
     if (choice === 'auto') {

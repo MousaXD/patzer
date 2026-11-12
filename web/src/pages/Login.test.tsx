@@ -8,8 +8,10 @@ vi.mock('../api', () => ({ api: { get, post } }));
 // happy-dom cancels framer-motion's entrance animation on unmount with an
 // unhandled AbortError. The animation isn't under test: render a plain div.
 vi.mock('framer-motion', () => ({
+  useReducedMotion: () => true,
   motion: {
     div: ({ children, className }: { children?: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+    main: ({ children, className }: { children?: React.ReactNode; className?: string }) => <main className={className}>{children}</main>,
   },
 }));
 

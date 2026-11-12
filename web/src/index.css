@@ -447,6 +447,13 @@ button:not([class]):not(:disabled):hover { background:var(--ui-surface-hover); }
 .section-header { background:var(--ui-surface-muted); border-color:var(--ui-border); }
 .dark body { background:var(--ui-bg); color:var(--ui-foreground); }
 
+/* Legacy auth forms predate the semantic UI palette. Limit the readability
+   bridge to the shared auth frame so chess boards/charts are unaffected. */
+.auth-shell .text-ink-400 { color:var(--ui-foreground-subtle); }
+.auth-shell .text-ink-500,.auth-shell .text-ink-600 { color:var(--ui-foreground-muted); }
+.auth-shell .text-accent-600 { color:var(--ui-primary); }
+.auth-shell .text-bad { color:var(--ui-danger); }
+
 @media (prefers-reduced-motion:reduce) {
  :root { --ui-duration:0ms; }
  :where(*,*::before,*::after) { animation-duration:.01ms!important;

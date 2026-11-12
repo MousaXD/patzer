@@ -16,6 +16,17 @@
     "gameAnalysis": "Game analysis",
     "playerProfile": "Player profile"
   },
+  "authShell": {
+    "intro": "About Patzer",
+    "eyebrow": "A place to sharpen your chess",
+    "headline": "Make your next move count.",
+    "description": "Play, revisit your games, and grow your skills in a space built for chess.",
+    "play": "Play at your pace",
+    "review": "Understand your decisions",
+    "progress": "See how you improve",
+    "footer": "Your chess. Your journey.",
+    "loadingAuth": "Checking sign-in options…"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",

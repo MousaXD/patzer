@@ -47,8 +47,8 @@ export default function ForgotPassword() {
     <AuthShell title={t('auth.forgotTitle')} subtitle={t('auth.forgotSubtitle')}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label mb-1 block">{t('common.email')}</label>
-          <input className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="label mb-1 block" htmlFor="forgot-email">{t('common.email')}</label>
+          <input id="forgot-email" className="input" type="email" autoComplete="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         {error && <div role="alert" className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-sm text-bad">{error}</div>}
         <button type="submit" disabled={!valid || busy} className="btn-primary w-full">

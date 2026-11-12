@@ -64,3 +64,38 @@
 
 - Audit unauthenticated landing/authentication shell to ensure newcomers understand Patzer before signing in and can navigate account recovery smoothly. Use real screenshots; no unnecessary redesign.
 - Continue interaction, responsive, keyboard and error-state audits only for shared shell and homepage; never edit Game Review, Games Library, Imports, Play or Insights internals.
+
+## 2026-11-12: Auth landing, account entry, and dark/light continuity
+
+### Verified findings
+
+- Public `/login` at 1440px was a narrow centered form with substantial unused space and no clear articulation of Patzer's benefits. Login duplicated the visual frame used by signup and the recovery routes.
+- Anonymous browser sessions forced a light theme even when the system preferred dark; legacy helper text on dark auth pages was hard to distinguish.
+- Several signup, forgot-password, reset-password, and email-verification input fields had adjacent visual labels but no `htmlFor`/`id` association.
+- Registration could briefly render editable inputs on a server that ultimately reports signup disabled; the login form was already guarded against SSO-only flash.
+- Authenticated and public hero copy had been updated previously, while the public HTML description and installable-app manifest still compared the product directly to Chess.com.
+
+### Implementation
+
+1. Consolidated authentication presentation in `web/src/components/AuthShell.tsx`. Sign-in alone uses a useful two-column desktop orientation with distinct Patzer graphics, benefits, and prominent credential panel. Narrow screens keep a compact form-first design; signup and recovery continue to share the same branded frame without extra decorative clutter.
+2. Preserved existing auth API endpoints, server-driven signup/SSO capability logic, credential submission and error handling while moving `/login` onto the shared shell. Pending capability checks show an accessible loading state rather than a password-form flash.
+3. Implemented a compact, keyboard-accessible, single-selected 5-language selector shared by all auth pages; translated the new informational copy for `en`, `bg`, `es`, `de`, `ru`.
+4. Public theme bootstrap now respects saved theme or anonymous OS preference; signed-in theme continues to follow the user profile. Remembered theme persists across logout for a consistent return to the sign-in page; OS theme changes update the anonymous page live.
+5. Scoped a legacy text-color contrast bridge under `.auth-shell` instead of changing global chess UI colors, and paired previously disconnected auth labels and inputs.
+6. Deferred registration controls until `/api/auth/config` is loaded; closed-signup servers show a message and sign-in route without exposing nonfunctional fields.
+7. Removed incidental third-party GitHub promotion from the authentication frame; aligned HTML and PWA manifest descriptions with Patzer's own identity, and the default PWA background with the light theme.
+8. Added an isolated real-Chromium `web/src/components/navigation/capture-auth.mjs` regression harness. Includes SSO-only/closed-signup delayed capability checks, preference restoration, dark/light and media changes, 1440/1024/390/320px visual captures, input labeling, helper/link contrast, scroll overflow and account recovery.
+
+### Verification
+
+- `npm run build -w web`: **pass** (TypeScript + Vite).
+- `npx vitest run web/src --maxWorkers=2`: **375/375 passed across 60 files**. Old Login and Home test-only Framer mocks were extended for the existing reduced-motion hook and `motion.main` wrapper; no production test logic was weakened.
+- `node web/src/components/navigation/capture-auth.mjs`: **pass** (mocked public auth capabilities, local Chromium; does not submit credentials or call real services).
+- `node web/src/components/navigation/capture-shell.mjs`: **pass again** after the shared theme/bootstrap changes.
+- Screenshots for both themes and mobile/desktop are reproducible locally under ignored `artifacts/agent-02/`; inspected 1440px and 320px output and corrected dark helper text based on them.
+- `git diff --check`: **pass**.
+
+### Remaining focus
+
+- The signed-in navigation shell and auth shell are frontend-fixture certified, not live-production certified. Check further translations, responsive keyboard focus, error/empty states and contrast where the running application reveals actual problems.
+- Ownership remains only on the common shell, homepage, shared styles and public authentication frame. No modifications to other agents' Game Review, Games Library, Play or Insights internals, and no merges, deployments or production-data operations.
