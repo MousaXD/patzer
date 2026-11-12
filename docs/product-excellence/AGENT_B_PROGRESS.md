@@ -862,3 +862,32 @@
 ### Next audit
 
 - Inspect the shared shell's **update-notice contrast and focus accessibility** at narrow widths, plus banner behavior in reduced-motion and high-zoom conditions. Preserve its already healthy responsive layout; only fix genuine reproduced faults.
+
+## 2026-11-12: Preserve keyboard focus after dismissing a release notice
+
+### Reproduction
+
+- Continued from clean pushed `7470f1f` and its exact next task, the global update-notice keyboard-accessibility audit.
+- Real Chromium negative control: keyboard-focus the update notice's **Dismiss until the next release** button on desktop, press Enter, and observe that the notice disappears while `document.activeElement` falls back to **BODY**. This causes users to lose their keyboard position immediately after a routine shell interaction. The same issue could affect mobile hardware keyboard users.
+- The existing release notice had already passed localized, dark/light, contrast/overflow, 44px touch-target, version-persistence, and changelog error/empty checks; no visual redesign was warranted.
+
+### Scoped implementation
+
+1. Added an optional `onKeyboardDismiss` callback to the shared `UpdateNotice`. The notice distinguishes keyboard/assistive activation using the click event's `detail === 0` and invokes that callback only for non-pointer dismissals.
+2. The shared Layout provides a persistent search-trigger ref and transfers focus to Search before the notice unmounts. If a shell is rendered without global search, the existing main landmark is used as a fallback.
+3. Pointer/touch dismissal continues to work normally without stealing focus; the existing per-version localStorage suppression behavior is unchanged.
+4. Extended `capture-notices.mjs` with actual Enter-key dismissal and post-removal focus assertions on desktop **1440px** and mobile **320px**, including the notice for the next release.
+5. Added `UpdateNotice.focus.test.tsx` with separate keyboard-versus-pointer behavior checks and the existing storage persistence assertion.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `node web/src/components/navigation/capture-notices.mjs`: **passed**, including previously failing keyboard-focus restoration scenarios and earlier localized/empty/error/retry cases.
+- Focused `npx vitest run web/src/components/UpdateNotice.focus.test.tsx`: **2/2 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **426/426 passed across 73 test files**.
+- `git diff --check`: **passed**.
+- No change to feature-owned pages, production services or game records. No merge, deployment or other agent worktree modification.
+
+### Next audit
+
+- Investigate keyboard navigation of the release notice's **What's new** link and dismissal control when the notice is combined with a global modal or an unusually tall translated notice. Avoid expanding global UI chrome without a reproduced need.

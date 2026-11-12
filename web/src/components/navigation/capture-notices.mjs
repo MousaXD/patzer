@@ -192,8 +192,15 @@ try {
   await page.getByText(/Pull the new image/).waitFor();
   role = 'user';
   await visit(page, 1440, 900);
-  await page.getByRole('button', { name: 'Dismiss until the next release' }).click();
+  const dismissDesktop = page.getByRole('button', { name: 'Dismiss until the next release' });
+  await dismissDesktop.focus();
+  await page.keyboard.press('Enter');
   await page.getByText(/Patzer 7.20.0 is out/).waitFor({ state: 'detached' });
+  const searchAfterDismiss = page.locator('[data-workspace-header] button').first();
+  if (!(await searchAfterDismiss.evaluate((element) => element === document.activeElement))) {
+    const target = await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 180));
+    throw new Error('Dismissing the update notice with Enter lost keyboard focus: ' + target);
+  }
   await page.reload();
   if (await page.getByText(/Patzer 7.20.0 is out/).count()) {
     throw new Error('Dismissed release notice reappeared after reload');
@@ -201,6 +208,15 @@ try {
   latestVersion = '7.21.0';
   await page.reload();
   await page.getByText(/Patzer 7.21.0 is out/).waitFor();
+  await page.setViewportSize({ width: 320, height: 700 });
+  const dismissMobile = page.getByRole('button', { name: 'Dismiss until the next release' });
+  await dismissMobile.focus();
+  await page.keyboard.press('Enter');
+  await page.getByText(/Patzer 7.21.0 is out/).waitFor({ state: 'detached' });
+  const mobileSearch = page.locator('[data-workspace-header] button').first();
+  if (!(await mobileSearch.evaluate((element) => element === document.activeElement))) {
+    throw new Error('Mobile keyboard dismissal lost focus instead of transferring it to Search');
+  }
   console.log('Agent B release notices and changelog: real Chromium checks passed.');
 } finally {
   await browser?.close();

@@ -143,6 +143,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const lastFocusedPathRef = useRef(location.pathname);
   // Hardware shortcuts may launch a global dialog while the mobile drawer
   // owns focus. Dismiss the drawer and hand the return target to the menu
@@ -340,7 +341,10 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col" data-workspace={isAnalysis ? 'analysis' : 'default'}>
-        <UpdateNotice />
+        <UpdateNotice onKeyboardDismiss={() => {
+          if (searchTriggerRef.current) searchTriggerRef.current.focus({ preventScroll: true });
+          else mainRef.current?.focus({ preventScroll: true });
+        }} />
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-3 shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:gap-2 sm:px-5" data-workspace-header>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
             <NavLink to="/" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 md:hidden" aria-label={t('app.name')}>
@@ -365,6 +369,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           </div>
           {onOpenPalette && (
             <button
+              ref={searchTriggerRef}
               type="button"
               onClick={onOpenPalette}
               className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:px-3 xl:h-9 xl:min-w-9"

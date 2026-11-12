@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpCircle, X } from 'lucide-react';
 import { api } from '../api';
@@ -24,7 +24,11 @@ interface UpdateResponse {
 
 const DISMISS_KEY = 'update.dismissed';
 
-export default function UpdateNotice() {
+interface Props {
+  onKeyboardDismiss?: () => void;
+}
+
+export default function UpdateNotice({ onKeyboardDismiss }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [info, setInfo] = useState<UpdateResponse | null>(null);
@@ -41,10 +45,14 @@ export default function UpdateNotice() {
   if (!info?.enabled || !info.updateAvailable || !info.latest) return null;
   if (dismissed === info.latest) return null;
 
-  function dismiss() {
+  function dismiss(event: MouseEvent<HTMLButtonElement>) {
     const v = info?.latest ?? null;
     setDismissed(v);
     try { if (v) localStorage.setItem(DISMISS_KEY, v); } catch { /* ignore */ }
+    // Keyboard/assistive-tech button activation has detail=0. The dismiss
+    // control is unmounted immediately, so hand focus to a persistent shell
+    // control rather than dropping the user back to the document body.
+    if (event.detail === 0) onKeyboardDismiss?.();
   }
 
   return (
