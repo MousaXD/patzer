@@ -984,6 +984,15 @@ try {
     await scoredAgain;
     const validMove=page.getByRole('button',{name:'Follow played move e4'});
     await validMove.waitFor({state:'visible',timeout:5000});
+    const accessibleLine=await validMove.evaluate(element=>{
+      const ids=element.getAttribute('aria-describedby')?.split(/\s+/).filter(Boolean) || [];
+      return {action:element.getAttribute('aria-label'), ids,
+        text:ids.map(key=>document.getElementById(key)?.textContent?.trim() || '').join(' ')};
+    });
+    assert.deepEqual(accessibleLine.text,'+0.45 e4 e5 Nf3',
+      `A valid engine action must describe its source-backed score and legal PV: ${JSON.stringify(accessibleLine)}`);
+    assert.equal(accessibleLine.ids.length,2,
+      'The accessible line description must reference the separate visible score and PV');
     const unsignedLine=page.getByRole('button',{name:'Try engine move d4'});
     await unsignedLine.waitFor({state:'visible',timeout:5000});
     assert.equal((await unsignedLine.locator('[data-review-engine-line-score]').innerText()).trim(),'—',
@@ -1044,6 +1053,15 @@ try {
     const scores=await page.locator('#review-engine-lines-content [data-review-engine-line-score]').allTextContents();
     assert.deepEqual(scores.map(value=>value.trim()),['−0.75','-#2','#1'],
       `On Black's turn, all live cp/mate labels must match White's perspective: ${JSON.stringify(scores)}`);
+    const describedLines=await page.locator('#review-engine-lines-content button[aria-describedby]').evaluateAll(elements=>
+      elements.map(element=>({
+        label:element.getAttribute('aria-label'),
+        details:(element.getAttribute('aria-describedby')?.split(/\s+/) || [])
+          .map(id=>document.getElementById(id)?.textContent?.trim() || ''),
+      })));
+    assert.deepEqual(describedLines.map(row=>row.details),[
+      ['−0.75','e5 Nf3'],['-#2','c5 Nf3'],['#1','d5 exd5'],
+    ],'Screen readers must receive each correct Black-to-move score and source-legal continuation');
     const locale=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
     await page.getByText(locale.review.linesScorePerspective,{exact:true}).waitFor({state:'visible'});
     for(const san of ['e5','c5','d5']){

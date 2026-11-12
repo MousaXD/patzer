@@ -1663,16 +1663,19 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
                 className="btn-secondary min-h-11 min-w-11 px-3 py-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500">{t('review.linesRetry')}</button>
             </div>
           )}
-          {lines.map((l) => {
+          {lines.map((l, index) => {
             const isPlayed = playedUci != null && l.uci === playedUci;
             const pv = l.pv_san.slice(0, 6).join(' ');
+            const scoreId = `review-engine-line-score-${index}`;
+            const pvId = `review-engine-line-pv-${index}`;
             return (
               <button
-                key={l.multipv}
+                key={`${l.multipv}-${l.uci}`}
                 type="button"
                 disabled={loading}
                 onClick={() => { if (isPlayed) onAdvance(); else onTryMove(l.uci); }}
                 aria-label={t(isPlayed ? 'review.linesFollowMove' : 'review.linesTryMove', { san: l.san })}
+                aria-describedby={`${scoreId} ${pvId}`}
                 onMouseEnter={() => onHover(l)}
                 onMouseLeave={() => onHover(null)}
                 className={`flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold-500 ${
@@ -1684,11 +1687,11 @@ function LinesPanel({ enabled, onToggle, lines, scoreTurn, loading, error, onRet
                 <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
                   l.multipv === 1 ? 'bg-gold-500/20 text-gold-600' : 'bg-chesscom-100 text-chesscom-500 dark:bg-chesscom-800'
                 }`}>{l.multipv}</span>
-                <span data-review-engine-line-score className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
+                <span id={scoreId} data-review-engine-line-score className="w-12 shrink-0 font-mono text-xs font-semibold tabular-nums">
                   {formatReviewEngineLineScore(l, scoreTurn)}
                 </span>
                 <span className="w-12 shrink-0 truncate font-mono font-semibold text-chesscom-900 dark:text-chesscom-100">{l.san}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>
+                <span id={pvId} className="min-w-0 flex-1 truncate font-mono text-[11px] text-chesscom-600 dark:text-chesscom-200">{pv}</span>
                 {isPlayed && <span className="shrink-0 text-[10px] uppercase text-board-dark dark:text-chesscom-200">{t('review.linesPlayed', { defaultValue: 'played' })}</span>}
               </button>
             );

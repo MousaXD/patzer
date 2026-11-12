@@ -917,3 +917,22 @@
 ### Next higher-value accessibility issue
 
 - In `LinesPanel`, each live engine line is a button whose explicit `aria-label` says only "Try engine move e5" or "Follow played move e5". That label can suppress descendant score and PV in the accessible name, making the newly corrected score and preview invisible to screen-reader users. Audit the actual DOM/accessibility relationship and add a source-safe description of each line's signed score and legal PV via `aria-describedby` without changing the established button action name or keyboard navigation. Keep explanations localized and avoid announcing fabricated mate winners.
+
+## 2026-11-12: expose live engine-line score and legal PV to screen readers
+
+### Reproduction and scoped fix
+
+- Continued from clean pushed `86add34` and the recorded next accessibility task. The live Engine Lines buttons had an explicit action-only `aria-label` ("Follow played move e4" / "Try engine move c5") which suppresses their descendant score and PV from the accessible name. Players using a screen reader could activate a legal move but miss the just-corrected, source-matched evaluation and continuation.
+- Added stable per-rendered-row IDs to the **already visible** engine score and legal-PV spans, and paired them with the action button through `aria-describedby`. The accessible **name remains the existing translated action**, while its description now includes that row's verified White-perspective score and legal SAN continuation. The IDs use the row index instead of the engine rank, avoiding accidental collision if malformed multiPV data repeats a rank. No new data, explanations, colors, keyboard shortcuts or backend policy; scoring and PV still come from the existing FEN-matched verification path.
+
+### Verification
+
+- Focused engine-score/source tests: **12 passed**. `npm run typecheck` PASS; `npm run build` PASS.
+- Full `npm test -- --testTimeout=20000`: **1000 passed / 12 skipped**, 110 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**. In the original saved starting-position, a focusable "Follow played move e4" button exposes description IDs resolving to `+0.45` and `e4 e5 Nf3`; keyboard Retry/Tab still reaches it. For a Black-to-move saved position, all three live lines exposed description pairs `−0.75 / e5 Nf3`, `-#2 / c5 Nf3`, and `#1 / d5 exd5`, retaining their existing legal action names and clickability. Full previous source, multilingual, variation, and responsive tests green; saved PGN unchanged.
+- Browser scores are deliberately injected QA fixtures, not live Stockfish certification. The visual design and original screenshot baseline remain unchanged; `qa-artifacts/agent-a/engine-line-accessible-20261112/engine-line-matched-after-retry-390.png` and `engine-lines-black-turn-white-perspective-390.png` were generated for regression reference.
+- No deployment, merge, production SQLite mutation, or other-agent modifications.
+
+### Next higher-impact issue
+
+- The FEN/legality validator for live MultiPV `verifiedPositionEngineLines` validates each line individually but does not enforce distinct `multipv` rank or first UCI across the response. If a malformed provider returns repeated rank 1 or the same move under multiple ranks, the review may render multiple misleading "best" rows with conflicting scores and duplicate React keys. Inspect backend rank policy and add isolated adversarial tests before deciding whether to reject or safely deduplicate malformed lines, without ever inventing a replacement best move.
