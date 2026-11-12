@@ -1145,7 +1145,7 @@ function GameAnalyzerView() {
                     <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> {t('review.returnToBoard')}
                   </button>
                 </div>
-                <div role="tablist" aria-label="Review detail sections" onKeyDown={(event) => {
+                <div role="tablist" aria-label={t('review.detailSections')} onKeyDown={(event) => {
                   if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'tab') return;
                   const tabs: Tab[] = ['moves', 'report', 'moments'];
                   const index = tabs.indexOf(tab);

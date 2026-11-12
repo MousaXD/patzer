@@ -308,6 +308,7 @@
     "variationEvalLabel": "Оценка {{score}}",
     "boardLabel": "Шахматна дъска",
     "moveNavigation": "Навигация по ходовете на партията",
+    "detailSections": "Раздели на анализа на партията",
     "keyboardShortcuts": "← / →: преглед на ходове · Home / End: първи / последен · F: завърти дъската",
     "openCoach": "Питай треньора",
     "summary": "Обобщение",

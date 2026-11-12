@@ -2158,6 +2158,8 @@ try {
           await page.screenshot({path:join(output,`review-explore-hint-${lang}-390.png`)});
         }
         await page.locator('[data-review-jump-to-details]').click();
+        const detailTablist=page.getByRole('tablist',{name:locale.review.detailSections,exact:true});
+        await detailTablist.waitFor({state:'visible'});
         const expected=[locale.review.moves,locale.review.gameReport,locale.review.keyMoments];
         const tabs=page.getByRole('tab');
         assert.equal(await tabs.count(),3);
@@ -2225,6 +2227,21 @@ try {
         const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
         assert.ok(overflow<=2,`Horizontal overflow in ${lang} at ${width}px: ${overflow}`);
         if(width===390){
+          const movesTab=page.getByRole('tab',{name:locale.review.moves});
+          const reportTab=page.getByRole('tab',{name:locale.review.gameReport});
+          await movesTab.focus();
+          await page.keyboard.press('ArrowRight');
+          await page.waitForFunction(()=>document.activeElement?.id==='review-tab-report'
+            && document.activeElement?.getAttribute('aria-selected')==='true',undefined,{timeout:2500});
+          assert.equal(await reportTab.getAttribute('aria-selected'),'true',
+            `The translated ${lang} tablist must preserve keyboard arrow navigation`);
+          assert.ok(await reportTab.evaluate(el=>document.activeElement===el),
+            `The ${lang} tablist must focus the selected review section`);
+          await page.keyboard.press('Home');
+          await page.waitForFunction(()=>document.activeElement?.id==='review-tab-moves'
+            && document.activeElement?.getAttribute('aria-selected')==='true',undefined,{timeout:2500});
+          assert.equal(await movesTab.getAttribute('aria-selected'),'true');
+          assert.ok(await movesTab.evaluate(el=>document.activeElement===el));
           await tabs.nth(1).click();
           assert.equal(await tabs.nth(1).getAttribute('aria-selected'),'true');
           await tabs.nth(2).click();

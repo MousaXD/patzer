@@ -317,6 +317,7 @@
     "variationEvalLabel": "Bewertung {{score}}",
     "boardLabel": "Schachbrett",
     "moveNavigation": "Zugnavigation der Partie",
+    "detailSections": "Bereiche der Partieanalyse",
     "keyboardShortcuts": "← / →: Züge wechseln · Pos1 / Ende: erster / letzter Zug · F: Brett drehen",
     "openCoach": "Coach fragen",
     "summary": "Zusammenfassung",

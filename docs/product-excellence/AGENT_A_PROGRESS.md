@@ -853,3 +853,23 @@
 ### Next source-integrity candidate
 
 - In GameAnalyzer's engine-lines rail, `fmtCp(null)` currently returns `0.00`. The EngineLine contract permits `cp:null` and `mate:null`, so an incomplete engine line could be displayed as a false drawn/equal position. Inspect the on-demand engine-line fetch/validation path and add a regression with missing score evidence. If reproducible, show a truthful localized unavailable label without hiding a still-useful legal PV; preserve engine source and pagination.
+
+## 2026-11-12: localize Game Review detail tablist name with preserved keyboard navigation
+
+### Exact resume and scope audit
+
+- Resumed from clean pushed `832d13f` without repeating its mate/translation investigations. Checked the recorded engine-line-null candidate against `verifiedPositionEngineLines` and the `/api/analyze/position` contract: the frontend rejects a legal line when **both** `cp` and `mate` are null, so there is no reachable invented `0.00` line through the verified API path. Left that correct source-integrity protection alone.
+- Inspected another Review-only accessible control and found the detailed tablist still declared hardcoded English `aria-label="Review detail sections"`, even while its individual Moves, AI Report and Key Moments tabs were correctly translated. Five-language locale regression tests deliberately **failed** because `review.detailSections` did not exist anywhere.
+
+### Minimal fix and independent browser verification
+
+- Added `review.detailSections` to English, German, Spanish, Russian and Bulgarian, and bound the existing GameAnalyzer-only tablist accessible name to the currently selected locale. No global shell, tab contents, scoring, source identity or layout semantics changed.
+- Extended the existing five-language 390px/320px authenticated Chromium review-tab matrix to require the localized tablist name and, at 390px, verify ArrowRight selects and focuses the Report tab, then Home restores the Moves tab and DOM focus. Focus assertions await the native requestAnimationFrame to avoid misleading asynchronous test failures.
+- Focused locale suite: **51 passed**. `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **996 passed / 12 skipped**, 109 passing test files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)**. Spanish, German, Russian, Bulgarian and English detail tablists exposed the correct localized accessible name at 320/390px. Selected tab and keyboard focus remained aligned after ArrowRight and Home, with existing responsive/layout/engine-source/mate/variation/PGN checks passing. Inspected `qa-artifacts/agent-a/tablist-localized-20261112/review-tabs-{es,de}-390.png`: no clipped review labels or altered tab rail appearance.
+- No deployment, merge, production SQLite mutation or other agents' code changes.
+
+### Next high-value review issue
+
+- The Engine Lines rail uses `fmtCp(null)` returning `0.00`, but its verified backend response rejects entirely unscored lines. Rather than changing correct behavior, audit the **terminal mate-zero** engine line: its present formatter converts `mate=0` to `-#0` (Black), even though the sign of a terminal mate zero is undefined, unlike a true signed nonzero mate. Confirm actual source semantics and, if reproduced, replace the false winner with an unknown-side terminal marker while preserving legal PV, matched FEN, and exact other mate counts.

@@ -317,6 +317,7 @@
     "variationEvalLabel": "Оценка {{score}}",
     "boardLabel": "Шахматная доска",
     "moveNavigation": "Навигация по ходам партии",
+    "detailSections": "Разделы разбора партии",
     "keyboardShortcuts": "← / →: переход по ходам · Home / End: первый / последний · F: перевернуть доску",
     "openCoach": "Спросить тренера",
     "summary": "Итог",

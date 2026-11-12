@@ -310,6 +310,7 @@
     "variationEvalLabel": "Evaluación {{score}}",
     "boardLabel": "Tablero de ajedrez",
     "moveNavigation": "Navegación por las jugadas",
+    "detailSections": "Secciones del análisis de partida",
     "keyboardShortcuts": "← / →: recorrer jugadas · Inicio / Fin: primera / última · F: girar tablero",
     "startingPosition": "posición inicial",
     "bestArrowNote": "Flecha azul: mejor continuación desde la posición mostrada en el tablero.",
