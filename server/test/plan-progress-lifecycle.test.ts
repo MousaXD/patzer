@@ -34,13 +34,13 @@ beforeAll(async () => {
     (5,'late-activity','x','user'), (6,'late-completion','x','user'),
     (7,'streak-player','x','user'), (8,'unobserved-streak','x','user'),
     (9,'opening-player','x','user'), (10,'seed-source','x','user'),
-    (11,'accuracy-source','x','user')`).run();
+    (11,'accuracy-source','x','user'), (12,'review-source','x','user')`).run();
   db.prepare(`INSERT INTO profiles (user_id,display_name) VALUES
     (1,'Practice Player'), (2,'Completed Player'),
     (3,'Expired Player'), (4,'Other Player'),
     (5,'Late Activity'), (6,'Late Completion'), (7,'Streak Player'),
     (8,'Unobserved Streak'), (9,'Opening Player'),
-    (10,'Seed Source'), (11,'Accuracy Source')`).run();
+    (10,'Seed Source'), (11,'Accuracy Source'), (12,'Review Source')`).run();
 });
 
 afterAll(() => {
@@ -218,5 +218,45 @@ describe('weekly Plan uses real play and training progress', () => {
       source_revision=(SELECT source_revision FROM games WHERE id=1101),
       analysis_generation=analysis_generation+1 WHERE game_id=1101`).run();
     expect((await goals(11)).goals).toMatchObject([{ kind: 'accuracy',status: 'completed',progress: 1 }]);
+  });
+
+  it('does not count legacy or source-obsolete analyses as completed review work', async () => {
+    const { SCORING_VERSION } = await import('../src/chess/classifier.js');
+    db.prepare(`INSERT INTO goals
+      (user_id,kind,title,description,target,status,created_at,completes_at)
+      VALUES (12,'review_games','Analyze two games','Current engine analysis',2,'active',
+        datetime('now','-1 day'),datetime('now','+6 days'))`).run();
+    const addGame = db.prepare(`INSERT INTO games
+      (id,user_id,source,pgn,white,black,result,user_color)
+      VALUES (?,12,'played',?,'Review Source','Bot','win','white')`);
+    addGame.run(1201,'1. e4 e5');
+    addGame.run(1202,'1. d4 d5');
+    const addAnalysis = db.prepare(`INSERT INTO analyses
+      (game_id,depth,moves_json,scoring_version,source_hash,source_revision,analysis_generation)
+      VALUES (?,14,'[]',?,?,0,?)`);
+    addAnalysis.run(1201,SCORING_VERSION,null,0);  // Legacy/unverified
+    addAnalysis.run(1202,SCORING_VERSION,'valid-current-source',1);
+
+    expect((await goals(12)).goals).toMatchObject([{
+      kind: 'review_games', progress: 1, status: 'active',
+    }]);
+    db.prepare(`UPDATE games SET pgn = '1. Nf3 d5' WHERE id=1202`).run();
+    expect((await goals(12)).goals).toMatchObject([{
+      kind: 'review_games', progress: 0, status: 'active',
+    }]);
+
+    db.prepare(`UPDATE analyses SET source_hash='reanalyzed-current-source',
+      source_revision=(SELECT source_revision FROM games WHERE id=1202),
+      analysis_generation=analysis_generation+1 WHERE game_id=1202`).run();
+    expect((await goals(12)).goals).toMatchObject([{
+      kind: 'review_games', progress: 1, status: 'active',
+    }]);
+
+    db.prepare(`UPDATE analyses SET source_hash='proven-current-source',
+      source_revision=(SELECT source_revision FROM games WHERE id=1201),
+      analysis_generation=1 WHERE game_id=1201`).run();
+    expect((await goals(12)).goals).toMatchObject([{
+      kind: 'review_games', progress: 2, status: 'completed',
+    }]);
   });
 });

@@ -97,7 +97,8 @@ function computeProgress(userId: number, row: GoalRow): number {
         SELECT COUNT(*) AS c FROM analyses a
         JOIN games g ON g.id = a.game_id
         WHERE g.user_id = ? AND a.created_at >= ? AND a.created_at < ?
-      `).get(userId, row.created_at, row.completes_at) as { c: number };
+          AND (${CURRENT_ANALYSIS_SQL})
+      `).get(userId, row.created_at, row.completes_at, SCORING_VERSION) as { c: number };
       return r.c;
     }
     case 'accuracy': {
