@@ -23,6 +23,15 @@
     "retry": "Erneut versuchen",
     "empty": "Es sind noch keine Versionshinweise verfügbar."
   },
+  "bootstrap": {
+    "loading": "Patzer wird gestartet…",
+    "title": "Server nicht erreichbar",
+    "subtitle": "Patzer konnte den Server nicht erreichen.",
+    "alertLabel": "Server nicht erreichbar",
+    "help": "Prüfe, ob Patzer läuft, und versuche die Verbindung erneut.",
+    "retry": "Erneut versuchen",
+    "reconnecting": "Verbindung wird wiederhergestellt…"
+  },
   "authShell": {
     "intro": "Über Patzer",
     "eyebrow": "Ein Ort, um besser Schach zu spielen",

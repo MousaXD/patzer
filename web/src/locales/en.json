@@ -23,6 +23,15 @@
     "retry": "Try again",
     "empty": "No release notes are available yet."
   },
+  "bootstrap": {
+    "loading": "Starting Patzer…",
+    "title": "Server unavailable",
+    "subtitle": "Patzer could not reach its server.",
+    "alertLabel": "Server unavailable",
+    "help": "Check that Patzer is running and try connecting again.",
+    "retry": "Try again",
+    "reconnecting": "Reconnecting…"
+  },
   "authShell": {
     "intro": "About Patzer",
     "eyebrow": "A place to sharpen your chess",

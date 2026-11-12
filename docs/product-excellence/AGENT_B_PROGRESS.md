@@ -169,3 +169,33 @@
 ### Next verified-audit target
 
 - Initial authentication/bootstrap loading and failed capability checks: confirm readable/accessible global loading status and any actionable server-unavailable guidance in a real browser before implementing further changes.
+
+## 2026-11-12: Honest startup and server-unavailable experience
+
+### Reproduced
+
+- Resumed from clean pushed `64e783d`, leaving earlier release-notes work complete.
+- Found a misleading bootstrap failure: the auth store distinguishes API failures by setting `setupRequired = null`, but `App.tsx` previously interpreted every nonloading, non-setup state with `user = null` as logged-out. When either `/api/setup/status` or `/api/auth/me` returned 503, the UI redirected to sign-in rather than explaining the outage.
+- The initial Patzer splash had only a logo and animation, without visible status text or a screen-reader status name.
+- Created the real local Chromium fixture at `capture-bootstrap.mjs`; its **pre-fix run failed** because the server-unavailable alert and retry button did not exist.
+
+### Fixes
+
+1. Introduced a branded, responsive `ServerUnavailable` shared-shell screen that clearly explains failed server contact instead of falsely implying logout. It provides a keyboard-operable **Try again** action that invokes the existing auth refresh, guards against duplicate retries, and returns to the real sign-in/setup/app route after successful recovery.
+2. Made the initial splash a labeled live status with visible, translatable "Starting Patzer…" copy and reduced-motion-safe animation, using Patzer's theme-aware foreground and background tokens.
+3. Added startup/loading/unavailable/retry translations in all five supported locales.
+4. Added focused component tests for outage copy, retry behavior, and prevention of concurrent retry clicks.
+5. Added browser certification across 1440/390/320px in light/dark themes for both setup and session endpoint failures, with recovery, startup status, overflow and screenshot checks.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **382/382 passed across 63 files**.
+- `node web/src/components/navigation/capture-bootstrap.mjs`: **passed** with real Chromium and simulated endpoint outages and recovery; visually inspected 320px dark outage, 1440px light outage and dark initial-loading screen.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** again.
+- `node web/src/components/navigation/capture-auth.mjs`: **passed** again.
+- All tests use local API fixtures, not real credentials, live services or production data. No merges, deployments or edits in other agents' branches.
+
+### Next verified-audit target
+
+- Investigate `/api/auth/config` capability-probe failures. The current fail-closed defaults suppress signup and SSO but may still render a password form despite an unreachable or SSO-only server; inspect and improve any misleading state, preserving the server's authoritative capability contract.

@@ -15,6 +15,7 @@ import IncomingChallengeModal from './components/IncomingChallengeModal';
 import CommandPalette from './components/CommandPalette';
 import ShortcutsModal from './components/ShortcutsModal';
 import { LogoMark } from './components/Logo';
+import ServerUnavailable from './components/ServerUnavailable';
 
 // Route-level splitting keeps Stockfish review, PvP, charts and admin pages out
 // of the initial login/dashboard bundle. Layout remains mounted during loads.
@@ -167,16 +168,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 text-ink-500">
-        <div className="animate-pulse-soft">
+      <div role="status" aria-label={i18n.t('bootstrap.loading', { defaultValue: 'Starting Patzer…' })}
+        aria-live="polite" className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-ui-bg text-ui-mutedText">
+        <div className="animate-pulse-soft motion-reduce:animate-none">
           <LogoMark size={56} />
         </div>
-        <div className="h-1 w-32 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
-          <div className="h-full w-1/3 animate-loader-slide bg-amber-500" />
+        <div aria-hidden="true" className="h-1 w-32 overflow-hidden rounded-full bg-ui-border">
+          <div className="h-full w-1/3 animate-loader-slide bg-ui-primary motion-reduce:animate-none" />
         </div>
+        <span className="text-sm">{i18n.t('bootstrap.loading', { defaultValue: 'Starting Patzer…' })}</span>
       </div>
     );
   }
+
+  // An unreachable server is not the same thing as a logged-out account.
+  // Auth refresh deliberately leaves setupRequired=null on API failures.
+  if (setupRequired === null) return <ServerUnavailable onRetry={refresh} />;
 
   if (setupRequired) {
     if (location.pathname !== '/setup') return <Navigate to="/setup" replace />;

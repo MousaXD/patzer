@@ -23,6 +23,15 @@
     "retry": "Reintentar",
     "empty": "Todavía no hay notas de la versión disponibles."
   },
+  "bootstrap": {
+    "loading": "Iniciando Patzer…",
+    "title": "Servidor no disponible",
+    "subtitle": "Patzer no pudo conectarse al servidor.",
+    "alertLabel": "Servidor no disponible",
+    "help": "Comprueba que Patzer esté en funcionamiento y vuelve a intentarlo.",
+    "retry": "Reintentar",
+    "reconnecting": "Reconectando…"
+  },
   "authShell": {
     "intro": "Acerca de Patzer",
     "eyebrow": "Un lugar para mejorar tu ajedrez",
