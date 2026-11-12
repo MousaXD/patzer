@@ -43,6 +43,27 @@ describe('Signup capability checks', () => {
     expect(screen.getByRole('textbox', { name: 'Username' }).closest('.auth-shell')).toBeTruthy();
   });
 
+  it('announces email-verification-required registration and moves focus to the result heading', async () => {
+    get.mockResolvedValueOnce(openSignup);
+    post.mockResolvedValueOnce({ verification_required: true });
+    render(<MemoryRouter initialEntries={['/signup']}><Signup /></MemoryRouter>);
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Username' }), { target: { value: 'audituser' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Display name' }), { target: { value: 'Audit User' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Email/ }), { target: { value: 'fixture@example.org' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'strong-password-123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    const result = await screen.findByRole('heading', { name: 'Confirm your email' });
+    await waitFor(() => expect(document.activeElement).toBe(result));
+    expect(result.getAttribute('tabindex')).toBe('-1');
+    expect(screen.getByRole('status').textContent).toContain('fixture@example.org');
+    const back = screen.getByRole('link', { name: 'Back to sign in' });
+    expect(back.getAttribute('href')).toBe('/login');
+    expect(back.className).toContain('min-h-11');
+    expect(post).toHaveBeenCalledWith('/api/auth/register', expect.objectContaining({
+      username: 'audituser', password: 'strong-password-123', language: 'en',
+    }));
+  });
+
   it('never confuses failed capability checks with disabled registration', async () => {
     get.mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(openSignup);
     render(<MemoryRouter initialEntries={['/signup']}><Signup /></MemoryRouter>);

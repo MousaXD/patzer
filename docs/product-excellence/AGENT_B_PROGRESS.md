@@ -1466,3 +1466,33 @@
 ### Next audit
 
 - Verify **Signup's asynchronous registration confirmation** in actual Chromium. When a registration requires email verification, its editable form is replaced by Check your inbox; check whether the active form control loses focus and whether the result is announced. If confirmed, reuse the existing opt-in AuthShell result focus approach, keeping the account-creation logic unchanged.
+
+## 2026-11-13: Restore keyboard context after Signup's email-verification confirmation
+
+### Reproduction
+
+- Resumed from clean pushed `0a187a5` and audited actual registration with a **local-only** `verification_required: true` API response. The form submission was driven with keyboard Enter and no real account was created.
+- In **8 Chromium combinations** (320/1440px, English/German, light/dark), the registration form vanished on success, leaving `document.activeElement === BODY`. The Check your inbox result had no status or live-region semantics, making the new state poorly discoverable to assistive-technology and keyboard users.
+- This was separate from the previously completed 44px Signup/Setup target improvements; no measurements or investigations were restarted.
+
+### Scoped correction
+
+1. Reuse the existing, opt-in `AuthShell focusTitle` mechanism only for the verification-required Signup result, focusing the replacement `H2` with `tabIndex=-1` and no forced scroll.
+2. Mark the confirmation message as `role=status` and retain the original localized copy, submitted email, `Back to sign in` link, registration validation, and all API behavior.
+3. Add a Signup component regression verifying the focused result heading, live status text, original registration request semantics and accessible return action.
+4. Extend the existing local `capture-auth-onboarding.mjs` fixture with **12 success-state cases** (light/dark, English/German, 320px at normal/enlarged text and 1440px normal) asserting focused/visible result heading, status announcement, 44px link dimensions, no overflow, correct document language and Tab navigation to the sign-in link.
+
+### Verification
+
+- Negative control: **8/8** scenarios ended with body focus and no result announcement.
+- Full post-fix `node web/src/components/navigation/capture-auth-onboarding.mjs`: **60/60 passed** (48 established first-use cases plus 12 registration-confirmation cases).
+- Inspected real `artifacts/agent-02/signup-confirmed-light-320.png` and `signup-confirmed-dark-320.png`: localized confirmation and keyboard-focused return link remain clearly visible without horizontal overflow.
+- `npx vitest run web/src/pages/Signup.capabilities.test.tsx --maxWorkers=2`: **5/5 passed**.
+- `npx vitest run web/src --maxWorkers=2`: **468/468 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No server authentication changes, live requests, production data, merges, deployments or other agents' worktrees touched.
+
+### Next audit
+
+- Return to the **global authenticated navigation shell**: verify real mobile menu/header behavior with 150%–200% font scaling, both themes and long translations at 320/390px. Look for clipped actions, horizontal overflow, obscured focus or inaccessible navigation; only change a defect demonstrated in Chromium.

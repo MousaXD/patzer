@@ -32,5 +32,59 @@ try {
   checks++;
   await page.close();
  }
+ // Email-verification-required registration replaces the focused form. The
+ // confirmation must announce itself and preserve a keyboard path to sign in.
+ // These fixtures never create a real account or send a verification email.
+ for(const theme of ['light','dark'])for(const lang of ['en','de'])for(const [width,font] of [[320,16],[320,24],[1440,16]]) {
+  const page=await browser.newPage({viewport:{width,height:width===1440?900:700},locale:'en-US',reducedMotion:'reduce'});
+  try {
+   await page.addInitScript(([mode,language])=>{localStorage.setItem('patzer-site-theme',mode);localStorage.setItem('lang',language)},[theme,lang]);
+   await page.route('**/api/**',async request=>{
+    const path=new URL(request.request().url()).pathname;
+    const fixtures={
+     '/api/setup/status':{setup_required:false},
+     '/api/auth/me':{user:null},
+     '/api/auth/config':{signup_enabled:true,signup_mode:'open',email_enabled:true,oidc_enabled:false,oidc_only:false,oidc_button_text:null},
+     '/api/auth/register':{verification_required:true},
+    };
+    await request.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixtures[path]??{})});
+   });
+   await page.goto(origin+'/signup',{waitUntil:'domcontentloaded'});
+   await page.locator('#signup-username').fill('audituser');
+   await page.locator('#signup-display-name').fill('Audit User');
+   await page.locator('#signup-email').fill('fixture@example.org');
+   await page.locator('#signup-password').fill('strong-password-123');
+   await page.addStyleTag({content:`html {font-size:${font}px!important}`});
+   const submit=page.locator('form button[type="submit"]');
+   await submit.focus();
+   await page.keyboard.press('Enter');
+   await submit.waitFor({state:'detached'});
+   const heading=page.locator('[data-auth-result-heading]');
+   await heading.waitFor({state:'visible'});
+   const result=await heading.evaluate(element=>({
+    focused:document.activeElement===element,
+    focusVisible:element.matches(':focus-visible'),
+    tabIndex:element.tabIndex,
+    heading:element.textContent?.trim(),
+    overflow:document.documentElement.scrollWidth-innerWidth,
+    visible:element.getBoundingClientRect().bottom>0&&element.getBoundingClientRect().top<innerHeight,
+   }));
+   const status=page.getByRole('status');
+   const back=page.locator('[data-auth-shell] a[href="/login"]');
+   const box=await back.boundingBox();
+   if(!result.focused||!result.focusVisible||result.tabIndex!==-1||!result.visible||
+     result.overflow>1||!await status.isVisible()||!box||box.width<44||box.height<44||
+     await page.evaluate(()=>document.documentElement.lang)!==lang){
+    throw Error(`Signup confirmation ${theme}/${lang}/${width}px/font${font}: ${JSON.stringify({result,box})}`);
+   }
+   await page.keyboard.press('Tab');
+   if(!await back.evaluate(element=>document.activeElement===element&&element.matches(':focus-visible'))){
+    throw Error(`Signup confirmation has no keyboard path to sign in: ${theme}/${lang}/${width}px/font${font}`);
+   }
+   if(width===320&&font===16&&lang==='en')
+    await page.screenshot({path:`artifacts/agent-02/signup-confirmed-${theme}-320.png`});
+   checks++;
+  }finally{await page.close()}
+ }
   console.log(`Agent B Signup/Setup: ${checks} Chromium cases passed.`);
 }finally{await browser?.close();server.kill('SIGTERM')}
