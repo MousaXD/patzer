@@ -769,3 +769,22 @@
 ### Next candidate
 
 - Recheck Game Review's short-keyboard workflow around a split phase row: From Black's selected phase-start SAN, ArrowLeft should move to the preceding White SAN, and ArrowRight should restore Black's selected position and keyboard focus. Existing keyboard tests cover ordinary rows; add a focused test with a phase boundary and repair only if the split changed keyboard behavior. Then investigate source-safe move detail labels if no focus defect is found.
+
+## 2026-11-12: keep global chess shortcuts out of focused move-symbol disclosure
+
+### Reproduction and correction
+
+- Continued from clean pushed `f7cc6a2`. The new classification-symbol guide is a native `<details>/<summary>` element. The Game Review window-level Home/End/Arrow keyboard listener excluded fields, sliders and tablists, but **not** a focused summary. As a result, using Home while reading the guide silently rewound the saved board.
+- Extended the existing authenticated 320/390/1024px guide test to focus the summary after toggling it and assert Home and ArrowRight cannot change the current saved ply. The **baseline Chromium run failed** with exact evidence: `22 / 24` became `0 / 24` after Home on the focused summary.
+- Added `summary` to the Game Review-only set of interactive elements exempt from global chess navigation shortcuts. This avoids hijacking the disclosure's keyboard context while preserving arrow/Home/End shortcuts in non-interactive review areas, the independent MoveList handler, and the evaluation graph's native slider.
+
+### Verification
+
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **989 passed / 12 skipped**, 108 passing files.
+- Full authenticated disposable Chromium matrix **PASS (exit 0)**. The new guide-focused Home and ArrowRight checks passed at 320px, 390px and 1024px, with unchanged saved ply. Previous native disclosure toggling, return to Moves tab, board shortcuts, nested variations, source-integrity, responsive checks and saved PGN invariance remained green.
+- Browser fixture evaluations remain synthetic, not live Stockfish accuracy certification. No merge, deployment, production SQLite mutation or edits outside Agent A.
+
+### Next highest-value investigation
+
+- Mate-in-N source presentation: `EvalBar` already supports an explicit `mate` prop, but GameAnalyzer currently passes only a centipawn value and prints `fmtCp` in the move summary even if its verified saved/variation analysis includes `mate_after`. Reproduce this with exact source-backed mate fields in a browser fixture, verify White/Black score sign and orientation, and show mate labels without fabricating checkmates. Avoid modifying scoring algorithms or source identity.

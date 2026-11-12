@@ -531,9 +531,11 @@ function GameAnalyzerView() {
       // Practice is an isolated blind exercise; review shortcuts must not reveal or move its position.
       if (document.querySelector('[data-practice-mode], [data-practice-picker]')) return;
       const target = e.target instanceof Element ? e.target : null;
-      // Never hijack editing, focused sliders/menus, a tablist's arrow keys,
-      // or a modal/command palette. Arrow/Home/End are native controls there.
-      if (target?.closest('input, textarea, select, [contenteditable], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
+      // Never hijack editing, focused sliders/menus, the move-symbol guide's
+      // native disclosure summary, a tablist's arrows, or a modal. Review's
+      // global Home/End would otherwise jump away from the position while
+      // someone is using keyboard navigation to read the legend.
+      if (target?.closest('input, textarea, select, summary, [contenteditable], [role="textbox"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]')) return;
       if (document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]')) return;
       const key = e.key;
       if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'Home' || key === 'End') {

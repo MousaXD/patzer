@@ -1628,6 +1628,14 @@ try {
       await guideTrigger.focus();
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>!document.querySelector('[data-review-classification-guide]')?.hasAttribute('open'));
+      const beforeGuideShortcut=(await page.locator('[data-review-move-progress]').innerText()).trim();
+      await page.keyboard.press('Home');
+      const afterGuideShortcut=(await page.locator('[data-review-move-progress]').innerText()).trim();
+      assert.equal(afterGuideShortcut,beforeGuideShortcut,
+        'Home while focused on the move-symbol disclosure must not jump the saved game back to ply 0');
+      await page.keyboard.press('ArrowRight');
+      assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),beforeGuideShortcut,
+        'Arrow keys on the focused disclosure must not change the chess position');
       // Return to the originally focused tab before its separate Arrow-key
       // navigation regression. The native summary correctly retains focus
       // after toggling the guide and must not steal tab/board shortcuts.
