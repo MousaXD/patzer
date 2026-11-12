@@ -61,10 +61,16 @@ export default function CommandPalette({ open, onClose }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(open, dialogRef, onClose, inputRef);
 
-  // Recent games — only fetched while palette is open.
-  const { data: gamesData } = useQuery({
+  // Recent games — only fetched while palette is open. Navigation and global
+  // actions stay usable even if the games endpoint is unavailable.
+  const { data: gamesData, isLoading: gamesLoading, isError: gamesError,
+    isFetching: gamesFetching, refetch: refetchGames } = useQuery({
     queryKey: ['palette-games'],
-    queryFn: () => api.get<{ games: GameRow[] }>('/api/games?limit=30'),
+    queryFn: async ({ signal }) => {
+      const response = await api.get<{ games: GameRow[] }>('/api/games?limit=30', { signal });
+      if (!Array.isArray(response?.games)) throw new Error('Invalid recent games response');
+      return response;
+    },
     enabled: open,
     staleTime: 30_000,
   });
@@ -205,6 +211,32 @@ export default function CommandPalette({ open, onClose }: Props) {
               busy={pendingAction !== null} onExecute={(action) => { void executeAction(action); }} />
           )}
         </div>
+        {gamesLoading && !gamesData && !gamesError && (
+          <div role="status" aria-live="polite" className="flex shrink-0 items-center gap-2 border-t border-ui-border px-3 py-2 text-xs text-ui-mutedText">
+            <span aria-hidden="true" className="h-2 w-2 animate-pulse rounded-full bg-ui-primary motion-reduce:animate-none" />
+            {t('palette.recentGamesLoading', { defaultValue: 'Loading recent games…' })}
+          </div>
+        )}
+        {gamesError && (
+          <div role="alert" aria-label={t('palette.recentGamesUnavailable', { defaultValue: 'Recent games unavailable' })}
+            aria-busy={gamesFetching}
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-ui-border bg-ui-muted px-3 py-2 text-xs">
+            <span className="min-w-0 flex-1 text-ui-mutedText">
+              {t('palette.recentGamesUnavailable', { defaultValue: 'Recent games unavailable' })}
+            </span>
+            <button type="button" disabled={gamesFetching} onClick={() => { void refetchGames(); }}
+              className="min-h-11 rounded-lg px-3 font-semibold text-ui-foreground hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus disabled:cursor-wait disabled:opacity-60">
+              {gamesFetching
+                ? t('palette.recentGamesLoading', { defaultValue: 'Loading recent games…' })
+                : t('palette.recentGamesRetry', { defaultValue: 'Retry recent games' })}
+            </button>
+          </div>
+        )}
+        {!gamesLoading && !gamesError && gamesData?.games.length === 0 && (
+          <p className="shrink-0 border-t border-ui-border px-3 py-2 text-xs text-ui-mutedText">
+            {t('palette.recentGamesEmpty', { defaultValue: 'No recent games yet.' })}
+          </p>
+        )}
         {pendingAction !== null && (
           <div role="status" aria-live="polite" className="shrink-0 border-t border-ui-border px-3 py-2 text-xs text-ui-mutedText">
             {t('palette.actionBusy', { defaultValue: 'Applying change…' })}

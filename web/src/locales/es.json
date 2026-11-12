@@ -625,7 +625,11 @@
     "themeLight": "Tema claro",
     "themeDark": "Tema oscuro",
     "actionBusy": "Aplicando cambio…",
-    "actionFailed": "No se pudo completar la acción. Inténtalo de nuevo."
+    "actionFailed": "No se pudo completar la acción. Inténtalo de nuevo.",
+    "recentGamesLoading": "Cargando partidas recientes…",
+    "recentGamesUnavailable": "Partidas recientes no disponibles",
+    "recentGamesRetry": "Reintentar carga de partidas",
+    "recentGamesEmpty": "Todavía no hay partidas recientes."
   },
   "shortcuts": {
     "title": "Atajos de teclado",

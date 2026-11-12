@@ -15,6 +15,7 @@ let browser;
 let theme = 'light';
 let profilePatchMode = 'success';
 let patchAttempts = 0;
+let recentGamesMode = 'ok';
 
 const profile = {
   user_id: 1, display_name: 'Sample Player', avatar_emoji: '',
@@ -91,6 +92,10 @@ try {
   page.setDefaultTimeout(5000);
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/games' && recentGamesMode === 'error') {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"temporarily unavailable"}' });
+      return;
+    }
     if (path === '/api/settings/profile' && route.request().method() === 'PATCH') {
       patchAttempts += 1;
       if (profilePatchMode === 'error') {
@@ -360,6 +365,24 @@ try {
     .getByRole('combobox', { name: 'Idioma' }).inputValue() !== 'es') {
     throw new Error('Spanish language was not restored from profile after reload');
   }
+  // Failed recent-game search is not the same as an account without games.
+  // Test the global palette's own data source without visiting the Games
+  // Library or touching feature-owned components.
+  profile.language = 'en';
+  recentGamesMode = 'error';
+  await visit(page, 390, 844);
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  const recentPalette = page.getByRole('dialog', { name: 'Search' });
+  await recentPalette.getByRole('alert', { name: 'Recent games unavailable' }).waitFor({ timeout: 9_000 });
+  await page.screenshot({ path: resolve(output, 'palette-recent-games-unavailable-390.png') });
+  if (!(await recentPalette.getByRole('option', { name: 'Home' }).isVisible())) {
+    throw new Error('A recent-games outage hid the primary navigation commands');
+  }
+  recentGamesMode = 'ok';
+  await recentPalette.getByRole('button', { name: 'Retry recent games' }).click();
+  await recentPalette.getByText('No recent games yet.').waitFor();
+  await page.screenshot({ path: resolve(output, 'palette-recent-games-empty-390.png') });
+  await assertNoOverflow(page, 'recent game search recovery at 390px');
 
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
 } finally {

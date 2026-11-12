@@ -778,7 +778,11 @@
     "gameGroup": "Letzte Partien",
     "esc": "Esc",
     "actionBusy": "Änderung wird angewendet…",
-    "actionFailed": "Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen."
+    "actionFailed": "Die Aktion konnte nicht ausgeführt werden. Bitte erneut versuchen.",
+    "recentGamesLoading": "Letzte Partien werden geladen…",
+    "recentGamesUnavailable": "Letzte Partien nicht verfügbar",
+    "recentGamesRetry": "Erneut versuchen",
+    "recentGamesEmpty": "Noch keine Partien vorhanden."
   },
   "shortcuts": {
     "title": "Tastenkürzel",

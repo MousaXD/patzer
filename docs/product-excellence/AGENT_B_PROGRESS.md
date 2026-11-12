@@ -532,3 +532,31 @@
 ### Next audit
 
 - Inspect actual global loading and empty states and command-palette keyboard navigation for a new user. Prioritize robust discoverability and graceful feedback with real Chromium reproduction; leave feature-owned flows to their designated agents.
+
+## 2026-11-12: Explain recent-game search loading, empty and outage states
+
+### Recovery and reproduction
+
+- Resumed the exact clean pushed Agent B commit `f384f3e`, and finished the previously interrupted palette-game search audit without repeating earlier completed UX improvements.
+- Real Chromium fixture returning HTTP **503** from `GET /api/games?limit=30` reproduced a misleading silent failure. Global navigation/action results still appeared, but the palette did not distinguish a failed recent-games fetch from an account with no games, and offered no retry.
+
+### Implementation
+
+1. Added lightweight, independently accessible **loading**, **recent games unavailable**, and **no recent games yet** presentations below the searchable result list, without blocking navigation or other global commands. These states do not pretend an outage is an empty account.
+2. The outage state has a visible **Retry recent games** button (minimum 44px target). The retry is disabled while fetching to avoid duplicate submissions; the rest of the palette remains usable.
+3. Passed React Query's abort signal to the shared API request so discarded palette fetches can cancel on unmount, and rejected malformed successful responses instead of silently showing them as empty lists.
+4. Localized all four recent-games status strings in English, German, Spanish, Russian and Bulgarian.
+5. Extended `CommandPalette.actions.test.tsx` to verify loading, retryable errors, disabled busy retry, a confirmed empty result and preservation of Home navigation throughout.
+6. Extended the real Chromium global-dialog fixture to fail the recent-games request, verify a named retryable alert and working Home option, recover the endpoint, and verify the distinctly labeled empty result with no overflow at 390px. Captured failure/empty screenshots and inspected the dark-theme failure screen.
+
+### Verification
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **409/409 passed across 70 test files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed**, including the new 503/retry/empty checks and all prior theme, accessibility, search, language and viewport checks.
+- `git diff --check`: **passed**.
+- Only shared palette/translation/test/progress files were modified. No live user data, other agent worktrees or feature-owned pages were changed, merged or deployed.
+
+### Next high-impact audit
+
+- Investigate palette recent-game **account isolation**. Its query key currently does not include the signed-in account, which may reuse cached game results after switching users in the same browser session. Reproduce with an isolated test before changing the shared cache key.

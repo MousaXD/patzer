@@ -2,11 +2,18 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { patch, refresh, navigate, saveLanguage } = vi.hoisted(() => ({
+const { patch, refresh, navigate, saveLanguage, recentGamesQuery } = vi.hoisted(() => ({
   patch: vi.fn(),
   refresh: vi.fn(),
   navigate: vi.fn(),
   saveLanguage: vi.fn(),
+  recentGamesQuery: {
+    data: { games: [] } as { games: unknown[] } | undefined,
+    isLoading: false,
+    isError: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  },
 }));
 
 vi.mock('../api', () => ({ api: { patch, get: vi.fn() } }));
@@ -17,7 +24,7 @@ vi.mock('../state/auth', () => ({
   }),
 }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: { games: [] } }) }));
+vi.mock('@tanstack/react-query', () => ({ useQuery: () => recentGamesQuery }));
 vi.mock('../lib/logout', () => ({ endSession: vi.fn() }));
 vi.mock('../lib/saveInterfaceLanguage', () => ({ saveInterfaceLanguage: saveLanguage }));
 
@@ -31,11 +38,48 @@ beforeEach(async () => {
   navigate.mockReset();
   saveLanguage.mockReset();
   saveLanguage.mockImplementation((language: string) => i18n.changeLanguage(language));
+  recentGamesQuery.data = { games: [] };
+  recentGamesQuery.isLoading = false;
+  recentGamesQuery.isError = false;
+  recentGamesQuery.isFetching = false;
+  recentGamesQuery.refetch.mockReset();
   await i18n.changeLanguage('en');
 });
 afterEach(cleanup);
 
 describe('global command palette async actions', () => {
+  it('distinguishes loading, unavailable and empty recent games without hiding navigation', async () => {
+    recentGamesQuery.data = undefined;
+    recentGamesQuery.isLoading = true;
+    const view = render(<CommandPalette open onClose={vi.fn()} />);
+    expect(screen.getByRole('status').textContent).toContain('Loading recent games…');
+    expect(screen.getByRole('option', { name: 'Home' })).toBeTruthy();
+
+    recentGamesQuery.isLoading = false;
+    recentGamesQuery.isError = true;
+    view.rerender(<CommandPalette open onClose={vi.fn()} />);
+    const failure = screen.getByRole('alert', { name: 'Recent games unavailable' });
+    expect(failure).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry recent games' }));
+    expect(recentGamesQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('option', { name: 'Home' })).toBeTruthy();
+
+    recentGamesQuery.isFetching = true;
+    view.rerender(<CommandPalette open onClose={vi.fn()} />);
+    const busyRetry = screen.getByRole('button', { name: 'Loading recent games…' });
+    expect(busyRetry.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(busyRetry);
+    expect(recentGamesQuery.refetch).toHaveBeenCalledTimes(1);
+
+    recentGamesQuery.isError = false;
+    recentGamesQuery.isFetching = false;
+    recentGamesQuery.data = { games: [] };
+    view.rerender(<CommandPalette open onClose={vi.fn()} />);
+    expect(screen.queryByRole('alert', { name: 'Recent games unavailable' })).toBeNull();
+    expect(screen.getByText('No recent games yet.')).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Home' })).toBeTruthy();
+  });
+
   it('explains a failed theme change and allows the same action to be retried', async () => {
     patch.mockRejectedValueOnce(new Error('HTTP 503 private diagnostic'))
       .mockResolvedValueOnce({});

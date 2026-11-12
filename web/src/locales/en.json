@@ -778,7 +778,11 @@
     "gameGroup": "Recent games",
     "esc": "esc",
     "actionBusy": "Applying change…",
-    "actionFailed": "That action could not be completed. Please try again."
+    "actionFailed": "That action could not be completed. Please try again.",
+    "recentGamesLoading": "Loading recent games…",
+    "recentGamesUnavailable": "Recent games unavailable",
+    "recentGamesRetry": "Retry recent games",
+    "recentGamesEmpty": "No recent games yet."
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
