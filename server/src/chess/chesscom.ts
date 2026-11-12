@@ -8,14 +8,18 @@ function assertValidUsername(u: string): void {
   if (!USERNAME_RE.test(u)) throw new Error('invalid_username');
 }
 
-// Archive URLs come back from chess.com itself, but defense in depth: confirm
-// each is on api.chess.com/pub/ before we GET it. Prevents an SSRF-style pivot
-// if the archive list is ever influenced by an attacker.
-function assertChessComUrl(u: string): void {
+// Archive URLs come from an external API. Validate the *complete* monthly
+// path and linked username; never silently discard a malformed archive since
+// that could cause an incomplete history to be reported as complete.
+function assertChessComUrl(u: unknown, username?: string): asserts u is string {
   let parsed: URL;
-  try { parsed = new URL(u); } catch { throw new Error('invalid_url'); }
-  if (parsed.protocol !== 'https:' || parsed.host !== 'api.chess.com' || !parsed.pathname.startsWith('/pub/')) {
-    throw new Error('invalid_url');
+  if (typeof u !== 'string') throw new Error('chesscom_invalid_response');
+  try { parsed = new URL(u); } catch { throw new Error('chesscom_invalid_response'); }
+  const archive = /^\/pub\/player\/([A-Za-z0-9_-]{2,40})\/games\/\d{4}\/(0[1-9]|1[0-2])$/.exec(parsed.pathname);
+  if (parsed.protocol !== 'https:' || parsed.host !== 'api.chess.com' ||
+      parsed.username || parsed.password || parsed.search || parsed.hash || !archive ||
+      (username && archive[1]!.toLowerCase() !== username.toLowerCase())) {
+    throw new Error('chesscom_invalid_response');
   }
 }
 
@@ -72,16 +76,22 @@ export async function getPlayer(username: string): Promise<{ username: string; a
 
 export async function listArchives(username: string): Promise<string[]> {
   assertValidUsername(username);
-  const data = (await get(`https://api.chess.com/pub/player/${encodeURIComponent(username)}/games/archives`)) as ArchivesResponse;
-  return (data.archives ?? []).filter((u) => {
-    try { assertChessComUrl(u); return true; } catch { return false; }
-  });
+  const data = (await get(`https://api.chess.com/pub/player/${encodeURIComponent(username)}/games/archives`)) as ArchivesResponse | null;
+  if (!data || !Array.isArray(data.archives)) throw new Error('chesscom_invalid_response');
+  for (const archive of data.archives) assertChessComUrl(archive, username);
+  // Guarantee chronological order for newest-first traversal even if upstream
+  // changes its ordering, and avoid requesting the same month twice.
+  return [...new Set(data.archives)].sort();
 }
 
 export async function getMonth(archiveUrl: string): Promise<ChessComGame[]> {
   assertChessComUrl(archiveUrl);
-  const data = (await get(archiveUrl)) as MonthlyArchive;
-  return data.games ?? [];
+  const data = (await get(archiveUrl)) as MonthlyArchive | null;
+  if (!data || !Array.isArray(data.games) ||
+      !data.games.every((game) => !!game && typeof game === 'object' && !Array.isArray(game))) {
+    throw new Error('chesscom_invalid_response');
+  }
+  return data.games;
 }
 
 // Fetch the most recent N games for a user, walking archives backwards in time.

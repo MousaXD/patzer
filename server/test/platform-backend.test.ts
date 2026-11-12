@@ -303,6 +303,32 @@ describe('manual Chess.com import resilience', () => {
     }
   });
 
+  it.each(['archive_list', 'monthly_games'])('fails a malformed %s response without claiming a successful import', async (failure) => {
+    const fetchSpy = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === 'https://api.chess.com/pub/player/importer') {
+        return new Response(JSON.stringify({username:'importer'}), {status:200});
+      }
+      if (url === 'https://api.chess.com/pub/player/importer/games/archives') {
+        return new Response(JSON.stringify({archives: failure === 'archive_list'
+          ? [monthUrl, 'https://untrusted.example/pub/player/importer/games/2026/02'] : [monthUrl]}), {status:200});
+      }
+      if (url === monthUrl && failure === 'monthly_games') {
+        return new Response(JSON.stringify({unexpected:'truncated'}), {status:200});
+      }
+      throw new Error(`unexpected_mock_request:${url}`);
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const before = db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'chesscom'").get() as {n:number};
+    try {
+      const response = await postImport();
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({error:'chesscom_unavailable'});
+      expect(db.prepare("SELECT count(*) AS n FROM games WHERE user_id = 6 AND source = 'chesscom'").get()).toEqual(before);
+      expect(fetchSpy).toHaveBeenCalledTimes(failure === 'archive_list' ? 2 : 3);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it('preserves unknown results without recording false losses and skips malformed or cross-user games', async () => {
     mockFetch([
       sample(99001),

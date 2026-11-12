@@ -96,3 +96,15 @@ Recovered `0330b63` and finished the previously uncommitted Chess.com import err
 - No real provider requests, production accounts, production databases, or merges/deploys.
 
 **Next audit hypothesis:** `listArchives()` currently silently filters invalid archive URLs and `getMonth()` treats missing game-array properties as an empty monthly archive. The full-history CLI reuses those clients; malformed upstream replies could therefore incorrectly appear complete. Confirm with isolated mocks before changing behavior.
+
+## 2026-11-12 — Archive completeness and historical-resume protection
+
+- Recovered clean `99978cd` after the previous error-handling change; new archive assertions **failed against the original code** (11 failing checks), confirming the silent-truncation defect.
+- `listArchives()` now verifies every URL uses the canonical HTTPS Chess.com monthly-archive path, has the expected linked username, a valid calendar month, no injected query/fragment/credentials, and comes from the trusted host. Malformed archive-list structures or even *one* invalid entry fail the import rather than dropping the affected month silently. Valid months are sorted chronologically and deduplicated before retrieval.
+- `getMonth()` no longer interprets missing/null/invalid `games` as an empty month; it rejects malformed response data with `chesscom_invalid_response`. Legitimate `{games: []}` remains valid. This protects manual recent imports and the existing resumable historical CLI.
+- Tests in `server/test/chesscom-archive-responses.test.ts` verify malformed host/path/identity/month/shape, valid duplicate/out-of-order lists, empty months, and a historical catch-up interrupted after one committed month: the first month's game is preserved and the import **does not claim completion** after the corrupt next month.
+- Focused provider/history/route tests: **50 passed** (12 provider-contract, 11 existing historical, 27 authenticated backend tests). All data is mocked or uses an in-memory SQLite fixture; no real Chess.com fetch or production database action was performed. The additional Hono negatives confirm invalid archive listings/months produce HTTP 502, no inserts, and no false success.
+- Full suite (`npm test -- --maxWorkers=3`): **107 test files passed, 2 skipped; 995 tests passed, 12 skipped**. No failures. `npm run typecheck`, `npm run build -w server`, and `git diff --check`: **passed**.
+- Isolated Chromium smoke (`web/tests/library.browser.mjs`): **passed** at 1440/390/320 widths, light/dark, including interactive filters, pagination and import error alerts. No production service started or modified.
+
+**Next investigations:** test performance with large synthetic game histories, examine library search/navigation learnability, and determine what additional safety contract an in-app full-history controller would need before exposing the existing CLI functionality to end users. Do not change global design, Game Review internals, or other agent lanes.
