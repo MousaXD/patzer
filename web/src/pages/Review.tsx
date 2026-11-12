@@ -393,6 +393,7 @@ export default function Review() {
   const initialError = isError && games.length === 0;
   const firstUseEmpty = !isLoading && !initialError && games.length === 0 &&
     !q && !activeFilters && !bookmarkedOnly;
+  const emptyFilteredResults = !isLoading && !initialError && games.length === 0 && !firstUseEmpty;
   const importControlsVisible = firstUseEmpty || importPanelOpen;
 
   function toggleBookmarkedOnly() {
@@ -706,6 +707,28 @@ export default function Review() {
         </span>
       </div>
 
+      {emptyFilteredResults && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Inbox aria-hidden="true" className="h-5 w-5 shrink-0 text-chesscom-400" />
+            <div role="status" className="min-w-0 text-sm font-semibold">
+              {q || activeFilters
+                ? t('review.noMatches', { defaultValue: 'No games match your search' })
+                : t('review.noStarred', { defaultValue: 'No starred games yet' })}
+            </div>
+          </div>
+          {q || activeFilters ? (
+            <button type="button" onClick={clearLibraryFilters} className="btn-secondary min-h-11 text-sm">
+              {t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}
+            </button>
+          ) : (
+            <button type="button" onClick={toggleBookmarkedOnly} className="btn-secondary min-h-11 text-sm">
+              {t('review.showAll', { defaultValue: 'Show all games' })}
+            </button>
+          )}
+        </div>
+      )}
+
       <div id="library-filters" role="group" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"
         aria-label={t('review.libraryFilterGroup', { defaultValue: 'Filter and sort games' })}>
         {(Object.keys(FILTER_OPTIONS) as FilterName[]).map((key) => {
@@ -738,7 +761,7 @@ export default function Review() {
               className="input w-full min-w-0 text-xs sm:w-40" />
           </label>
         </div>
-        {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
+        {(activeFilters || bookmarkedOnly || q) && !emptyFilteredResults && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}
       </div>
 
@@ -775,24 +798,6 @@ export default function Review() {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {!isLoading && !initialError && games.length === 0 && !firstUseEmpty && (
-        <div className="card flex flex-col items-center justify-center gap-3 p-12 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-chesscom-100 text-chesscom-400 dark:bg-chesscom-800">
-            <Inbox className="h-6 w-6" />
-          </div>
-          <div role="status" className="text-base font-semibold">
-            {q || activeFilters ? t('review.noMatches', { defaultValue: 'No games match your search' }) : t('review.noStarred', { defaultValue: 'No starred games yet' })}
-          </div>
-          {q || activeFilters ? (
-            <button type="button" onClick={clearLibraryFilters} className="btn-secondary text-sm">
-              {t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}
-            </button>
-          ) : (
-            <button onClick={toggleBookmarkedOnly} className="btn-secondary text-sm">{t('review.showAll', { defaultValue: 'Show all games' })}</button>
-          )}
         </div>
       )}
 

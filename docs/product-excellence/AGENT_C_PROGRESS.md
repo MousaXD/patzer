@@ -662,3 +662,19 @@ Recovered `750ddab` and the six unfinished modified files; finished the date-ran
 ### Next independent audit
 
 - Audit **mobile empty-result discoverability**: in a 390px screenshot the no-results explanation card starts below the initial viewport because discovery and filter controls consume vertical space. Check whether a returning player with no matches can understand and recover without extensive scrolling; avoid hiding or removing necessary filter controls and test any compact improvement against import/search accessibility.
+
+## 2026-11-12 — Show empty-result recovery next to search on mobile
+
+- Recovered clean pushed `04f0c60` and the exact mobile first-fold audit. A genuine German 390px screenshot showed the no-match heading and its reset button appearing **below the first viewport** despite a visible search and an extra, redundant Clear filters button above the card. Added a failing component regression requiring **exactly one** Clear filters action and a browser assertion that the no-match message is visible within the first 844px. The component test first failed on the duplicate actions.
+- Moved the no-match / empty-Starred explanation into a compact Library-local result panel **directly beneath the search controls and before advanced filters**. It preserves the translated message as a polite `role=status`, shows one actionable 44px-minimum reset/show-all button, and leaves every source/speed/result/status/date/sort filter fully available below the panel. Removed the duplicate advanced reset button only when that panel is visible and removed the old, large, below-the-fold empty card. Import, first-use, loading/error and populated-history behaviors are unchanged.
+- After the DOM move, the Chromium fixture's previous parent-scoped locator no longer matched the recovery button; updated the test to use the button's accessible name rather than the panel's tree structure. Rechecked German 390px light mode: **Keine passenden Partien gefunden** and **Filter zurücksetzen** are visible above the advanced filters in the initial viewport. Verified both unmatched-search and empty-Starred recovery restore history and remove stale URL params. Visually inspected `qa-artifacts/agent-c-library/library-german-no-matches-light-390.png`.
+
+### Verification
+
+- Focused Library React tests: **46/46 passed**; `npm run typecheck`, `npm run build -w web`, `git diff --check`: passed. Full repository suite: **109 passed files, 2 skipped; 1,079 tests passed, 12 skipped**, zero failures (`--maxWorkers=2`).
+- Isolated Chromium desktop 1440px and mobile 390/320px light/dark, plus German non-English variants and both no-match / Starred-only journeys: passed with no JS errors or horizontal overflow. Both localization and date/keyboard/import/cursor regression journeys remained green.
+- All changes confined to Agent C's Library page, its component/browser tests and this progress report. No production database, provider actions, merges, deployment or other-agent worktrees touched.
+
+### Next independent audit
+
+- Examine **Library quick-search clear affordance and stale query behavior**. Search may be debounced and URL-backed, while the in-field `X` only sets the draft state. Reproduce clearing a committed query with the browser's keyboard and the in-field X, inspect whether the `q` parameter and results reliably clear and whether target sizes are usable on touch. Keep the fix within the Library and preserve debounced server search semantics.

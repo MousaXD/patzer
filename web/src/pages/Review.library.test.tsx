@@ -716,6 +716,7 @@ describe('Review library with large histories', () => {
     mount('/review?result=loss');
     expect(await screen.findByText('No games match your search')).toBeTruthy();
     expect(screen.getByText('No games match your search').getAttribute('role')).toBe('status');
+    expect(screen.getAllByRole('button',{name:'Clear filters'})).toHaveLength(1);
     // The header can still offer account setup; the empty-state action must
     // recover the filtered library rather than adding a second setup CTA.
     expect(screen.getAllByRole('link', { name: /Set Chess.com username/ })).toHaveLength(1);

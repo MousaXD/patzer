@@ -425,8 +425,13 @@ try {
     await page.getByRole('searchbox').fill('a-player-who-does-not-exist');
     const message=page.getByRole('status').getByText('Keine passenden Partien gefunden');
     await message.waitFor();
+    const messageRect=await message.boundingBox();
+    assert.ok(messageRect && messageRect.y>=0 && messageRect.y+messageRect.height<=844,
+      `German empty-result explanation is below the first mobile screen: ${JSON.stringify(messageRect)}`);
+    assert.equal(await page.getByRole('button',{name:'Filter zurücksetzen'}).count(),1,
+      'An empty result should have one unambiguous reset action');
     await page.screenshot({path:join(output,'library-german-no-matches-light-390.png')});
-    const recover=message.locator('..').getByRole('button',{name:'Filter zurücksetzen'});
+    const recover=page.getByRole('button',{name:'Filter zurücksetzen'});
     assert.equal(await recover.count(),1,'Empty-state recovery should be clear in German');
     await recover.click();
     await page.waitForURL(href=>!(new URL(href)).searchParams.has('q'));
@@ -443,7 +448,7 @@ try {
     await page.waitForURL(/bookmarked=1/);
     const message=page.getByRole('status').getByText('Noch keine markierten Partien');
     await message.waitFor();
-    const showAll=message.locator('..').getByRole('button',{name:'Alle Partien anzeigen'});
+    const showAll=page.getByRole('button',{name:'Alle Partien anzeigen'});
     await showAll.click();
     await page.waitForURL(href=>!(new URL(href)).searchParams.has('bookmarked'));
     await page.locator('a[href="/review/1"]').waitFor();
