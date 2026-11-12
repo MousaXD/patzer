@@ -6,7 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useBlocker, type BlockerFunction } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { Chess, type Move } from 'chess.js';
 import type { DrawShape } from 'chessground/draw';
@@ -449,6 +449,7 @@ export default function LessonPlayer({ refInfo, resume, bestStars, totalStars, n
       <LessonDone
         refInfo={refInfo}
         stars={finished.stars}
+        saved={saveStatus === 'idle'}
         bestBefore={finished.bestBefore}
         totalBefore={finished.totalBefore}
         next={next}
@@ -1176,9 +1177,10 @@ function QuizView({ step, lessonId, onSolved }: StepProps<QuizStep>) {
 
 // ---- The end of a lesson ------------------------------------------------------------
 
-function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onAgain, onExit }: {
+function LessonDone({ refInfo, stars, saved, bestBefore, totalBefore, next, onNext, onAgain, onExit }: {
   refInfo: LessonRef;
   stars: 1 | 2 | 3;
+  saved: boolean;
   bestBefore: number;
   totalBefore: number;
   next: LessonRef | null;
@@ -1189,39 +1191,49 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
   const { t } = useTranslation();
   const { text } = useLessonText(refInfo.lesson.id);
   const { t: tl } = useTranslation('learn');
-  const gained = Math.max(0, stars - bestBefore);
+  const reduceMotion = useReducedMotion();
+  // The board can score a run locally, but an award is not earned until the
+  // authoritative progress write is acknowledged. Failed/pending writes must
+  // not show an invented level-up or add provisional stars to saved totals.
+  const gained = saved ? Math.max(0, stars - bestBefore) : 0;
   const totalAfter = totalBefore + gained;
   const before = levelOf(totalBefore);
   const after = levelOf(totalAfter);
-  const levelUp = after.level > before.level;
+  const levelUp = saved && after.level > before.level;
   const pct = ((totalAfter - after.floor) / (after.next - after.floor)) * 100;
   const trainer = refInfo.lesson.trainer;
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       className="mx-auto max-w-md"
     >
       <div className="card overflow-hidden text-center">
         <div className="relative bg-gradient-to-br from-chesscom-900 via-[#3b4c2f] to-board-dark px-6 pb-6 pt-7 text-white">
-          <Confetti />
-          <Trophy className="mx-auto h-9 w-9 text-gold-300" />
-          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/60">{t('learn.lessonDone')}</div>
+          {saved && !reduceMotion && <Confetti />}
+          {saved ? <Trophy className="mx-auto h-9 w-9 text-gold-300" aria-hidden="true" />
+            : <BookOpen className="mx-auto h-9 w-9 text-white/75" aria-hidden="true" />}
+          <div className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80" aria-live="polite">
+            {saved ? t('learn.lessonDone') : t('learn.lessonAwaitingSave', { defaultValue: 'Lesson result awaiting save' })}
+          </div>
           <h2 className="mt-1 text-xl font-bold">{text('title')}</h2>
           <div className="mt-4 flex justify-center gap-3">
             {[1, 2, 3].map((i) => (
               <motion.div
                 key={i}
-                initial={{ scale: 0, rotate: -40 }}
+                initial={reduceMotion ? false : { scale: 0, rotate: -40 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.25 + i * 0.22, type: 'spring', stiffness: 320, damping: 14 }}
+                transition={reduceMotion ? { duration: 0 } : { delay: 0.25 + i * 0.22, type: 'spring', stiffness: 320, damping: 14 }}
               >
-                <Star className={cn('h-11 w-11', i <= stars ? 'fill-gold-500 text-gold-300 drop-shadow-[0_0_10px_rgba(255,201,52,0.55)]' : 'text-white/25')} />
+                <Star className={cn('h-11 w-11', i > stars ? 'text-white/25'
+                  : saved ? 'fill-gold-500 text-gold-300 drop-shadow-[0_0_10px_rgba(255,201,52,0.55)]'
+                    : 'fill-gold-500/10 text-gold-200/70')} />
               </motion.div>
             ))}
           </div>
-          <div className="mt-3 text-sm text-white/80">{t(`learn.starsResult.${stars}`)}</div>
+          <div className="mt-3 text-sm text-white/80">{saved ? t(`learn.starsResult.${stars}`)
+            : t('learn.provisionalScore', { defaultValue: 'Your score is provisional. Stars will count after saving.' })}</div>
           {stars < 3 && <div className="mt-1 text-xs text-white/60">{t('learn.starsRule')}</div>}
         </div>
 
@@ -1235,9 +1247,9 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
             </div>
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-700">
               <motion.div
-                initial={{ width: 0 }}
+                initial={reduceMotion ? false : { width: 0 }}
                 animate={{ width: `${pct}%` }}
-                transition={{ delay: 0.9, duration: 0.7, ease: 'easeOut' }}
+                transition={reduceMotion ? { duration: 0 } : { delay: 0.9, duration: 0.7, ease: 'easeOut' }}
                 className="h-full rounded-full bg-gold-500"
               />
             </div>
@@ -1247,9 +1259,9 @@ function LessonDone({ refInfo, stars, bestBefore, totalBefore, next, onNext, onA
             <AnimatePresence>
               {levelUp && (
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.6 }}
+                  initial={reduceMotion ? false : { opacity: 0, scale: 0.6 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 1.5, type: 'spring', stiffness: 300, damping: 15 }}
+                  transition={reduceMotion ? { duration: 0 } : { delay: 1.5, type: 'spring', stiffness: 300, damping: 15 }}
                   className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-gold-500/15 px-3 py-2 text-sm font-semibold text-gold-700 ring-1 ring-gold-500/40 dark:text-gold-300"
                 >
                   <PieceIcon piece={levelPiece(after.level)} className="h-6 w-6" /> {t('learn.levelUp', { n: after.level })}

@@ -964,6 +964,8 @@
     "foundCount": "{{n}} of {{total}} found",
     "wrongAnswer": "Not quite. Try another answer.",
     "lessonDone": "Lesson complete",
+    "lessonAwaitingSave": "Lesson result awaiting save",
+    "provisionalScore": "Your score is provisional. Stars will count after saving.",
     "starsResult": {
       "1": "Done! With fewer mistakes there are more stars next time.",
       "2": "Well done — just a few slips.",

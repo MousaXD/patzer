@@ -82,6 +82,38 @@ function mount(next: LessonRef | null = null, onExit = vi.fn(), onOpenLesson = v
 afterEach(() => { cleanup(); mocks.post.mockReset(); });
 
 describe('LessonPlayer saved progress', () => {
+  it('shows a provisional score while saving or offline, and celebrates earned stars only after acknowledgment', async () => {
+    let confirm!: () => void;
+    mocks.post.mockImplementationOnce(() => new Promise<void>((resolve) => { confirm = resolve; }));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    expect((await screen.findByText('Lesson result awaiting save')).textContent).toContain('awaiting save');
+    expect(screen.queryByText('learn.lessonDone')).toBeNull();
+    expect(screen.queryByText('learn.starsGained')).toBeNull();
+    expect(screen.getByText('0 / 5 ★')).toBeTruthy();
+
+    confirm();
+    expect(await screen.findByText('learn.lessonDone')).toBeTruthy();
+    expect(screen.getByText('3 / 5 ★')).toBeTruthy();
+    expect(screen.getByText('learn.starsGained')).toBeTruthy();
+    expect(mocks.post).toHaveBeenCalledExactlyOnceWith('/api/learn/board', { stars: 3 });
+  });
+
+  it('never announces earned stars after a failed save and shows them when the player retries successfully', async () => {
+    mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ stars: 3 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'learn.finish' }));
+    await screen.findByRole('alert');
+    expect(screen.getByText('Lesson result awaiting save')).toBeTruthy();
+    expect(screen.queryByText('learn.lessonDone')).toBeNull();
+    expect(screen.queryByText('learn.starsGained')).toBeNull();
+    expect(screen.getByText('0 / 5 ★')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry saving' }));
+    expect(await screen.findByText('learn.lessonDone')).toBeTruthy();
+    expect(screen.getByText('3 / 5 ★')).toBeTruthy();
+    expect(screen.getByText('learn.starsGained')).toBeTruthy();
+  });
+
   it('still saves after StrictMode effect cleanup, and can retry a failed finish', async () => {
     mocks.post.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ stars: 3 });
     mount();

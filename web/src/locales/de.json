@@ -964,6 +964,8 @@
     "foundCount": "{{n}} von {{total}} gefunden",
     "wrongAnswer": "Nicht ganz. Versuch eine andere Antwort.",
     "lessonDone": "Lektion geschafft",
+    "lessonAwaitingSave": "Lektionsergebnis wartet auf Speicherung",
+    "provisionalScore": "Dein Ergebnis ist vorläufig. Die Sterne zählen erst nach dem Speichern.",
     "starsResult": {
       "1": "Geschafft! Mit weniger Fehlern gibt es beim nächsten Mal mehr Sterne.",
       "2": "Gut gemacht – nur ein paar kleine Ausrutscher.",
