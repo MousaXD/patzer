@@ -1565,3 +1565,14 @@
 ### Next independently scoped audit
 
 - The Notes toolbar can remain open while a new **game source revision** arrives. Audit whether old saved Notes, incorrect evaluation, or a stale classification can appear during a source update. A new practice source must either remain source-verified or enter the safe unavailable/recovery state; avoid touching the original PGN. Work only with disposable source-attested fixtures and change code only for a reproduced defect.
+
+## 2026-11-13: certify blind-practice recovery after a new game source revision
+
+- Continued from clean pushed `02861ef`, using only the separate completed and source-attested synthetic mistake-practice fixture. The first attempt to produce a background refresh via offline/online reconnection after advancing browser time did **not** issue a GET under the current React Query configuration, so it timed out before assessing the product. This was a fixture trigger limitation, not evidence of a product defect.
+- Replaced it with a reproducible **real app-driven game-detail refetch**: while viewing normal Review, a bookmark PATCH invalidates the active game query; the fixture holds the resulting GET, enters the eligible blind-practice attempt at ply 17, and then changes only the disposable game's result from `1-0` to `*`. SQLite's source-revision trigger increments; releasing the pending GET returns authoritative `analysis_stale=true`, with the old stored analysis excluded by the backend's source integrity check.
+- The mounted blind attempt then transitions to `data-practice-unavailable="true"`, focuses its recovery heading, and keeps both the scored Review workspace/Notes and the old practice board **unmounted**—no saved solution or stale engine guidance appears. The Return control removes `practicePly` and opens the saved game's normal review heading. The PGN remains byte-for-byte unchanged.
+- Entire authenticated disposable Chromium viewport/locale, Notes, keyboard, bookmark, engine, source, variation, blind-practice and PGN matrix **PASS (exit 0)** on port 9008. `node --check scripts/review-polish-capture.mjs`, `git diff --check`: PASS. Test-only coverage; previous complete product checkpoint passed **1006 unit tests / 12 skipped**, typecheck and production build. No main merge, deployment, live data/service, or other agents' worktrees modified.
+
+### Next high-value source/trust audit
+
+- Review the **saved-game source update while the Notes editor remains open and edited**, especially when a new `notes` prop arrives during an in-flight PATCH. Confirm that reconciliation keeps local unsaved text, that an older acknowledged success cannot erase newer edits, and that a real source revision does not leave a misleading stale analysis heading visible. Use a disposable source change and isolated Chromium before adjusting data flow.

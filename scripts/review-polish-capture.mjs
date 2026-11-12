@@ -1154,6 +1154,7 @@ try {
       SCORING_VERSION,analysisSourceHash(practiceSource),practiceSource.source_revision);
   const practiceNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
   let releasePracticeNotes=()=>{};
+  let releasePracticeSourceGet=()=>{};
   try{
     await practiceNotesContext.addCookies([{name:account.cookie.split('=')[0],
       value:account.cookie.split('=').slice(1).join('='),url:base}]);
@@ -1250,8 +1251,51 @@ try {
       await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
       assert.ok(!new URL(page.url()).searchParams.has('practicePly'));
     }
+    // Source identity may change while blind practice is mounted. A harmless
+    // bookmark edit starts a real game-query refetch; hold that GET, enter
+    // practice, then change the disposable game source before releasing it.
+    // This avoids relying on browser-specific reconnect/refetch timing.
+    await page.goto(`${base}/review/${practiceGameId}?ply=17`,{waitUntil:'domcontentloaded'});
+    await page.locator('#learn-from-mistake').waitFor({state:'visible',timeout:5000});
+    const heldSourceGet=new Promise(resolve=>{releasePracticeSourceGet=resolve;});
+    await page.route(`**/api/games/${practiceGameId}`,async route=>{
+      if(route.request().method()==='GET') await heldSourceGet;
+      await route.continue();
+    });
+    const backgroundGet=page.waitForRequest(req=>req.url().endsWith(`/api/games/${practiceGameId}`)
+      && req.method()==='GET');
+    const bookmarked=page.waitForResponse(res=>res.url().endsWith(`/api/games/${practiceGameId}/bookmark`)
+      && res.status()===200);
+    await page.getByRole('button',{name:'Star',exact:true}).click();
+    await bookmarked;
+    await backgroundGet;
+    await page.locator('#learn-from-mistake').click();
+    await page.locator('[data-practice-mode="true"]').waitFor({state:'visible',timeout:5000});
+    const originalRevision=db.prepare('SELECT source_revision FROM games WHERE id=?').get(practiceGameId).source_revision;
+    db.prepare("UPDATE games SET result='*' WHERE id=?").run(practiceGameId);
+    assert.ok(db.prepare('SELECT source_revision FROM games WHERE id=?').get(practiceGameId).source_revision>originalRevision,
+      'A changed result must invalidate the practice source revision');
+    const sourceRefresh=page.waitForResponse(res=>res.url().endsWith(`/api/games/${practiceGameId}`)
+      && res.request().method()==='GET' && res.status()===200,{timeout:7000});
+    releasePracticeSourceGet();
+    const freshResponse=await sourceRefresh;
+    const freshSource=await freshResponse.json();
+    assert.equal(freshSource.game.result,'*');
+    assert.equal(freshSource.analysis_stale,true,
+      "An external source revision must not retain the old completed game's analysis");
+    const stalePractice=page.locator('[data-practice-unavailable="true"]');
+    await stalePractice.waitFor({state:'visible',timeout:5000});
+    assert.ok(await stalePractice.getByRole('heading').evaluate(el=>document.activeElement===el),
+      'A practice attempt invalidated by source refetch must focus the recovery heading');
+    assert.equal(await page.locator('[data-review-workspace], [data-review-meta-toolbar], [data-practice-mode]').count(),0,
+      'A changed game source must not reveal the saved solution or leave an outdated blind board active');
+    await stalePractice.getByRole('button',{name:enNotes.practice.returnSaved,exact:true}).click();
+    await page.locator('[data-review-move-progress]').waitFor({state:'visible',timeout:5000});
+    assert.ok(!new URL(page.url()).searchParams.has('practicePly'));
+    assert.ok(await page.locator('#full-game-review-heading').count()>0,
+      'Recovery must lead back to the saved-game review, not an old practice attempt');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(practiceGameId).pgn,pgn);
-  }finally{releasePracticeNotes();await practiceNotesContext.close();}
+  }finally{releasePracticeNotes();releasePracticeSourceGet();await practiceNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
