@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
 const socketHarness = vi.hoisted(() => ({
@@ -19,6 +19,7 @@ const lobbyHarness = vi.hoisted(() => ({
   online: new Set<number>(), users: [], incoming: [], outgoing: [],
 }));
 const authHarness = vi.hoisted(() => ({ id: 1 }));
+const liveHarness = vi.hoisted(() => ({ getLive: vi.fn(), del: vi.fn() }));
 
 vi.mock('../state/auth', () => ({
   useAuth: () => ({ user: {
@@ -29,7 +30,8 @@ vi.mock('../state/lobby', () => ({ useLobby: (selector?: (state: typeof lobbyHar
   selector ? selector(lobbyHarness) : { ...lobbyHarness },
 }));
 vi.mock('../api', () => ({ api: {
-  get: (url: string) => Promise.resolve(url === '/api/games/live' ? { bot: null, pvp: [] } : { configured: false }),
+  get: (url: string) => url === '/api/games/live' ? liveHarness.getLive() : Promise.resolve({ configured: false }),
+  del: liveHarness.del,
 } }));
 vi.mock('../lib/sounds', () => ({ soundForMove: vi.fn(), inferMoveFlagsFromSan: vi.fn(), playSound: vi.fn() }));
 // These tests exercise socket and dialog state, not animation. happy-dom's
@@ -91,13 +93,88 @@ import Play from './Play';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const snapshot = { type: 'game_started', fen: START, history: [], time_control: 'untimed' };
+const savedBot = { difficulty: 'kid', user_color: 'white', time_control: 'rapid', ply: 12, updated_at: '2026-11-12T12:00:00Z' };
 
+beforeEach(() => {
+  liveHarness.getLive.mockReset().mockResolvedValue({ bot: null, pvp: [] });
+  liveHarness.del.mockReset().mockResolvedValue({ ok: true });
+});
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
-  it('disconnects a live game and hides its board when the authenticated player changes', () => {
+  it('requires an explicit choice before replacing a saved bot game with a new game', async () => {
+    liveHarness.getLive.mockResolvedValue({ bot: savedBot, pvp: [] });
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await screen.findByText('Continue where you left off');
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    expect(socketHarness.current).toBeNull();
+    const dialog = screen.getByRole('alertdialog', { name: 'Start a new game instead?' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(socketHarness.current).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start new game' }));
+    const ws = socketHarness.current!;
+    expect(ws).toBeTruthy();
+    act(() => ws.accept());
+    expect(ws.connectCalls).toBe(1);
+  });
+
+  it('does not hide a saved game on an unconfirmed discard or failed delete, and retries safely', async () => {
+    liveHarness.getLive.mockResolvedValue({ bot: savedBot, pvp: [] });
+    liveHarness.del.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ ok: true });
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await screen.findByText('Continue where you left off');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(liveHarness.del).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep saved game' }));
+    expect(liveHarness.del).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard saved game' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not discard the saved game');
+    expect(screen.getByText('Continue where you left off')).toBeTruthy();
+    expect(liveHarness.del).toHaveBeenCalledExactlyOnceWith('/api/games/live/bot');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard saved game' }));
+    await waitFor(() => expect(screen.queryByText('Continue where you left off')).toBeNull());
+    expect(liveHarness.del).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not erase the next player’s resume card when an earlier player’s discard resolves late', async () => {
+    let acknowledge!: (response: { ok: boolean }) => void;
+    liveHarness.getLive.mockResolvedValue({ bot: savedBot, pvp: [] });
+    liveHarness.del.mockImplementation(() => new Promise((resolve) => { acknowledge = resolve; }));
     const view = () => <MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>;
     const page = render(view());
+    await screen.findByText('Continue where you left off');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard saved game' }));
+    expect((screen.getByRole('button', { name: 'Discard saved game' }) as HTMLButtonElement).disabled).toBe(true);
+
+    authHarness.id = 2;
+    page.rerender(view());
+    await waitFor(() => expect(liveHarness.getLive).toHaveBeenCalledTimes(2));
+    await screen.findByText('Continue where you left off');
+    await act(async () => { acknowledge({ ok: true }); await Promise.resolve(); });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy();
+    expect(liveHarness.del).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents a new game while live-game recovery is unknown and offers retry after a read failure', async () => {
+    liveHarness.getLive.mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ bot: savedBot, pvp: [] });
+    render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not check your saved games');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading saved games' }));
+    await screen.findByText('Continue where you left off');
+    expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('disconnects a live game and hides its board when the authenticated player changes', async () => {
+    const view = () => <MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>;
+    const page = render(view());
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
     const ws = socketHarness.current!;
     act(() => { ws.accept(); ws.receive(snapshot); });
@@ -130,8 +207,9 @@ describe('Play authoritative game readiness', () => {
     expect(lobbyHarness.refreshChallenges).toHaveBeenCalledTimes(2);
   });
 
-  it('blocks early moves until a snapshot, and drops optimistic state when the socket disconnects', () => {
+  it('blocks early moves until a snapshot, and drops optimistic state when the socket disconnects', async () => {
     render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
     const board = screen.getByTestId('chess-board') as HTMLButtonElement;
     const ws = socketHarness.current!;
@@ -160,8 +238,9 @@ describe('Play authoritative game readiness', () => {
     expect(board.disabled).toBe(false);
   });
 
-  it('never resigns on the first tap and allows cancellation with a button or Escape', () => {
+  it('never resigns on the first tap and allows cancellation with a button or Escape', async () => {
     render(<MemoryRouter initialEntries={['/play']}><Play /></MemoryRouter>);
+    await waitFor(() => expect((screen.getByRole('button', { name: 'play.start' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'play.start' }));
     const ws = socketHarness.current!;
     act(() => { ws.accept(); ws.receive(snapshot); });

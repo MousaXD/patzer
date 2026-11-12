@@ -148,7 +148,7 @@ router.get('/live', (c) => {
 /** "Start a new one instead" — throw away the stored bot game. */
 router.delete('/live/bot', (c) => {
   const user = c.get('user');
-  clearLiveBotGame(user.id);
+  if (!clearLiveBotGame(user.id)) return c.json({ error: 'discard_failed' }, 503);
   return c.json({ ok: true });
 });
 

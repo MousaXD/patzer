@@ -167,7 +167,18 @@
       "bot": "Contra {{difficulty}}",
       "detail": "{{moves}} jugadas, juegas con {{color}}",
       "action": "Reanudar",
-      "discard": "Descartar"
+      "discard": "Descartar",
+      "loading": "Comprobando las partidas guardadas…",
+      "loadError": "No se pudieron comprobar las partidas guardadas. Una nueva partida contra el bot podría borrar la que dejaste sin terminar.",
+      "retryLoad": "Volver a cargar las partidas",
+      "replaceTitle": "¿Empezar una partida nueva?",
+      "replaceDescription": "Una nueva partida contra el bot reemplazará la partida sin terminar. No podrás reanudarla.",
+      "confirmReplace": "Empezar partida nueva",
+      "discardTitle": "¿Descartar la partida guardada?",
+      "discardDescription": "Tu partida sin terminar contra el bot se eliminará definitivamente. No se puede deshacer.",
+      "keep": "Conservar partida",
+      "confirmDiscard": "Descartar partida guardada",
+      "discardError": "No se pudo descartar la partida guardada. Inténtalo de nuevo o consérvala."
     },
     "reconnecting": "Reconectando… tu partida está guardada.",
     "fromPosition": {

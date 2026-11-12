@@ -69,11 +69,15 @@ export function persistLiveBotGame(snap: LiveBotSnapshot): void {
   }
 }
 
-export function clearLiveBotGame(userId: number): void {
+/** Whether the saved snapshot was successfully cleared. Callers that promise
+ * deletion to the player must not silently acknowledge a failed disk write. */
+export function clearLiveBotGame(userId: number): boolean {
   try {
     db.prepare(`DELETE FROM live_bot_games WHERE user_id = ?`).run(userId);
+    return true;
   } catch (err) {
     console.warn('[live-bot] clear failed', err);
+    return false;
   }
 }
 

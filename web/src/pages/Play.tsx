@@ -250,6 +250,13 @@ export default function Play() {
   const [hasSyncedGame, setHasSyncedGame] = useState(false);
   const [sessionReplaced, setSessionReplaced] = useState(false);
   const [live, setLive] = useState<LiveGames | null>(null);
+  const [liveStatus, setLiveStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [liveReload, setLiveReload] = useState(0);
+  const [savedBotConfirm, setSavedBotConfirm] = useState<'replace' | 'discard' | null>(null);
+  const [savedBotDeletePending, setSavedBotDeletePending] = useState(false);
+  const [savedBotDeleteFailed, setSavedBotDeleteFailed] = useState(false);
+  const savedBotTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const savedBotRequestEpoch = useRef(0);
   const resultRef = useRef<GameResult | null>(null);
   const socketRef = useRef<ReconnectingSocket | null>(null);
   const accountRef = useRef<number | null>(user?.id ?? null);
@@ -296,6 +303,9 @@ export default function Play() {
     setConnected(false);
     resetGameState();
     setLive(null);
+    setSavedBotConfirm(null);
+    setSavedBotDeletePending(false);
+    setSavedBotDeleteFailed(false);
     setPhase('setup');
     // Do not automatically reconnect player B to player A's ?game= link.
     if (pvpGameId) nav('/play', { replace: true });
@@ -329,11 +339,28 @@ export default function Play() {
     if (phase !== 'setup' || pvpGameId) return;
     let alive = true;
     setLive(null);
+    setLiveStatus('loading');
     api.get<LiveGames>('/api/games/live')
-      .then((l) => { if (alive) setLive(l); })
-      .catch(() => { if (alive) setLive(null); });
+      .then((l) => { if (alive) { setLive(l); setLiveStatus('ready'); } })
+      .catch(() => { if (alive) { setLive(null); setLiveStatus('error'); } });
     return () => { alive = false; };
-  }, [phase, pvpGameId, user?.id]);
+  }, [phase, pvpGameId, user?.id, liveReload]);
+
+  // Both starting over and discarding a saved bot game are destructive. A
+  // request already in flight belongs to the account that initiated it, and
+  // must not remove the next account's resume card when it eventually lands.
+  useEffect(() => {
+    savedBotRequestEpoch.current += 1;
+    setSavedBotConfirm(null);
+    setSavedBotDeletePending(false);
+    setSavedBotDeleteFailed(false);
+  }, [user?.id]);
+  useEffect(() => {
+    if (savedBotConfirm !== null) return;
+    const trigger = savedBotTriggerRef.current;
+    savedBotTriggerRef.current = null;
+    if (trigger?.isConnected) trigger.focus();
+  }, [savedBotConfirm]);
 
   // A phone doesn't tell the page it went to sleep — it just stops running it,
   // and the socket is dead by the time you look again. These three events are
@@ -463,9 +490,41 @@ export default function Play() {
     socket().connect(wsUrl(gameId), null);
   }
 
+  function confirmSavedBotAction(action: 'replace' | 'discard', trigger: HTMLButtonElement) {
+    if (liveStatus !== 'ready' || !live?.bot) return;
+    savedBotTriggerRef.current = trigger;
+    setSavedBotDeleteFailed(false);
+    setSavedBotConfirm(action);
+  }
+
+  function cancelSavedBotAction() {
+    if (!savedBotDeletePending) {
+      setSavedBotDeleteFailed(false);
+      setSavedBotConfirm(null);
+    }
+  }
+
+  function chooseStartBot(trigger: HTMLButtonElement) {
+    if (liveStatus !== 'ready') return;
+    if (live?.bot) confirmSavedBotAction('replace', trigger);
+    else startBot();
+  }
+
   async function discardBotGame() {
-    try { await api.del('/api/games/live/bot'); } catch { /* ignore */ }
-    setLive((l) => l ? { ...l, bot: null } : l);
+    if (savedBotDeletePending || savedBotConfirm !== 'discard') return;
+    const epoch = savedBotRequestEpoch.current;
+    setSavedBotDeletePending(true);
+    setSavedBotDeleteFailed(false);
+    try {
+      await api.del('/api/games/live/bot');
+      if (epoch !== savedBotRequestEpoch.current) return;
+      setLive((l) => l ? { ...l, bot: null } : l);
+      setSavedBotConfirm(null);
+    } catch {
+      if (epoch === savedBotRequestEpoch.current) setSavedBotDeleteFailed(true);
+    } finally {
+      if (epoch === savedBotRequestEpoch.current) setSavedBotDeletePending(false);
+    }
   }
 
   function clearPremoves() {
@@ -934,6 +993,23 @@ export default function Play() {
           <h1 className="page-h1">{t('play.newGame')}</h1>
           <p className="page-sub">{t('play.subtitle')}</p>
         </header>
+        {liveStatus === 'loading' && (
+          <p role="status" className="flex items-center gap-2 text-sm text-chesscom-500">
+            <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+            {t('play.resume.loading', { defaultValue: 'Checking saved games…' })}
+          </p>
+        )}
+        {liveStatus === 'error' && (
+          <div role="alert" className="space-y-2 rounded-xl border border-move-mistake/40 bg-move-mistake/5 p-4 text-sm">
+            <p className="text-chesscom-800 dark:text-chesscom-100">
+              {t('play.resume.loadError', { defaultValue: 'Could not check your saved games. Starting a new bot game could erase your unfinished game.' })}
+            </p>
+            <button type="button" className="btn-secondary min-h-11 text-sm" onClick={() => { setLiveStatus('loading'); setLiveReload((n) => n + 1); }}>
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
+              {t('play.resume.retryLoad', { defaultValue: 'Retry loading saved games' })}
+            </button>
+          </div>
+        )}
         {/* Games you walked away from. Before v7.14.0 there was no way back into
             one at all — a bot game was simply destroyed, and a friend game could
             only be reached if you still had its URL. */}
@@ -961,7 +1037,7 @@ export default function Play() {
                 <button onClick={() => resumeBot(live.bot!)} className="btn-primary shrink-0">
                   <Swords className="h-4 w-4" />{t('play.resume.action', { defaultValue: 'Resume' })}
                 </button>
-                <button onClick={discardBotGame} className="btn-ghost shrink-0 text-xs text-ink-500">
+                <button type="button" onClick={(event) => confirmSavedBotAction('discard', event.currentTarget)} className="btn-ghost min-h-11 shrink-0 text-xs text-ink-500">
                   {t('play.resume.discard', { defaultValue: 'Discard' })}
                 </button>
               </div>
@@ -1046,11 +1122,75 @@ export default function Play() {
                 ))}
               </div>
             </div>
-            <button onClick={startBot} className="btn-primary w-full text-base"><Swords className="h-4 w-4" />{t('play.start')}</button>
+            <button type="button" onClick={(event) => chooseStartBot(event.currentTarget)} disabled={liveStatus !== 'ready'} className="btn-primary w-full min-h-11 text-base"><Swords className="h-4 w-4" />{t('play.start')}</button>
           </div>
         )}
 
         {setupTab === 'friend' && <FriendTab key={user?.id} onChallengeAccepted={(gid) => connectPvp(gid)} />}
+
+        <AnimatePresence>
+          {savedBotConfirm && live?.bot && (
+            <motion.div role="presentation"
+              initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              onClick={cancelSavedBotAction}
+              className="fixed inset-0 z-[58] flex items-center justify-center bg-black/50 p-4"
+            >
+              <motion.div role="alertdialog" aria-modal="true"
+                aria-labelledby="saved-bot-confirm-title" aria-describedby="saved-bot-confirm-description"
+                initial={reduceMotion ? false : { y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                exit={reduceMotion ? undefined : { y: 12, opacity: 0 }}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault(); cancelSavedBotAction();
+                  } else if (event.key === 'Tab') {
+                    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+                    const first = buttons[0], last = buttons[buttons.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                  }
+                  event.stopPropagation();
+                }}
+                className="card w-full max-w-md space-y-4 p-5 shadow-lift sm:p-6"
+              >
+                <div className="flex items-center gap-2">
+                  <Bot aria-hidden="true" className="h-5 w-5 shrink-0 text-bad" />
+                  <h2 id="saved-bot-confirm-title" className="text-lg font-semibold text-chesscom-900 dark:text-chesscom-100">
+                    {savedBotConfirm === 'replace'
+                      ? t('play.resume.replaceTitle', { defaultValue: 'Start a new game instead?' })
+                      : t('play.resume.discardTitle', { defaultValue: 'Discard saved game?' })}
+                  </h2>
+                </div>
+                <p id="saved-bot-confirm-description" className="text-sm leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+                  {savedBotConfirm === 'replace'
+                    ? t('play.resume.replaceDescription', { defaultValue: "Starting a new bot game will replace your unfinished game. You won't be able to resume it." })
+                    : t('play.resume.discardDescription', { defaultValue: 'Your unfinished bot game will be permanently deleted. This cannot be undone.' })}
+                </p>
+                {savedBotDeleteFailed && <p role="alert" className="rounded-lg border border-move-mistake/40 bg-move-mistake/5 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+                  {t('play.resume.discardError', { defaultValue: 'Could not discard the saved game. Try again or keep your game.' })}
+                </p>}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button type="button" autoFocus disabled={savedBotDeletePending} onClick={cancelSavedBotAction} className="btn-primary min-h-11 flex-1 text-sm">
+                    {t('play.resume.keep', { defaultValue: 'Keep saved game' })}
+                  </button>
+                  <button type="button" disabled={savedBotDeletePending}
+                    onClick={() => {
+                      if (savedBotConfirm === 'replace') { setSavedBotConfirm(null); startBot(); }
+                      else void discardBotGame();
+                    }}
+                    className="btn-danger min-h-11 flex-1 text-sm"
+                  >
+                    {savedBotDeletePending && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />}
+                    {savedBotConfirm === 'replace'
+                      ? t('play.resume.confirmReplace', { defaultValue: 'Start new game' })
+                      : t('play.resume.confirmDiscard', { defaultValue: 'Discard saved game' })}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
