@@ -107,3 +107,34 @@
 - **Browser regression:** `capture-shell.mjs` now asserts 320px German current title is not clipped (actual scroll versus client width), the parent back affordance exists, clicking it changes to the correct parent URL, and the screen has no horizontal overflow. Both nested Review and Player Profile paths are covered.
 - **Validation:** `node web/src/components/navigation/capture-shell.mjs` **passed** the full light/dark responsive smoke; inspected the regenerated `breadcrumb-review-320-de.png` showing complete `Partiedetails`. `npm run build -w web` **passed**; 60 focused tests across navigation, login and locales **passed**.
 - **Next:** Continue auditing meaningful cross-app shell problems: mobile keyboard and focus behaviors, global header search/keyboard shortcuts, and localized empty/error states. Leave all other agent feature internals untouched.
+
+## 2026-11-12: Global search and keyboard overlay reliability
+
+### Recovered and reproduced
+
+- Recovered clean Agent B branch at `bd04a5a` and resumed the specific pending global command-palette/shortcuts-modal audit, without restarting completed homepage or auth investigations.
+- Added a dedicated authenticated **Chromium fixture** harness for these overlays. The first pre-change run failed when attempting to find the command palette by accessible dialog name: the existing modal had none.
+- Source inspection also confirmed that palette and shortcuts dialogs lacked focus traps/restoration, that the palette's global capture listener intercepted Enter from anywhere (including focused buttons), and that Ctrl+K could stack the palette on top of the shortcuts modal.
+- Actual dark 320px screenshots exposed low-contrast icons, section headings and keyboard hints in both global overlays.
+
+### Changes
+
+1. Added a reusable `useDialogFocus` hook for both shared overlays: focus enters on open, Tab and Shift+Tab remain inside, Escape closes, and closing restores the original focus where it still exists. External focus attempts also return inside an active dialog.
+2. The command palette now has an accessible dialog name and search combobox/listbox semantics, a keyboard-exposed active option, screen-reader-selected status, proper search-result empty state, and keyboard navigation only while the search input is active. Focused option buttons regain their normal Enter behavior.
+3. The keyboard-shortcuts modal now has a named dialog, a named close button and an initial focus target, alongside the shared focus/restore behavior. Both dialogs avoid displaying entrance animation when reduced motion is requested.
+4. The global Ctrl+K shortcut now closes the shortcuts modal before opening the palette; global `?` and `g X` navigation shortcuts are suppressed while either modal is active, preventing background navigation and competing focus traps.
+5. Migrated only the two global overlays' foregrounds, secondary text, borders and interactive surfaces to semantic, theme-aware `ui` tokens. Their dark-mode headings, hints and icons are visibly readable rather than nearly black on dark cards.
+6. Added browser regression coverage in `capture-global-dialogs.mjs` with fixture auth, 1440px / 390px / 320px light and dark screenshots, scroll-overflow checks, measured minimum 4.5:1 secondary-text contrast, repeated Tab focus containment, Escape restore, command action selection and empty results, arrow active selection, mobile shortcuts, and prevention of simultaneous global modals.
+7. Added two isolated Vitest tests for the focus-management hook (Tab/Shift+Tab wrap and Escape with original-focus restoration).
+
+### Verification
+
+- `npm run build -w web`: **passed**, TypeScript and Vite production frontend.
+- `npx vitest run web/src --maxWorkers=2`: **377/377 passed across 61 test files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed** with real Chromium in both themes and all tested viewport sizes; screenshots inspected at 320px and 1440px.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed again** (authenticated global navigation and homepage responsive checks).
+- All browser checks used local fixtures, no live game requests or production data. No merge, deployment, or modifications to other agents' feature internals.
+
+### Next audit
+
+- Continue inspecting shared global loading/error navigation experiences and modal interactions in narrow screens, including interrupted navigation and low-bandwidth states. Keep changes limited to Agent B's shell/design ownership and require real browser evidence before editing.

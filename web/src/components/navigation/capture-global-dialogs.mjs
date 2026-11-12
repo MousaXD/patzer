@@ -1,0 +1,199 @@
+// Browser certification for shared command palette and keyboard shortcuts.
+// Runs only the local frontend with fixture auth; does not touch game data.
+import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+
+const root = fileURLToPath(new URL('../../../../', import.meta.url));
+const origin = 'http://127.0.0.1:4192';
+const output = resolve(root, 'artifacts/agent-02');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let server;
+let browser;
+let theme = 'light';
+
+const profile = {
+  user_id: 1, display_name: 'Sample Player', avatar_emoji: '',
+  language: 'en', audience: 'intermediate', chesscom_username: null, lichess_username: null,
+  coach_behavior: 'on_demand', tts_enabled: 0, tts_voice: null, tts_rate: 1,
+  tts_pitch: 1, board_theme: 'green', piece_set: 'cburnett', site_theme: 'light',
+  blunder_warning: 1, sound_enabled: 0, sound_set: 'soft', move_sound_set: 'board',
+  kid_piece_emotions: 0,
+};
+
+async function visit(page, width, height) {
+  await page.setViewportSize({ width, height });
+  await page.goto(origin, { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-app-shell]').waitFor();
+  await page.getByRole('button', { name: /Command palette/ }).waitFor();
+}
+
+async function assertInside(page, dialog, label) {
+  const ok = await dialog.evaluate((el) => el.contains(document.activeElement));
+  if (!ok) throw new Error(label + ': keyboard focus escaped the dialog');
+}
+
+async function assertContrast(page, dialog, label) {
+  const ratio = await dialog.evaluate((panel) => {
+    const luminance = (color) => {
+      const channels = color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+      if (!channels || channels.length !== 3) return NaN;
+      const v = channels.map((x) => {
+        const s = x / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return v[0] * .2126 + v[1] * .7152 + v[2] * .0722;
+    };
+    const samples = [...panel.querySelectorAll('.text-ui-mutedText')];
+    return Math.min(...samples.map((element) => {
+      let surface = element.parentElement;
+      while (surface && getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') {
+        surface = surface.parentElement;
+      }
+      const a = luminance(getComputedStyle(element).color);
+      const b = luminance(getComputedStyle(surface ?? panel).backgroundColor);
+      return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+    }));
+  });
+  if (!Number.isFinite(ratio) || ratio < 4.5) {
+    throw new Error(label + ': unreadable dialog secondary text (' + ratio + ':1)');
+  }
+}
+
+async function assertNoOverflow(page, label) {
+  const width = await page.evaluate(() => ({
+    viewport: innerWidth, body: document.body.scrollWidth, html: document.documentElement.scrollWidth,
+  }));
+  if (width.body > width.viewport + 1 || width.html > width.viewport + 1) {
+    throw new Error(label + ': horizontal overflow ' + JSON.stringify(width));
+  }
+}
+
+try {
+  await mkdir(output, { recursive: true });
+  server = spawn(process.execPath, [resolve(root, 'node_modules/vite/bin/vite.js'),
+    '--host', '127.0.0.1', '--port', '4192', '--strictPort'], {
+    cwd: resolve(root, 'web'), stdio: 'inherit', env: { ...process.env, CI: '1' },
+  });
+  let ready = false;
+  for (let i = 0; i < 80; i++) {
+    if (server.exitCode !== null) throw new Error('Vite exited');
+    try { if ((await fetch(origin)).ok) { ready = true; break; } } catch { /* starting */ }
+    await sleep(250);
+  }
+  if (!ready) throw new Error('Vite did not start');
+  browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  page.setDefaultTimeout(5000);
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const result = path === '/api/setup/status' ? { setup_required: false }
+      : path === '/api/auth/me' ? { user: { id: 1, username: 'sample-player', role: 'user', created_at: '2026-01-01',
+        profile: { ...profile, site_theme: theme } } }
+      : path === '/api/games' ? { games: [] }
+      : path === '/api/stats/me' ? { total: 0, wins: 0, losses: 0, draws: 0, avg_accuracy: null, streak: null }
+      : path === '/api/meta' ? { version: '7.19.0' }
+      : path === '/api/meta/update' ? { enabled: false, updateAvailable: false, current: '7.19.0', latest: null }
+      : path === '/api/plan' ? { goals: [] }
+      : path === '/api/achievements' ? { achievements: [] } : {};
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(result) });
+  });
+
+  for (const color of ['light', 'dark']) {
+    theme = color;
+    for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 700 }]) {
+      await visit(page, size.width, size.height);
+      await page.waitForFunction((dark) => document.documentElement.classList.contains('dark') === dark, color === 'dark');
+      const opener = page.getByRole('button', { name: /Command palette/ });
+      await opener.click();
+      const palette = page.getByRole('dialog', { name: 'Search' });
+      await palette.waitFor();
+      await page.getByRole('combobox', { name: 'Search' }).waitFor();
+      await assertInside(page, palette, 'initial palette focus');
+      await assertNoOverflow(page, 'palette ' + color + ' ' + size.width);
+      await assertContrast(page, palette, 'palette ' + color + ' ' + size.width);
+      await page.screenshot({ path: resolve(output, 'palette-' + color + '-' + size.width + '.png') });
+      for (let i = 0; i < 32; i++) {
+        await page.keyboard.press('Tab');
+        await assertInside(page, palette, 'palette Tab ' + i);
+      }
+      await page.keyboard.press('Escape');
+      await palette.waitFor({ state: 'detached' });
+      if (!(await opener.evaluate(el => el === document.activeElement))) {
+        throw new Error('Palette failed to restore focus to the opener');
+      }
+      await opener.click();
+      await palette.waitFor();
+      const input = page.getByRole('combobox', { name: 'Search' });
+      await input.fill('zzzz-unknown-action');
+      if ((await palette.getByText('No matches.').count()) !== 1) throw new Error('Palette empty search not explained');
+      if (await input.getAttribute('aria-activedescendant')) throw new Error('Empty search points to an old option');
+      await input.fill('');
+      await page.keyboard.press('ArrowDown');
+      if ((await palette.locator('[role="option"][aria-selected="true"]').count()) !== 1) {
+        throw new Error('Arrow navigation failed to expose the active option');
+      }
+      await input.press('Escape');
+      await palette.waitFor({ state: 'detached' });
+      await opener.click();
+      await palette.waitFor();
+      await page.getByRole('combobox', { name: 'Search' }).fill('train');
+      await page.keyboard.press('Enter');
+      await page.waitForURL((url) => url.pathname === '/train');
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"]'));
+    }
+  }
+
+  theme = 'light';
+  await visit(page, 1440, 900);
+  await page.waitForFunction(() => !document.documentElement.classList.contains('dark'));
+  const shortcutsOpener = page.getByRole('button', { name: 'Keyboard shortcuts' });
+  await shortcutsOpener.click();
+  const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await shortcuts.waitFor();
+  await assertInside(page, shortcuts, 'initial shortcuts focus');
+  await assertContrast(page, shortcuts, 'shortcuts dialog');
+  await assertNoOverflow(page, 'shortcuts dialog');
+  await page.screenshot({ path: resolve(output, 'shortcuts-light-1440.png') });
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Tab');
+    await assertInside(page, shortcuts, 'shortcuts Tab ' + i);
+  }
+  await page.keyboard.press('Escape');
+  await shortcuts.waitFor({ state: 'detached' });
+  if (!(await shortcutsOpener.evaluate(el => el === document.activeElement))) {
+    throw new Error('Shortcuts failed to restore focus to the opener');
+  }
+  await shortcutsOpener.click();
+  await shortcuts.waitFor();
+  // Ctrl+K must switch global overlays, not stack two aria-modal dialogs.
+  await page.keyboard.press('Control+k');
+  await page.getByRole('dialog', { name: 'Search' }).waitFor();
+  if ((await page.getByRole('dialog').count()) !== 1) {
+    throw new Error('Global hotkey stacked two blocking modal dialogs');
+  }
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({ state: 'detached' });
+  for (const color of ['light', 'dark']) {
+    theme = color;
+    await visit(page, 320, 700);
+    await page.waitForFunction((dark) => document.documentElement.classList.contains('dark') === dark, color === 'dark');
+    await page.getByRole('button', { name: 'Open menu' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Mobile navigation' });
+    await drawer.getByRole('button', { name: 'Keyboard shortcuts' }).click();
+    const mobileShortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    await mobileShortcuts.waitFor();
+    await assertInside(page, mobileShortcuts, 'mobile shortcuts initial focus');
+    await assertContrast(page, mobileShortcuts, 'mobile shortcuts ' + color);
+    await assertNoOverflow(page, 'mobile shortcuts ' + color);
+    await page.screenshot({ path: resolve(output, 'shortcuts-' + color + '-320.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({ state: 'detached' });
+  }
+  console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');
+} finally {
+  await browser?.close();
+  server?.kill('SIGTERM');
+}

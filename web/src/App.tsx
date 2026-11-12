@@ -101,9 +101,15 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        // Only one global overlay may be modal at a time. Otherwise their
+        // competing focus traps can leave keyboard users unable to proceed.
+        setShortcutsOpen(false);
         setPaletteOpen((v) => !v);
         return;
       }
+      // Let the active dialog own keys instead of triggering page shortcuts
+      // behind it (including the "g X" route navigation prefix).
+      if (paletteOpen || shortcutsOpen) return;
       if (isTextField(e.target)) return;
       if (e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); setShortcutsOpen(true); return; }
       // "g X" prefix navigation
@@ -125,7 +131,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [user, nav]);
+  }, [user, nav, paletteOpen, shortcutsOpen]);
 
   // Reconcile the signed-in profile with the pre-paint bootstrap. On sign-out,
   // keep the last theme choice for the public/auth shell; on a first visit,

@@ -17,6 +17,7 @@ import type { GameRow } from '../types';
 import { cn } from '../lib/utils';
 import { LANGUAGES } from '../lib/languages';
 import { endSession } from '../lib/logout';
+import { useDialogFocus } from './useDialogFocus';
 
 interface Action {
   id: string;
@@ -38,6 +39,8 @@ export default function CommandPalette({ open, onClose }: Props) {
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, dialogRef, onClose, inputRef);
 
   // Recent games — only fetched while palette is open.
   const { data: gamesData } = useQuery({
@@ -51,7 +54,6 @@ export default function CommandPalette({ open, onClose }: Props) {
     if (open) {
       setQ('');
       setActive(0);
-      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
 
@@ -108,17 +110,18 @@ export default function CommandPalette({ open, onClose }: Props) {
 
   useEffect(() => { setActive(0); }, [q]);
 
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(filtered.length - 1, i + 1)); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
-      else if (e.key === 'Enter') { e.preventDefault(); filtered[active]?.run(); }
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((i) => Math.min(filtered.length - 1, i + 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((i) => Math.max(0, i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      filtered[active]?.run();
     }
-    window.addEventListener('keydown', onKey, { capture: true });
-    return () => window.removeEventListener('keydown', onKey, { capture: true });
-  }, [open, filtered, active, onClose]);
+  }
 
   // Keep the active item in view
   useEffect(() => {
@@ -129,35 +132,44 @@ export default function CommandPalette({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]" role="dialog" aria-modal="true">
-      <button aria-label={t('common.close')} onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-chesscom-200 bg-white shadow-lift dark:border-chesscom-700 dark:bg-chesscom-800 animate-fade-in">
-        <div className="flex items-center gap-2 border-b border-chesscom-200 px-3 py-2 dark:border-chesscom-700">
-          <Search className="h-4 w-4 text-chesscom-400" />
+    <div className="fixed inset-0 z-[60] flex items-start justify-center px-3 pt-[min(12vh,5rem)] sm:px-4" data-global-palette>
+      <button type="button" tabIndex={-1} aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('palette.search', { defaultValue: 'Search' })} tabIndex={-1}
+        className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-ui-border bg-ui-surface text-ui-foreground shadow-lift motion-safe:animate-fade-in">
+        <div className="flex items-center gap-2 border-b border-ui-border px-3 py-2">
+          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-ui-mutedText" />
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onSearchKeyDown}
             placeholder={t('palette.placeholder', { defaultValue: 'Type to search nav, actions, games…' })}
-            className="flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-chesscom-400"
+            role="combobox"
+            aria-label={t('palette.search', { defaultValue: 'Search' })}
+            aria-controls="patzer-palette-results"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            aria-activedescendant={filtered.length > 0 ? `patzer-palette-option-${active}` : undefined}
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-ui-foreground outline-none placeholder:text-ui-mutedText"
           />
-          <kbd className="hidden rounded border border-chesscom-200 px-1.5 py-0.5 text-[11px] text-chesscom-400 sm:inline dark:border-chesscom-700">{t('palette.esc')}</kbd>
+          <kbd className="hidden rounded border border-ui-border px-1.5 py-0.5 text-[11px] text-ui-mutedText sm:inline">{t('palette.esc')}</kbd>
         </div>
-        <div ref={listRef} className="max-h-[60vh] overflow-y-auto py-1">
+        <div id="patzer-palette-results" role="listbox" aria-label={t('palette.navGroup', { defaultValue: 'Navigate' })}
+          ref={listRef} className="max-h-[min(60dvh,32rem)] overflow-y-auto py-1">
           {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-chesscom-400">
+            <div className="px-4 py-8 text-center text-sm text-ui-mutedText">
               {t('palette.empty', { defaultValue: 'No matches.' })}
             </div>
           ) : (
             <PaletteSection items={filtered} active={active} setActive={setActive} />
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-chesscom-200 bg-chesscom-50/50 px-3 py-1.5 text-[11px] text-chesscom-500 dark:border-chesscom-700 dark:bg-chesscom-900/40">
+        <div className="flex items-center justify-between border-t border-ui-border bg-ui-muted px-3 py-2 text-[11px] text-ui-mutedText">
           <div className="flex items-center gap-3">
-            <span><kbd className="rounded border border-chesscom-200 px-1 dark:border-chesscom-700">↑</kbd> <kbd className="rounded border border-chesscom-200 px-1 dark:border-chesscom-700">↓</kbd> {t('palette.navigate', { defaultValue: 'navigate' })}</span>
-            <span><kbd className="rounded border border-chesscom-200 px-1 dark:border-chesscom-700">↵</kbd> {t('palette.select', { defaultValue: 'select' })}</span>
+            <span><kbd className="rounded border border-ui-border px-1">↑</kbd> <kbd className="rounded border border-ui-border px-1">↓</kbd> {t('palette.navigate', { defaultValue: 'navigate' })}</span>
+            <span><kbd className="rounded border border-ui-border px-1">↵</kbd> {t('palette.select', { defaultValue: 'select' })}</span>
           </div>
-          <span>{t('palette.tip', { defaultValue: '⌘K / Ctrl+K to open · ? for shortcuts' })}</span>
+          <span className="hidden sm:inline">{t('palette.tip', { defaultValue: '⌘K / Ctrl+K to open · ? for shortcuts' })}</span>
         </div>
       </div>
     </div>
@@ -176,8 +188,8 @@ function PaletteSection({ items, active, setActive }: { items: Action[]; active:
         const list = groups[key];
         if (list.length === 0) return null;
         return (
-          <div key={key} className="mb-1">
-            <div className="px-3 pb-0.5 pt-2 text-[11px] uppercase tracking-wide text-chesscom-400">{labels[key]}</div>
+          <div key={key} role="group" aria-label={labels[key]} className="mb-1">
+            <div aria-hidden="true" className="px-3 pb-0.5 pt-2 text-[11px] uppercase tracking-wide text-ui-mutedText">{labels[key]}</div>
             {list.map((a) => {
               const i = runningIndex++;
               const isActive = i === active;
@@ -185,16 +197,19 @@ function PaletteSection({ items, active, setActive }: { items: Action[]; active:
                 <button
                   key={a.id}
                   data-i={i}
+                  id={`patzer-palette-option-${i}`}
+                  role="option"
+                  aria-selected={isActive}
                   onMouseMove={() => setActive(i)}
                   onClick={a.run}
                   className={cn(
-                    'flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors',
-                    isActive ? 'bg-gold-500/15 text-chesscom-900 dark:text-chesscom-100' : 'text-chesscom-700 dark:text-chesscom-200 hover:bg-chesscom-100/60 dark:hover:bg-chesscom-700/40',
+                    'flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ui-focus',
+                    isActive ? 'bg-ui-pressed text-ui-foreground' : 'text-ui-foreground hover:bg-ui-hover',
                   )}
                 >
-                  <a.icon className="h-4 w-4 shrink-0 text-chesscom-500" />
+                  <a.icon aria-hidden="true" className="h-4 w-4 shrink-0 text-ui-mutedText" />
                   <span className="flex-1 truncate">{a.label}</span>
-                  {a.hint && <span className="truncate text-xs text-chesscom-400">{a.hint}</span>}
+                  {a.hint && <span className="truncate text-xs text-ui-mutedText">{a.hint}</span>}
                 </button>
               );
             })}
