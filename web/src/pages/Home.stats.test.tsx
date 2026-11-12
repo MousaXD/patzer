@@ -125,12 +125,25 @@ describe('Home statistics failure', () => {
     expect(heading.closest('section')?.querySelector('[data-home-hero-avatar]')?.textContent).toBe('♟');
     const hero = heading.closest('section');
     const columns = hero?.querySelector('div.relative.grid');
+    expect(columns?.className).toContain('grid-cols-[minmax(0,1fr)]');
+    expect(columns?.className).toContain('p-[24px]');
+    expect(columns?.className).toContain('gap-[20px]');
     expect(columns?.className).toContain('lg:grid-cols-[minmax(0,1fr)_auto]');
     expect(columns?.className).not.toContain('md:grid-cols-');
+    const greeting = hero?.querySelector('[data-home-hero-avatar] + div');
+    expect(greeting?.className).toContain('break-words');
+    expect(greeting?.className).toContain('tracking-[0.08em]');
+    expect(greeting?.parentElement?.className).toContain('gap-x-[12px]');
     const primary = hero?.querySelector<HTMLAnchorElement>('a[href="/play"]');
     const actions = primary?.parentElement;
     expect(actions?.className).toContain('lg:flex-col');
     expect(actions?.className).not.toContain('md:flex-col');
+    for (const path of ['/play', '/review']) {
+      const action = hero?.querySelector<HTMLAnchorElement>('a[href="' + path + '"]');
+      expect(action?.className).toContain('max-w-full');
+      expect(action?.className).toContain('min-w-0');
+      expect(action?.querySelector('span')?.className).toContain('break-words');
+    }
     const continuation = screen.getByRole('region', { name: 'Continue improving' });
     expect(continuation.querySelector('.grid')?.className).toContain('grid-cols-1');
   });

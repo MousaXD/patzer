@@ -1651,3 +1651,36 @@
 ### Next audit
 
 - Independently check the **Home first-use hero and call-to-action visibility at 320/390px with 200% root text scaling**. Earlier mobile checks used 100%/150% text, so an unseen severe zoom issue may still exist. Verify real heading visibility, no horizontal overflow, keyboard access and whether the primary action becomes obscured below the small-screen viewport before changing anything.
+
+## 2026-11-13: Prevent Home hero content clipping at 200% zoom on narrow phones
+
+### Reproduced browser defect
+
+- Continued from clean pushed `3d28ebf` and completed the already-running **72-case** local Chromium Home zoom audit (320/390px, 100%/150%/200% root text, English/German/Russian, both themes, short/medium display names). The initial page-overflow and heading-box checks reported **0 issues**, but independent screenshot inspection exposed a defect hidden by the hero's `overflow-hidden`.
+- At **320px/200%**, the hero card's right edge was **x=296px**, while the Play action, clipped supporting text and wide name/greeting grid extended to **x=348px**: **52px of Play's action was invisible inside the hero** even though the document itself had no horizontal overflow. Root-relative padding was 48px per side and an unconstrained single-column CSS grid expanded to the action's intrinsic width.
+- The initial German greeting split the final letter of `MORGEN` onto a third line. An additional stricter viewport assertion showed that at 320px/200% in Russian, Play ended at **731.5px** inside a **700px** viewport, partially below the initial fold. The second action may reasonably require scrolling.
+
+### Implementation
+
+1. Bound the hero's base CSS grid with `grid-cols-[minmax(0,1fr)]`, `min-w-0` and **physical 24px mobile padding**, preserving the existing 1024px two-column desktop design.
+2. Give Play and Review `min-w-0 max-w-full`, fixed narrow-screen horizontal padding, shrink-safe icon geometry and individually wrapping text labels, so neither the button nor the glyphs can escape the clipped hero. Preserve original routes, focus styling, hierarchy and 44px+ touch targets.
+3. Allow the greeting to wrap and keep avatar-to-text spacing at **12 physical pixels** under 640px, instead of doubling to 24px at 200% text scale. Use slightly tighter small-screen tracking so `GUTEN MORGEN` remains two complete words.
+4. Keep the narrow-screen hero column gap at **20px** and the first-use supporting-copy margin at **16px** (both physical sizes), preventing the primary Play button from being partly hidden below the 700px initial viewport in the tested Russian zoom case. No text-size reduction.
+5. Extend the existing Home unit regression to protect constrained card/grid, greeting, CTA wrapping and tablet/desktop breakpoints. Add durable `capture-scaled-mobile-home.mjs` with **72 Chromium cases** asserting true text-node glyph containment within the *visible hero card*, whole visible action rectangles, initial primary-CTA visibility at 200% zoom, no document overflow, readable name and real Tab focus on the hero's Play link. The first keyboard probe targeted the hidden desktop `/play` link instead of the hero action; the fixture now scopes the selector to the hero itself.
+
+### Verification
+
+- Negative-control screenshot: Play action extended **52px past the card's right edge** at 320px/200% while the document reported zero overflow.
+- Final `node web/src/components/navigation/capture-scaled-mobile-home.mjs`: **72/72 passed** (no clipped greeting, tagline or CTA glyphs; both action rectangles fit; Play reachable with visible keyboard focus and fully within the 700px viewport at 320px/200%).
+- Inspected `artifacts/agent-02/home-hero-mobile-verified-light-short-320-font32.png` and `home-hero-mobile-verified-dark-long-320-font32.png`: `GUTEN MORGEN` forms two clean lines, the primary CTA fits and is visibly focused, and the UI keeps a clear dark/light hierarchy. A very long name still intentionally uses the pre-existing two-line clamp with full accessible text/title.
+- `npx vitest run web/src/pages/Home.stats.test.tsx --maxWorkers=2`: **20/20 passed**.
+- `node web/src/components/navigation/capture-scaled-home-hero.mjs`: **72/72 passed** (established tablet/desktop text zoom regression).
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** (full previous shell/browser smoke).
+- `npx vitest run web/src --maxWorkers=2`: **473/473 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No main merge, deployment, production data or other agents' worktrees touched.
+
+### Next audit
+
+- Review **Home Recent Games and first-use continuation tiles** at 320/390px with 200% text scaling, in particular whether opponent names, result badges and row links actually remain visible inside cards rather than only avoiding document-level horizontal overflow. Investigate actual Chromium clipping and keyboard reachability before making any change; prior Recent Games audits did not cover the full 200% zoom matrix.

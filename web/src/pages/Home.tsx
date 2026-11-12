@@ -155,13 +155,13 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
 
       {/* At 768px a two-column hero gives the name <60px at 200% text
           scaling. Keep identity above actions until there is actual room. */}
-      <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-[20px] p-[24px] sm:gap-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-[12px] gap-y-1 sm:gap-x-3">
             <div data-home-hero-avatar className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl backdrop-blur sm:row-span-2">
               {avatar}
             </div>
-            <div className="min-w-0 text-xs uppercase tracking-[0.18em] text-white/55">{greeting}</div>
+            <div className="min-w-0 break-words text-xs uppercase tracking-[0.08em] text-white/55 sm:tracking-[0.18em]">{greeting}</div>
             <h1 title={displayName} className="col-span-2 line-clamp-2 min-w-0 break-words text-2xl font-bold tracking-tight sm:col-span-1 sm:text-3xl">{displayName}</h1>
           </div>
 
@@ -193,25 +193,25 @@ function Hero({ displayName, avatar, stats, tagline, loading, error, retry }: {
               )}
             </div>
           ) : (
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-white/75">{tagline}</p>
+            <p className="mt-[16px] max-w-xl text-sm leading-relaxed text-white/75">{tagline}</p>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2 lg:flex-col lg:items-end">
+        <div className="flex min-w-0 flex-wrap gap-2 lg:flex-col lg:items-end">
           <Link
             to="/play"
-            className="group inline-flex min-h-11 items-center gap-2 rounded-md bg-green-500 px-5 py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none"
+            className="group inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md bg-green-500 px-[14px] py-2.5 text-sm font-bold text-white shadow-soft transition-all hover:bg-green-600 hover:shadow-lift focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none lg:px-5"
           >
-            <Swords className="h-4 w-4" />
-            {t('home.playTitle')}
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            <Swords className="h-[18px] w-[18px] shrink-0 lg:h-4 lg:w-4" />
+            <span className="min-w-0 break-words">{t('home.playTitle')}</span>
+            <ArrowRight className="h-[14px] w-[14px] shrink-0 transition-transform group-hover:translate-x-0.5 lg:h-3.5 lg:w-3.5" />
           </Link>
           <Link
             to="/review"
-            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-white/10 px-4 py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none"
+            className="inline-flex min-h-11 min-w-0 max-w-full items-center gap-2 rounded-md bg-white/10 px-[14px] py-2 text-xs font-medium text-white/90 backdrop-blur transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-chesscom-900 motion-reduce:transition-none lg:px-4"
           >
-            <BookOpen className="h-3.5 w-3.5" />
-            {t('home.reviewTitle')}
+            <BookOpen className="h-[16px] w-[16px] shrink-0 lg:h-3.5 lg:w-3.5" />
+            <span className="min-w-0 break-words">{t('home.reviewTitle')}</span>
           </Link>
         </div>
       </div>
