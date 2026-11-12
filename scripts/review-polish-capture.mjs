@@ -714,6 +714,56 @@ try {
       body:{language:'en',site_theme:'dark'}});
     assert.equal(restored.status,200);
   }
+  // Closing Notes blurs its editor and starts an asynchronous autosave. If
+  // that PATCH fails *after* the editor collapses, the error cannot be left
+  // inside its now-hidden content: the user must see and recover the draft.
+  const collapsedNotesContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await collapsedNotesContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await collapsedNotesContext.newPage();
+    const enNotes=JSON.parse(readFileSync(new URL('../web/src/locales/en.json',import.meta.url),'utf8'));
+    const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let attempts=0;
+    await page.route(`**/api/games/${id}/notes`,async route=>{
+      attempts++;
+      if(attempts===1)await route.fulfill({status:503,contentType:'application/json',body:'{"error":"backend_unavailable"}'});
+      else await route.continue();
+    });
+    await page.goto(`${base}/review/${id}?ply=15`,{waitUntil:'domcontentloaded'});
+    const notesButton=page.getByRole('button',{name:enNotes.review.notes,exact:true});
+    await notesButton.click();
+    const editor=page.getByPlaceholder(enNotes.review.notesPlaceholder);
+    const latestDraft='Review notes: keep this edit when collapsed save fails';
+    await editor.fill(latestDraft);
+    const failedResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===503);
+    await notesButton.click();
+    await failedResponse;
+    assert.equal(await notesButton.getAttribute('aria-expanded'),'false');
+    const collapsedAlert=page.locator('[data-review-notes-collapsed-error]');
+    await collapsedAlert.getByText(enNotes.review.notesSaveFailed,{exact:true})
+      .waitFor({state:'visible',timeout:5000});
+    const retry=collapsedAlert.getByRole('button',{name:enNotes.review.notesRetrySave,exact:true});
+    const retryTarget=await retry.boundingBox();
+    assert.ok(retryTarget && retryTarget.height>=44,
+      'Collapsed Notes save failure must offer a visible 44px retry target');
+    await page.screenshot({path:join(output,'review-notes-collapsed-save-failure-390.png')});
+    const successfulResponse=page.waitForResponse(response=>response.url().endsWith(`/api/games/${id}/notes`)
+      && response.status()===200 && response.request().postDataJSON().notes===latestDraft);
+    await retry.focus();
+    await page.keyboard.press('Enter');
+    await successfulResponse;
+    await collapsedAlert.waitFor({state:'hidden',timeout:5000});
+    assert.equal(attempts,2,'Collapsed notes must retry the same latest draft only once');
+    assert.ok(await notesButton.evaluate(element=>document.activeElement===element),
+      'Once a keyboard-initiated collapsed-notes retry succeeds, focus should return to Notes');
+    assert.equal(db.prepare('SELECT notes FROM games WHERE id=?').get(id).notes,latestDraft);
+    await notesButton.click();
+    assert.equal(await editor.inputValue(),latestDraft,
+      'Reopening Notes must display the latest successful draft');
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+  }finally{await collapsedNotesContext.close();}
   // Bookmark PATCH failures currently roll back the optimistic Star button
   // without telling the user whether the bookmark was actually saved.
   const bookmarkContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});

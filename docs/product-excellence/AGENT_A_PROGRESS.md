@@ -1376,3 +1376,21 @@
 ### Next independent data-safety audit
 
 - Notes save errors are currently rendered **inside the expandable editor**. Audit the sequence **type unsaved note → collapse Notes (blur starts async save) → server responds 503**. Confirm whether the error is visible and recoverable without silently losing user text. If collapsed Notes hides the failure, provide visible, keyboard-accessible recovery without changing existing successful autosave or saved-game PGN behavior.
+
+## 2026-11-13: expose failed note autosave when the Notes panel is collapsed
+
+### Browser-proven data-loss risk and minimal recovery change
+
+- Continued from clean pushed `a6400e5` and reproduced a real failure on an isolated Chromium 390px saved review: type a private draft, close Notes so its blur starts a PATCH, and respond with a synthetic HTTP 503. The new regression **failed before the fix**, waiting for an error visible outside the collapsed editor: previously the only Notes save-error banner lived inside `showNotes && (...)`, so the user got no visible indication that their draft was not persisted.
+- Kept the existing draft, serialized save mutation, optimistic status and successful save behavior; moved only the transient notes error alert and Retry outside the optional editor contents. An actual error now appears even with `aria-expanded=false`, using the localized failed-save text and 44px Retry. The error remains in one place when the editor is open, instead of duplicating an alert. Added `notesToggleRef` so keyboard-activated Retry restores focus to the persistent Notes control when collapsed, while the already-tested open-editor Retry still restores focus to its textarea. Pointer retries do not jump focus/scroll.
+- The corrected browser scenario **passed**: after closing Notes and receiving 503, the error is visible, Retry is keyboard-accessible, a single keyboard Enter retries the same latest draft, the alert disappears on HTTP 200, focus returns to Notes, reopening shows the recovered text, and the original PGN stays byte-for-byte unchanged. Inspected `qa-artifacts/agent-a/notes-collapsed-failure-after-20261113/review-notes-collapsed-save-failure-390.png`: the red message and Retry are legible immediately below the collapsed toolbar without horizontal overflow.
+
+### Verification and isolation
+
+- Focused notes/locale suite: **54 passed**. `git diff --check`, browser-script syntax, `npm run typecheck`, `npm run build`: PASS.
+- Complete `npm test -- --testTimeout=20000 --maxWorkers=4`: **1006 passed / 12 skipped**, 110 passing test files.
+- Complete authenticated disposable Chromium desktop/mobile, theme/locale/source, keyboard, engine, variation and PGN matrix: **PASS (exit 0)** on port 8982. No merge, deployment, production database/services, or changes to the other agents' worktrees.
+
+### Next independent Game Review reliability audit
+
+- Check whether **Flip board** retains an unintended orientation when navigating between two different saved games via in-app client routing, rather than returning to the new game's player-facing perspective. The toolbar is keyed by game but the parent `flipped` state is not. Reproduce in actual Chromium before resetting state; preserve per-game player colors, URL history and original saved PGNs.

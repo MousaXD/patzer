@@ -1409,6 +1409,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [bookmarkRetryTarget, setBookmarkRetryTarget] = useState<boolean | null>(null);
   const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
+  const notesToggleRef = useRef<HTMLButtonElement>(null);
   const notesEditorRef = useRef<HTMLTextAreaElement>(null);
   // Keep the action focusable while its PATCH is pending. The synchronous
   // ref also prevents repeated Enter/Space from queuing duplicate toggles
@@ -1481,6 +1482,7 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
           {linkCopied ? t('common.copied') : (sharingVariation ? t('review.shareBranch') : t('review.share', { defaultValue: 'Share position' }))}
         </button>
         <button
+          ref={notesToggleRef}
           type="button"
           onClick={() => setShowNotes((s) => !s)}
           aria-expanded={showNotes}
@@ -1522,23 +1524,29 @@ function GameMetaToolbar({ gameId, bookmarked, notes, flipped, onFlip, onShare, 
             placeholder={t('review.notesPlaceholder', { defaultValue: 'Your private notes on this game…' })}
             className="input min-h-[88px] w-full resize-y text-sm"
           />
-          {saveError && <div role="alert" className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-red-600 dark:text-red-300">
-                <span>{t(saveError)}</span>
-                <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
-                  onClick={(event) => {
-                    // Keyboard Retry disappears on success. Return focus to
-                    // the mounted draft before its transient alert unmounts;
-                    // pointer users keep their original scroll and focus.
-                    if (event.detail === 0) notesEditorRef.current?.focus({ preventScroll: true });
-                    saveNotes.mutate(draft);
-                  }}>{t('review.notesRetrySave')}</button>
-              </div>}
-              <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
-                <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-chesscom-400">
+            <span>{t('review.notesPrivate', { defaultValue: 'Only you can see this.' })}</span>
             <span>{saveNotes.isPending ? t('common.saving', { defaultValue: 'Saving…' }) : draft !== notes ? t('review.notesUnsaved', { defaultValue: 'Click outside to save' }) : savedAt ? t('common.saved', { defaultValue: 'Saved' }) : ''}</span>
           </div>
         </div>
       )}
+      {/* An autosave may fail *after* the user closes Notes and the editor
+          unmounts. Keep the error and its retry visible in both states so a
+          hidden failure cannot masquerade as a successfully saved draft. */}
+      {saveError && <div data-review-notes-save-error data-review-notes-collapsed-error={!showNotes ? 'true' : undefined}
+        role="alert" className="flex flex-wrap items-center justify-between gap-2 border-t border-red-500/30 px-3 py-2 text-xs text-red-700 dark:text-red-200">
+        <span className="min-w-0 flex-1">{t(saveError)}</span>
+        <button type="button" className="btn-secondary min-h-11 px-3 py-2 text-xs" disabled={saveNotes.isPending}
+          onClick={(event) => {
+            // The alert disappears after a successful retry. Restore keyboard
+            // focus to the open draft editor or, when closed, its durable
+            // Notes disclosure. Pointer users are not scrolled elsewhere.
+            if (event.detail === 0) {
+              (showNotes ? notesEditorRef : notesToggleRef).current?.focus({ preventScroll: true });
+            }
+            saveNotes.mutate(draft);
+          }}>{t('review.notesRetrySave')}</button>
+      </div>}
     </div>
   );
 }
