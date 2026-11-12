@@ -345,9 +345,9 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
           if (searchTriggerRef.current) searchTriggerRef.current.focus({ preventScroll: true });
           else mainRef.current?.focus({ preventScroll: true });
         }} />
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-3 shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:gap-2 sm:px-5" data-workspace-header>
+        <header className="sticky top-0 z-30 flex h-[56px] shrink-0 items-center gap-1.5 border-b border-chesscom-200 bg-white/95 px-[12px] shadow-sm backdrop-blur-md dark:border-chesscom-700 dark:bg-chesscom-900/95 sm:h-14 sm:gap-2 sm:px-5" data-workspace-header>
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2.5">
-            <NavLink to="/" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 md:hidden" aria-label={t('app.name')}>
+            <NavLink to="/" className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 sm:h-11 sm:w-11 md:hidden" aria-label={t('app.name')}>
               <LogoMark size={27} />
             </NavLink>
             {nestedSection && nestedTitle ? (
@@ -372,7 +372,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
               ref={searchTriggerRef}
               type="button"
               onClick={onOpenPalette}
-              className="flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:px-3 xl:h-9 xl:min-w-9"
+              className="flex h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-2 text-chesscom-600 transition-colors hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:border-chesscom-700 dark:bg-chesscom-800 dark:text-chesscom-200 dark:hover:bg-chesscom-700 sm:h-11 sm:min-w-11 sm:px-3 xl:h-9 xl:min-w-9"
               aria-label={searchLabel}
               title={searchLabel}
             >
@@ -416,7 +416,7 @@ export default function Layout({ onOpenPalette, onOpenShortcuts, globalOverlayOp
             type="button"
             ref={menuTriggerRef}
             onClick={() => setDrawerOpen(true)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 md:hidden"
+            className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg text-chesscom-700 hover:bg-chesscom-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 dark:text-chesscom-100 dark:hover:bg-chesscom-800 sm:h-11 sm:w-11 md:hidden"
             aria-label={openMenuLabel}
             aria-expanded={drawerOpen}
             aria-controls="patzer-mobile-drawer"

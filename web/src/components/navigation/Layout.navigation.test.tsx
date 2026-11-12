@@ -180,6 +180,23 @@ describe('Patzer navigation rail', () => {
     expect(screen.queryByText('old-avatar-value')).toBeNull();
   });
 
+  it('retains room for the current page at 200% text scaling on narrow phones', () => {
+    mount('/');
+    const header = document.querySelector('[data-workspace-header]');
+    expect(header?.className).toContain('h-[56px]');
+    expect(header?.className).toContain('sm:h-14');
+    expect(header?.className).toContain('px-[12px]');
+    const logo = header?.querySelector('a[aria-label="Patzer"]');
+    expect(logo?.className).toContain('w-[44px]');
+    const search = screen.getByRole('button', { name: 'Open command palette' });
+    const menu = screen.getByRole('button', { name: 'Open menu' });
+    for (const control of [search, menu]) {
+      expect(control.className).toContain('h-[44px]');
+      expect(control.className).toMatch(/min-w-\[44px\]|w-\[44px\]/);
+    }
+    expect(header?.querySelector('[data-current-section]')?.textContent).toContain('Home');
+  });
+
   it('does not leak administrator destinations to ordinary users', () => {
     mount();
     expect(screen.queryByRole('link', { name: 'System' })).toBeNull();

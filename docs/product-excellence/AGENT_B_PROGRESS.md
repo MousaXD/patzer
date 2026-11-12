@@ -1527,3 +1527,33 @@
 ### Next audit
 
 - Check **authenticated mobile header controls and discoverability** at 320px with 150%–200% text scaling and long localized labels. Measure whether header title, menu/search shortcuts, and account affordances become clipped or lose accessible focus; investigate other horizontal issues only if Chromium reproduces them.
+
+## 2026-11-13: Keep the mobile page title visible at 200% text scale
+
+### Independent Chromium reproduction and diagnosis
+
+- Resumed from clean pushed `da5f98d`, auditing only the global authenticated header at 320/390px, 16/24/32px root text, all five languages and both themes.
+- At **320px with 200% text scaling**, the current page title had **zero visible width in all 10 theme/language combinations**. Logo, search and menu expanded to 88px controls because their `h-11`/`w-11` sizing and header padding used scaling `rem` units; the flex title ran out of space. No document horizontal overflow was reported, masking the lost wayfinding context.
+- After fixing controls to a physical 44px minimum, a stricter DOM audit found the Russian `Главная` title still cropped by ~14px. The header's formerly `px-3` side padding also doubled to 24px per side at 200% root scale.
+
+### Scoped implementation
+
+1. Keep the mobile header a physical **56px high** and logo/search/menu controls **at least 44px**, without relying on font-relative sizing below the `sm` breakpoint. Preserve the original desktop responsive variants.
+2. Keep mobile header side padding at **12px** at all root font sizes, retaining normal-scale spacing while freeing needed title width at 200% scale.
+3. Add a navigation unit regression asserting mobile header sizing, title presence and the existing search/menu control names and roles.
+4. Add durable local `web/src/components/navigation/capture-scaled-header.mjs` Chromium coverage for **60 combinations** (five languages, two themes, two phone widths, three text scales). Assert at least 30px of title space, no actual text clipping on Home, no header/document overflow, physical 44px controls, visible keyboard focus on Search, and Enter/Escape menu operation with focus restoration.
+
+### Verified results
+
+- Negative control: **10/10 320px/200% combinations had a zero-width title** despite no document overflow.
+- Final `node web/src/components/navigation/capture-scaled-header.mjs`: **60/60 passed**. Russian `Главная` and all other Home titles fit without horizontal truncation in both themes at 320px, including 200% scaling.
+- Inspected `artifacts/agent-02/mobile-header-verified-light-de-320-font32.png` and `mobile-header-verified-dark-de-320-font32.png`: title, search and menu remain distinct, focus ring remains prominent, page content and navigation are unaffected.
+- `node web/src/components/navigation/capture-shell.mjs`: **passed** including existing responsive/navigation, first-use, accessibility and localization coverage.
+- `npx vitest run web/src --maxWorkers=2`: **470/470 passed across 76 files**.
+- `npm run build -w web`: **passed**.
+- `git diff --check`: **passed**.
+- No other agents' worktrees, production data, main branch or deployment changed.
+
+### Next audit
+
+- Check the **nested mobile breadcrumb header** on real detail routes (`/review/:id`, `/players/:id`) at 320px with 150%–200% text scaling: the back affordance currently uses font-relative `h-8 w-8` and may fall below the 44px physical touch target at default scale while consuming excessive space at larger text sizes. Reproduce with real Chromium and change only if measured.
