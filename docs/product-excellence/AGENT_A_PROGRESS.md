@@ -1224,3 +1224,13 @@
 ### Next independent visual audit
 
 - The EvalBar now suppresses wide numeric chips, but ordinary **four-character** `+0.8` and `−0.4` values still appear beside the 320px board. Measure their real rendered bounding boxes to ensure they do not steal chess-square space or clip outside the viewport; adjust only on demonstrated overlap and preserve the redundant full score below the board.
+
+## 2026-11-12: certify normal EvalBar pawn-score chips at 320px
+
+- Reused the source-aligned saved-game Chromium fixture and measured real `−0.4` and `+0.8` chips at 320px. The first run hit a detached chessground element while scrolling after a responsive resize in a separate landscape scenario; strengthened the **test only** by scrolling the stable `.review-board-square` wrapper. The retry completed the **entire** authenticated disposable browser matrix on port 8963 with `exit 0`.
+- Negative chip occupied x4–38 exactly up to the board's x38 boundary. Positive occupied x3.5–38.5, within a one-pixel antialias tolerance. Neither clipped or produced horizontal overflow (`documentWidth=viewportWidth=320`), so no product-code change was warranted. Independently inspected `qa-artifacts/agent-a/eval-chip-short-score-retry-20261112/review-short-score-positive-320.png`; the board remains visually clear and the full `+0.77` numeric score is shown in the Review move header.
+- `git diff --check` and `node --check scripts/review-polish-capture.mjs` PASS. This adds only regression coverage; prior product typecheck, build and 1006-test suite remain valid. No merge, deployment, production state or other-agent worktree touched.
+
+### Next independent keyboard audit
+
+- Game Review's global Home/End/Arrow shortcuts exclude native inputs, tablists, sliders, engine suggestion buttons and the move-symbol guide, but not the **Engine Lines/Threat/Master Games disclosure headers**. Test whether Home/ArrowRight on a focused, collapsed disclosure accidentally navigates the saved game, rather than preserving the user's control context. Fix only if a real browser reproduces it.

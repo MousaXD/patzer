@@ -1676,7 +1676,9 @@ try {
     await landscapeSummary(locale.review.variationAnalyzing);
     await page.screenshot({path:join(output,'variation-scoring-landscape-pending-568x320.png')});
     await page.setViewportSize({width:390,height:844});
-    await page.locator('cg-board').scrollIntoViewIfNeeded();
+    // chessground can remount its inner custom element during responsive
+    // resize; scroll the stable React wrapper to avoid a detached-locator race.
+    await page.locator('.review-board-square').scrollIntoViewIfNeeded();
     const secondResponse=page.waitForResponse(r=>r.url().endsWith('/api/analyze/variation-move')
       && r.status()===200);
     await drag('d7','d5');
@@ -2276,6 +2278,27 @@ try {
       assert.ok(geometry && !geometry.chipPresent && geometry.summaryScore===scoreText
         && geometry.documentWidth<=geometry.viewportWidth+2,
       `Wide numeric scores must remain visible in the header without an overflowing board chip: ${JSON.stringify(geometry)}`);
+    }
+    // Shorter, common pawn scores keep their floating chip. Verify that the
+    // 18px rail's label does not cover the first chess file or screen edge.
+    for(const [ply,scoreText,capture] of [
+      [6,'−0.4','review-short-score-negative-320.png'],
+      [9,'+0.8','review-short-score-positive-320.png'],
+    ]){
+      await page.locator(`button[data-review-ply="${ply}"]`).click();
+      const geometry=await page.locator('[data-review-eval-chip]').evaluate(chip=>{
+        const board=document.querySelector('.review-board-square');
+        if(!board)return null;
+        const r=chip.getBoundingClientRect(),b=board.getBoundingClientRect();
+        return {text:chip.textContent?.trim(),left:r.left,right:r.right,
+          boardLeft:b.left,viewportWidth:innerWidth,
+          documentWidth:document.documentElement.scrollWidth};
+      });
+      console.log('320px common numeric EvalBar chip:',JSON.stringify(geometry));
+      await page.screenshot({path:join(output,capture)});
+      assert.ok(geometry && geometry.text===scoreText && geometry.left>=-1
+        && geometry.right<=geometry.boardLeft+1 && geometry.documentWidth<=geometry.viewportWidth+2,
+      `Common pawn scores must not clip the screen or cover the board: ${JSON.stringify(geometry)}`);
     }
     assert.ok(sourceInjected,'This test must receive source-matched full saved move history');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalMatePgn);
