@@ -92,29 +92,35 @@ router.get('/', (c) => {
   // Per-time-class W/D/L + average accuracy from analyses (player's side).
   interface TcRow {
     time_class: string | null;
-    wins: number; draws: number; losses: number; total: number; analyzed_games: number;
+    wins: number; draws: number; losses: number; total: number; analyzed_games: number; accuracy_games: number;
     avg_acc: number | null;
   }
   const tcRows = db.prepare(`
-    SELECT g.time_class,
+    SELECT COALESCE(NULLIF(g.time_class, ''), 'other') AS time_class,
            SUM(CASE WHEN g.result='win' THEN 1 ELSE 0 END) AS wins,
            SUM(CASE WHEN g.result='draw' THEN 1 ELSE 0 END) AS draws,
            SUM(CASE WHEN g.result='loss' THEN 1 ELSE 0 END) AS losses,
            COUNT(*) AS total,
            SUM(CASE WHEN (${usableAnalysisSql}) THEN 1 ELSE 0 END) AS analyzed_games,
+           COUNT(CASE WHEN g.user_color='white' AND (${usableAnalysisSql}) AND a.accuracy_white IS NOT NULL THEN 1
+                      WHEN g.user_color='black' AND (${usableAnalysisSql}) AND a.accuracy_black IS NOT NULL THEN 1
+                      ELSE NULL END) AS accuracy_games,
            AVG(CASE WHEN g.user_color='white' AND (${usableAnalysisSql}) THEN a.accuracy_white
                     WHEN g.user_color='black' AND (${usableAnalysisSql}) THEN a.accuracy_black
                     ELSE NULL END) AS avg_acc
     FROM games g LEFT JOIN analyses a ON a.game_id = g.id
     WHERE g.user_id = ? AND g.result IS NOT NULL AND g.start_fen IS NULL
-    GROUP BY g.time_class
-  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
-  const time_class_stats: Record<string, { games: number; analyzed_games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
+    GROUP BY COALESCE(NULLIF(g.time_class, ''), 'other')
+  `).all(SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, SCORING_VERSION, me.id) as TcRow[];
+  const time_class_stats: Record<string, { games: number; analyzed_games: number; accuracy_games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }> = {};
   for (const r of tcRows) {
     const k = r.time_class ?? 'other';
     time_class_stats[k] = {
       games: r.total,
       analyzed_games: r.analyzed_games,
+      // Denominator of AVG above; an analyzed game without a trustworthy
+      // user-side accuracy cannot be counted as a measured accuracy sample.
+      accuracy_games: r.accuracy_games,
       wins: r.wins,
       draws: r.draws,
       losses: r.losses,

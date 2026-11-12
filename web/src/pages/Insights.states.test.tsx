@@ -163,4 +163,28 @@ describe('Insights data states', () => {
     expect(chart.querySelectorAll('circle')).toHaveLength(1);
     expect(chart.querySelectorAll('path')).toHaveLength(0);
   });
+
+  it('does not paint unclassified outcomes as losses or hide unknown time controls', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/achievements') return Promise.resolve({ achievements: [] });
+      return Promise.resolve({
+        games_total: 13, games_analyzed: 2, activity_heatmap: [], rating_trajectory: {},
+        opening_repertoire: [], mistake_taxonomy: {}, accuracy_trend: [],
+        phase_accuracy: { opening: 0, middlegame: 0, endgame: 0 },
+        time_class_stats: {
+          rapid: { games: 10, wins: 4, draws: 2, losses: 3, analyzed_games: 2, accuracy_games: 1, avg_accuracy: 76.4 },
+          other: { games: 3, wins: 2, draws: 0, losses: 1, analyzed_games: 0, accuracy_games: 0, avg_accuracy: null },
+        },
+      });
+    });
+    mount();
+    expect(await screen.findByText('Accuracy 76.4% · 1 measured game')).toBeTruthy();
+    expect(screen.getByText('Other / unspecified')).toBeTruthy();
+    expect(screen.getByText('1 other result')).toBeTruthy();
+    expect(screen.getByText('Accuracy not measured')).toBeTruthy();
+    const rapidBar = screen.getByRole('img', { name: '10 results: 4 wins, 2 draws, 3 losses, 1 other results' });
+    const segments = rapidBar.querySelectorAll<HTMLElement>('div');
+    expect(Array.from(segments).map((e) => e.style.width)).toEqual(['40%', '20%', '30%']);
+    expect(screen.getByText('Results count saved games with a recorded outcome. Accuracy is averaged only over games with measured player-side analysis; other outcomes are not losses.')).toBeTruthy();
+  });
 });

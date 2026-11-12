@@ -34,7 +34,7 @@ interface InsightsV2 {
   games_analyzed: number;
   activity_heatmap: { day: string; games: number; wins: number }[];
   rating_trajectory: Record<string, { t: string; r: number }[]>;
-  time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; avg_accuracy: number | null }>;
+  time_class_stats: Record<string, { games: number; wins: number; draws: number; losses: number; analyzed_games?: number; accuracy_games?: number; avg_accuracy: number | null }>;
   opening_repertoire: OpeningRow[];
   mistake_taxonomy: {
     hung_pieces: number; back_rank: number; missed_mate: number;
@@ -338,12 +338,21 @@ function PhaseStat({ label, value, samples }: { label: string; value: number; sa
 /* ───── Time-class stats ───────────────────────────────────────────────── */
 function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
   const { t } = useTranslation();
-  const order: { key: string; label: string }[] = [
+  const standard: { key: string; label: string }[] = [
     { key: 'bullet', label: t('players.tc.bullet') },
     { key: 'blitz', label: t('players.tc.blitz') },
     { key: 'rapid', label: t('players.tc.rapid') },
     { key: 'daily', label: t('players.tc.daily') },
   ];
+  // Imported games may have unrecognized or missing time classes. Never hide
+  // their real results simply because they are not one of Patzer's four modes.
+  const otherClasses = Object.keys(data)
+    .filter((key) => !standard.some((item) => item.key === key))
+    .sort()
+    .map((key) => ({ key, label: key === 'other'
+      ? t('insights.tcOtherClass', { defaultValue: 'Other / unspecified' })
+      : key }));
+  const order = [...standard, ...otherClasses];
   return (
     <section className="card p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -360,24 +369,50 @@ function TimeClassCard({ data }: { data: InsightsV2['time_class_stats'] }) {
           );
           const wp = (s.wins / s.games) * 100;
           const dp = (s.draws / s.games) * 100;
+          const lp = (s.losses / s.games) * 100;
+          const otherResults = Math.max(0, s.games - s.wins - s.draws - s.losses);
           return (
             <div key={key}>
-              <div className="mb-1 flex items-baseline justify-between text-xs">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
                 <span className="font-medium text-chesscom-700 dark:text-chesscom-200">{label}</span>
                 <span className="font-mono tabular-nums text-chesscom-500">
                   {t('insights.tcLine', { games: s.games, wins: s.wins, draws: s.draws, losses: s.losses })}
-                  {s.avg_accuracy != null && <> · {s.avg_accuracy.toFixed(1)}%</>}
                 </span>
               </div>
-              <div className="flex h-2 w-full overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
+              <div role="img" aria-label={t('insights.tcBarLabel', {
+                defaultValue: '{{games}} results: {{wins}} wins, {{draws}} draws, {{losses}} losses, {{other}} other results',
+                games: s.games, wins: s.wins, draws: s.draws, losses: s.losses, other: otherResults,
+              })} className="flex h-2 w-full overflow-hidden rounded-full bg-chesscom-100 dark:bg-chesscom-900">
                 <div className="h-full bg-board-dark" style={{ width: `${wp}%` }} />
                 <div className="h-full bg-chesscom-300 dark:bg-chesscom-600" style={{ width: `${dp}%` }} />
-                <div className="h-full bg-mistake/80" style={{ width: `${100 - wp - dp}%` }} />
+                <div className="h-full bg-mistake/80" style={{ width: `${lp}%` }} />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-chesscom-500">
+                {s.avg_accuracy != null ? (
+                  <span>{s.accuracy_games != null
+                    ? t('insights.tcMeasuredAccuracy', {
+                      defaultValue: s.accuracy_games === 1
+                        ? 'Accuracy {{accuracy}}% · {{count}} measured game'
+                        : 'Accuracy {{accuracy}}% · {{count}} measured games',
+                      accuracy: s.avg_accuracy.toFixed(1), count: s.accuracy_games,
+                    })
+                    : t('insights.tcAccuracyLimited', {
+                      defaultValue: 'Accuracy {{accuracy}}% · analyzed games only',
+                      accuracy: s.avg_accuracy.toFixed(1),
+                    })}</span>
+                ) : <span>{t('insights.tcNoAccuracy', { defaultValue: 'Accuracy not measured' })}</span>}
+                {otherResults > 0 && <span>{t('insights.tcOtherResults', {
+                  defaultValue: otherResults === 1 ? '{{count}} other result' : '{{count}} other results',
+                  count: otherResults,
+                })}</span>}
               </div>
             </div>
           );
         })}
       </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-chesscom-500">
+        {t('insights.tcCoverage', { defaultValue: 'Results count saved games with a recorded outcome. Accuracy is averaged only over games with measured player-side analysis; other outcomes are not losses.' })}
+      </p>
     </section>
   );
 }
