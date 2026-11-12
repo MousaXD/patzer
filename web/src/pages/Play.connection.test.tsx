@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
+import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, useNavigate } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 const socketHarness = vi.hoisted(() => ({
   current: null as null | {
@@ -106,6 +107,11 @@ function JoinDifferentGame({ gameId }: { gameId: number }) {
   </>;
 }
 
+function CurrentRoute() {
+  const location = useLocation();
+  return <output data-testid="current-route">{location.pathname}{location.search}</output>;
+}
+
 beforeEach(() => {
   lobbyHarness.setActivePlaySession.mockReset();
   liveHarness.getLive.mockReset().mockResolvedValue({ bot: null, pvp: [] });
@@ -114,6 +120,47 @@ beforeEach(() => {
 afterEach(() => { cleanup(); socketHarness.current = null; authHarness.id = 1; });
 
 describe('Play authoritative game readiness', () => {
+  it('reopens a directly linked PvP game after Strict Mode replays effect setup and cleanup', () => {
+    render(<StrictMode><MemoryRouter initialEntries={['/play?game=735']}>
+      <Play /><CurrentRoute />
+    </MemoryRouter></StrictMode>);
+    const ws = socketHarness.current!;
+    expect(ws.connectCalls).toBe(2);
+    expect(ws.disconnectCalls).toBeGreaterThanOrEqual(1);
+    expect(ws.urls).toEqual(expect.arrayContaining([expect.stringContaining('/ws/play?game=735')]));
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', your_color: 'white' }); });
+    expect(screen.getByTestId('current-route').textContent).toBe('/play?game=735');
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('leaves a missing PvP game and provides a useful recovery path instead of reconnecting forever', async () => {
+    render(<MemoryRouter initialEntries={['/play?game=9999']}>
+      <Play /><CurrentRoute />
+    </MemoryRouter>);
+    const ws = socketHarness.current!;
+    expect(ws.urls[0]).toContain('/ws/play?game=9999');
+    act(() => { ws.accept(); ws.receive({ type: 'error', message: 'game_not_found' }); });
+
+    expect(ws.disconnectCalls).toBe(1);
+    expect(screen.getByTestId('current-route').textContent).toBe('/play');
+    expect(screen.getByRole('alert').textContent).toContain('This game is no longer available');
+    expect(screen.queryByTestId('chess-board')).toBeNull();
+    expect(screen.getByRole('button', { name: 'play.start' })).toBeTruthy();
+  });
+
+  it('keeps the current PvP session available after a recoverable illegal-move error', () => {
+    render(<MemoryRouter initialEntries={['/play?game=105']}>
+      <Play /><CurrentRoute />
+    </MemoryRouter>);
+    const ws = socketHarness.current!;
+    act(() => { ws.accept(); ws.receive({ ...snapshot, type: 'pvp_hello', your_color: 'white' }); });
+    act(() => ws.receive({ type: 'error', message: 'illegal_move' }));
+    expect(ws.disconnectCalls).toBe(0);
+    expect(screen.getByTestId('current-route').textContent).toBe('/play?game=105');
+    expect(screen.queryByText(/This game is no longer available/)).toBeNull();
+    expect((screen.getByTestId('chess-board') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('switches from a running bot game to the explicitly selected PvP game, not just its URL', async () => {
     render(<MemoryRouter initialEntries={['/play']}>
       <Play /><JoinDifferentGame gameId={401} />

@@ -256,6 +256,7 @@ export default function Play() {
   const [gameReady, setGameReady] = useState(false);
   const [hasSyncedGame, setHasSyncedGame] = useState(false);
   const [sessionReplaced, setSessionReplaced] = useState(false);
+  const [pvpUnavailable, setPvpUnavailable] = useState(false);
   const [live, setLive] = useState<LiveGames | null>(null);
   const [liveStatus, setLiveStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [liveReload, setLiveReload] = useState(0);
@@ -308,6 +309,7 @@ export default function Play() {
     const nextId = user?.id ?? null;
     if (accountRef.current === nextId) return;
     accountRef.current = nextId;
+    setPvpUnavailable(false);
     socketRef.current?.disconnect();
     connectedPvpGameRef.current = null;
     connectedRef.current = false;
@@ -394,7 +396,12 @@ export default function Play() {
   }, []);
 
   // Leaving the page must not leave a reconnect loop running behind it.
-  useEffect(() => () => { socketRef.current?.disconnect(); }, []);
+  // Clear the tracked game ID too: React Strict Mode replays effect cleanup
+  // and setup on mount, and must re-open the direct ?game= link afterwards.
+  useEffect(() => () => {
+    socketRef.current?.disconnect();
+    connectedPvpGameRef.current = null;
+  }, []);
 
   // PvP: keep the mounted board and WebSocket in sync with the actual route.
   // Checking `phase === 'setup'` silently left the old bot/PvP board active
@@ -467,6 +474,7 @@ export default function Play() {
   };
 
   function startBot() {
+    setPvpUnavailable(false);
     connectedPvpGameRef.current = null;
     const finalColor = fromPos ? fromColor : color === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : color;
     setUserColor(finalColor);
@@ -495,6 +503,7 @@ export default function Play() {
 
   /** Walk back into the bot game the server kept for us. */
   function resumeBot(from: ResumableBot) {
+    setPvpUnavailable(false);
     connectedPvpGameRef.current = null;
     setUserColor(from.user_color);
     userColorRef.current = from.user_color;
@@ -506,6 +515,7 @@ export default function Play() {
   }
 
   function connectPvp(gameId: number) {
+    setPvpUnavailable(false);
     // Switching from another game must close its socket. ReconnectingSocket
     // protects stale messages, but connect() alone does not close the old
     // underlying WebSocket (which can keep a second session alive).
@@ -814,6 +824,21 @@ export default function Play() {
         setLive((l) => l ? { ...l, bot: null } : l);
         break;
       case 'error':
+        if (msg.message === 'game_not_found' && pvpGameId) {
+          // The server has definitively rejected this user's game ID and
+          // closes the socket. Retrying that same URL can never recover it.
+          // Return to a usable setup page instead of a permanent reconnect
+          // spinner (and never reveal whether someone else owns the ID).
+          socketRef.current?.disconnect();
+          connectedPvpGameRef.current = null;
+          connectedRef.current = false;
+          setConnected(false);
+          resetGameState();
+          setPhase('setup');
+          setPvpUnavailable(true);
+          nav('/play', { replace: true });
+          break;
+        }
         // Server rejected something (illegal move etc) — re-sync the board and
         // drop the queue: whatever we thought the position was, it isn't.
         clearPremoves();
@@ -1023,6 +1048,11 @@ export default function Play() {
           <h1 className="page-h1">{t('play.newGame')}</h1>
           <p className="page-sub">{t('play.subtitle')}</p>
         </header>
+        {pvpUnavailable && (
+          <p role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-chesscom-800 dark:text-chesscom-100">
+            {t('play.gameUnavailable', { defaultValue: 'This game is no longer available. Start another game or choose a saved one.' })}
+          </p>
+        )}
         {liveStatus === 'loading' && (
           <p role="status" className="flex items-center gap-2 text-sm text-chesscom-500">
             <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />

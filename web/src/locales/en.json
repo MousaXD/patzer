@@ -78,6 +78,7 @@
   },
   "play": {
     "newGame": "New Game",
+    "gameUnavailable": "This game is no longer available. Start another game or choose a saved one.",
     "difficulty": "Difficulty",
     "color": "Your color",
     "white": "White",

@@ -78,6 +78,7 @@
   },
   "play": {
     "newGame": "Neue Partie",
+    "gameUnavailable": "Diese Partie ist nicht mehr verfügbar. Starte eine neue Partie oder wähle eine gespeicherte aus.",
     "difficulty": "Schwierigkeit",
     "color": "Deine Farbe",
     "white": "Weiß",

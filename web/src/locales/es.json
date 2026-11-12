@@ -70,6 +70,7 @@
   },
   "play": {
     "newGame": "Juego nuevo",
+    "gameUnavailable": "Esta partida ya no está disponible. Empieza otra o elige una partida guardada.",
     "difficulty": "Dificultad",
     "color": "Juegas con",
     "white": "Blancas",
