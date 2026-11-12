@@ -2346,6 +2346,74 @@ try {
     await partialContext.close();
     db.prepare('UPDATE analyses SET moves_json=? WHERE game_id=?').run(partialMovesJson,id);
   }
+  // Historical partial engine evidence can be a valid, source-matched prefix
+  // of a saved PGN. It must still show a truthful translated gap and offer a
+  // working, keyboard-retryable full reanalysis instead of merely opening
+  // depth settings below the fold. Do not mutate the authoritative database:
+  // simulate the historical prefix only in the disposable HTTP response.
+  const prefixContext=await browser.newContext({viewport:{width:390,height:844},colorScheme:'dark',reducedMotion:'reduce'});
+  try{
+    await prefixContext.addCookies([{name:account.cookie.split('=')[0],
+      value:account.cookie.split('=').slice(1).join('='),url:base}]);
+    const page=await prefixContext.newPage();
+    const spanish=JSON.parse(readFileSync(new URL('../web/src/locales/es.json',import.meta.url),'utf8'));
+    const originalPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+    let evidenceInjected=false, forcedAttempts=0;
+    await page.route(`**/api/games/${id}`,async route=>{
+      const response=await route.fetch();
+      const detail=await response.json();
+      const original=JSON.parse(detail.analysis.moves_json);
+      assert.equal(original.length,24);
+      detail.analysis.moves_json=JSON.stringify(original.slice(0,-1));
+      detail.analysis.key_moments_json=null;
+      detail.analysis.phase_split_json=null;
+      evidenceInjected=true;
+      await route.fulfill({response,contentType:'application/json',body:JSON.stringify(detail)});
+    });
+    await page.route('**/api/analyze',async route=>{
+      const request=route.request().postDataJSON();
+      assert.equal(request.game_id,id);
+      assert.equal(request.force,true,
+        'Recovering a partial cached report must request a forced full reanalysis');
+      forcedAttempts++;
+      await route.fulfill({status:503,contentType:'application/json',body:'{"error":"engine_unavailable"}'});
+    });
+    await page.goto(`${base}/review/${id}?ply=24`,{waitUntil:'domcontentloaded'});
+    await page.getByRole('region',{name:spanish.review.moves}).waitFor({state:'visible'});
+    assert.ok(evidenceInjected,'The exact source-aligned prefix must reach the React decoder');
+    assert.equal((await page.locator('[data-review-move-progress]').innerText()).trim(),'24 / 24');
+    const status=page.getByText(spanish.review.partialMoveUnavailable,{exact:true});
+    await status.waitFor({state:'visible'});
+    const action=page.getByRole('button',{name:spanish.review.partialReanalyze,exact:true});
+    await action.waitFor({state:'visible'});
+    const hit=await action.boundingBox();
+    assert.ok(hit && hit.height>=44 && hit.width>=44,
+      `Partial-analysis recovery needs a usable mobile target: ${JSON.stringify(hit)}`);
+    await action.scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(output,'partial-score-recovery-before-es-390.png')});
+    await action.focus();
+    const firstRequest=page.waitForRequest(request=>request.url().endsWith('/api/analyze')
+      && request.method()==='POST');
+    await page.keyboard.press('Enter');
+    await firstRequest;
+    await page.getByText(spanish.review.analysisError.unavailable,{exact:true})
+      .waitFor({state:'visible',timeout:8000});
+    assert.equal(forcedAttempts,1,'Keyboard recovery must start an engine request immediately');
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('data-review-partial-retry')==='true',
+      undefined,{timeout:3000});
+    assert.ok(await action.isEnabled(),'A failed full reanalysis must restore Retry');
+    const secondRequest=page.waitForRequest(request=>request.url().endsWith('/api/analyze')
+      && request.method()==='POST');
+    await page.keyboard.press('Enter');
+    await secondRequest;
+    await page.getByText(spanish.review.analysisError.unavailable,{exact:true})
+      .waitFor({state:'visible',timeout:8000});
+    await page.waitForFunction(()=>document.activeElement?.getAttribute('data-review-partial-retry')==='true',
+      undefined,{timeout:3000});
+    assert.equal(forcedAttempts,2,'Retrying from the same focused action must issue a new request');
+    await page.screenshot({path:join(output,'partial-score-recovery-after-es-390.png')});
+    assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
+  }finally{await prefixContext.close();}
   // A cached score may be unavailable at a single PGN ply. The graph's
   // keyboard-slider announcement must use the account language, not a
   // hardcoded English string or an invented 0.00 evaluation.

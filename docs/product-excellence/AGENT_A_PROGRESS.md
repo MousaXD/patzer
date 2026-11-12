@@ -678,3 +678,27 @@
 ### Next priority
 
 - The partial-analysis Moves tab contains the hardcoded English status `This move is saved in the game but has no engine evaluation yet.` and an action labeled `Reanalyze the full game` which only opens engine-depth settings. Investigate in a real partial-score saved PGN whether this call-to-action actually exposes the intended recovery path, localize the status in all five languages, and ensure the retry is discoverable, labeled truthfully and keyboard recoverable. Avoid changing backend scoring/source semantics.
+
+## 2026-11-12: recover source-valid partial engine evaluations with truthful localized direct retry
+
+### Exact resume and baseline
+
+- Continued from clean pushed `3d69c98` and its recorded next Game Review-specific defect: a valid saved PGN with a source-consistent cached prefix score could reach an unscored move, but the warning was raw English and its "Reanalyze the full game" control only called `setShowDepthControl(true)` below the fold, **without starting Stockfish**.
+- The current backend rejects newly created prefix-only authoritative results. To audit the defensive legacy frontend path without producing impossible permanent data, a disposable authenticated Chromium route changed **only the delivered HTTP analysis response** to the first 23 source-matched moves of a valid 24-ply saved game, with no key moments or phase in the partial fixture. Persisted SQLite and PGN were not touched. The old rendered build's 390px Spanish check **failed** looking for the intended Spanish warning; the English-only message was present instead.
+
+### Scoped correction
+
+- Render a translated `review.partialMoveUnavailable` message (English/German/Spanish/Russian/Bulgarian). Replace the misleading depth-settings-only link with a 44px+ `review.partialReanalyze` button that calls `analyze(requestedDepth, true)` directly to force a fresh full-game engine result. Keep depth controls separately available in their existing location.
+- The native `disabled={analyzing}` continues preventing duplicate requests. Extended existing focus restoration to the currently mounted missing-move retry action after a failure **only if focus has fallen to BODY**. Preserve the established no-analysis recovery focus and never steal focus from a player who moved to another control during engine activity.
+
+### Verification
+
+- Focused locale/MoveList/stored-source tests: **65 passed**; `npm run typecheck` PASS; `npm run build` PASS.
+- Full `npm test -- --testTimeout=20000`: **985 passed / 12 skipped**, 107 passing files.
+- Full authenticated, disposable Chromium matrix: **PASS (exit 0)** including historical-source-matched partial-score Spanish warning at saved `24 / 24`, direct keyboard Enter full reanalysis with `force:true`, synthetic 503 engine error translation, focus restoration and second Enter sending a second forced request; accessible 44px retry target and saved PGN invariance. Existing 390px/1024px variations, source-identity, keyboard, browser, retries and responsive checks stayed green.
+- Independently inspected `qa-artifacts/agent-a/partial-reanalysis-after-20261112/partial-score-recovery-{before,after}-es-390.png`: warning/action rendered in Spanish, focus ring on retry button after the engine failure, board/evaluation layout unchanged.
+- Engine 503 and prefix are **HTTP QA fixtures**, not proof that the current backend generates truncated analysis or live Stockfish accuracy. No merge, deploy, production SQLite or other-agent changes.
+
+### Next highest-value issue
+
+- The review's 24-ply move list can display many classifications but lacks a localized, concise explanation of what its classification icons mean to a new player; every icon has tooltip/accessibility text, but color/icon recognition is not obvious. Investigate whether existing classification legend/help is visible within the Game Review lane, especially at 320px. Do not duplicate an existing legend or change other agents' global navigation; if discoverability is already good, instead audit scoring-error banner focus on a saved (non-partial) move when the reanalysis settings are open.

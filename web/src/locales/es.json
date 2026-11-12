@@ -275,6 +275,8 @@
     "moves": "Jugadas",
     "noRecordedMoves": "Esta partida no tiene jugadas registradas.",
     "savedMovesWithoutAnalysis": "Puedes repasar las jugadas guardadas aunque el análisis del motor aún no esté listo.",
+    "partialMoveUnavailable": "Esta jugada está guardada, pero todavía no tiene evaluación del motor.",
+    "partialReanalyze": "Volver a analizar toda la partida",
     "gameReport": "Informe de IA",
     "keyMoments": "Momentos clave",
     "jumpToMoveDetails": "Detalles de la jugada",

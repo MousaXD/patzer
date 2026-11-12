@@ -275,6 +275,8 @@
     "moves": "Ходове",
     "noRecordedMoves": "В тази партия няма записани ходове.",
     "savedMovesWithoutAnalysis": "Можеш да преглеждаш запазените ходове, дори когато анализът на енджина още не е готов.",
+    "partialMoveUnavailable": "Този запазен ход още не е оценен от енджина.",
+    "partialReanalyze": "Анализирай отново цялата партия",
     "jumpToMoveDetails": "Подробности за хода",
     "returnToBoard": "Назад към дъската",
     "exploreLabel": "Изследвай:",

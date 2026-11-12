@@ -131,13 +131,14 @@ function GameAnalyzerView() {
     setAnalysisSnapshot({ gameId, value });
   }, [gameId]);
   const runAnalysisButtonRef = useRef<HTMLButtonElement>(null);
+  const missingMoveRetryRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     // The native disabled state stops duplicate engine requests, but can drop
     // keyboard focus to BODY while Stockfish runs. Restore the enabled retry
     // after failure only when focus was lost, not when the user navigated to
     // a different control during the request.
-    if (!analyzing && analysisError && !analysis && document.activeElement === document.body) {
-      runAnalysisButtonRef.current?.focus({ preventScroll: true });
+    if (!analyzing && analysisError && document.activeElement === document.body) {
+      (missingMoveRetryRef.current ?? runAnalysisButtonRef.current)?.focus({ preventScroll: true });
     }
   }, [analyzing, analysisError, analysis]);
   const [coachConfigured, setCoachConfigured] = useState(false);
@@ -1208,8 +1209,12 @@ function GameAnalyzerView() {
                   )}
                   {tab === 'moves' && ply > 0 && !isVariation && !move && (
                     <div role="status" className="mb-2 rounded-lg border border-chesscom-200 bg-chesscom-50 px-3 py-2 text-xs text-chesscom-600 dark:border-chesscom-700 dark:bg-chesscom-900/40 dark:text-chesscom-300">
-                      This move is saved in the game but has no engine evaluation yet.
-                      <button type="button" className="ml-1 font-semibold underline underline-offset-2" onClick={() => setShowDepthControl(true)}>Reanalyze the full game</button>
+                      <p>{t('review.partialMoveUnavailable')}</p>
+                      <button ref={missingMoveRetryRef} type="button" data-review-partial-retry="true"
+                        className="btn-secondary mt-2 min-h-11 px-3 py-2 text-xs"
+                        disabled={analyzing} onClick={() => void analyze(requestedDepth, true)}>
+                        {analyzing ? t('review.analyzing', { progress: '…' }) : t('review.partialReanalyze')}
+                      </button>
                     </div>
                   )}
                   {tab === 'moves' && (
