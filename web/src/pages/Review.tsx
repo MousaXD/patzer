@@ -103,11 +103,18 @@ export default function Review() {
     sort: validFilter('sort', searchParams.get('sort')),
   };
   const filterSignature = Object.values(filters).join('|');
+  const activeFilters = Object.entries(filters).some(([key, value]) => value && !(key === 'sort' && value === 'newest'));
 
   function updateFilter(key: FilterName, value: string) {
     const next = new URLSearchParams(searchParams);
     if (!value || (key === 'sort' && value === 'newest')) next.delete(key);
     else next.set(key, value);
+    setSearchParams(next);
+  }
+  function clearLibraryFilters() {
+    const next = new URLSearchParams(searchParams);
+    for (const key of [...Object.keys(FILTER_OPTIONS), 'bookmarked', 'q']) next.delete(key);
+    setSearchDraft('');
     setSearchParams(next);
   }
 
@@ -286,6 +293,8 @@ export default function Review() {
             </select>
           </label>
         ))}
+        {(activeFilters || bookmarkedOnly || q) && <button type="button" className="btn-secondary text-xs"
+          onClick={clearLibraryFilters}>Clear filters</button>}
       </div>
 
       {initialError && (
@@ -316,11 +325,11 @@ export default function Review() {
             <Inbox className="h-6 w-6" />
           </div>
           <div className="text-base font-semibold">
-            {q ? t('review.noMatches', { defaultValue: 'No games match your search' }) : bookmarkedOnly ? t('review.noStarred', { defaultValue: 'No starred games yet' }) : t('review.noGames')}
+            {q || activeFilters ? t('review.noMatches', { defaultValue: 'No games match your search' }) : bookmarkedOnly ? t('review.noStarred', { defaultValue: 'No starred games yet' }) : t('review.noGames')}
           </div>
-          {q ? (
-            <button type="button" onClick={() => setSearchDraft('')} className="btn-secondary text-sm">
-              {t('review.clearSearch', { defaultValue: 'Clear search' })}
+          {q || activeFilters ? (
+            <button type="button" onClick={clearLibraryFilters} className="btn-secondary text-sm">
+              Clear filters
             </button>
           ) : bookmarkedOnly ? (
             <button onClick={toggleBookmarkedOnly} className="btn-secondary text-sm">{t('review.showAll', { defaultValue: 'Show all games' })}</button>

@@ -166,6 +166,21 @@ describe('Review library with large histories', () => {
       new URLSearchParams(String(url).split('?')[1]).get('result') === 'loss')).toBe(true));
   });
 
+  it('offers filter recovery instead of account onboarding for empty filtered results', async () => {
+    mocks.get.mockImplementation(async (url: string) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      return params.has('result') ? { games: [], total: 0 } : { games: [makeGame(1)], total: 1 };
+    });
+    mount('/review?result=loss');
+    expect(await screen.findByText('No games match your search')).toBeTruthy();
+    // The header can still offer account setup; the empty-state action must
+    // recover the filtered library rather than adding a second setup CTA.
+    expect(screen.getAllByRole('link', { name: /Set Chess.com username/ })).toHaveLength(1);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    await screen.findByText('1 of 1 games');
+    expect((screen.getByRole('combobox', { name: 'Game result' }) as HTMLSelectElement).value).toBe('');
+  });
+
   it('requests a clearly bounded recent import batch rather than silently fetching only 20', async () => {
     mocks.user.profile.chesscom_username = 'tester';
     mocks.post.mockResolvedValue({ imported: 150, total: 200 });
