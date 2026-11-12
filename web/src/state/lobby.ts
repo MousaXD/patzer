@@ -30,7 +30,7 @@ type AcceptedNav = {
 };
 type ListStatus = 'loading' | 'ready' | 'error';
 
-function isIncomingChallenge(value: unknown): value is Challenge {
+function isPendingChallenge(value: unknown): value is Challenge {
   if (!value || typeof value !== 'object') return false;
   const c = value as Partial<Challenge>;
   const sender = c.from;
@@ -43,7 +43,18 @@ function isIncomingChallenge(value: unknown): value is Challenge {
     && typeof sender.username === 'string'
     && typeof sender.display_name === 'string'
     && typeof sender.avatar_emoji === 'string'
-    && !!recipient && Number.isSafeInteger(recipient.id);
+    && !!recipient && Number.isSafeInteger(recipient.id)
+    && typeof recipient.username === 'string'
+    && typeof recipient.display_name === 'string'
+    && typeof recipient.avatar_emoji === 'string'
+    && typeof c.created_at === 'string'
+    && (c.game_id === null || Number.isSafeInteger(c.game_id));
+}
+
+function isPendingChallengeList(value: unknown): value is { challenges: Challenge[] } {
+  if (!value || typeof value !== 'object') return false;
+  const { challenges } = value as { challenges?: unknown };
+  return Array.isArray(challenges) && challenges.every(isPendingChallenge);
 }
 
 interface LobbyState {
@@ -136,7 +147,7 @@ export const useLobby = create<LobbyState>((set, get) => {
       } else if (msg.type === 'challenge_received') {
         // Ignore incomplete/malformed socket payloads instead of inserting a
         // broken invitation that could crash the global modal for everyone.
-        if (!isIncomingChallenge(msg.challenge)) return;
+        if (!isPendingChallenge(msg.challenge)) return;
         const challenge = msg.challenge;
         set((s) => ({ incoming: [challenge, ...s.incoming.filter((c) => c.id !== challenge.id)] }));
         // Reconciliation invalidates any older, still-pending REST snapshot.
@@ -237,8 +248,8 @@ export const useLobby = create<LobbyState>((set, get) => {
     if (currentUserId !== userId || epoch !== generation || requestId !== challengesRequestId) return;
     // Each direction is independent: an incoming-list outage must never
     // discard a healthy outgoing response (or overwrite the last good list).
-    const incoming = inc.status === 'fulfilled' && Array.isArray(inc.value?.challenges);
-    const outgoing = out.status === 'fulfilled' && Array.isArray(out.value?.challenges);
+    const incoming = inc.status === 'fulfilled' && isPendingChallengeList(inc.value);
+    const outgoing = out.status === 'fulfilled' && isPendingChallengeList(out.value);
     set({
       ...(incoming ? { incoming: inc.value.challenges } : {}),
       ...(outgoing ? { outgoing: out.value.challenges } : {}),

@@ -41,6 +41,50 @@ afterEach(() => {
 });
 
 describe('lobby account and socket lifecycle', () => {
+  it('retains the last good incoming list if a refreshed HTTP snapshot has a malformed invitation', async () => {
+    let badIncoming = false;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/incoming') {
+        return Promise.resolve({ challenges: badIncoming ? [null, { id: 999, from: null }] : [invitation(41)] });
+      }
+      if (url === '/api/challenges/outgoing') return Promise.resolve({ challenges: badIncoming ? [invitation(76)] : [] });
+      return Promise.resolve({ users: [] });
+    });
+    useLobby.getState().connect(1);
+    await useLobby.getState().refreshChallenges();
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([41]);
+    expect(useLobby.getState().challengesStatus).toBe('ready');
+
+    badIncoming = true;
+    await useLobby.getState().refreshChallenges();
+    // A malformed response is an API failure, not a trustworthy empty list.
+    // Keep usable old data and accept the independent valid outgoing list.
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([41]);
+    expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([76]);
+    expect(useLobby.getState().challengesStatus).toBe('error');
+  });
+
+  it('keeps previously loaded outgoing invitations when their next HTTP response has broken rows', async () => {
+    let invalidOutgoing = false;
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/challenges/outgoing') {
+        return Promise.resolve({ challenges: invalidOutgoing ? [null] : [invitation(74)] });
+      }
+      if (url === '/api/challenges/incoming') {
+        return Promise.resolve({ challenges: invalidOutgoing ? [invitation(75)] : [] });
+      }
+      return Promise.resolve({ users: [] });
+    });
+    useLobby.getState().connect(1);
+    await useLobby.getState().refreshChallenges();
+    expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([74]);
+    invalidOutgoing = true;
+    await useLobby.getState().refreshChallenges();
+    expect(useLobby.getState().outgoing.map((c) => c.id)).toEqual([74]);
+    expect(useLobby.getState().incoming.map((c) => c.id)).toEqual([75]);
+    expect(useLobby.getState().challengesStatus).toBe('error');
+  });
+
   it('ignores malformed real-time invitations without breaking a later valid challenge', () => {
     useLobby.getState().connect(1);
     const socket = FakeSocket.opened[0]!;
