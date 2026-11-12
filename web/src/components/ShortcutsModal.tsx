@@ -49,8 +49,8 @@ export default function ShortcutsModal({ open, onClose }: Props) {
         <div className="flex items-center justify-between border-b border-ui-border px-4 py-3">
           <h2 id="patzer-shortcuts-title" className="text-sm font-semibold">{t('shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}</h2>
           <button ref={closeRef} type="button" onClick={onClose} aria-label={t('common.close', { defaultValue: 'Close' })}
-            className="rounded-md p-2 text-ui-mutedText hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
-            <X className="h-4 w-4" />
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ui-mutedText hover:bg-ui-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus">
+            <X aria-hidden="true" className="h-5 w-5" />
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-4 space-y-5">

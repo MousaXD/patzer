@@ -393,3 +393,29 @@
 ### Next area to inspect
 
 - Audit consistent mobile modal/dialog touch targets and dismiss affordances in the shared shell, and verify narrow-screen orientation/contrast behavior with real browser evidence. Continue design-system and navigation work without modifying feature-owned pages.
+
+## 2026-11-12: Consistent, accessible global-overlay dismissal on mobile
+
+### Recovered and reproduced
+
+- Recovered the exact clean Agent B worktree at `4fc398e` with an unfinished browser fixture that already failed on a missing command-palette Close button. No earlier work was replayed.
+- Chromium's 320px global-dialog test confirmed the palette could only be dismissed with Escape or an unlabelled backdrop; it had **no visible, accessible Close control**. The keyboard-shortcuts dialog also had a close affordance below the 44px mobile touch-target standard.
+
+### Implemented
+
+1. Added a clearly visible and accessible **Close** button within the command palette's search row. Its hit target is at least **44x44px** on mobile, retains keyboard focus styling and does not reduce the ability to enter searches on 320px screens.
+2. Increased the shortcuts modal's existing Close button to **44x44px**, preserving semantic colors and focus styling.
+3. Expanded the real-Chromium `capture-global-dialogs.mjs` fixture with both light/dark 320px and 390px palette close-button measurements, actual click dismissal, focus returning to the opener, and mobile shortcuts close target and click checks.
+4. Inspected the new 320px dark theme screenshots for the search field, close icon, global shortcut listings, contrast and no horizontal overflow. Existing Tab trapping, keyboard search, Ctrl+K modal-switching, active-result navigation and Escape checks remain in the browser suite.
+
+### Validation
+
+- `npm run build -w web`: **passed**.
+- `npx vitest run web/src --maxWorkers=2`: **400/400 passed across 68 files**.
+- `node web/src/components/navigation/capture-global-dialogs.mjs`: **passed** with real local Chromium at 1440px, 390px, and 320px in both themes.
+- `git diff --check`: **passed**.
+- No changes in feature-owned pages, production services, other worktrees or game data. No merge or deployment.
+
+### Next audit
+
+- Verify closing the keyboard-shortcuts dialog *after opening it from a mobile navigation drawer* restores an obvious and usable focus target. The source drawer unmounts, so the shared dialog hook's normal return-to-opener behavior may leave keyboard focus on the document body. Investigate in Chromium before changing shared focus behavior.

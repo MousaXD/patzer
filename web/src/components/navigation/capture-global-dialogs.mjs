@@ -115,6 +115,21 @@ try {
       await assertNoOverflow(page, 'palette ' + color + ' ' + size.width);
       await assertContrast(page, palette, 'palette ' + color + ' ' + size.width);
       await page.screenshot({ path: resolve(output, 'palette-' + color + '-' + size.width + '.png') });
+      if (size.width <= 390) {
+        const closeButton = palette.getByRole('button', { name: 'Close' });
+        await closeButton.waitFor();
+        const rect = await closeButton.boundingBox();
+        if (!rect || rect.width < 44 || rect.height < 44) {
+          throw new Error(`Palette mobile close target too small: ${JSON.stringify(rect)}`);
+        }
+        await closeButton.click();
+        await palette.waitFor({ state: 'detached' });
+        if (!(await opener.evaluate((el) => el === document.activeElement))) {
+          throw new Error('Mobile palette close did not restore focus to opener');
+        }
+        await opener.click();
+        await palette.waitFor();
+      }
       for (let i = 0; i < 32; i++) {
         await page.keyboard.press('Tab');
         await assertInside(page, palette, 'palette Tab ' + i);
@@ -186,11 +201,16 @@ try {
     await drawer.getByRole('button', { name: 'Keyboard shortcuts' }).click();
     const mobileShortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
     await mobileShortcuts.waitFor();
+    const close = mobileShortcuts.getByRole('button', { name: 'Close' });
+    const closeRect = await close.boundingBox();
+    if (!closeRect || closeRect.width < 44 || closeRect.height < 44) {
+      throw new Error(`Mobile shortcuts close target too small: ${JSON.stringify(closeRect)}`);
+    }
     await assertInside(page, mobileShortcuts, 'mobile shortcuts initial focus');
     await assertContrast(page, mobileShortcuts, 'mobile shortcuts ' + color);
     await assertNoOverflow(page, 'mobile shortcuts ' + color);
     await page.screenshot({ path: resolve(output, 'shortcuts-' + color + '-320.png') });
-    await page.keyboard.press('Escape');
+    await close.click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
   }
   console.log('Agent B: global dialog browser focus, keyboard and responsive checks passed.');

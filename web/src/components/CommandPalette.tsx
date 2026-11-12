@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Search, Home, Swords, BookOpen, BarChart3, Settings as SettingsIcon, Target,
   Trophy, Frown, Equal, Users, Server, Sun, Moon, Globe, LogOut, Star,
-  BookMarked, ListChecks, Microscope, GraduationCap,
+  BookMarked, ListChecks, Microscope, GraduationCap, X,
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -153,6 +153,10 @@ export default function CommandPalette({ open, onClose }: Props) {
             className="min-w-0 flex-1 bg-transparent py-1.5 text-sm text-ui-foreground outline-none placeholder:text-ui-mutedText"
           />
           <kbd className="hidden rounded border border-ui-border px-1.5 py-0.5 text-[11px] text-ui-mutedText sm:inline">{t('palette.esc')}</kbd>
+          <button type="button" onClick={onClose} aria-label={t('common.close', { defaultValue: 'Close' })}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ui-mutedText hover:bg-ui-hover hover:text-ui-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-focus sm:h-9 sm:w-9">
+            <X aria-hidden="true" className="h-5 w-5" />
+          </button>
         </div>
         <div id="patzer-palette-results" role="listbox" aria-label={t('palette.navGroup', { defaultValue: 'Navigate' })}
           ref={listRef} className="max-h-[min(60dvh,32rem)] overflow-y-auto py-1">
