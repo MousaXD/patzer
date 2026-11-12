@@ -367,3 +367,28 @@
 ### Next lane task
 
 - Audit nested variation-fork navigation on both 390px mobile and desktop: switching back to an ancestor or sibling branch should preserve the correct independent cursor, display the correct highlighted last move and never show the child's continuation as part of its parent. Existing legality/source checks are complete; investigate only uncovered visual or keyboard defects and add focused regression evidence before changing implementation.
+
+## 2026-11-12: nested branch cursor identity and last-move rendering
+
+### Exact resume and baseline
+
+- Resumed from clean `4f3f711` and the previously recorded nested parent/child cursor audit, not from earlier source-integrity investigations. Work was confined to Agent A's worktree and Game Review code.
+- `analysisVariations` retained only a *single* active leaf cursor. Choosing a saved parent/sibling branch always jumped to its final move, even after the player rewound that branch and left it to compare a different continuation. A new focused unit case intentionally **failed**: parent at `c5` (`1/2`) reopened at `2/2`. A disposable 390px Chromium branch-switch test intentionally **failed**: a rewound `Var 0 / 1` reopened as `Var 1 / 1`.
+
+### Correction and integration audit
+
+- Added ephemeral `variationCursors`, keyed by branch ID; snapshots the current cursor when exiting for a child, selecting another branch, returning to the saved game, choosing an original ply or undoing across the fork. Selection now restores each branch's last viewed cursor, clamped to its immutable move list. Explicit cursor selections still work for First, Last and undo/redo navigation.
+- Self-audit found that the existing Last transport action relied on the old implicit jump-to-end behavior. Changed only that action to explicitly select the active branch's `moves.length`; the new browser regression catches a Last button that fails to reach the final move.
+- The extended Chromium nested `e4 c5 Nf3` versus `e4 c5 d4` comparison checked actual chessground last-move squares. An initial immediate assertion observed the old highlight for one frame while the React counter already reflected the new cursor; this was a **test-timing issue**, not a persistent chessboard discrepancy. The final test waits for chessground's post-render highlight and asserts actual square transforms, making the regression deterministic without a false UI fix.
+
+### Verified evidence
+
+- Targeted variation controller/hook tests: **16 passed** (including the new nested cursor/FEN/PGN invariant).
+- `npm run typecheck`: PASS; `npm run build`: PASS.
+- Full `npm test -- --testTimeout=20000`: **980 passed / 12 skipped**, 107 passing files.
+- Full authenticated disposable Chromium matrix: **PASS (exit 0)** with the nested 390px and 1024px branch comparison; parent resume at 1/2, child fork at 0/1, explicit Last, correct last-move highlights, original PGN invariance, and all earlier locale/source/keyboard/responsive checks. Opened/inspected `qa-artifacts/agent-a/nested-variation-render-20261112/nested-variation-cursors-390.png` and `nested-variation-cursors-1024.png`, showing visible child `d4` position and correct one-move branch counter. No horizontal overflow.
+- Browser classifications/scores are injected UI fixtures, not real Stockfish accuracy certification. No merge, deployment or production SQLite changes.
+
+### Next highest-impact issue
+
+- On mobile and desktop, the branch picker shows only `Variation 1 · 2 moves` and `Variation 2 · 1 moves` without revealing the chess moves or ancestry. In nested scenarios a learner cannot tell which branch they are reopening without selecting it. Reproduce the discoverability issue, then show a concise legal SAN preview and fork relationship with translated accessible labels, keeping the UI compact and Game Review-only.

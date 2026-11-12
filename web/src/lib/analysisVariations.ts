@@ -34,6 +34,9 @@ export interface AnalysisVariationState {
   activeVariationId: string | null;
   variationCursor: number;
   variations: AnalysisVariation[];
+  /** Last viewed local cursor for each branch, independent of its move list.
+   * Branches are never persisted, and switching must not erase exploration. */
+  variationCursors: Record<string, number>;
   nextVariationId: number;
   /** Last branch exited by undo, so redo can return to it rather than mainline. */
   redoVariationId: string | null;
@@ -64,6 +67,7 @@ export function initialAnalysisVariationState(initialPly = 0): AnalysisVariation
     activeVariationId: null,
     variationCursor: 0,
     variations: [],
+    variationCursors: {},
     nextVariationId: 1,
     redoVariationId: null,
     error: null,
@@ -76,6 +80,20 @@ function clampPly(ply: number, positions: readonly OriginalGamePosition[]): numb
 
 function currentBranch(state: AnalysisVariationState): AnalysisVariation | null {
   return state.variations.find((v) => v.id === state.activeVariationId) ?? null;
+}
+
+function clampVariationCursor(cursor: number, length: number): number {
+  return Math.min(Math.max(0, Math.trunc(Number.isFinite(cursor) ? cursor : 0)), length);
+}
+
+/** Preserve the cursor at the moment a branch is exited. A single global
+ * cursor causes selecting an ancestor/sibling to jump to the end, losing the
+ * move the user was comparing. Do not rewrite any recorded variation move. */
+function rememberActiveCursor(state: AnalysisVariationState): Record<string, number> {
+  const branch = currentBranch(state);
+  return branch
+    ? { ...state.variationCursors, [branch.id]: clampVariationCursor(state.variationCursor, branch.moves.length) }
+    : state.variationCursors;
 }
 
 function originalMove(position: OriginalGamePosition | undefined): AnalysisVariationView['lastMove'] {
@@ -211,6 +229,7 @@ export function submitAnalysisVariationMove(
     const id = `v${state.nextVariationId}`;
     return {
       ...state,
+      variationCursors: rememberActiveCursor(state),
       variations: [...state.variations, {
         id, basePly: branch.basePly, parentId: branch.id,
         parentCursor: state.variationCursor, baseFen: view.currentFen, moves: [move],
@@ -241,7 +260,8 @@ export function selectOriginalAnalysisPly(
   positions: readonly OriginalGamePosition[],
   ply: number,
 ): AnalysisVariationState {
-  return { ...state, originalPly: clampPly(ply, positions), activeVariationId: null, variationCursor: 0, redoVariationId: null, error: null };
+  return { ...state, originalPly: clampPly(ply, positions), activeVariationId: null, variationCursor: 0,
+    variationCursors: rememberActiveCursor(state), redoVariationId: null, error: null };
 }
 
 export function selectAnalysisVariation(
@@ -251,11 +271,12 @@ export function selectAnalysisVariation(
 ): AnalysisVariationState {
   const branch = state.variations.find((v) => v.id === id);
   if (!branch) return { ...state, error: `Unknown variation: ${id}` };
+  const variationCursors = rememberActiveCursor(state);
   return {
     ...state,
+    variationCursors,
     activeVariationId: id,
-    variationCursor: cursor === undefined ? branch.moves.length
-      : Math.min(Math.max(0, Math.trunc(Number.isFinite(cursor) ? cursor : 0)), branch.moves.length),
+    variationCursor: clampVariationCursor(cursor ?? variationCursors[id] ?? branch.moves.length, branch.moves.length),
     redoVariationId: null,
     error: null,
   };
@@ -265,6 +286,7 @@ export function restoreOriginalAnalysisGame(state: AnalysisVariationState): Anal
   const branch = currentBranch(state);
   return {
     ...state,
+    variationCursors: rememberActiveCursor(state),
     originalPly: branch?.basePly ?? state.originalPly,
     activeVariationId: null,
     variationCursor: 0,
@@ -284,6 +306,7 @@ export function stepAnalysisBackward(state: AnalysisVariationState, positions: r
   // Retain which branch Undo just left, so Redo restores that exact continuation.
   if (branch.parentId) return {
     ...state,
+    variationCursors: rememberActiveCursor(state),
     activeVariationId: branch.parentId,
     variationCursor: branch.parentCursor ?? 0,
     redoVariationId: branch.id,
@@ -298,7 +321,8 @@ export function stepAnalysisForward(state: AnalysisVariationState, positions: re
   if (redoChild && (branch
     ? redoChild.parentId === branch.id && redoChild.parentCursor === state.variationCursor
     : redoChild.parentId === null && redoChild.basePly === clampPly(state.originalPly, positions))) {
-    return { ...state, activeVariationId: redoChild.id, variationCursor: 0, redoVariationId: null, error: null };
+    return { ...state, activeVariationId: redoChild.id, variationCursor: 0,
+      variationCursors: rememberActiveCursor(state), redoVariationId: null, error: null };
   }
   if (!branch) return {
     ...state, originalPly: clampPly(state.originalPly + 1, positions), redoVariationId: null, error: null,

@@ -1149,11 +1149,102 @@ try {
     await page.getByRole('button',{name:locale.review.first}).click();
     assert.equal((await variationCounter.innerText()).trim(),'Var 0 / 1',
       'Navigating to the branch point must not display a mainline PGN ply');
+    await branchButton(1).click();
+    await branchButton(2).click();
+    assert.equal((await variationCounter.innerText()).trim(),'Var 0 / 1',
+      'Reopening a variation must preserve the last viewed cursor rather than jump to its final move');
     await page.getByRole('button',{name:locale.review.last}).click();
     assert.equal((await variationCounter.innerText()).trim(),'Var 1 / 1',
       'Navigating to the final branch move must use the active branch total');
     assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,originalPgn);
   }finally{await branchErrorContext.close();}
+  // A nested branch must preserve its own local cursor, ancestor prefix and
+  // last-move highlighting when a learner compares the sibling continuations.
+  // Verify in actual chessground, on both phone and side-by-side desktop.
+  for(const [width,height] of [[390,844],[1024,768]]){
+    const nestedContext=await browser.newContext({viewport:{width,height},colorScheme:'dark',reducedMotion:'reduce'});
+    try{
+      await nestedContext.addCookies([{name:account.cookie.split('=')[0],
+        value:account.cookie.split('=').slice(1).join('='),url:base}]);
+      const page=await nestedContext.newPage();
+      const savedPgn=db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn;
+      await page.route('**/api/analyze/variation-move',async route=>
+        route.fulfill({status:503,contentType:'application/json',body:'{"error":"engine_unavailable"}'}));
+      await page.goto(`${base}/review/${id}?ply=1`,{waitUntil:'domcontentloaded'});
+      await page.locator('cg-board').waitFor({state:'visible'});
+      const coords=(sq,board)=>({
+        x:board.x+board.width*(sq.charCodeAt(0)-97+.5)/8,
+        y:board.y+board.height*(8-Number(sq[1])+.5)/8,
+      });
+      const dragMove=async(from,to)=>{
+        const board=await page.locator('cg-board').boundingBox();
+        assert.ok(board);
+        const first=coords(from,board),last=coords(to,board);
+        await page.mouse.move(first.x,first.y);
+        await page.mouse.down();
+        await page.mouse.move(last.x,last.y,{steps:12});
+        await page.mouse.up();
+      };
+      const expectProgress=async(expected)=>{
+        await page.waitForFunction(value=>document.querySelector('[data-review-move-progress]')
+          ?.textContent?.trim()===value,expected,{timeout:4000});
+      };
+      const highlighted=async()=>page.locator('cg-board square.last-move').evaluateAll(
+        squares=>squares.map(s=>s.getAttribute('style')).sort());
+      const expectHighlighted=async(expected,message)=>{
+        // The React move counter commits before Chessground's useEffect
+        // applies its new position/last-move styles. Wait for the rendered
+        // board, not merely the state counter, before judging its squares.
+        await page.waitForFunction(styles=>{
+          const actual=[...document.querySelectorAll('cg-board square.last-move')]
+            .map(square=>square.getAttribute('style')).sort();
+          return JSON.stringify(actual)===JSON.stringify(styles);
+        },expected,{timeout:3000});
+        assert.deepEqual(await highlighted(),expected,message);
+      };
+      const trace=page.getByRole('region',{name:'Interactive analysis'}).locator('span.font-mono').last();
+      await dragMove('c7','c5');
+      await expectProgress('Var 1 / 1');
+      await dragMove('g1','f3');
+      await expectProgress('Var 2 / 2');
+      await page.getByRole('button',{name:'Previous',exact:true}).click();
+      await expectProgress('Var 1 / 2');
+      assert.equal((await trace.innerText()).trim(),'c5');
+      const parentSquares=await highlighted();
+      assert.equal(parentSquares.length,2,'The original c7-c5 should highlight two board squares');
+      await dragMove('d2','d4');
+      await expectProgress('Var 1 / 1');
+      assert.equal((await trace.innerText()).trim(),'c5 d4');
+      const childSquares=await highlighted();
+      assert.equal(childSquares.length,2);
+      assert.notDeepEqual(childSquares,parentSquares,'The child move d2-d4 must have its own board highlight');
+      const parent=page.getByRole('button',{name:'Variation 1 · 2 moves',exact:true});
+      const child=page.getByRole('button',{name:'Variation 2 · 1 moves',exact:true});
+      await parent.click();
+      await expectProgress('Var 1 / 2');
+      assert.equal((await trace.innerText()).trim(),'c5');
+      await expectHighlighted(parentSquares,'Returning to the ancestor must restore c7-c5 highlighting');
+      await child.click();
+      await expectProgress('Var 1 / 1');
+      assert.equal((await trace.innerText()).trim(),'c5 d4');
+      await page.getByRole('button',{name:'First',exact:true}).click();
+      await expectProgress('Var 0 / 1');
+      assert.equal((await trace.innerText()).trim(),'c5');
+      await expectHighlighted(parentSquares,'At the child fork the last played move must be c7-c5');
+      await parent.click();
+      await expectProgress('Var 1 / 2');
+      await child.click();
+      await expectProgress('Var 0 / 1');
+      await expectHighlighted(parentSquares,'Reopening a child must preserve its independent fork cursor');
+      await page.getByRole('button',{name:'Last',exact:true}).click();
+      await expectProgress('Var 1 / 1');
+      await expectHighlighted(childSquares,'Last move must still navigate explicitly to the child final move');
+      assert.equal(await child.getAttribute('aria-pressed'),'true');
+      await page.locator('.review-board-square').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`nested-variation-cursors-${width}.png`)});
+      assert.equal(db.prepare('SELECT pgn FROM games WHERE id=?').get(id).pgn,savedPgn);
+    }finally{await nestedContext.close();}
+  }
   // Selecting a classification from the report should move the keyboard
   // reader to the filtered Moves tab, not leave focus on an offscreen count.
   for(const [width,height] of [[320,760],[390,844],[1024,768]]){

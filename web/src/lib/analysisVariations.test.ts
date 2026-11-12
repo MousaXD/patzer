@@ -83,6 +83,9 @@ describe('local analysis variations', () => {
     expect(state.variations[1]!.parentId).toBe('v1');
     expect(state.variations[1]!.parentCursor).toBe(1);
     state = selectAnalysisVariation(state, 'v1');
+    expect(state.variationCursor).toBe(1);
+    expect(getAnalysisVariationView(state, history).lastMove?.san).toBe('c5');
+    state = selectAnalysisVariation(state, 'v1', 2);
     expect(getAnalysisVariationView(state, history).currentFen).toBe(originalBranchFen);
     state = selectAnalysisVariation(state, 'v2');
     expect(getAnalysisVariationView(state, history).currentFen).toBe(childFen);
@@ -108,6 +111,37 @@ describe('local analysis variations', () => {
     expect(view.playedVariationMoves.map((m) => m.san)).toEqual(['c5']);
     expect(view.lastMove?.san).toBe('c5');
     expect(view.currentFen).toBe(state.variations[1]!.baseFen);
+  });
+
+  it('remembers an independent cursor and last-move highlight per parent and nested branch', () => {
+    const original = JSON.stringify(history);
+    let state = selectOriginalAnalysisPly(initialAnalysisVariationState(), history, 1);
+    state = submitAnalysisVariationMove(state, history, 'c7c5');
+    state = submitAnalysisVariationMove(state, history, 'g1f3');
+    state = stepAnalysisBackward(state, history); // Parent at c5; Nf3 is still its tail.
+    const parentFen = getAnalysisVariationView(state, history).currentFen;
+    state = submitAnalysisVariationMove(state, history, 'd2d4'); // Fork a child after c5.
+    const childFen = getAnalysisVariationView(state, history).currentFen;
+    expect(state.activeVariationId).toBe('v2');
+    state = selectAnalysisVariation(state, 'v1');
+    expect(state.variationCursor).toBe(1);
+    expect(getAnalysisVariationView(state, history).currentFen).toBe(parentFen);
+    expect(getAnalysisVariationView(state, history).lastMove?.san).toBe('c5');
+    expect(getAnalysisVariationView(state, history).playedVariationMoves.map(m => m.san)).toEqual(['c5']);
+    state = selectAnalysisVariation(state, 'v2');
+    expect(state.variationCursor).toBe(1);
+    expect(getAnalysisVariationView(state, history).currentFen).toBe(childFen);
+    state = stepAnalysisBackward(state, history); // Child at its exact fork.
+    state = selectAnalysisVariation(state, 'v1');
+    state = selectAnalysisVariation(state, 'v2');
+    expect(state.variationCursor).toBe(0);
+    expect(getAnalysisVariationView(state, history).currentFen).toBe(parentFen);
+    expect(getAnalysisVariationView(state, history).lastMove?.san).toBe('c5');
+    expect(getAnalysisVariationView(state, history).playedVariationMoves.map(m => m.san)).toEqual(['c5']);
+    state = restoreOriginalAnalysisGame(state);
+    state = selectAnalysisVariation(state, 'v2');
+    expect(state.variationCursor).toBe(0);
+    expect(JSON.stringify(history)).toBe(original);
   });
 
   it('redo restores the original variation after undo crosses to saved game', () => {

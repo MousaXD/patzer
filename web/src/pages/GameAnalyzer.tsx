@@ -469,7 +469,8 @@ function GameAnalyzerView() {
   const first = () => isVariation && variations.activeVariationId
     ? variations.selectVariation(variations.activeVariationId, 0) : setPly(0);
   const last = () => isVariation && variations.activeVariationId
-    ? variations.selectVariation(variations.activeVariationId) : setPly(positions.length - 1);
+    ? variations.selectVariation(variations.activeVariationId, activeBranch?.moves.length ?? 0)
+    : setPly(positions.length - 1);
 
   // Keep ?ply= in the URL so refresh + share work. Replace, don't push.
   useEffect(() => {
