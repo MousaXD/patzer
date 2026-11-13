@@ -165,7 +165,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   const page = await logIn(context);
 
-  await test('Full Review expands its desktop board to the available width, keeps the rail at the right edge and preserves mobile', async () => {
+  await test('Full Review sizes desktop board to viewport height and width, keeps rail edge-aligned and preserves mobile', async () => {
     await page.goto(`${base}/review/${standard.id}`);
     await page.locator('[data-review-workspace]').waitFor();
     for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1199, 900],
@@ -191,13 +191,23 @@ try {
       if (width >= 1200) {
         assert.ok(sizes.rail.left >= sizes.board.right + 10 && width - sizes.rail.right <= 55,
           `Desktop review rail isn't beside the board at the right edge: ${JSON.stringify(sizes)}`);
-        if (width === 1710) assert.ok(sizes.board.width >= 960,
-          `Desktop board is still constrained to the old ~520px cap: ${JSON.stringify(sizes)}`);
+        assert.ok(sizes.board.bottom <= height,
+          `Desktop board should fit the visible window height: ${JSON.stringify(sizes)}`);
+        if (width === 1710) assert.ok(sizes.board.width >= 550 && sizes.board.width <= 740,
+          `Desktop board should fill the viewport without the old 1000px oversizing: ${JSON.stringify(sizes)}`);
       } else if (width < 960) {
         assert.ok(sizes.rail.top >= sizes.board.bottom,
           `Phone / stacked Review must keep the details below the board: ${JSON.stringify(sizes)}`);
       }
     }
+    // Height-only resize at a fixed desktop width: previously the board stayed
+    // huge regardless of a shorter window or increased browser zoom.
+    await page.setViewportSize({ width: 1710, height: 720 });
+    const shortBoardWidth = await page.locator('[data-review-workspace] cg-board').evaluate((board) => board.getBoundingClientRect().width);
+    await page.setViewportSize({ width: 1710, height: 1100 });
+    const tallBoardWidth = await page.locator('[data-review-workspace] cg-board').evaluate((board) => board.getBoundingClientRect().width);
+    assert.ok(tallBoardWidth >= shortBoardWidth + 240,
+      `Review board must grow when the window gets taller at the same desktop width: ${shortBoardWidth} -> ${tallBoardWidth}`);
     await page.setViewportSize({ width: 1440, height: 900 });
   });
 

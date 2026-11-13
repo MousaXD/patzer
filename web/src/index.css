@@ -529,10 +529,16 @@ select[data-shell-language] { background-image:none; }
     justify-content:stretch;
     gap:clamp(1rem,1.4vw,1.5rem);
   }
-  /* On a 1710px monitor the board can now reach roughly twice the previous
-     520px cap. At larger resolutions, keep the board a playable square rather
-     than letting it expand indefinitely; unused width stays in its column. */
-  .review-board-column { max-width:1080px; justify-self:center; }
+  /* Size by BOTH available column width and visible viewport height. A wide,
+     short desktop window must not create a 1000px board extending far below
+     the fold. Leave room for the page header and player bars; on very short
+     windows preserve a usable 360px minimum and allow ordinary page scroll.
+     This rule is desktop-only: phone and stacked layouts remain unchanged. */
+  .review-board-column {
+    width:min(100%,clamp(360px,calc(100dvh - 260px),960px));
+    max-width:none;
+    justify-self:center;
+  }
   .review-side-rail { width:100%; justify-self:end; }
 }
 /* The transport is a control surface, not selectable document text. */
