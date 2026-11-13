@@ -188,3 +188,86 @@ export function fetchRecentGames(
     return parseNdjson(await res.text());
   });
 }
+
+/** Download a user's *entire* public history without buffering an unbounded
+ * NDJSON response in RAM or applying the recent-import 200-game ceiling.
+ * Lichess streams newest-first and throttles anonymous exports itself.
+ * Keep this export serialized with smaller manual imports on the same server.
+ */
+export async function* streamAllGames(
+  username: string,
+  fetchImpl: typeof fetch = fetch,
+  delay: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): AsyncGenerator<LichessGame> {
+  if (!isValidLichessUsername(username)) throw new Error('invalid_username');
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  const predecessor = queue;
+  queue = predecessor.catch(() => undefined).then(() => released);
+  await predecessor.catch(() => undefined);
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const refreshTimeout = () => {
+    if (timeout) clearTimeout(timeout);
+    // Long histories can take many minutes at Lichess's 20 games/sec throttle.
+    // Time out only on 90 seconds of *inactivity*, not on total history size.
+    timeout = setTimeout(() => controller.abort(), 90_000);
+  };
+  try {
+    const url = `${BASE}/api/games/user/${encodeURIComponent(username)}?${new URLSearchParams({
+      pgnInJson: 'true', clocks: 'false', evals: 'false', opening: 'false', finished: 'true',
+      sort: 'dateDesc',
+    })}`;
+    let res: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      refreshTimeout();
+      res = await fetchImpl(url, {
+        headers: { 'User-Agent': UA, Accept: 'application/x-ndjson' }, signal: controller.signal,
+      });
+      if (res.status !== 429) break;
+      if (attempt === 1) throw new Error('rate_limited');
+      // Lichess asks clients to wait at least one minute after HTTP 429.
+      if (timeout) clearTimeout(timeout);
+      await delay(60_000);
+    }
+    if (!res) throw new Error('invalid_export');
+    if (res.status === 404) throw new Error('not_found');
+    if (!res.ok) throw new Error(`lichess_${res.status}`);
+    if (!res.body) throw new Error('invalid_export');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    let pending = '';
+    function parse(line: string): LichessGame {
+      let result: unknown;
+      try { result = JSON.parse(line); } catch { throw new Error('invalid_export'); }
+      if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('invalid_export');
+      return result as LichessGame;
+    }
+    try {
+      for (;;) {
+        refreshTimeout();
+        const { value, done } = await reader.read();
+        if (done) break;
+        pending += decoder.decode(value, { stream: true });
+        let end: number;
+        while ((end = pending.indexOf('\n')) !== -1) {
+          if (end > 1_500_000) throw new Error('invalid_export');
+          const line = pending.slice(0, end).trim();
+          pending = pending.slice(end + 1);
+          if (line) yield parse(line);
+        }
+        if (pending.length > 1_500_000) throw new Error('invalid_export');
+      }
+      pending += decoder.decode();
+      if (pending.trim()) yield parse(pending.trim());
+    } finally {
+      // Release an interrupted or malformed export immediately.
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    controller.abort();
+    release();
+  }
+}

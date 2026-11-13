@@ -10,6 +10,20 @@ import { cn } from '../lib/utils';
 import type { GameRow } from '../types';
 
 type ImportSource = 'chesscom' | 'lichess';
+type HistoryStatus = {
+  source: ImportSource;
+  username: string;
+  state: 'idle' | 'running' | 'complete' | 'error';
+  fetched: number;
+  imported: number;
+  duplicates: number;
+  skipped: number;
+  enriched: number;
+  completed: number;
+  total: number | null;
+  unit: 'months' | 'games';
+  error?: string;
+};
 
 // The platform branch supports stable offset pagination; keep the legacy
 // cumulative-limit fallback until its API is integrated into main.
@@ -486,6 +500,58 @@ export default function Review() {
   ];
   const linked = sources.filter((s) => s.username);
 
+  // A full import runs independently of the page. Poll its account-scoped
+  // status so navigation/reloads do not interrupt a multi-year catch-up.
+  const historyQueryKey = ['games', 'history-status', user?.id,
+    linked.map((source) => `${source.source}:${source.username?.toLowerCase()}`).join('|')] as const;
+  const historyStatusQuery = useQuery({
+    queryKey: historyQueryKey,
+    enabled: user?.id != null && linked.length > 0,
+    queryFn: async () => Object.fromEntries(await Promise.all(linked.map(async (source) => [
+      source.source,
+      await api.get<HistoryStatus>(`/api/games/import/history/${source.source}`),
+    ]))) as Partial<Record<ImportSource, HistoryStatus>>,
+    refetchInterval: (query) => Object.values(query.state.data ?? {}).some((status) => status?.state === 'running') ? 2_000 : 15_000,
+    retry: false,
+  });
+  const historyRunning = Object.values(historyStatusQuery.data ?? {}).some((status) => status?.state === 'running');
+  useEffect(() => {
+    // Once the first imported games appear, firstUseEmpty becomes false. Keep
+    // progress visible instead of collapsing the import panel mid-download.
+    // Also restores that panel on reload while a server-side job is running.
+    if (historyRunning) setImportPanelOpen(true);
+  }, [historyRunning]);
+  const historyStartMut = useMutation({
+    mutationFn: async ({source}: {source: ImportSource; accountId: number}) =>
+      api.post<HistoryStatus>(`/api/games/import/history/${source}`, {}),
+    onSuccess: (status, {accountId, source}) => {
+      if (accountIdRef.current !== accountId) return;
+      qc.setQueryData(historyQueryKey, (old: Partial<Record<ImportSource, HistoryStatus>> | undefined) =>
+        ({...old, [source]:status}));
+      void historyStatusQuery.refetch();
+    },
+    onError: (error, {accountId}) => {
+      if (accountIdRef.current !== accountId) return;
+      const code = (error as Error).message;
+      showImportResult({scope:'provider',error:true,text:t(`review.importError.${code}`, {
+        defaultValue:t('review.importError.generic'),
+      })}, 10_000);
+    },
+  });
+  const previousHistoryCount = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!user?.id) return;
+    for (const [source, status] of Object.entries(historyStatusQuery.data ?? {})) {
+      if (!status || !Number.isSafeInteger(status.fetched) || status.fetched <= 0) continue;
+      const id = `${user.id}:${source}:${status.username.toLowerCase()}`;
+      const before = previousHistoryCount.current.get(id) ?? 0;
+      if (before !== status.fetched) {
+        previousHistoryCount.current.set(id, status.fetched);
+        void qc.invalidateQueries({predicate:({queryKey})=>isOwnHistoryQuery(queryKey,user.id)});
+      }
+    }
+  }, [historyStatusQuery.data, user?.id, qc]);
+
   const pages = data?.pages ?? [];
   const paginated = typeof pages[0]?.has_more === 'boolean';
   const lastPage = pages[pages.length - 1];
@@ -497,7 +563,7 @@ export default function Review() {
   const firstUseEmpty = !isLoading && !initialError && games.length === 0 &&
     !q && !activeFilters && !bookmarkedOnly;
   const emptyFilteredResults = !isLoading && !initialError && games.length === 0 && !firstUseEmpty;
-  const importControlsVisible = firstUseEmpty || importPanelOpen;
+  const importControlsVisible = firstUseEmpty || importPanelOpen || historyRunning;
   const hiddenBookmarkFailures = bookmarkFailures.filter(failure => !games.some(game => game.id === failure.id));
   useEffect(() => {
     const requested = keyboardPageStartRef.current;
@@ -564,6 +630,54 @@ export default function Review() {
 
       <div id="library-import-controls" hidden={!importControlsVisible} className="space-y-5">
       {linked.length > 0 && (<>
+        <section className="card flex flex-col gap-3 p-3 sm:p-4" aria-label={t('review.historyTitle', {defaultValue:'Import your full game history'})}>
+          <div>
+            <h2 className="text-sm font-semibold text-chesscom-900 dark:text-chesscom-100">
+              {t('review.historyTitle', {defaultValue:'Import your full game history'})}
+            </h2>
+            <p className="text-xs leading-relaxed text-chesscom-500 dark:text-chesscom-300">
+              {t('review.historyHelp', {defaultValue:'Recommended for your first import. Fetches all public standard games, saves them in batches and keeps existing games and analysis. You can leave this page and return to see progress.'})}
+            </p>
+          </div>
+          {linked.map((source) => {
+            const status = historyStatusQuery.data?.[source.source];
+            const running = status?.state === 'running';
+            const matching = status?.username?.toLowerCase() === source.username?.toLowerCase();
+            return (
+              <div key={source.source} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-chesscom-200 p-3 dark:border-chesscom-700">
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="font-medium">{source.source === 'chesscom' ? 'Chess.com' : 'Lichess'} (@{source.username})</div>
+                  {matching && running && (
+                    <p role="status" aria-live="polite" className="text-xs text-chesscom-500 dark:text-chesscom-300">
+                      {t('review.historyProgress', {count:status.fetched, defaultValue:`${status.fetched.toLocaleString()} games checked`})}
+                      {status.unit === 'months' && status.total != null ? ` · ${status.completed}/${status.total} ${t('review.historyMonths', {defaultValue:'months'})}` : ''}
+                      {` · ${status.imported.toLocaleString()} ${t('review.historySaved', {defaultValue:'new games saved'})}`}
+                    </p>
+                  )}
+                  {matching && status?.state === 'complete' && (
+                    <p role="status" className="text-xs text-ui-success">
+                      {t('review.historyComplete', {saved:status.imported, checked:status.fetched, defaultValue:`Complete: ${status.fetched.toLocaleString()} games checked, ${status.imported.toLocaleString()} new games saved.`})}
+                    </p>
+                  )}
+                  {matching && status?.state === 'error' && (
+                    <p role="alert" className="text-xs text-bad">
+                      {t('review.historyInterrupted', {count:status.imported, defaultValue:`Import paused after saving ${status.imported.toLocaleString()} games. Retry to continue safely; saved games won't be duplicated.`})}
+                      {status.error ? ` (${t(`review.importError.${status.error}`, {defaultValue:status.error})})` : ''}
+                    </p>
+                  )}
+                </div>
+                <button type="button" className="btn-primary min-h-11 shrink-0 text-sm"
+                  disabled={!user || running || historyStartMut.isPending || importMut.isPending}
+                  onClick={() => user && historyStartMut.mutate({source:source.source, accountId:user.id})}>
+                  <Download aria-hidden="true" className="h-4 w-4" />
+                  {running ? t('review.historyImporting', {defaultValue:'Importing full history…'})
+                    : matching && status?.state === 'error' ? t('review.historyRetry', {defaultValue:'Retry full import'})
+                      : t('review.historyAction', {defaultValue:'Import all games'})}
+                </button>
+              </div>
+            );
+          })}
+        </section>
         <section className="card flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between"
           aria-labelledby="library-recent-import-title" aria-describedby="library-recent-import-help">
           <div className="min-w-0 sm:max-w-48">
@@ -584,7 +698,7 @@ export default function Review() {
               {IMPORT_BATCH_SIZES.map((limit) => <option key={limit} value={limit}>{limit}</option>)}
             </select>
             {linked.map((s) => (
-              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id, limit: importLimit })} disabled={importMut.isPending || !user} className="btn-primary min-h-11">
+              <button key={s.source} onClick={() => user && importMut.mutate({ source: s.source, accountId: user.id, limit: importLimit })} disabled={importMut.isPending || !user || historyStatusQuery.data?.[s.source]?.state === 'running'} className="btn-secondary min-h-11">
                 <Download aria-hidden="true" className="h-4 w-4" />
                 {importMut.isPending && importMut.variables?.source === s.source ? t('review.importing') : `${s.label} (@${s.username})`}
               </button>
@@ -652,7 +766,7 @@ export default function Review() {
           <p className="max-w-lg text-sm leading-relaxed text-chesscom-500 dark:text-chesscom-300">
             {linked.length === 0
               ? t('review.firstUseUnlinked', {defaultValue:'Import a PGN from your computer or link Chess.com/Lichess to bring in recent games.'})
-              : t('review.firstUseLinked', {defaultValue:'Import recent games above, or choose a PGN file from your computer.'})}
+              : t('review.firstUseLinked', {defaultValue:'Import your complete history above, or choose a PGN file from your computer.'})}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button type="button" className="btn-primary min-h-11 text-sm"

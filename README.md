@@ -139,6 +139,22 @@ volumes:
 > **What needs a Chess.com or Lichess username:** importing your public games for review. Without it
 > you can still load PGNs by paste or play live and review from the move list.
 
+### First-time game history import
+
+Link your Chess.com or Lichess username in **Settings**, then open **Library → Import more games**
+(the import options are already expanded on an empty library). Choose **Import all games** next to
+your linked account. This imports your entire **public, completed standard-chess history**, not
+just the 200 newest games. Chess.com is fetched month by month; Lichess streams its full export.
+Progress appears in Library, and you can leave the page while the server continues importing.
+Standard games with malformed or unavailable PGN data are skipped instead of being misclassified.
+
+Imports are saved in bounded, deduplicated transactions. If a provider becomes unavailable or
+the server is restarted, your already-imported games remain safe; run **Import all games** again
+to finish missing games without overwriting saved reviews or notes. After that, use the separate
+**Import recent games** 20/100/200-game selector for quicker routine syncs. Imported games are
+not analyzed with Stockfish automatically in bulk. The Library paginates search results so the
+number of games visible at once does not limit the number imported.
+
 You'll want, optionally:
 
 - **For the AI Coach:** an [Ollama](https://ollama.com) or [vLLM](https://docs.vllm.ai) server reachable from the Patzer container (pick the provider in *Admin → System*). The wizard validates the URL and lists available models for you. Patzer accepts loopback / RFC1918 / `*.local` / `host.docker.internal` Ollama hosts only — public-Internet model proxies aren't supported here. The one hosted exception is DeepSeek, which you opt into with an API key in *Admin → System*.

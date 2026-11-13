@@ -6,9 +6,9 @@ import { db } from '../db.js';
 import { requireAuth } from '../auth/middleware.js';
 import { getPlayer } from '../chess/chesscom.js';
 import { importChessComGames } from '../chess/chesscomImport.js';
-import { prepareImportedOpeningEnrichment } from '../chess/importOpening.js';
+import { importRecentLichessGames } from '../chess/lichessImport.js';
 import { importPgnArchive, MAX_PGN_ARCHIVE_BYTES, PgnImportError } from '../chess/pgnImport.js';
-import { fetchRecentGames as fetchLichessGames, toImportRow } from '../chess/lichess.js';
+import { getHistoryStatus, startHistoryImport } from '../chess/historyImportJobs.js';
 import { SCORING_VERSION } from '../chess/classifier.js';
 import { analysisMatchesGame, type AnalysisGameSource } from '../chess/analysisSource.js';
 import { Chess } from 'chess.js';
@@ -349,7 +349,10 @@ router.post('/import/chesscom', async (c) => {
   const username = parsed.data.username ?? linkedUsername;
   if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
 
-  if (chesscomImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
+  if (chesscomImportsRunning.has(user.id) ||
+      getHistoryStatus(user.id, 'chesscom', linkedUsername).state === 'running') {
+    return c.json({ error: 'import_in_progress' }, 429);
+  }
   chesscomImportsRunning.add(user.id);
   try {
     const player = await getPlayer(username);
@@ -392,61 +395,55 @@ router.post('/import/lichess', async (c) => {
   if (!linkedUsername) return c.json({ error: 'no_lichess_username' }, 400);
   const username = parsed.data.username ?? linkedUsername;
   if (username.toLowerCase() !== linkedUsername.toLowerCase()) return c.json({ error: 'linked_account_mismatch' }, 403);
-  if (lichessImportsRunning.has(user.id)) return c.json({ error: 'import_in_progress' }, 429);
+  if (lichessImportsRunning.has(user.id) ||
+      getHistoryStatus(user.id, 'lichess', linkedUsername).state === 'running') {
+    return c.json({ error: 'import_in_progress' }, 429);
+  }
 
-  let games;
   lichessImportsRunning.add(user.id);
   try {
-    games = await fetchLichessGames(username, { max: parsed.data.limit, since: parsed.data.since });
+    return c.json(await importRecentLichessGames(user.id, username, parsed.data.limit, parsed.data.since));
   } catch (e) {
     const code = (e as Error).message;
+    if (code === 'linked_account_changed') return c.json({ error: code }, 409);
     if (code === 'not_found') return c.json({ error: 'player_not_found' }, 404);
     if (code === 'rate_limited') return c.json({ error: 'lichess_rate_limited' }, 429);
     if (code === 'invalid_username') return c.json({ error: 'invalid_input' }, 400);
-    return c.json({ error: 'lichess_unavailable' }, 502);
+    // Database failures must remain 500s, not be disguised as provider errors.
+    // The writer transaction will already have rolled back the entire batch.
+    if (code === 'invalid_export' || code.startsWith('lichess_') ||
+        /fetch failed|network|timed out|timeout|abort|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT/i.test(code) ||
+        (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'))) {
+      return c.json({ error: 'lichess_unavailable' }, 502);
+    }
+    throw e;
   } finally {
     lichessImportsRunning.delete(user.id);
   }
+});
 
-  // Same rules as the chess.com importer: never rated in Patzer's pool, and
-  // the (user, source, external_id) key makes a re-import a no-op.
-  const stmt = db.prepare(`
-    INSERT INTO games (user_id, source, external_id, pgn, white, black, result, time_control, time_class, end_time, user_color, rated, eco, opening_name)
-    VALUES (?, 'lichess', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-    ON CONFLICT(user_id, source, external_id) DO NOTHING
-  `);
-  const enrichOpening = prepareImportedOpeningEnrichment(db);
-  const rows: NonNullable<ReturnType<typeof toImportRow>>[] = [];
-  for (const g of games) {
-    const row = toImportRow(g, username);
-    if (row) rows.push(row);
+/** Start a full public-history import without making a potentially hour-long
+ * HTTP request. The authenticated Library polls status while batches commit. */
+router.post('/import/history/:source', async (c) => {
+  const source = c.req.param('source');
+  if (source !== 'chesscom' && source !== 'lichess') return c.json({ error: 'invalid_input' }, 400);
+  const user = c.get('user');
+  const username = (source === 'chesscom' ? user.profile.chesscom_username : user.profile.lichess_username)?.trim();
+  if (!username) return c.json({ error: `no_${source}_username` }, 400);
+  if (source === 'chesscom' && chesscomImportsRunning.has(user.id) ||
+      source === 'lichess' && lichessImportsRunning.has(user.id)) {
+    return c.json({ error: 'import_in_progress' }, 429);
   }
-  const skipped = games.length - rows.length;
-  try {
-    const result = db.transaction(() => {
-      const linked = db.prepare('SELECT lichess_username AS username FROM profiles WHERE user_id = ?')
-        .get(user.id) as { username: string | null } | undefined;
-      if (linked?.username?.toLowerCase() !== username.toLowerCase()) throw new Error('linked_account_changed');
-      let imported = 0;
-      let duplicates = 0;
-      let enriched = 0;
-      for (const row of rows) {
-        const r = stmt.run(user.id, row.external_id, row.pgn, row.white, row.black, row.result,
-          row.time_control, row.time_class, row.end_time, row.user_color, row.eco, row.opening_name);
-        if (r.changes > 0) imported++;
-        else {
-          duplicates++;
-          if (enrichOpening(user.id, 'lichess', row.external_id, row.pgn,
-            {eco: row.eco, openingName: row.opening_name})) enriched++;
-        }
-      }
-      return { imported, total: games.length, skipped, duplicates, enriched };
-    })();
-    return c.json(result);
-  } catch (error) {
-    if ((error as Error).message === 'linked_account_changed') return c.json({ error: 'linked_account_changed' }, 409);
-    throw error;
-  }
+  return c.json(startHistoryImport(user.id, source, username), 202);
+});
+
+router.get('/import/history/:source', (c) => {
+  const source = c.req.param('source');
+  if (source !== 'chesscom' && source !== 'lichess') return c.json({ error: 'invalid_input' }, 400);
+  const user = c.get('user');
+  const username = (source === 'chesscom' ? user.profile.chesscom_username : user.profile.lichess_username)?.trim();
+  if (!username) return c.json({ error: `no_${source}_username` }, 400);
+  return c.json(getHistoryStatus(user.id, source, username));
 });
 
 const pgnImportSchema = z.object({pgn: z.string().min(1)}).strict();

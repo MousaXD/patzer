@@ -36,6 +36,9 @@ type HistoryDeps = {
   delay?: (ms: number) => Promise<void>;
   onMonth?: (progress: HistoryProgress) => void | Promise<void>;
   alreadyCompleted?: ReadonlySet<string>;
+  // The linked account can change while a multi-year archive downloads.
+  // Recheck ownership inside each monthly write transaction, not only on start.
+  verifyAccount?: () => void;
 };
 
 function retryable(error: unknown): boolean {
@@ -132,7 +135,7 @@ export async function importChessComHistory(
   }
   const delay = deps.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const archives = await retryChessCom(() => (deps.archives ?? listArchives)(username), delay);
-  if (!archives.length) throw new Error('no_archives');
+  // A valid account with no archived games has a complete (empty) history.
   // Source URLs must be authentic even when an injected client is used.
   const safeArchives = [...new Set(archives.map((url) => {
     let parsed: URL;
@@ -157,6 +160,7 @@ export async function importChessComHistory(
     ON CONFLICT(user_id, source, external_id) DO NOTHING
   `);
   const insertMonth = database.transaction((games: ChessComGame[]) => {
+    deps.verifyAccount?.();
     let added = 0;
     let duplicates = 0;
     let skipped = 0;

@@ -237,17 +237,85 @@ describe('Review library with large histories', () => {
     expect(screen.getByRole('button',{name:'Import PGN file'}).hasAttribute('disabled')).toBe(true);
   });
 
-  it('guides linked chess players toward recent imports without duplicating account setup', async () => {
+  it('guides linked chess players toward complete history first without duplicating account setup', async () => {
     mocks.user.profile.chesscom_username='linkedplayer';
     mocks.get.mockImplementation(async (url:string) => url === '/api/games/openings'
       ? {total:0,classified:0,unclassified:0,openings:[]}
       : {games:[],total:0,offset:0,limit:40,has_more:false});
     mount();
     expect(await screen.findByText('Your game history starts here')).toBeTruthy();
-    expect(screen.getByText(/Import recent games above, or choose a PGN file/)).toBeTruthy();
+    expect(screen.getByText(/Import your complete history above, or choose a PGN file/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Import all games'})).toBeTruthy();
     expect(screen.queryByRole('link',{name:'Connect a chess account'})).toBeNull();
     expect(screen.getByRole('button',{name:'Choose a PGN file to get started'})).toBeTruthy();
     expect(screen.getByRole('button',{name:/@linkedplayer/})).toBeTruthy();
+  });
+
+  it('starts the full-history job and reports progress instead of applying the 200-game batch cap', async () => {
+    mocks.user.profile.chesscom_username='linkedplayer';
+    let running=false;
+    mocks.get.mockImplementation(async (url:string) => {
+      if (url==='/api/games/import/history/chesscom') return {
+        source:'chesscom',username:'linkedplayer',state:running?'running':'idle',
+        fetched:running?320:0,imported:running?300:0,duplicates:20,skipped:0,
+        enriched:0,completed:running?4:0,total:12,unit:'months',
+      };
+      if (url==='/api/games/openings') return {total:0,classified:0,unclassified:0,openings:[]};
+      return {games:[],total:0,offset:0,limit:40,has_more:false};
+    });
+    mocks.post.mockImplementation(async (url:string) => {
+      if (url!=='/api/games/import/history/chesscom') throw new Error('unexpected_post');
+      running=true;
+      return {source:'chesscom',username:'linkedplayer',state:'running',
+        fetched:0,imported:0,duplicates:0,skipped:0,enriched:0,completed:0,total:null,unit:'months'};
+    });
+    mount();
+    expect(await screen.findByText('Your game history starts here')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Import all games'}));
+    await waitFor(()=>expect(mocks.post).toHaveBeenCalledWith('/api/games/import/history/chesscom',{}));
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+    await waitFor(()=>expect(screen.getByText(/320 games checked/)).toBeTruthy());
+    expect(screen.getByText(/300 new games saved/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Importing full history…'}).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button',{name:/review\.import \(@linkedplayer\)/}).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('lets a failed full-history job restart without losing already-saved games', async () => {
+    mocks.user.profile.lichess_username='linkedplayer';
+    mocks.get.mockImplementation(async (url:string) => {
+      if(url==='/api/games/import/history/lichess') return {
+        source:'lichess',username:'linkedplayer',state:'error',error:'rate_limited',
+        fetched:130,imported:100,duplicates:30,skipped:0,enriched:0,completed:1,total:null,unit:'games',
+      };
+      if(url==='/api/games/openings') return {total:0,classified:0,unclassified:0,openings:[]};
+      return {games:[],total:0,offset:0,limit:40,has_more:false};
+    });
+    mocks.post.mockResolvedValue({source:'lichess',username:'linkedplayer',state:'running',
+      fetched:0,imported:0,duplicates:0,skipped:0,enriched:0,completed:0,total:null,unit:'games'});
+    mount();
+    expect(await screen.findByText('Your game history starts here')).toBeTruthy();
+    await screen.findByRole('button',{name:'Retry full import'});
+    expect(screen.getByText(/Import paused after saving 100 games/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Retry full import'}));
+    await waitFor(()=>expect(mocks.post).toHaveBeenCalledWith('/api/games/import/history/lichess',{}));
+  });
+
+  it('keeps full-history progress visible after the library fills or the page is reloaded', async () => {
+    mocks.user.profile.chesscom_username='linkedplayer';
+    mocks.get.mockImplementation(async (url:string)=>{
+      if(url==='/api/games/import/history/chesscom') return {
+        source:'chesscom',username:'linkedplayer',state:'running',
+        fetched:500,imported:480,duplicates:20,skipped:0,enriched:0,
+        completed:5,total:15,unit:'months',
+      };
+      if(url==='/api/games/openings') return {total:0,classified:0,unclassified:0,openings:[]};
+      return {games:[makeGame(1)],total:1,offset:0,limit:40,has_more:false};
+    });
+    mount();
+    expect(await screen.findByText('1 of 1 games')).toBeTruthy();
+    expect(await screen.findByText(/500 games checked/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Importing full history…'})).toBeTruthy();
+    expect(document.getElementById('library-import-controls')?.hasAttribute('hidden')).toBe(false);
   });
   it('uploads a local PGN without linked provider accounts, reports actual saved/duplicate counts and clears selection', async () => {
     mocks.post.mockResolvedValue({total:2,imported:1,duplicates:1});
