@@ -1,6 +1,6 @@
 # Patzer MCP integration: audited connection guide
 
-**Status:** Patzer API + Stockfish integration tested against an isolated real Patzer instance. OpenAI Secure MCP Tunnel and ChatGPT installation **not yet provisioned or tested**, and remain dependent on an actual Platform `tunnel_id`, runtime key, workspace permissions, and Patzer credentials.
+**Status:** The local Patzer API/Stockfish bridge and MCP transport have automated tests. A working connection to **your ChatGPT workspace** requires your own Platform tunnel, runtime credential and plugin permission; local tests alone do **not** prove that ChatGPT is connected. The optional Linux localhost wizard is documented in [MCP_CONNECTION_WIZARD.md](../../docs/MCP_CONNECTION_WIZARD.md).
 
 ## Architecture and current limitations
 
@@ -15,14 +15,14 @@ Both transports authenticate to Patzer through `/api/auth/login` using locally c
 
 `list_games`, `get_game`, `analyze_game`, `analyze_position`, `get_game_review`, `generate_game_review`, `import_chesscom_games`, `import_lichess_games`.
 
-Importing games and generating reviews create/modify Patzer records. Stockfish analysis caches results and uses CPU; generating AI prose requires a separately configured LLM in Patzer. Patzer's current `/api/games` endpoint has no offset pagination: this integration retrieves only the most recent 100 games.
+Importing games and generating reviews create/modify Patzer records. Stockfish analysis caches results and uses CPU; generating AI prose requires a separately configured LLM in Patzer. Patzer's `/api/games` **supports server-side pagination**, but this version of the MCP `list_games` tool makes **one request capped at 100 recent games**. For the complete stored history, use the web Library's pagination and search. The MCP import tools remain limited to 200 **recent** games per call; **Library → Import all games** handles full public Chess.com/Lichess history.
 
-## 1. Start the existing Patzer app (your real database)
+## 1. Start the forked Patzer app
 
-Use the **historical original checkout**, not the fork (the fork does not include your saved games):
+Use your existing checkout of [MousaXD/patzer](https://github.com/MousaXD/patzer) or a fresh clone. To preserve your saved games, use the original installation's existing database **only after a verified backup and with only one running server writing to it**. Do not assume two independent installations have the same database:
 
 ```sh
-cd ~/projects/my-creations/chess/patzer
+cd /absolute/path/to/patzer
 HOST=127.0.0.1 npm run dev
 ```
 
@@ -31,11 +31,13 @@ The API is at `http://127.0.0.1:8800`; web development UI at `http://127.0.0.1:5
 ## 2. Configure Patzer credentials locally
 
 ```sh
-cd ~/projects/my-creations/chess/patzer-mcp
+cd /absolute/path/to/patzer
 bash integrations/mcp/scripts/configure-local.sh
 ```
 
 The script prompts for your existing Patzer username and password directly in your local terminal, **hides password input**, stores the password separately in a mode-600 local file, writes an untracked `.env` pointing to it, then calls `list_games` through the actual Patzer API. You never need to send credentials to ChatGPT, pass passwords in CLI arguments, or source `.env` as a shell script. To change the credentials, run the script again.
+
+The script defaults to Patzer at `127.0.0.1:8800`. If your app is on another local port (for example, `8810`), change only `PATZER_URL` inside the private `integrations/mcp/.env` file before running the test again; do not publish that file.
 
 
 Node.js 22+ is required by this integration. The bridge refuses to send the Patzer password to a non-loopback `PATZER_URL` by default. If Patzer runs on another machine, review the network and TLS requirements first; `PATZER_ALLOW_REMOTE=true` explicitly overrides this guard.
@@ -54,7 +56,7 @@ Follow OpenAI's current documentation: https://developers.openai.com/api/docs/gu
 
 Requirements: a Platform `tunnel_id`, a limited-scope Platform runtime API key, and permission **Tunnels Read + Use**; tunnel creation requires **Tunnels Read + Manage**. The tunnel must be associated with the intended ChatGPT workspace. A **Business** workspace only allows admins/owners to create custom MCP plugins; Enterprise/Edu allow authorized developers according to workspace RBAC. Verify those permissions before proceeding.
 
-On the audited Pop!_OS machine, I installed OpenAI `tunnel-client` v0.0.20 at `~/.local/bin/tunnel-client` from the official release and verified its published SHA-256 checksum. If using another machine, download the current supported binary from the official Platform tunnel settings or https://github.com/openai/tunnel-client/releases/latest. Check its local help:
+Download the current supported `tunnel-client` binary for your machine from the official Platform tunnel settings or https://github.com/openai/tunnel-client/releases/latest. Verify its release checksum and check its local help. Do not assume the previously audited version is still current:
 
 ```sh
 tunnel-client help quickstart
@@ -66,7 +68,7 @@ Create a tunnel in https://platform.openai.com/ settings, then from your own ter
 read -rs -p 'Platform tunnel runtime key: ' CONTROL_PLANE_API_KEY; echo
 export CONTROL_PLANE_API_KEY
 # Substitute your own real tunnel_ ID (never use an example as a real ID).
-tunnel-client init --sample sample_mcp_stdio_local --profile patzer --tunnel-id 'tunnel_YOUR_REAL_ID' --mcp-command '/home/mousa/.local/share/pnpm/bin/node /home/mousa/projects/my-creations/chess/patzer-mcp/integrations/mcp/stdio.mjs'
+tunnel-client init --sample sample_mcp_stdio_local --profile patzer --tunnel-id 'tunnel_YOUR_REAL_ID' --mcp-command '/absolute/path/to/node22 /absolute/path/to/patzer/integrations/mcp/stdio.mjs'
 tunnel-client doctor --profile patzer --explain
 tunnel-client run --profile patzer
 ```
@@ -96,20 +98,15 @@ node integrations/mcp/integration-real.mjs
 
 `integration-real.mjs` launches the source Patzer app with a new **temporary database**, creates a disposable test account/game, and confirms API login, Stockfish position and game analysis, cached game review, and the expected no-LLM error. It never touches your original database. Pass `PATZER_SOURCE=/path/to/installed/patzer` if your checkout is elsewhere.
 
-A real AI-coach generation requires a configured Ollama/vLLM server and remains untested. OpenAI tunnel-client transport, ChatGPT installation, and authenticated calls from ChatGPT remain untested until provisioned. The existing Tailscale Funnel `https://pop-os.tail809c0b.ts.net` / Chat On Steroids gateway has not been changed.
+A real AI-coach generation requires a configured Ollama/vLLM server. An OpenAI tunnel, ChatGPT installation and authenticated calls from ChatGPT must each be verified against the **specific configured workspace**; the repository's integration tests do not perform those steps. This guide makes no changes to existing Tailscale or other gateways.
 
 ## Why not reuse the public Tailscale Funnel directly?
 
 As of November 2026 ChatGPT custom MCP connections support OAuth/no-auth, not arbitrary API-key headers. A public Funnel exposing the HTTP bridge with only a Bearer-key requirement will **not connect to ChatGPT web**. Exposing it without authentication would be dangerous. A public-facing production endpoint would need OAuth 2.1 and associated authorization flow, which is not implemented by this bridge. The private Secure MCP Tunnel avoids a new public ingress entirely.
 
-## Current installation status on the audited machine
+## Check your own installation status
 
-- Existing original Patzer production server: **running** via `systemctl --user status patzer.service`, serving `http://localhost:8800`, binding **127.0.0.1:8800**. Service auto-starts in the user's systemd session.
-- Existing chess database: 21 games and 13 analyses at the time of setup. Verified SQLite backup created in the original installation's `data/backups/` directory before starting the service.
-- `tunnel-client`: v0.0.20 installed at `~/.local/bin/tunnel-client` with official SHA256SUMS check passing.
-- MCP source and tests: present at `~/projects/my-creations/chess/patzer-mcp/integrations/mcp/`; stdio transport works with MCP Inspector.
-- **Still not connected to ChatGPT**: no local Patzer credentials `.env`, no Platform tunnel ID or runtime key, and no live ChatGPT plugin setup. Do not expose the HTTP bridge publicly to bypass this.
-- Existing Chat On Steroids Tailscale gateway remains unchanged.
+Use `curl http://127.0.0.1:8800/api/health` (substituting your local port), run the MCP tests shown above and check the **Admin → ChatGPT / MCP** wizard. It can report service readiness and test the bridge's real Patzer login. **Only a successful MCP call from your ChatGPT workspace** verifies that your ChatGPT plugin is installed and selected. Do not interpret older local audit notes, demo screenshots or the state of any other installation as evidence that your account is connected.
 
 ### Patzer website MCP wizard
 

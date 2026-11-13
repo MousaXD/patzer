@@ -1,0 +1,12 @@
+# Use with the upstream-compatible base Compose file:
+# docker compose -f docker-compose.yml -f docker-compose.fork.yml up -d --build
+#
+# Prevent the inherited config from pulling/updating the original maintainer's
+# image. This explicitly builds the current MousaXD/patzer checkout instead.
+services:
+  patzer:
+    image: patzer-fork:local
+    build:
+      context: .
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
