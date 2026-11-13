@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Download, Upload, Trophy, Frown, Equal, BookOpen, Inbox, Settings as SettingsIcon, Star, Search, X, RefreshCw, SlidersHorizontal, CalendarDays } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
 import { fmtAccuracy, fmtTimeControl } from '../lib/utils';
@@ -119,6 +119,21 @@ export default function Review() {
   const [bookmarkFailures, setBookmarkFailures] = useState<{id:number; players:string}[]>([]);
   const [importLimit, setImportLimit] = useState<(typeof IMPORT_BATCH_SIZES)[number]>(200);
   const [importPanelOpen, setImportPanelOpen] = useState(false);
+  const [refreshingRecent, setRefreshingRecent] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const datePickerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!datePickerOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!datePickerRef.current?.contains(event.target as Node)) setDatePickerOpen(false);
+    };
+    const closeEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setDatePickerOpen(false); datePickerRef.current?.querySelector<HTMLButtonElement>('button')?.focus(); }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeEscape);
+    return () => { document.removeEventListener('pointerdown', closeOutside); document.removeEventListener('keydown', closeEscape); };
+  }, [datePickerOpen]);
   const [dateAdjustment, setDateAdjustment] = useState<'start' | 'end' | null>(null);
   useEffect(() => {
     // Browser Back/Forward restores URL-owned filters rather than performing
@@ -196,8 +211,7 @@ export default function Review() {
   // Only count fields in the advanced panel. Opening/opponent and Starred
   // selection already have their own visible controls or labels.
   const advancedFilterCount = Object.entries(filters)
-    .filter(([key,value]) => value && !(key === 'sort' && value === 'newest')).length +
-    Number(Boolean(fromDate)) + Number(Boolean(toDate));
+    .filter(([key,value]) => value && !(key === 'sort' && value === 'newest')).length;
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(advancedFilterCount > 0);
   useEffect(() => {
     // A bookmarked/deep-linked URL can restore advanced filters while the
@@ -500,6 +514,27 @@ export default function Review() {
   ];
   const linked = sources.filter((s) => s.username);
 
+  // A single always-visible action fetches only the newest ten public games
+  // per connected account; existing duplicates and analysis are preserved.
+  async function refreshRecentGames() {
+    if (!user || linked.length === 0 || refreshingRecent || importMut.isPending || historyRunning) return;
+    setRefreshingRecent(true);
+    try {
+      for (const source of linked) {
+        if (accountIdRef.current !== user.id) return;
+        try {
+          await importMut.mutateAsync({source:source.source, accountId:user.id, limit:10});
+        } catch {
+          // The mutation reports a provider-specific error. Stop rather than
+          // racing another source after an unexpected failure.
+          return;
+        }
+      }
+    } finally {
+      setRefreshingRecent(false);
+    }
+  }
+
   // A full import runs independently of the page. Poll its account-scoped
   // status so navigation/reloads do not interrupt a multi-year catch-up.
   const historyQueryKey = ['games', 'history-status', user?.id,
@@ -611,6 +646,13 @@ export default function Review() {
           <p className="page-sub">{t('review.subtitle', { defaultValue: 'Browse, analyze and learn from your games.' })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary min-h-10 gap-2 text-sm"
+            disabled={linked.length === 0 || refreshingRecent || importMut.isPending || historyRunning || historyStartMut.isPending}
+            onClick={() => void refreshRecentGames()}
+            title={t('review.refreshLastTen', {defaultValue:'Refresh last 10 games'})}>
+            <RefreshCw className={cn('h-4 w-4', refreshingRecent && 'animate-spin')} aria-hidden="true" />
+            {t('review.refreshLastTen', {defaultValue:'Refresh last 10 games'})}
+          </button>
           {linked.length === 0 && (total > 0 || !!q || activeFilters || bookmarkedOnly || initialError) && (
             <Link to="/settings" className="btn-secondary min-h-10 text-sm">
               <SettingsIcon className="h-4 w-4" /> {t('review.setUsername', { defaultValue: 'Set Chess.com username' })}
@@ -961,6 +1003,47 @@ export default function Review() {
           <Star className={cn('h-3.5 w-3.5', bookmarkedOnly && 'fill-gold-500')} />
           {bookmarkedOnly ? t('review.starredFilterOn', { defaultValue: 'Starred only' }) : t('review.starredFilterOff', { defaultValue: 'All games' })}
         </button>
+        <div ref={datePickerRef} className="relative">
+          <button type="button" aria-controls="library-date-range" aria-expanded={datePickerOpen}
+            aria-haspopup="true" onClick={() => setDatePickerOpen(open => !open)}
+            className={cn('btn-secondary min-h-11 gap-2 text-xs', (fromDate || toDate) && 'border-gold-500 text-gold-700 dark:text-gold-400')}>
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            {t('review.dateRangeButton', {defaultValue:'Dates'})}
+            {(fromDate || toDate) && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-gold-500" />}
+          </button>
+          {datePickerOpen && (
+            <div id="library-date-range" role="group" aria-label={t('review.dateRange', {defaultValue:'Game date range'})}
+              className="absolute right-0 top-full z-30 mt-2 w-[min(19rem,calc(100vw-2.5rem))] space-y-3 rounded-lg border border-chesscom-200 bg-white p-3 shadow-xl dark:border-chesscom-700 dark:bg-chesscom-800">
+              <label className="block text-xs text-chesscom-500 dark:text-chesscom-300">
+                <span className="mb-1 block">{t('review.fromDate', {defaultValue:'From date'})}</span>
+                <input aria-label={t('review.gamesFromDate', {defaultValue:'Games from date'})} type="date" value={fromDate}
+                  onChange={(e) => updateDateFilter('from_date', e.target.value)}
+                  className="input !min-h-11 w-full min-w-0 text-sm" />
+              </label>
+              <label className="block text-xs text-chesscom-500 dark:text-chesscom-300">
+                <span className="mb-1 block">{t('review.throughDate', {defaultValue:'Through date'})}</span>
+                <input aria-label={t('review.gamesThroughDate', {defaultValue:'Games through date'})} type="date" value={toDate}
+                  onChange={(e) => updateDateFilter('to_date', e.target.value)}
+                  className="input !min-h-11 w-full min-w-0 text-sm" />
+              </label>
+              {dateAdjustment && navigationType !== 'POP' && <p role="status" className="text-xs leading-relaxed text-chesscom-600 dark:text-chesscom-300">
+                {dateAdjustment === 'end'
+                  ? t('review.libraryEndDateCleared', {defaultValue:'End date cleared because it is before the new start date.'})
+                  : t('review.libraryStartDateCleared', {defaultValue:'Start date cleared because it is after the new end date.'})}
+              </p>}
+              <div className="flex justify-end gap-2">
+                <button type="button" className="btn-secondary min-h-11 text-xs" onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('from_date'); next.delete('to_date');
+                  setDateAdjustment(null); setSearchParams(next);
+                }}>{t('review.clearDates', {defaultValue:'Clear'})}</button>
+                <button type="button" className="btn-primary min-h-11 text-xs" onClick={() => setDatePickerOpen(false)}>
+                  {t('review.doneDates', {defaultValue:'Done'})}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <button type="button" aria-controls="library-filters" aria-expanded={mobileFiltersOpen}
           onClick={() => setMobileFiltersOpen(open => !open)}
           className="btn-secondary min-h-11 gap-2 text-sm sm:hidden">
@@ -1024,25 +1107,6 @@ export default function Review() {
             </select>
           </label>;
         })}
-        <div role="group" aria-label={t('review.dateRange', {defaultValue: 'Game date range'})} className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
-          <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
-            <span className="mb-1 block">{t('review.fromDate', {defaultValue: 'From date'})}</span>
-            <input aria-label={t('review.gamesFromDate', {defaultValue: 'Games from date'})} type="date" value={fromDate}
-              onChange={(e) => updateDateFilter('from_date', e.target.value)}
-              className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
-          </label>
-          <label className="block min-w-0 text-xs text-chesscom-500 dark:text-chesscom-300">
-            <span className="mb-1 block">{t('review.throughDate', {defaultValue: 'Through date'})}</span>
-            <input aria-label={t('review.gamesThroughDate', {defaultValue: 'Games through date'})} type="date" value={toDate}
-              onChange={(e) => updateDateFilter('to_date', e.target.value)}
-              className="input !min-h-11 w-full min-w-0 text-xs sm:w-40" />
-          </label>
-          {dateAdjustment && navigationType !== 'POP' && <p role="status" className="col-span-2 text-xs leading-relaxed text-chesscom-600 dark:text-chesscom-300 sm:max-w-64">
-            {dateAdjustment === 'end'
-              ? t('review.libraryEndDateCleared', {defaultValue:'End date cleared because it is before the new start date.'})
-              : t('review.libraryStartDateCleared', {defaultValue:'Start date cleared because it is after the new end date.'})}
-          </p>}
-        </div>
         {(activeFilters || bookmarkedOnly || q) && !emptyFilteredResults && <button type="button" className="btn-secondary col-span-2 text-xs sm:w-auto"
           onClick={clearLibraryFilters}>{t('review.clearLibraryFilters', { defaultValue: 'Clear filters' })}</button>}
       </div>

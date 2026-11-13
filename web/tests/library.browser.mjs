@@ -757,7 +757,8 @@ try {
     assert.ok(layout.overflow<=2,'German Library must not overflow at 320px');
     const starred=await page.getByRole('button',{name:'Alle Partien',exact:true}).boundingBox();
     const searchBox=await page.getByRole('searchbox').boundingBox();
-    const controlSizes=await page.locator('#library-filters select, #library-filters input[type="date"]').evaluateAll(nodes=>nodes.map(node=>({
+    await page.getByRole('button',{name:'Dates'}).click();
+    const controlSizes=await page.locator('#library-filters select, #library-date-range input[type="date"]').evaluateAll(nodes=>nodes.map(node=>({
       label:node.getAttribute('aria-label'), height:node.getBoundingClientRect().height,
       width:node.getBoundingClientRect().width,
       x:node.getBoundingClientRect().x,
@@ -799,12 +800,14 @@ try {
   try {
     const {page,pageErrors}=invertedDates;
     await page.goto(`${url}/review?from_date=2026-11-09&to_date=2026-11-01`);
+    await page.getByRole('button',{name:'Dates'}).click();
     const start=page.getByLabel('Games from date');
     const end=page.getByLabel('Games through date');
     assert.equal(await start.inputValue(),'2026-11-09');
     assert.equal(await end.inputValue(),'');
     await page.waitForURL(href=>!(new URL(href)).searchParams.has('to_date'));
     await page.reload();
+    await page.getByRole('button',{name:'Dates'}).click();
     assert.equal(await end.inputValue(),'');
     await start.fill('');
     await page.waitForURL(href=>!(new URL(href)).searchParams.has('from_date'));
@@ -817,6 +820,7 @@ try {
   try {
     const {page,pageErrors}=editableDates;
     await page.goto(`${url}/review?from_date=2026-11-01&to_date=2026-11-08`);
+    await page.getByRole('button',{name:'Dates'}).click();
     const start=page.getByLabel('Games from date');
     const end=page.getByLabel('Games through date');
     assert.equal(await start.inputValue(),'2026-11-01');
@@ -918,6 +922,7 @@ try {
     try {
       const {page,pageErrors}=emptyRecovery;
       await page.getByRole('combobox',{name:'Game source'}).selectOption('lichess');
+      await page.getByRole('button',{name:'Dates'}).click();
       await page.getByLabel('Games from date').fill('2025-01-01');
       const search=page.getByRole('searchbox');
       await search.fill('no-such-player-84841');
@@ -956,6 +961,7 @@ try {
   try {
     const {page,pageErrors}=germanDateNotice;
     await page.goto(`${url}/review?from_date=2026-11-01&to_date=2026-11-08`);
+    await page.getByRole('button',{name:'Dates'}).click();
     await page.getByLabel('Partien ab Datum').fill('2026-11-09');
     const notice=page.getByRole('group',{name:'Datumsbereich für Partien'}).getByRole('status');
     await notice.getByText('Das Enddatum wurde entfernt, weil es vor dem neuen Startdatum liegt.').waitFor();
@@ -1824,7 +1830,8 @@ try {
     await page.getByText('40 of 620 games').waitFor();
     // Calendar-day filtering must search the server-side full history and
     // include the entire selected ending day, not just midnight.
-    await page.getByLabel('Games from date').fill('2026-10-01');
+    await page.getByRole('button',{name:'Dates'}).click();
+      await page.getByLabel('Games from date').fill('2026-10-01');
     await page.getByLabel('Games through date').fill('2026-10-05');
     await page.getByText('5 of 5 games').waitFor();
     assert.ok(queries.some(p => p.includes('from_date=2026-10-01') && p.includes('to_date=2026-10-05')),

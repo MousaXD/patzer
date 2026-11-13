@@ -70,6 +70,10 @@ function mount(initial = '/review') {
   return { ...result, queryClient, rerenderReview: () => result.rerender(view()) };
 }
 
+function openDateRange() {
+  if (!screen.queryByRole('group', {name:'Game date range'})) fireEvent.click(screen.getByRole('button', {name:'Dates'}));
+}
+
 function openImportOptions() {
   fireEvent.click(screen.getByRole('button',{name:'Import more games'}));
 }
@@ -90,6 +94,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('Review library with large histories', () => {
+  it('keeps one refresh action visible and fetches only ten games from a linked provider', async () => {
+    mocks.user.profile.chesscom_username = 'linked';
+    mocks.post.mockResolvedValue({imported:0,total:10,duplicates:10,skipped:0,enriched:0});
+    mount();
+    await screen.findByText('40 of 1,000 games');
+    const refresh = screen.getByRole('button',{name:'Refresh last 10 games'});
+    expect(refresh.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button',{name:'Import more games'})).toBeTruthy();
+    fireEvent.click(refresh);
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/api/games/import/chesscom',{limit:10}));
+    await waitFor(() => expect(refresh.hasAttribute('disabled')).toBe(false));
+    expect(screen.getByRole('button',{name:'Import more games'})).toBeTruthy();
+  });
+
+  it('offers a compact Dates button and clears only the date range from its popover', async () => {
+    mount('/review?source=lichess&from_date=2026-01-01&to_date=2026-11-08');
+    await screen.findByText('40 of 1,000 games');
+    expect(screen.queryByLabelText('Games from date')).toBeNull();
+    const dates = screen.getByRole('button',{name:'Dates'});
+    expect(dates.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(dates);
+    expect(dates.getAttribute('aria-expanded')).toBe('true');
+    expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe('2026-01-01');
+    fireEvent.click(screen.getByRole('button',{name:'Clear'}));
+    await waitFor(() => expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe(''));
+    expect((screen.getByRole('combobox',{name:'Game source'}) as HTMLSelectElement).value).toBe('lichess');
+    fireEvent.click(screen.getByRole('button',{name:'Done'}));
+    expect(dates.getAttribute('aria-expanded')).toBe('false');
+  });
   it('prioritizes game exploration and exposes import controls on demand in a populated library', async () => {
     mocks.user.profile.chesscom_username = 'linked';
     mount();
@@ -790,6 +823,7 @@ describe('Review library with large histories', () => {
       const p = new URLSearchParams(String(url).split('?')[1]);
       return p.get('from_date') === '2026-01-01' && p.get('to_date') === '2026-11-08';
     })).toBe(true);
+    openDateRange();
     const start = screen.getByLabelText('Games from date') as HTMLInputElement;
     const end = screen.getByLabelText('Games through date') as HTMLInputElement;
     expect(start.value).toBe('2026-01-01');
@@ -816,6 +850,7 @@ describe('Review library with large histories', () => {
   it('does not revive a hidden end date when an inverted deep-link start is cleared', async () => {
     mount('/review?from_date=2026-11-09&to_date=2026-11-01');
     await screen.findByText(/40 of 1,000 games/);
+    openDateRange();
     const start=screen.getByLabelText('Games from date') as HTMLInputElement;
     const end=screen.getByLabelText('Games through date') as HTMLInputElement;
     expect(start.value).toBe('2026-11-09');
@@ -828,6 +863,7 @@ describe('Review library with large histories', () => {
   it('ignores invalid date-range deep links instead of sending them to the API', async () => {
     mount('/review?from_date=2026-02-30&to_date=2026-13-01');
     await screen.findByText(/40 of 1,000 games/);
+    openDateRange();
     expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Games through date') as HTMLInputElement).value).toBe('');
     expect(mocks.get.mock.calls.every(([url]) => {
@@ -933,6 +969,7 @@ describe('Review library with large histories', () => {
     for (const label of ['Game source','Game speed','Game result','Review status','Sort games']) {
       expect(screen.getByRole('combobox',{name:label}).className,label).toContain('!min-h-11');
     }
+    openDateRange();
     for (const label of ['Games from date','Games through date']) {
       expect(screen.getByLabelText(label).className,label).toContain('!min-h-11');
     }
@@ -954,11 +991,13 @@ describe('Review library with large histories', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('reveals advanced filters and counts them on a shared source/date deep link', async () => {
+  it('keeps the dates shortcut visible while restoring other advanced filters from a deep link', async () => {
     mount('/review?source=lichess&from_date=2025-01-01');
-    const toggle=screen.getByRole('button',{name:'Filters (2)'});
+    const toggle=screen.getByRole('button',{name:'Filters (1)'});
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect((screen.getByRole('combobox',{name:'Game source'}) as HTMLSelectElement).value).toBe('lichess');
+    openDateRange();
+    openDateRange();
     expect((screen.getByLabelText('Games from date') as HTMLInputElement).value).toBe('2025-01-01');
   });
 
