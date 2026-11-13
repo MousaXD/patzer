@@ -934,7 +934,7 @@ function GameAnalyzerView() {
       <h1 id="full-game-review-heading" tabIndex={-1} className="sr-only focus:outline-none">
         {t('review.title')} — {data.game.white} versus {data.game.black}
       </h1>
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="review-page-toolbar mb-3 flex items-center justify-between gap-3">
         <Link to="/review" className="btn-ghost text-sm shrink-0"><ChevronLeft className="h-4 w-4" />{t('common.back')}</Link>
         <div className="min-w-0 truncate text-right text-sm text-chesscom-500">
           <span className="font-medium text-chesscom-900 dark:text-chesscom-100">{data.game.white}</span> vs{' '}

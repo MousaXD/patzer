@@ -486,10 +486,9 @@ select[data-shell-language] { background-image:none; }
  .ui-tab[aria-selected='true'] { outline:2px solid Highlight; outline-offset:-2px; }
 }
 
-/* Game Review cockpit: phone and tablet layouts remain compact and readable.
-   Desktop uses the available workspace: the board is the primary surface and
-   the details rail sits against the right side, rather than centering both in
-   a narrow, height-capped island. Natural page scrolling avoids clipping. */
+/* Game Review cockpit: mobile stays stacked. On desktop frame the board and
+   sidebar together as one centered workspace, matching the reference site's
+   ~740px board / ~444px rail / ~24px gap at a typical laptop viewport. */
 .review-workspace { display:flex; flex-direction:column; gap:1rem; min-width:0; }
 .review-board-column { width:100%; min-width:0; max-width:760px; margin-inline:auto; }
 .review-board-square { min-width:0; max-width:100%; }
@@ -525,21 +524,41 @@ select[data-shell-language] { background-image:none; }
 }
 @media (min-width:1200px) {
   .review-workspace {
-    grid-template-columns:minmax(0,1fr) minmax(360px,410px);
-    justify-content:stretch;
-    gap:clamp(1rem,1.4vw,1.5rem);
+    /* Chess.com-like paired frame. The board track includes the 20px eval bar
+       plus its gap (~28px); actual chessboard is ~740px at 860px viewport
+       height, capped at 760px on taller screens. When space is limited, the
+       left track shrinks instead of pushing the rail off-screen. */
+    --review-board-track:clamp(360px,calc(100dvh - 90px),788px);
+    width:min(100%,calc(var(--review-board-track) + 24px + 444px));
+    margin-inline:auto;
+    grid-template-columns:minmax(0,1fr) minmax(360px,444px);
+    justify-content:center;
+    gap:24px;
   }
-  /* Size by BOTH available column width and visible viewport height. A wide,
-     short desktop window must not create a 1000px board extending far below
-     the fold. Leave room for the page header and player bars; on very short
-     windows preserve a usable 360px minimum and allow ordinary page scroll.
-     This rule is desktop-only: phone and stacked layouts remain unchanged. */
+  /* The board and rail share one frame: never center the board in a giant
+     unused left track or pin the rail to the far viewport edge. */
   .review-board-column {
-    width:min(100%,clamp(360px,calc(100dvh - 260px),960px));
+    width:100%;
     max-width:none;
-    justify-self:center;
+    justify-self:end;
   }
-  .review-side-rail { width:100%; justify-self:end; }
+  .review-side-rail { width:100%; max-width:444px; justify-self:start; }
+}
+@media (min-width:1540px) {
+  /* The global breadcrumb already identifies this route. On wide desktop,
+     keep Back clickable in the unused left gutter instead of dedicating a
+     second full-height title row above the board; player names remain in the
+     two player headers. This brings the whole square into view at 860px high. */
+  [data-analysis-workspace] { position:relative; }
+  .review-page-toolbar {
+    position:absolute;
+    inset-inline-start:0;
+    top:0;
+    z-index:2;
+    margin-bottom:0;
+  }
+  .review-page-toolbar > div { display:none; }
+  .review-workspace { margin-top:-12px; }
 }
 /* The transport is a control surface, not selectable document text. */
 [data-move-transport], [data-move-transport] * { user-select:none; -webkit-user-select:none; }

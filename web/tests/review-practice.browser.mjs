@@ -165,11 +165,11 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   const page = await logIn(context);
 
-  await test('Full Review sizes desktop board to viewport height and width, keeps rail edge-aligned and preserves mobile', async () => {
+  await test('Full Review matches the paired desktop board/sidebar frame, scales with height and preserves mobile', async () => {
     await page.goto(`${base}/review/${standard.id}`);
     await page.locator('[data-review-workspace]').waitFor();
     for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1199, 900],
-      [1280, 900], [1366, 768], [1440, 900], [1710, 896], [1920, 1080]]) {
+      [1280, 900], [1366, 768], [1440, 900], [1710, 860], [1920, 1080]]) {
       await page.setViewportSize({ width, height });
       const sizes = await page.evaluate(() => {
         const bounds = (selector) => {
@@ -189,12 +189,21 @@ try {
         sizes.board.left >= 0 && sizes.board.right <= width + 2,
       `Review board clipped or distorted at ${width}px: ${JSON.stringify(sizes)}`);
       if (width >= 1200) {
-        assert.ok(sizes.rail.left >= sizes.board.right + 10 && width - sizes.rail.right <= 55,
-          `Desktop review rail isn't beside the board at the right edge: ${JSON.stringify(sizes)}`);
-        assert.ok(sizes.board.bottom <= height,
-          `Desktop board should fit the visible window height: ${JSON.stringify(sizes)}`);
-        if (width === 1710) assert.ok(sizes.board.width >= 550 && sizes.board.width <= 740,
-          `Desktop board should fill the viewport without the old 1000px oversizing: ${JSON.stringify(sizes)}`);
+        const gap = sizes.rail.left - sizes.board.right;
+        assert.ok(gap >= 10 && gap <= 68 && sizes.rail.width >= 355 && sizes.rail.width <= 446,
+          `Desktop board and rail must form one tight frame: ${JSON.stringify(sizes)}`);
+        assert.ok(sizes.board.bottom <= height + 100,
+          `Desktop board is much taller than the viewport: ${JSON.stringify(sizes)}`);
+        if (width === 1710) {
+          assert.ok(sizes.board.width >= 715 && sizes.board.width <= 765,
+            `Reference desktop board should be about 740px: ${JSON.stringify(sizes)}`);
+          assert.ok(Math.abs(sizes.rail.left - 1078) <= 55,
+            `Reference sidebar should begin beside the board near x=1078: ${JSON.stringify(sizes)}`);
+          assert.ok(sizes.board.bottom <= height + 5,
+            `Reference-size board should be fully framed within the desktop viewport: ${JSON.stringify(sizes)}`);
+          assert.ok(await page.getByRole('link', { name: 'Back', exact: true }).isVisible(),
+            'Desktop Back action must remain visible when compacted into the left gutter');
+        }
       } else if (width < 960) {
         assert.ok(sizes.rail.top >= sizes.board.bottom,
           `Phone / stacked Review must keep the details below the board: ${JSON.stringify(sizes)}`);
@@ -204,9 +213,9 @@ try {
     // huge regardless of a shorter window or increased browser zoom.
     await page.setViewportSize({ width: 1710, height: 720 });
     const shortBoardWidth = await page.locator('[data-review-workspace] cg-board').evaluate((board) => board.getBoundingClientRect().width);
-    await page.setViewportSize({ width: 1710, height: 1100 });
+    await page.setViewportSize({ width: 1710, height: 860 });
     const tallBoardWidth = await page.locator('[data-review-workspace] cg-board').evaluate((board) => board.getBoundingClientRect().width);
-    assert.ok(tallBoardWidth >= shortBoardWidth + 240,
+    assert.ok(tallBoardWidth >= shortBoardWidth + 110,
       `Review board must grow when the window gets taller at the same desktop width: ${shortBoardWidth} -> ${tallBoardWidth}`);
     await page.setViewportSize({ width: 1440, height: 900 });
   });
