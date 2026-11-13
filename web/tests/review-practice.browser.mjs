@@ -165,6 +165,42 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light' });
   const page = await logIn(context);
 
+  await test('Full Review expands its desktop board to the available width, keeps the rail at the right edge and preserves mobile', async () => {
+    await page.goto(`${base}/review/${standard.id}`);
+    await page.locator('[data-review-workspace]').waitFor();
+    for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1199, 900],
+      [1280, 900], [1366, 768], [1440, 900], [1710, 896], [1920, 1080]]) {
+      await page.setViewportSize({ width, height });
+      const sizes = await page.evaluate(() => {
+        const bounds = (selector) => {
+          const rect = document.querySelector(selector)?.getBoundingClientRect();
+          return rect && { left: rect.left, right: rect.right, top: rect.top,
+            bottom: rect.bottom, width: rect.width, height: rect.height };
+        };
+        return {
+          board: bounds('[data-review-workspace] cg-board'),
+          rail: bounds('[data-review-side-rail]'),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      assert.ok(sizes.board && sizes.rail, `Full Review failed to render at ${width}px`);
+      assert.ok(sizes.overflow <= 2, `Review overflow at ${width}px: ${JSON.stringify(sizes)}`);
+      assert.ok(Math.abs(sizes.board.width - sizes.board.height) < 3 &&
+        sizes.board.left >= 0 && sizes.board.right <= width + 2,
+      `Review board clipped or distorted at ${width}px: ${JSON.stringify(sizes)}`);
+      if (width >= 1200) {
+        assert.ok(sizes.rail.left >= sizes.board.right + 10 && width - sizes.rail.right <= 55,
+          `Desktop review rail isn't beside the board at the right edge: ${JSON.stringify(sizes)}`);
+        if (width === 1710) assert.ok(sizes.board.width >= 960,
+          `Desktop board is still constrained to the old ~520px cap: ${JSON.stringify(sizes)}`);
+      } else if (width < 960) {
+        assert.ok(sizes.rail.top >= sizes.board.bottom,
+          `Phone / stacked Review must keep the details below the board: ${JSON.stringify(sizes)}`);
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
   // Source lifecycle regression: use the real React route, authenticated game
   // details/bookmark invalidation and disposable SQLite. The deterministic
   // report transport is intercepted so a hostile obsolete SSE done can be

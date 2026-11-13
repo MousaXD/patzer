@@ -486,9 +486,10 @@ select[data-shell-language] { background-image:none; }
  .ui-tab[aria-selected='true'] { outline:2px solid Highlight; outline-offset:-2px; }
 }
 
-/* Game Review cockpit: prioritize the board and treat the detail rail as a
-   readable sidebar. Keep the two surfaces together, not stretched across the
-   full viewport; natural page scrolling avoids clipped analysis content. */
+/* Game Review cockpit: phone and tablet layouts remain compact and readable.
+   Desktop uses the available workspace: the board is the primary surface and
+   the details rail sits against the right side, rather than centering both in
+   a narrow, height-capped island. Natural page scrolling avoids clipping. */
 .review-workspace { display:flex; flex-direction:column; gap:1rem; min-width:0; }
 .review-board-column { width:100%; min-width:0; max-width:760px; margin-inline:auto; }
 .review-board-square { min-width:0; max-width:100%; }
@@ -524,9 +525,15 @@ select[data-shell-language] { background-image:none; }
 }
 @media (min-width:1200px) {
   .review-workspace {
-    grid-template-columns:minmax(0,min(calc(100dvh - 350px),760px,calc(100% - 464px))) minmax(0,440px);
-    gap:1.5rem;
+    grid-template-columns:minmax(0,1fr) minmax(360px,410px);
+    justify-content:stretch;
+    gap:clamp(1rem,1.4vw,1.5rem);
   }
+  /* On a 1710px monitor the board can now reach roughly twice the previous
+     520px cap. At larger resolutions, keep the board a playable square rather
+     than letting it expand indefinitely; unused width stays in its column. */
+  .review-board-column { max-width:1080px; justify-self:center; }
+  .review-side-rail { width:100%; justify-self:end; }
 }
 /* The transport is a control surface, not selectable document text. */
 [data-move-transport], [data-move-transport] * { user-select:none; -webkit-user-select:none; }
