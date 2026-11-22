@@ -61,7 +61,9 @@ async function sweep(): Promise<void> {
   // whenever the operator wires one up (the manual Review button still works).
   if (!llmConfigured()) return;
 
-  const rows = db.prepare(`
+  // Process one unreviewed analysis at a time so we never load hundreds of
+  // moves_json blobs into memory at once.
+  const selectNext = db.prepare(`
     SELECT g.id AS game_id, g.pgn, g.user_id, g.user_color, g.result,
            g.start_fen, g.opponent_rating_before, g.user_rd_before,
            g.source_revision AS current_source_revision,
@@ -75,11 +77,16 @@ async function sweep(): Promise<void> {
            a.prose_version, a.prose_lang, a.prose_audience
       FROM analyses a
       JOIN games g ON g.id = a.game_id
-     WHERE a.prose_json IS NULL
+     WHERE a.prose_json IS NULL AND g.id > ?
      ORDER BY g.id ASC
-  `).all() as ReviewRow[];
+     LIMIT 1
+  `);
 
-  for (const row of rows) {
+  let lastId = 0;
+  for (;;) {
+    const row = selectNext.get(lastId) as ReviewRow | undefined;
+    if (!row) break;
+    lastId = row.game_id;
     if (checkReviewAnalysisSource(row, row)) continue;
     const profile = db.prepare('SELECT language, audience FROM profiles WHERE user_id = ?').get(row.user_id) as
       | { language: Language; audience: Audience }

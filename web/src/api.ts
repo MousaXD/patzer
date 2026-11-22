@@ -1,3 +1,9 @@
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  unauthorizedHandler = fn;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -12,6 +18,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      unauthorizedHandler?.();
+    }
     let err: unknown;
     try { err = await res.json(); } catch { err = null; }
     const e = new Error((err as { error?: string })?.error ?? `HTTP ${res.status}`) as Error & { status?: number; data?: unknown };
@@ -26,9 +35,9 @@ export const api = {
   // Optional fetch options support cancellable requests without changing
   // existing callers or the authentication/CSRF header contract.
   get: <T>(path: string, init: RequestInit = {}) => request<T>(path, init),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
-  patch: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
-  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  post: <T>(path: string, body?: unknown, init: RequestInit = {}) =>
+    request<T>(path, { ...init, method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body?: unknown, init: RequestInit = {}) =>
+    request<T>(path, { ...init, method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  del: <T>(path: string, init: RequestInit = {}) => request<T>(path, { ...init, method: 'DELETE' }),
 };

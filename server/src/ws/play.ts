@@ -6,6 +6,7 @@ import { resolveTimeControl } from '../chess/timeClass.js';
 import { applyTakeback } from '../chess/takeback.js';
 import { persistLiveBotGame, clearLiveBotGame, loadLiveBotGame } from '../chess/liveBotGames.js';
 import { lookupUser, SESSION_COOKIE_NAME } from '../auth/sessions.js';
+import { isAllowedWsOrigin, parseCookies } from './cookies.js';
 import { StockfishEngine } from '../chess/stockfish.js';
 import { db } from '../db.js';
 import { analyzePgn, analyzePgnFull, saveAnalysis } from '../routes/analyze.js';
@@ -102,6 +103,7 @@ interface PvpSession {
   whiteTimeMs: number;
   blackTimeMs: number;
   lastMoveAt: number;
+  rated: boolean;
   saved: boolean;
   analysisEngine: StockfishEngine | null;
   analysisQueue: Promise<void>;
@@ -144,17 +146,6 @@ setInterval(() => {
 
 function send(ws: WebSocket, type: string, data: Record<string, unknown> = {}) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type, ...data }));
-}
-
-function parseCookies(header: string | undefined): Record<string, string> {
-  if (!header) return {};
-  const out: Record<string, string> = {};
-  for (const part of header.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx < 0) continue;
-    out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
-  }
-  return out;
 }
 
 async function ensureAnalysisEngine(holder: { analysisEngine: StockfishEngine | null }): Promise<StockfishEngine> {
@@ -255,8 +246,18 @@ export function attachPlayWebSocket(server: Server) {
 
   server.on('upgrade', (req, socket, head) => {
     if (!req.url?.startsWith('/ws/play')) return;
-    const cookies = parseCookies(req.headers.cookie);
-    const user = lookupUser(cookies[SESSION_COOKIE_NAME]);
+    if (!isAllowedWsOrigin(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    let user: AuthedUser | null = null;
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      user = lookupUser(cookies[SESSION_COOKIE_NAME]);
+    } catch {
+      user = null;
+    }
     if (!user) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
@@ -303,6 +304,8 @@ function snapshot(session: BotSession): void {
 
 async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
   let session: BotSession | null = null;
+  let closed = false;
+  let sessionGen = 0;
 
   // What is resumable is answered by GET /api/games/live, before a socket is
   // opened at all; this socket's job is to resume, not to advertise.
@@ -315,11 +318,9 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
 
     try {
       if (type === 'new_game') {
-        if (session) {
-          session.engine.quit().catch(() => { /* ignore */ });
-          if (session.analysisEngine) session.analysisEngine.quit().catch(() => { /* ignore */ });
-        }
-        const difficulty = (msg.difficulty as Difficulty) ?? 'medium';
+        const rawDiff = typeof msg.difficulty === 'string' ? msg.difficulty : 'medium';
+        if (!(rawDiff in DIFFICULTY)) { send(ws, 'error', { message: 'invalid difficulty' }); return; }
+        const difficulty = rawDiff as Difficulty;
         // From a position: you play the colour you ask for (Game Review: your
         // own, from any move), else the side to move (Lab, "try this move
         // again"). When it isn't your turn, the bot moves first (below).
@@ -333,13 +334,29 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
         const tcKey = (msg.time_control as string) ?? 'untimed';
         const tc = TIME_CONTROLS[tcKey] ?? null;
 
+        const gen = ++sessionGen;
+        if (session) {
+          session.engine.quit().catch(() => { /* ignore */ });
+          if (session.analysisEngine) session.analysisEngine.quit().catch(() => { /* ignore */ });
+          session = null;
+        }
+
         const engine = new StockfishEngine();
-        await engine.start();
-        const conf = DIFFICULTY[difficulty];
-        await engine.setOption('Threads', '1');
-        await engine.setOption('Hash', '32');
-        await applyDifficulty(engine, conf);
-        await engine.newGame();
+        try {
+          await engine.start();
+          const conf = DIFFICULTY[difficulty];
+          await engine.setOption('Threads', '1');
+          await engine.setOption('Hash', '32');
+          await applyDifficulty(engine, conf);
+          await engine.newGame();
+        } catch (err) {
+          engine.quit().catch(() => { /* ignore */ });
+          throw err;
+        }
+        if (closed || gen !== sessionGen) {
+          engine.quit().catch(() => { /* ignore */ });
+          return;
+        }
 
         session = {
           kind: 'bot', user,
@@ -390,9 +407,11 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
           return;
         }
 
+        const gen = ++sessionGen;
         if (session) {
           session.engine.quit().catch(() => { /* ignore */ });
           if (session.analysisEngine) session.analysisEngine.quit().catch(() => { /* ignore */ });
+          session = null;
         }
 
         const difficulty = (row.difficulty in DIFFICULTY ? row.difficulty : 'medium') as Difficulty;
@@ -400,11 +419,20 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
         const tc = TIME_CONTROLS[tcKey] ?? null;
 
         const engine = new StockfishEngine();
-        await engine.start();
-        await engine.setOption('Threads', '1');
-        await engine.setOption('Hash', '32');
-        await applyDifficulty(engine, DIFFICULTY[difficulty]);
-        await engine.newGame();
+        try {
+          await engine.start();
+          await engine.setOption('Threads', '1');
+          await engine.setOption('Hash', '32');
+          await applyDifficulty(engine, DIFFICULTY[difficulty]);
+          await engine.newGame();
+        } catch (err) {
+          engine.quit().catch(() => { /* ignore */ });
+          throw err;
+        }
+        if (closed || gen !== sessionGen) {
+          engine.quit().catch(() => { /* ignore */ });
+          return;
+        }
 
         // Clocks come back exactly as they were at the last move, and the
         // elapsed wall time is NOT charged. PvP does charge it, because over
@@ -441,16 +469,27 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
         // You may have moved and then closed the tab before the bot replied.
         if (session.chess.turn() !== session.userColor[0]) await playBotMove(ws, session);
       } else if (type === 'move' && session) {
+        if (session.saved) return;
         const uci = msg.uci as string;
         if (!uci || uci.length < 4) return;
         const turn = session.chess.turn();
         const expected = session.userColor[0];
         if (turn !== expected) { send(ws, 'error', { message: 'not your turn' }); return; }
 
+        const fenBefore = session.chess.fen();
+        let move;
+        try {
+          move = session.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
+        } catch {
+          move = null;
+        }
+        if (!move) { send(ws, 'error', { message: 'illegal move' }); return; }
+
         if (session.timeControl) {
           const elapsed = Date.now() - session.lastMoveAt;
           if (turn === 'w') session.whiteTimeMs -= elapsed; else session.blackTimeMs -= elapsed;
           if ((turn === 'w' ? session.whiteTimeMs : session.blackTimeMs) <= 0) {
+            session.chess.undo();
             await endBotGame(ws, session, turn === 'w' ? '0-1' : '1-0', 'time');
             return;
           }
@@ -458,10 +497,6 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
           else session.blackTimeMs += session.timeControl.increment;
           session.lastMoveAt = Date.now();
         }
-
-        const fenBefore = session.chess.fen();
-        const move = session.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
-        if (!move) { send(ws, 'error', { message: 'illegal move' }); return; }
 
         send(ws, 'move_made', {
           fen: session.chess.fen(), san: move.san, uci, by: 'user',
@@ -564,6 +599,8 @@ async function handleBotConnection(ws: WebSocket, user: AuthedUser) {
   });
 
   ws.on('close', () => {
+    closed = true;
+    sessionGen++;
     if (session) {
       session.engine.quit().catch(() => { /* ignore */ });
       if (session.analysisEngine) session.analysisEngine.quit().catch(() => { /* ignore */ });
@@ -582,7 +619,7 @@ async function playBotMove(ws: WebSocket, session: BotSession) {
 				// it feels odd if every move by a 'kid' comes faster
 				// than a human can comprehend.
   const uci = await session.engine.bestMove(session.chess.fen(), {
-    movetimeMs: (conf.movetimeMs * .72) + (Math.random() * timeMod),
+    movetimeMs: Math.max(50, Math.round((conf.movetimeMs * .72) + (Math.random() * timeMod))),
     depth: conf.depth
   });
   if (!uci) return;
@@ -688,7 +725,7 @@ interface GameDbRow {
   id: number; user_id: number; opponent_user_id: number | null;
   white: string; black: string;
   user_color: 'white' | 'black'; time_control: string;
-  external_id: string; pgn: string;
+  external_id: string; pgn: string; result: string | null;
   white_time_ms: number | null; black_time_ms: number | null; last_move_at: string | null;
   rated: number | null; time_class: string | null;
 }
@@ -705,7 +742,7 @@ function persistPvpClocks(session: PvpSession): void {
 
 async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: number) {
   // Resolve game (this user's perspective row)
-  const row = db.prepare(`SELECT id, user_id, opponent_user_id, white, black, user_color, time_control, external_id, pgn, white_time_ms, black_time_ms, last_move_at, rated, time_class FROM games WHERE id = ? AND user_id = ?`).get(gameId, user.id) as GameDbRow | undefined;
+  const row = db.prepare(`SELECT id, user_id, opponent_user_id, white, black, user_color, time_control, external_id, pgn, result, white_time_ms, black_time_ms, last_move_at, rated, time_class FROM games WHERE id = ? AND user_id = ?`).get(gameId, user.id) as GameDbRow | undefined;
   if (!row) {
     send(ws, 'error', { message: 'game_not_found' });
     ws.close();
@@ -763,7 +800,8 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
       whiteTimeMs: whiteMs,
       blackTimeMs: blackMs,
       lastMoveAt,
-      saved: false,
+      rated: !!row.rated,
+      saved: Boolean(row.result && row.result !== 'unknown'),
       analysisEngine: null,
       analysisQueue: Promise.resolve(),
       drawOffer: null,
@@ -816,6 +854,7 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
 
     try {
       if (type === 'move') {
+        if (session.saved) { send(ws, 'error', { message: 'game_over' }); return; }
         const uci = msg.uci as string;
         if (!uci || uci.length < 4) return;
         const turn = session.chess.turn();
@@ -824,10 +863,19 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
           return;
         }
 
+        let move;
+        try {
+          move = session.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
+        } catch {
+          move = null;
+        }
+        if (!move) { send(ws, 'error', { message: 'illegal move' }); return; }
+
         if (session.timeControl) {
           const elapsed = Date.now() - session.lastMoveAt;
           if (turn === 'w') session.whiteTimeMs -= elapsed; else session.blackTimeMs -= elapsed;
           if ((turn === 'w' ? session.whiteTimeMs : session.blackTimeMs) <= 0) {
+            session.chess.undo();
             await endPvpGame(session, turn === 'w' ? '0-1' : '1-0', 'time');
             return;
           }
@@ -835,20 +883,16 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
           else session.blackTimeMs += session.timeControl.increment;
           session.lastMoveAt = Date.now();
         }
-
-        const move = session.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
-        if (!move) { send(ws, 'error', { message: 'illegal move' }); return; }
         // A move answers any standing offer: the position it referred to is gone.
         session.drawOffer = null;
         session.takebackRequest = null;
 
         const payload = {
-          type: 'move_made',
           fen: session.chess.fen(), san: move.san, uci, by: 'opponent',
           whiteTimeMs: session.whiteTimeMs, blackTimeMs: session.blackTimeMs,
         };
         // To opponent: the move came from "opponent". To self: came from "user".
-        if (opp.ws) opp.ws.send(JSON.stringify(payload));
+        if (opp.ws) send(opp.ws, 'move_made', payload);
         send(ws, 'move_made', { ...payload, by: 'user' });
 
         // Persist clocks + PGN so a refresh on either side picks up exactly
@@ -857,11 +901,21 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
 
         if (await checkPvpGameOver(session)) return;
       } else if (type === 'preview_move') {
+        if (session.saved) return;
+        if (session.rated) { send(ws, 'preview_result', { ok: false, message: 'disabled_in_rated_pvp' }); return; }
+        const turn = session.chess.turn();
+        const isMyTurn = (turn === 'w' && me === session.white) || (turn === 'b' && me === session.black);
+        if (!isMyTurn) { send(ws, 'preview_result', { ok: false, message: 'not_your_turn' }); return; }
         const uci = msg.uci as string;
         if (!uci || uci.length < 4) return;
         const fenBefore = session.chess.fen();
         const probe = new Chess(fenBefore);
-        const m = probe.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
+        let m;
+        try {
+          m = probe.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.slice(4) || undefined });
+        } catch {
+          m = null;
+        }
         if (!m) { send(ws, 'preview_result', { ok: false, message: 'illegal' }); return; }
         const fenAfter = probe.fen();
         await runOnAnalysisEngine(session, async () => {
@@ -877,6 +931,7 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
           }
         });
       } else if (type === 'resign') {
+        if (session.saved) return;
         await endPvpGame(session, myColor === 'white' ? '0-1' : '1-0', 'resignation');
 
       // ---- Draw offers ------------------------------------------------------
@@ -961,6 +1016,8 @@ async function handlePvpConnection(ws: WebSocket, user: AuthedUser, gameId: numb
         if (opp.ws) send(opp.ws, 'rematch_declined', { by: myColor });
 
       } else if (type === 'request_hint') {
+        if (session.saved) return;
+        if (session.rated) { send(ws, 'hint', { best_uci: null, error: 'disabled_in_rated_pvp' }); return; }
         const turn = session.chess.turn();
         const isMyTurn = (turn === 'w' && me === session.white) || (turn === 'b' && me === session.black);
         if (!isMyTurn) { send(ws, 'hint', { best_uci: null, error: 'not_your_turn' }); return; }
@@ -1009,9 +1066,9 @@ async function checkPvpGameOver(session: PvpSession): Promise<boolean> {
 async function endPvpGame(session: PvpSession, result: '1-0' | '0-1' | '1/2-1/2', reason: string) {
   if (session.saved) return;
   session.saved = true;
-  const payload = { type: 'game_over', result, reason, fen: session.chess.fen() };
-  if (session.white.ws) session.white.ws.send(JSON.stringify(payload));
-  if (session.black.ws) session.black.ws.send(JSON.stringify(payload));
+  const payload = { result, reason, fen: session.chess.fen() };
+  if (session.white.ws) send(session.white.ws, 'game_over', payload);
+  if (session.black.ws) send(session.black.ws, 'game_over', payload);
 
   session.chess.header('Event', 'Local PvP game');
   session.chess.header('White', session.white.display_name);
@@ -1052,17 +1109,21 @@ async function endPvpGame(session: PvpSession, result: '1-0' | '0-1' | '1/2-1/2'
       // performance-rating estimator. The rating-before columns were stamped by
       // applyRatedUpdate above (or remain null for unrated games).
       const ids = db.prepare(`SELECT id, user_color, opponent_rating_before, user_rd_before FROM games WHERE external_id = ?`).all(session.external_id) as { id: number; user_color: 'white' | 'black' | null; opponent_rating_before: number | null; user_rd_before: number | null }[];
-      for (const r of ids) {
-        const source = loadAnalysisGameSource(db, r.id);
-        if (!source || source.pgn !== pgn) continue;
-        const score = scoreFor(result, r.user_color ?? 'white');
+      const eligible = ids
+        .map((r) => ({ row: r, source: loadAnalysisGameSource(db, r.id) }))
+        .filter((item): item is { row: typeof ids[number]; source: NonNullable<ReturnType<typeof loadAnalysisGameSource>> } => !!item.source && item.source.pgn === pgn);
+      if (eligible.length > 0) {
+        const primary = eligible[0]!.row;
+        // Analyze the shared PGN once instead of running Stockfish twice.
         const analysis = await analyzePgnFull(pgn, 14, {
-          score,
-          userColor: r.user_color ?? 'white',
-          opponentRating: r.opponent_rating_before,
-          opponentRd: r.user_rd_before,
+          score: scoreFor(result, primary.user_color ?? 'white'),
+          userColor: primary.user_color ?? 'white',
+          opponentRating: primary.opponent_rating_before,
+          opponentRd: primary.user_rd_before,
         });
-        if (!saveAnalysis(r.id, analysis, source)) continue;
+        for (const { row: r, source } of eligible) {
+          saveAnalysis(r.id, analysis, source);
+        }
       }
       kickAutoReview();
       // Notify the still-connected sockets that analysis is ready

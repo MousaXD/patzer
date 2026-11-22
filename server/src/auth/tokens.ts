@@ -35,7 +35,7 @@ export function consumeToken(raw: string, kind: TokenKind): number | null {
   const tx = db.transaction(() => {
     const row = db.prepare(
       `SELECT id, user_id FROM auth_tokens
-       WHERE token_hash = ? AND kind = ? AND used_at IS NULL AND expires_at > datetime('now')`,
+       WHERE token_hash = ? AND kind = ? AND used_at IS NULL AND datetime(expires_at) > datetime('now')`,
     ).get(tokenHash, kind) as { id: number; user_id: number } | undefined;
     if (!row) return null;
     const upd = db.prepare(`UPDATE auth_tokens SET used_at = datetime('now') WHERE id = ? AND used_at IS NULL`).run(row.id);

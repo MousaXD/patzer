@@ -129,7 +129,8 @@ router.get('/outgoing', (c) => {
 router.get('/history', (c) => {
   const me = c.get('user');
   expireStaleChallenges();
-  const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
+  const rawLimit = Number(c.req.query('limit') ?? 50);
+  const limit = Math.max(1, Math.min(200, Number.isFinite(rawLimit) ? Math.trunc(rawLimit) : 50));
   const rows = db.prepare(`
     SELECT c.*,
       uf.username AS from_username, pf.display_name AS from_display_name, pf.avatar_emoji AS from_avatar,

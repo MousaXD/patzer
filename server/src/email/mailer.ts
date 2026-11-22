@@ -112,6 +112,15 @@ export async function verifyConnection(): Promise<SendResult> {
 
 const BRAND = 'Patzer';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function shell(title: string, bodyHtml: string): string {
   // Inline styles only — email clients strip <style>/<link>. Kept deliberately
   // plain so it renders in text-mostly clients and never trips spam heuristics.
@@ -119,7 +128,7 @@ function shell(title: string, bodyHtml: string): string {
   <div style="max-width:520px;margin:0 auto;padding:32px 20px">
     <div style="font-size:20px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px">♟ ${BRAND}</div>
     <div style="background:#fff;border:1px solid #e7e5e0;border-radius:14px;padding:24px">
-      <h1 style="font-size:18px;margin:0 0 12px">${title}</h1>
+      <h1 style="font-size:18px;margin:0 0 12px">${escapeHtml(title)}</h1>
       ${bodyHtml}
     </div>
     <div style="color:#9ca3af;font-size:12px;margin-top:16px">You're receiving this because someone used your email on a ${BRAND} chess server. If that wasn't you, you can ignore this message.</div>
@@ -127,31 +136,35 @@ function shell(title: string, bodyHtml: string): string {
 }
 
 function button(href: string, label: string): string {
-  return `<a href="${href}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">${label}</a>`;
+  return `<a href="${escapeHtml(href)}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">${escapeHtml(label)}</a>`;
 }
 
 export function verifyEmailTemplate(displayName: string, link: string) {
+  const safeName = escapeHtml(displayName);
+  const safeLink = escapeHtml(link);
   return {
     subject: `Confirm your ${BRAND} email`,
     text: `Hi ${displayName},\n\nConfirm your email to finish setting up your ${BRAND} account:\n${link}\n\nThis link expires in 24 hours.`,
     html: shell(
       `Confirm your email`,
-      `<p style="margin:0 0 16px;line-height:1.5">Hi ${displayName}, confirm your email to finish setting up your ${BRAND} account.</p>
+      `<p style="margin:0 0 16px;line-height:1.5">Hi ${safeName}, confirm your email to finish setting up your ${BRAND} account.</p>
        <p style="margin:0 0 16px">${button(link, 'Confirm email')}</p>
-       <p style="margin:0;color:#6b7280;font-size:13px">Or paste this link: <br><span style="word-break:break-all">${link}</span><br><br>This link expires in 24 hours.</p>`,
+       <p style="margin:0;color:#6b7280;font-size:13px">Or paste this link: <br><span style="word-break:break-all">${safeLink}</span><br><br>This link expires in 24 hours.</p>`,
     ),
   };
 }
 
 export function resetPasswordTemplate(displayName: string, link: string) {
+  const safeName = escapeHtml(displayName);
+  const safeLink = escapeHtml(link);
   return {
     subject: `Reset your ${BRAND} password`,
     text: `Hi ${displayName},\n\nReset your ${BRAND} password using this link:\n${link}\n\nThis link expires in 1 hour. If you didn't request this, ignore this email — your password is unchanged.`,
     html: shell(
       `Reset your password`,
-      `<p style="margin:0 0 16px;line-height:1.5">Hi ${displayName}, we got a request to reset your ${BRAND} password.</p>
+      `<p style="margin:0 0 16px;line-height:1.5">Hi ${safeName}, we got a request to reset your ${BRAND} password.</p>
        <p style="margin:0 0 16px">${button(link, 'Reset password')}</p>
-       <p style="margin:0;color:#6b7280;font-size:13px">Or paste this link: <br><span style="word-break:break-all">${link}</span><br><br>This link expires in 1 hour. If you didn't request this, ignore this email — your password won't change.</p>`,
+       <p style="margin:0;color:#6b7280;font-size:13px">Or paste this link: <br><span style="word-break:break-all">${safeLink}</span><br><br>This link expires in 1 hour. If you didn't request this, ignore this email — your password won't change.</p>`,
     ),
   };
 }
@@ -169,6 +182,8 @@ export function welcomeTemplate(displayName: string, link: string) {
 }
 
 export function adminNewUserTemplate(adminName: string, newUsername: string, newEmail: string | null) {
+  const safeUser = escapeHtml(newUsername);
+  const safeEmail = escapeHtml(newEmail ?? '(none)');
   return {
     subject: `New ${BRAND} signup: ${newUsername}`,
     text: `Hi ${adminName},\n\nA new user just self-registered on your ${BRAND} server:\n  username: ${newUsername}\n  email: ${newEmail ?? '(none)'}\n\nManage users in Admin → Users.`,
@@ -176,8 +191,8 @@ export function adminNewUserTemplate(adminName: string, newUsername: string, new
       `New signup`,
       `<p style="margin:0 0 8px;line-height:1.5">A new user just self-registered on your ${BRAND} server.</p>
        <ul style="margin:0 0 16px;padding-left:18px;color:#374151">
-         <li><b>Username:</b> ${newUsername}</li>
-         <li><b>Email:</b> ${newEmail ?? '(none)'}</li>
+         <li><b>Username:</b> ${safeUser}</li>
+         <li><b>Email:</b> ${safeEmail}</li>
        </ul>
        <p style="margin:0;color:#6b7280;font-size:13px">Manage everyone from Admin → Users.</p>`,
     ),

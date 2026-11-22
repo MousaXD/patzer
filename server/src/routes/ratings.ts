@@ -29,7 +29,8 @@ router.get('/me', (c) => {
 router.get('/history', (c) => {
   const me = c.get('user');
   const tc = c.req.query('time_class') as TimeClass | undefined;
-  const limit = Math.min(Number(c.req.query('limit') ?? 30), 200);
+  const rawLimit = Number(c.req.query('limit') ?? 30);
+  const limit = Math.max(1, Math.min(200, Number.isFinite(rawLimit) ? Math.trunc(rawLimit) : 30));
   const rows = tc
     ? db.prepare(`SELECT game_id, time_class, rating_before, rating_after, created_at
                   FROM rating_history WHERE user_id = ? AND time_class = ?

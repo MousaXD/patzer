@@ -5,7 +5,7 @@ import { updateCheckEnabled, setUpdateCheckEnabled } from '../updates.js';
 import { requireAdmin } from '../auth/middleware.js';
 import { hashPassword } from '../auth/passwords.js';
 import { connectionHint } from '../coach/connectionHint.js';
-import { testConnection, testModel, llmUrl, llmStats, llmProvider, deepseekApiKey, type LlmProvider } from '../coach/llm.js';
+import { testConnection, testModel, llmUrl, llmStats, llmProvider, deepseekApiKey, clearVerifiedModels, type LlmProvider } from '../coach/llm.js';
 import { StockfishEngine } from '../chess/stockfish.js';
 import { isMailerConfigured, sendMail, verifyConnection, welcomeTemplate } from '../email/mailer.js';
 import {
@@ -121,6 +121,8 @@ router.patch('/users/:id', async (c) => {
   if (d.password) {
     const hash = await hashPassword(d.password);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, id);
+    // Revoke active sessions so compromised cookies cannot outlive a password reset.
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
   }
   if (d.role) {
     // Block demoting the only admin — the same guard DELETE has — otherwise a
@@ -130,6 +132,9 @@ router.patch('/users/:id', async (c) => {
       if (adminCount <= 1) return c.json({ error: 'last_admin' }, 400);
     }
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(d.role, id);
+    if (d.role === 'user' && target.role === 'admin') {
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    }
   }
 
   const profileFields: string[] = [];
@@ -314,6 +319,9 @@ router.patch('/system', async (c) => {
   setStr('deepseek_url', d.deepseek_url);
   setStr('deepseek_model', d.deepseek_model);
   if (d.deepseek_api_key) setSetting('deepseek_api_key', d.deepseek_api_key);
+  if (d.llm_provider !== undefined || d.ollama_url !== undefined || d.vllm_url !== undefined || d.deepseek_url !== undefined) {
+    clearVerifiedModels();
+  }
   setStr('stockfish_path', d.stockfish_path);
 
   if (d.update_check_enabled !== undefined) setUpdateCheckEnabled(d.update_check_enabled);
@@ -362,6 +370,46 @@ function bodyProvider(body: unknown): LlmProvider {
   return llmProvider();
 }
 
+function validateLlmTestUrl(rawUrl: string, provider: LlmProvider): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return 'invalid_url';
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'invalid_url_protocol';
+  const host = parsed.hostname.toLowerCase();
+  // Block cloud metadata / link-local / unspecified addresses (SSRF defense).
+  if (
+    host === '0.0.0.0' ||
+    host === '::' ||
+    host === '[::]' ||
+    host.startsWith('169.254.') ||
+    host.startsWith('fe80:') ||
+    host.startsWith('[fe80:') ||
+    host === 'metadata.google.internal'
+  ) {
+    return 'blocked_host';
+  }
+  // Never ship DEEPSEEK_API_KEY (especially env-injected) to an arbitrary caller-supplied host.
+  if (provider === 'deepseek') {
+    const allowedBases = [
+      getSetting('deepseek_url'),
+      process.env.DEEPSEEK_URL,
+      'https://api.deepseek.com',
+    ].filter((v): v is string => !!v);
+    const allowedOrigins = new Set(
+      allowedBases.map((b) => {
+        try { return new URL(b).origin.toLowerCase(); } catch { return ''; }
+      }).filter(Boolean),
+    );
+    if (!allowedOrigins.has(parsed.origin.toLowerCase())) {
+      return 'deepseek_host_mismatch';
+    }
+  }
+  return null;
+}
+
 router.post('/test/ollama', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const url = (body && typeof body === 'object' && 'url' in body && typeof body.url === 'string')
@@ -369,6 +417,8 @@ router.post('/test/ollama', async (c) => {
     : llmUrl();
   if (!url) return c.json({ ok: false, error: 'no_url_configured' });
   const provider = bodyProvider(body);
+  const urlErr = validateLlmTestUrl(url, provider);
+  if (urlErr) return c.json({ ok: false, error: urlErr }, 400);
   const result = await testConnection(url, provider);
   // The hint's how-to (port 11434, OLLAMA_HOST) is Ollama's.
   if (result.ok || provider !== 'ollama') return c.json(result);
@@ -382,6 +432,8 @@ router.post('/test/ollama-models', async (c) => {
     : llmUrl();
   if (!url) return c.json({ ok: false, error: 'no_url_configured' }, 400);
   const provider = bodyProvider(body);
+  const urlErr = validateLlmTestUrl(url, provider);
+  if (urlErr) return c.json({ ok: false, error: urlErr }, 400);
   const tags = await testConnection(url, provider);
   if (!tags.ok) return c.json({ ok: false, error: tags.error });
   // Test each model serially with a 30s budget per model.

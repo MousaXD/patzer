@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
-const root=resolve(fileURLToPath(new URL('.',import.meta.url)),'../../../patzer');
+const root=resolve(fileURLToPath(new URL('.',import.meta.url)),'../..');
 const source=resolve(process.env.PATZER_SOURCE || root);
 const require=createRequire(join(source,'package.json'));
 const Database=require('better-sqlite3');

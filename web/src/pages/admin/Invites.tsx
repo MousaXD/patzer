@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { api } from '../../api';
 import { humanizeError } from '../../lib/errors';
 import { copyText } from '../../lib/clipboard';
 import { LANGUAGES, type Language } from '../../lib/languages';
+import { useDialogFocus } from '../../components/useDialogFocus';
 
 type Audience = 'kid' | 'beginner' | 'intermediate' | 'advanced';
 type InviteStatus = 'active' | 'revoked' | 'expired' | 'used_up';
@@ -181,12 +182,15 @@ function CreateInviteModal({ onClose, onCreated }: { onClose: () => void; onCrea
     finally { setBusy(false); }
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(true, panelRef, onClose);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="card max-h-full w-full max-w-md overflow-y-auto p-6">
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="admin-new-invite-title" tabIndex={-1} className="card max-h-full w-full max-w-md overflow-y-auto p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{created ? t('admin.inviteCreatedTitle') : t('admin.newInvite')}</h2>
-          <button onClick={onClose} className="btn-ghost p-1.5" aria-label={t('common.close')}><X className="h-4 w-4" /></button>
+          <h2 id="admin-new-invite-title" className="text-lg font-semibold">{created ? t('admin.inviteCreatedTitle') : t('admin.newInvite')}</h2>
+          <button type="button" onClick={onClose} className="btn-ghost p-1.5" aria-label={t('common.close')}><X className="h-4 w-4" /></button>
         </div>
 
         {created ? (

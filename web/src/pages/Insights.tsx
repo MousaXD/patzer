@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import * as Icons from 'lucide-react';
+import { resolveDynamicIcon } from '../lib/iconMap';
 import { Activity, BarChart3, Target, TrendingUp, Flame, AlertTriangle, BookOpen, Award, Lock, Sparkles, ChevronRight } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../state/auth';
@@ -899,8 +899,7 @@ function AchievementBadge({ a }: { a: Achievement }) {
 }
 
 function resolveLucide(name: string): React.ComponentType<{ className?: string }> {
-  const lib = Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>;
-  return lib[name] ?? lib.Award ?? Award;
+  return resolveDynamicIcon(name, Award);
 }
 
 function Skeleton() {

@@ -138,6 +138,10 @@ export async function testConnection(url: string, provider: LlmProvider = llmPro
 /** Check whether a given model is available on the configured host. Caches
  *  positive results so repeated calls are cheap. Returns false on any error
  *  (caller falls back to next model). */
+export function clearVerifiedModels(): void {
+  verifiedModels.clear();
+}
+
 export async function ensureModel(model: string): Promise<boolean> {
   if (verifiedModels.has(model)) return true;
   const url = llmUrl();

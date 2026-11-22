@@ -6,9 +6,16 @@ node_modules
 .gitignore
 .env
 .env.*
+**/.env
+**/.env.*
+**/.patzer-password
 !.env.example
 data/
 bin/
+qa/
+qa-artifacts/
+docs/
+integrations/
 *.log
 *.md
 !CHANGELOG.md

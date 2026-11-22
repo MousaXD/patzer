@@ -7,6 +7,7 @@ import { join } from 'node:path';
 // file first.
 const dir = mkdtempSync(join(tmpdir(), 'patzer-invites-'));
 process.env.DB_PATH = join(dir, 'invites.db');
+process.env.TRUST_PROXY = 'true';
 
 type InvitesModule = typeof import('../src/auth/invites.js');
 type DbModule = typeof import('../src/db.js');

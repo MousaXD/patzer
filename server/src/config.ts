@@ -80,5 +80,6 @@ export const config = {
   stockfishPathHint: process.env.STOCKFISH_PATH || undefined,
   projectRoot: PROJECT_ROOT,
   cookieSecure: parseBool(process.env.COOKIE_SECURE, false),
+  trustProxy: parseBool(process.env.TRUST_PROXY, false),
   oidc: loadOidcConfig(),
 };

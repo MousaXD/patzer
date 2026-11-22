@@ -23,19 +23,30 @@ COPY web ./web
 # Build server (TS → JS) and web (Vite → static dist)
 RUN npm run build
 
-# ---- Stage 2: runtime ----
-FROM node:20-bookworm-slim AS runtime
+# ---- Stage 2: production node_modules (built with native toolchain) ----
+FROM node:20-bookworm-slim AS prod-deps
 WORKDIR /app
 
-# Stockfish from Debian repos — recent enough for our needs
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    stockfish ca-certificates \
+    python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
-# Install only production deps for the server workspace
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/
 RUN npm ci --omit=dev --workspace=server
+
+# ---- Stage 3: runtime ----
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+
+# Stockfish from Debian repos + tini as PID 1 to reap child Stockfish processes
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    stockfish ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY package.json ./
+COPY server/package.json ./server/
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Copy built artifacts from builder
 COPY --from=builder /app/server/dist ./server/dist
@@ -56,4 +67,7 @@ ENV NODE_ENV=production \
 
 USER node
 EXPOSE 8800
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 8800) + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "server/dist/index.js"]

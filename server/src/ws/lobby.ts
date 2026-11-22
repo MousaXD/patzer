@@ -1,21 +1,11 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Server } from 'node:http';
 import { lookupUser, SESSION_COOKIE_NAME } from '../auth/sessions.js';
+import { isAllowedWsOrigin, parseCookies } from './cookies.js';
 import type { AuthedUser } from '../types.js';
 
 // In-memory presence: user_id → set of connected lobby WebSockets.
 const presence = new Map<number, Set<WebSocket>>();
-
-function parseCookies(header: string | undefined): Record<string, string> {
-  if (!header) return {};
-  const out: Record<string, string> = {};
-  for (const part of header.split(';')) {
-    const idx = part.indexOf('=');
-    if (idx < 0) continue;
-    out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
-  }
-  return out;
-}
 
 export function isOnline(userId: number): boolean {
   const set = presence.get(userId);
@@ -51,8 +41,18 @@ export function attachLobbyWebSocket(server: Server) {
 
   server.on('upgrade', (req, socket, head) => {
     if (!req.url?.startsWith('/ws/lobby')) return;
-    const cookies = parseCookies(req.headers.cookie);
-    const user = lookupUser(cookies[SESSION_COOKIE_NAME]);
+    if (!isAllowedWsOrigin(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    let user: AuthedUser | null = null;
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      user = lookupUser(cookies[SESSION_COOKIE_NAME]);
+    } catch {
+      user = null;
+    }
     if (!user) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();

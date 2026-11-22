@@ -294,12 +294,19 @@ describe('hardening', () => {
   });
 
   it('SSO callbacks are capped per IP, before anything reaches the provider', async () => {
-    const hit = () => auth.request('/oidc/callback?code=x&state=y', { headers: { 'X-Forwarded-For': '203.0.113.9' } });
-    for (let i = 0; i < 20; i++) expect((await hit()).headers.get('location')).toBe('/login?sso_error=expired');
-    expect((await hit()).headers.get('location')).toBe('/login?sso_error=rate_limited');
-    // Another IP is unaffected.
-    const other = await auth.request('/oidc/callback?code=x&state=y', { headers: { 'X-Forwarded-For': '203.0.113.10' } });
-    expect(other.headers.get('location')).toBe('/login?sso_error=expired');
+    const prev = process.env.TRUST_PROXY;
+    process.env.TRUST_PROXY = 'true';
+    try {
+      const hit = () => auth.request('/oidc/callback?code=x&state=y', { headers: { 'X-Forwarded-For': '203.0.113.9' } });
+      for (let i = 0; i < 20; i++) expect((await hit()).headers.get('location')).toBe('/login?sso_error=expired');
+      expect((await hit()).headers.get('location')).toBe('/login?sso_error=rate_limited');
+      // Another IP is unaffected.
+      const other = await auth.request('/oidc/callback?code=x&state=y', { headers: { 'X-Forwarded-For': '203.0.113.10' } });
+      expect(other.headers.get('location')).toBe('/login?sso_error=expired');
+    } finally {
+      if (prev === undefined) delete process.env.TRUST_PROXY;
+      else process.env.TRUST_PROXY = prev;
+    }
   });
 
   it('warns when the callback URL would come from request headers', () => {

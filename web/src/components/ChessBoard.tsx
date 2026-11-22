@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Chessground } from 'chessground';
 import type { Api as CgApi } from 'chessground/api';
 import type { Config } from 'chessground/config';
@@ -23,7 +23,7 @@ interface Props {
 
 export type PieceLetter = 'q' | 'r' | 'b' | 'n';
 
-export default function ChessBoard({
+function ChessBoardInner({
   fen, orientation = 'white', movable = false, turnColor, onMove,
   lastMove, arrows, size, resetKey, analysisMode = false,
 }: Props) {
@@ -163,6 +163,10 @@ export default function ChessBoard({
   // and drawn arrows vanished. On bullet that read as input lag.
   const lastMoveKey = lastMove ? lastMove.join('') : '';
   const arrowsKey = arrows ? arrows.map((a) => `${a.orig}${a.dest}${a.brush ?? ''}`).join(',') : '';
+  const memoizedDests = useMemo(
+    () => (movable || analysisMode ? legalDests(fen) : new Map<Key, Key[]>()),
+    [fen, movable, analysisMode],
+  );
 
   // Sync on prop changes (also when resetKey bumps — used to roll back illegal/cancelled moves)
   useEffect(() => {
@@ -174,8 +178,8 @@ export default function ChessBoard({
       lastMove,
       movable: {
         ...(movable || analysisMode
-          ? { color: analysisMode ? sideToMove(fen) : turnColor, free: false, dests: legalDests(fen), showDests: true }
-          : { color: undefined, free: false, dests: new Map<Key, Key[]>(), showDests: false }),
+          ? { color: analysisMode ? sideToMove(fen) : turnColor, free: false, dests: memoizedDests, showDests: true }
+          : { color: undefined, free: false, dests: memoizedDests, showDests: false }),
         events: { after: handleAfter },
       },
       premovable: { enabled: !analysisMode },
@@ -187,7 +191,7 @@ export default function ChessBoard({
     }
     syncBounds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fen, orientation, turnColor, lastMoveKey, movable, analysisMode, arrowsKey, resetKey]);
+  }, [fen, orientation, turnColor, lastMoveKey, movable, analysisMode, arrowsKey, resetKey, memoizedDests]);
 
   function pickPromotion(piece: PieceLetter) {
     if (!promotion) return;
@@ -228,8 +232,22 @@ export default function ChessBoard({
   );
 }
 
+const ChessBoard = memo(ChessBoardInner);
+export default ChessBoard;
+
 export function PromotionPicker({ color, square, orientation, onPick, onCancel }:
   { color: 'white' | 'black'; square: string; orientation: 'white' | 'black'; onPick: (p: PieceLetter) => void; onCancel: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   const file = square.charCodeAt(0) - 97;
   const rank = parseInt(square[1]!, 10) - 1;
   const flip = orientation === 'black';
@@ -239,9 +257,15 @@ export function PromotionPicker({ color, square, orientation, onPick, onCancel }
   // Place below when the destination is in the top half of the displayed board,
   // above when in the bottom half — keeps the picker on-screen either way.
   const placeAbove = rowPct >= 50;
-  const posStyle: React.CSSProperties = placeAbove
-    ? { bottom: `calc(${100 - rowPct}% + 6px)` }
-    : { top: `calc(${rowPct + 12.5}% + 6px)` };
+  const alignRight = colPct >= 50;
+  const posStyle: React.CSSProperties = {
+    ...(placeAbove
+      ? { bottom: `calc(${100 - rowPct}% + 6px)` }
+      : { top: `calc(${rowPct + 12.5}% + 6px)` }),
+    ...(alignRight
+      ? { right: `max(4px, calc(${100 - (colPct + 12.5)}% - 8px))` }
+      : { left: `max(4px, calc(${colPct}% - 8px))` }),
+  };
   const pieces: PieceLetter[] = ['q', 'r', 'b', 'n'];
   const names: Record<PieceLetter, string> = { q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight' };
   const symbols: Record<PieceLetter, Record<'white' | 'black', string>> = {
@@ -255,8 +279,11 @@ export function PromotionPicker({ color, square, orientation, onPick, onCancel }
     <>
       <div className="absolute inset-0 z-30 cursor-pointer" onClick={onCancel} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Choose promotion piece"
         className="absolute z-40 flex gap-1 rounded-xl border border-ink-300 bg-white p-1 shadow-lift dark:border-ink-700 dark:bg-ink-800"
-        style={{ left: `calc(${colPct}% - 8px)`, ...posStyle }}
+        style={posStyle}
       >
         {pieces.map((p) => (
           <button key={p} type="button" aria-label={`Promote to ${names[p]}`} onClick={(e) => { e.stopPropagation(); onPick(p); }}
@@ -275,19 +302,27 @@ function sideToMove(fen: string): Color {
 }
 
 function legalDests(fen: string): Map<Key, Key[]> {
-  const chess = new Chess(fen);
   const map = new Map<Key, Key[]>();
-  for (const m of chess.moves({ verbose: true })) {
-    const arr = map.get(m.from as Key) ?? [];
-    arr.push(m.to as Key);
-    map.set(m.from as Key, arr);
+  try {
+    const chess = new Chess(fen);
+    for (const m of chess.moves({ verbose: true })) {
+      const arr = map.get(m.from as Key) ?? [];
+      arr.push(m.to as Key);
+      map.set(m.from as Key, arr);
+    }
+  } catch {
+    // Malformed FEN: return empty legal destinations rather than crashing the board.
   }
   return map;
 }
 
 function needsPromotion(fen: string, from: string, to: string): boolean {
-  const chess = new Chess(fen);
-  const piece = chess.get(from as never);
-  if (!piece || piece.type !== 'p') return false;
-  return (piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1');
+  try {
+    const chess = new Chess(fen);
+    const piece = chess.get(from as never);
+    if (!piece || piece.type !== 'p') return false;
+    return (piece.color === 'w' && to[1] === '8') || (piece.color === 'b' && to[1] === '1');
+  } catch {
+    return false;
+  }
 }

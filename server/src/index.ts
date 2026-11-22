@@ -118,8 +118,9 @@ app.route('/api/achievements', achievementsRoutes);
 app.route('/api/learn', learnRoutes);
 
 // In production, serve the built web app
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, extname, join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { resolve, extname, join, sep } from 'node:path';
 const WEB_DIST = resolve(config.projectRoot, 'web', 'dist');
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -137,17 +138,19 @@ const MIME: Record<string, string> = {
 };
 
 if (existsSync(WEB_DIST)) {
-  app.get('*', (c) => {
+  const webDistPrefix = WEB_DIST.endsWith(sep) ? WEB_DIST : `${WEB_DIST}${sep}`;
+  app.get('*', async (c) => {
     const url = new URL(c.req.url);
     let path = url.pathname === '/' ? '/index.html' : url.pathname;
-    let abs = join(WEB_DIST, path);
-    if (!existsSync(abs) || path.endsWith('/')) {
+    let abs = resolve(WEB_DIST, `.${path}`);
+    const isFileInDist = abs.startsWith(webDistPrefix) && existsSync(abs) && statSync(abs).isFile();
+    if (!isFileInDist || path.endsWith('/')) {
       abs = join(WEB_DIST, 'index.html');
       path = '/index.html';
     }
     const ext = extname(path);
     const mime = MIME[ext] ?? 'application/octet-stream';
-    const body = readFileSync(abs);
+    const body = await readFile(abs);
     return c.body(body, 200, { 'Content-Type': mime });
   });
 }

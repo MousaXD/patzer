@@ -1,4 +1,4 @@
-# deploy.ps1 — Deploys this repo to a remote Docker host over SSH.
+﻿# deploy.ps1 — Deploys this repo to a remote Docker host over SSH.
 #
 # Reads HOST and SUDO_PASS from .env.deploy (gitignored). Example .env.deploy:
 #   HOST=user@1.2.3.4
@@ -46,9 +46,9 @@ function Invoke-RemoteSudoScript([string]$script) {
     & scp -q $localScript "${HOST_TARGET}:$remoteScript"
     if ($LASTEXITCODE -ne 0) { Remove-Item -Force $localScript; throw "scp script failed" }
     if ($SUDO_PASS) {
-        & ssh $HOST_TARGET "chmod +x $remoteScript && echo '$SUDO_PASS' | sudo -S -p '' bash $remoteScript; rc=`$?; rm -f $remoteScript; exit `$rc"
+        $SUDO_PASS | & ssh $HOST_TARGET "chmod +x '$remoteScript' && sudo -S -p '' bash '$remoteScript'; rc=`$?; rm -f '$remoteScript'; exit `$rc"
     } else {
-        & ssh $HOST_TARGET "chmod +x $remoteScript && sudo bash $remoteScript; rc=`$?; rm -f $remoteScript; exit `$rc"
+        & ssh $HOST_TARGET "chmod +x '$remoteScript' && sudo bash '$remoteScript'; rc=`$?; rm -f '$remoteScript'; exit `$rc"
     }
     $rc = $LASTEXITCODE
     Remove-Item -Force $localScript
@@ -70,7 +70,9 @@ if (-not (Test-Path $tarExe)) { $tarExe = 'tar' }
 $tarArgs = @(
     '--exclude=node_modules', '--exclude=.git', '--exclude=dist',
     '--exclude=build',        '--exclude=data', '--exclude=bin',
-    '--exclude=.env',         '--exclude=.env.deploy',
+    '--exclude=.env',         '--exclude=.env.*', '--exclude=integrations/mcp/.env',
+    '--exclude=integrations/mcp/.patzer-password',
+    '--exclude=qa',           '--exclude=qa-artifacts', '--exclude=docs',
     '-czf', $localTar, '-C', $PSScriptRoot, '.'
 )
 & $tarExe @tarArgs
@@ -80,26 +82,32 @@ if ($LASTEXITCODE -ne 0) { Remove-Item -Force $localTar; throw "scp failed" }
 Invoke-Remote "tar -xzf $remoteTar -C $REMOTE_DIR && rm -f $remoteTar"
 Remove-Item -Force $localTar
 
+$composeArgs = if (Test-Path (Join-Path $PSScriptRoot 'docker-compose.fork.yml')) {
+    '-f docker-compose.yml -f docker-compose.fork.yml'
+} else {
+    '-f docker-compose.yml'
+}
+
 if (-not $NoBuild) {
     Write-Host "→ Building image on remote (this can take a few minutes)" -ForegroundColor Cyan
     Invoke-RemoteSudoScript @"
 cd $REMOTE_DIR
-HOST_PORT=$HOST_PORT docker compose build
+HOST_PORT=$HOST_PORT docker compose $composeArgs build
 "@
 }
 
 Write-Host "→ Starting container" -ForegroundColor Cyan
 Invoke-RemoteSudoScript @"
 cd $REMOTE_DIR
-HOST_PORT=$HOST_PORT docker compose up -d
+HOST_PORT=$HOST_PORT docker compose $composeArgs up -d
 sleep 2
-docker compose ps
+docker compose $composeArgs ps
 "@
 
 if ($Logs) {
     Invoke-RemoteSudoScript @"
 cd $REMOTE_DIR
-docker compose logs --tail=50
+docker compose $composeArgs logs --tail=50
 "@
 }
 

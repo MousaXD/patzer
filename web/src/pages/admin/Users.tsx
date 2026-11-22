@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, X } from 'lucide-react';
@@ -6,6 +6,7 @@ import { api } from '../../api';
 import { useAuth } from '../../state/auth';
 import { humanizeError } from '../../lib/errors';
 import { LANGUAGES, type Language } from '../../lib/languages';
+import { useDialogFocus } from '../../components/useDialogFocus';
 import InvitesSection from './Invites';
 
 interface UserRow {
@@ -152,12 +153,15 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
     finally { setBusy(false); }
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(true, panelRef, onClose);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="card w-full max-w-md p-6">
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="admin-new-user-title" tabIndex={-1} className="card w-full max-w-md p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{t('admin.newUser')}</h2>
-          <button onClick={onClose} className="btn-ghost p-1.5"><X className="h-4 w-4" /></button>
+          <h2 id="admin-new-user-title" className="text-lg font-semibold">{t('admin.newUser')}</h2>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="btn-ghost p-1.5"><X className="h-4 w-4" /></button>
         </div>
         <div className="grid gap-3">
           <input className="input" placeholder={t('common.username')} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />

@@ -80,6 +80,7 @@ export default function CoachPanel({ systemConfigured, request, autoPlay, trigge
     const { url, body } = request();
     setLastBody(body);
     let acc = '';
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -89,14 +90,19 @@ export default function CoachPanel({ systemConfigured, request, autoPlay, trigge
         signal: ac.signal,
       });
       if (!res.ok || !res.body) {
-        setError(`HTTP ${res.status}`); setBusy(false); return;
+        if (abortRef.current === ac) {
+          setError(`HTTP ${res.status}`);
+          setBusy(false);
+        }
+        return;
       }
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        if (abortRef.current !== ac) break;
         buf += dec.decode(value, { stream: true });
         let nl;
         while ((nl = buf.indexOf('\n\n')) >= 0) {
@@ -114,11 +120,16 @@ export default function CoachPanel({ systemConfigured, request, autoPlay, trigge
         }
       }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+      if ((e as Error).name !== 'AbortError' && abortRef.current === ac) {
+        setError((e as Error).message);
+      }
     } finally {
-      setBusy(false);
-      if (autoPlay && acc.trim() && user?.profile.tts_enabled && !mutedRef.current) {
-        playTts(acc);
+      reader?.cancel().catch(() => {});
+      if (abortRef.current === ac) {
+        setBusy(false);
+        if (autoPlay && acc.trim() && user?.profile.tts_enabled && !mutedRef.current) {
+          playTts(acc);
+        }
       }
     }
   }

@@ -5,6 +5,7 @@ import { widenGamesSourceCheck } from './dbMigrations.js';
 export const db = new Database(config.dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -368,7 +369,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS auth_tokens (
 )`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, kind)`);
 // Drop tokens that are spent or long expired so the table can't grow unbounded.
-db.prepare(`DELETE FROM auth_tokens WHERE used_at IS NOT NULL OR expires_at < datetime('now')`).run();
+db.prepare(`DELETE FROM auth_tokens WHERE used_at IS NOT NULL OR datetime(expires_at) < datetime('now')`).run();
 
 // v7.15 — invite-only signup (#26). Unlike auth_tokens the code is stored as
 // is, not hashed: the admin has to be able to copy the link again later, and a
@@ -411,7 +412,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS live_bot_games (
 // An abandoned game is worth keeping for a while — you may well come back to it
 // tomorrow — but not forever. A fortnight is long enough to be generous and
 // short enough that the table stays small.
-db.prepare(`DELETE FROM live_bot_games WHERE updated_at < datetime('now','-14 days')`).run();
+db.prepare(`DELETE FROM live_bot_games WHERE datetime(updated_at) < datetime('now','-14 days')`).run();
 
 // SSO (OpenID Connect). One row per identity at the identity provider,
 // keyed by (issuer, subject) as the spec says: `sub` is the only claim that is
@@ -444,17 +445,28 @@ ensureColumn('users', 'created_via', "TEXT NOT NULL DEFAULT 'password'");
 // only when absent so a deliberate later 'off' survives restarts.
 if (getSetting('allow_signup') === null) setSetting('allow_signup', '1');
 
-// Auto-expire any active goal whose week elapsed while the server was down.
-db.prepare(`UPDATE goals SET status='expired' WHERE status='active' AND completes_at < datetime('now')`).run();
+// Performance indexes for common lookups (PvP external_id, session revocation,
+// source-filtered game library, head-to-head player stats).
+db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_games_external_id ON games(external_id)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_games_user_source_end ON games(user_id, source, end_time DESC)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_games_user_opponent ON games(user_id, opponent_user_id)`);
 
-// Cleanup expired sessions on startup
-db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
-// Sweep stale challenges on startup. Pending challenges older than 15 minutes
-// are noise — most senders have closed the tab and the recipient never saw it.
-// A read-time filter (in challenges.ts) handles fresh installs; the sweep keeps
-// the table from growing unbounded.
-db.prepare(`UPDATE challenges SET status = 'expired'
-            WHERE status = 'pending' AND created_at < datetime('now','-15 minutes')`).run();
+function pruneStaleRows(): void {
+  try {
+    db.prepare(`UPDATE goals SET status='expired' WHERE status='active' AND datetime(completes_at) < datetime('now')`).run();
+    db.prepare(`DELETE FROM sessions WHERE datetime(expires_at) < datetime('now')`).run();
+    db.prepare(`DELETE FROM auth_tokens WHERE used_at IS NOT NULL OR datetime(expires_at) < datetime('now')`).run();
+    db.prepare(`DELETE FROM live_bot_games WHERE datetime(updated_at) < datetime('now','-14 days')`).run();
+    db.prepare(`UPDATE challenges SET status = 'expired'
+                WHERE status = 'pending' AND datetime(created_at) < datetime('now','-15 minutes')`).run();
+  } catch {
+    // Non-fatal on shutdown or closed DB in tests.
+  }
+}
+
+pruneStaleRows();
+setInterval(pruneStaleRows, 6 * 60 * 60_000).unref();
 
 export function getSetting(key: string): string | null {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;

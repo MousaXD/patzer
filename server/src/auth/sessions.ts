@@ -32,9 +32,12 @@ function verifySigned(signed: string): string | null {
   if (parts.length !== 2) return null;
   const [token, sig] = parts;
   if (!token || !sig) return null;
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return null;
   const expected = sign(token);
-  if (sig.length !== expected.length) return null;
-  if (!timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) return null;
+  const sigBuf = Buffer.from(sig, 'hex');
+  const expectedBuf = Buffer.from(expected, 'hex');
+  if (sigBuf.length !== expectedBuf.length) return null;
+  if (!timingSafeEqual(sigBuf, expectedBuf)) return null;
   return token;
 }
 
@@ -71,8 +74,8 @@ export function lookupUser(signed: string | undefined): AuthedUser | null {
   const session = db
     .prepare(`SELECT token, user_id, expires_at FROM sessions
               WHERE token = ?
-                AND expires_at > datetime('now')
-                AND last_active_at > datetime('now', ?)`)
+                AND datetime(expires_at) > datetime('now')
+                AND datetime(last_active_at) > datetime('now', ?)`)
     .get(token, `-${SESSION_IDLE_DAYS} days`) as SessionRow | undefined;
   if (!session) return null;
   const user = db
@@ -85,7 +88,7 @@ export function lookupUser(signed: string | undefined): AuthedUser | null {
   // write to once per minute per session so /api/me polling doesn't beat the
   // sessions table to death.
   db.prepare(`UPDATE sessions SET last_active_at = datetime('now')
-              WHERE token = ? AND last_active_at < datetime('now','-1 minute')`).run(token);
+              WHERE token = ? AND datetime(last_active_at) < datetime('now','-1 minute')`).run(token);
   return { ...user, profile };
 }
 

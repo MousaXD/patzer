@@ -4,10 +4,23 @@
 // Node 22+ dotenv loader reads the private file without executing its contents as shell commands.
 import { existsSync, readFileSync } from 'node:fs';
 const envFile = new URL('./.env', import.meta.url);
-if (existsSync(envFile)) process.loadEnvFile(envFile);
+if (existsSync(envFile)) {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile(envFile);
+  } else {
+    for (const line of readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (m && process.env[m[1]] === undefined) {
+        process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+      }
+    }
+  }
+}
 const apiBase = process.env.PATZER_URL || 'http://127.0.0.1:8800';
 const username = process.env.PATZER_USERNAME || '';
-const password = process.env.PATZER_PASSWORD_FILE ? readFileSync(process.env.PATZER_PASSWORD_FILE, 'utf8') : (process.env.PATZER_PASSWORD || '');
+const password = process.env.PATZER_PASSWORD_FILE
+  ? readFileSync(process.env.PATZER_PASSWORD_FILE, 'utf8').replace(/\r?\n$/, '')
+  : (process.env.PATZER_PASSWORD || '');
 if (!username || !password) {
   console.error('Set PATZER_USERNAME and PATZER_PASSWORD locally.');
   process.exit(1);
@@ -16,8 +29,12 @@ const parsedApi = new URL(apiBase);
 if (!['http:', 'https:'].includes(parsedApi.protocol) || parsedApi.username || parsedApi.password) {
   throw Error('PATZER_URL must be an HTTP(S) URL without credentials');
 }
-if (!['127.0.0.1', 'localhost', '[::1]'].includes(parsedApi.hostname) && process.env.PATZER_ALLOW_REMOTE !== 'true') {
+const isLoopback = ['127.0.0.1', 'localhost', '[::1]'].includes(parsedApi.hostname);
+if (!isLoopback && process.env.PATZER_ALLOW_REMOTE !== 'true') {
   throw Error('Refusing to transmit Patzer credentials to a non-loopback host without PATZER_ALLOW_REMOTE=true');
+}
+if (!isLoopback && parsedApi.protocol !== 'https:') {
+  throw Error('Refusing to transmit Patzer credentials over plaintext HTTP to a non-loopback host; use https://');
 }
 let cookie = '';
 let authInProgress;

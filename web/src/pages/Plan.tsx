@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { goalText } from '../lib/goalText';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import * as Icons from 'lucide-react';
+import { resolveDynamicIcon } from '../lib/iconMap';
 import {
   ListChecks, RefreshCw, Sparkles, Check, ChevronDown, ChevronRight, ArrowRight,
   Target as TargetFallback,
@@ -270,15 +270,7 @@ function GoalCard({ goal }: { goal: PlanGoal }) {
 }
 
 function resolveIcon(name: string): React.ElementType {
-  // lucide-react is exported as a namespace of named components. Look up by
-  // string; fall back to a sensible default (Target) if the server returns
-  // something we don't ship.
-  const all = Icons as unknown as Record<string, unknown>;
-  const candidate = all[name];
-  if (typeof candidate === 'function' || (candidate && typeof candidate === 'object')) {
-    return candidate as React.ElementType;
-  }
-  return TargetFallback;
+  return resolveDynamicIcon(name, TargetFallback);
 }
 
 function progressPct(g: PlanGoal): number {

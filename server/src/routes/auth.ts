@@ -1,5 +1,6 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import { z } from 'zod';
 import { db, getSetting, userCount } from '../db.js';
 import { config } from '../config.js';
@@ -93,16 +94,22 @@ function ssoRateLimited(ip: string): boolean {
   return false;
 }
 
-function clientIp(c: { req: { header: (k: string) => string | undefined } }): string {
-  // Prefer X-Forwarded-For if a reverse proxy is in front; first hop is the client.
-  // Hono's node adapter exposes the underlying socket via `getConnInfo`, but for
-  // rate-limiting purposes a coarse "direct" bucket is fine when no proxy is in
-  // play — the per-username bucket is the dominant guard against credential
-  // stuffing, and a real LAN deploy almost always has a proxy.
-  const xff = c.req.header('x-forwarded-for');
-  if (xff) return xff.split(',')[0]!.trim();
-  const real = c.req.header('x-real-ip');
-  if (real) return real.trim();
+function clientIp(c: Context): string {
+  // Only honor forwarded headers when TRUST_PROXY is explicitly enabled;
+  // otherwise any caller could spoof X-Forwarded-For to bypass IP rate limits.
+  const trustProxy = config.trustProxy || /^(1|true|yes|on)$/i.test(process.env.TRUST_PROXY ?? '');
+  if (trustProxy) {
+    const xff = c.req.header('x-forwarded-for');
+    if (xff) return xff.split(',')[0]!.trim();
+    const real = c.req.header('x-real-ip');
+    if (real) return real.trim();
+  }
+  try {
+    const remote = getConnInfo(c).remote.address;
+    if (remote) return remote;
+  } catch {
+    // In unit tests calling app.request() without a Node HTTP socket.
+  }
   return 'direct';
 }
 

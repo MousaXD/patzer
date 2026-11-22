@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 const auth='Bearer '+ 'x'.repeat(64);
 const mock=http.createServer(async(req,res)=>{
   if(req.url==='/api/auth/login') {res.writeHead(200,{'content-type':'application/json','set-cookie':'patzer_session=testsession; HttpOnly'});res.end('{"user":{"id":7}}');return;}
@@ -15,7 +16,7 @@ const mock=http.createServer(async(req,res)=>{
 });
 await new Promise(ok=>mock.listen(0,'127.0.0.1',ok));
 const mockPort=mock.address().port;
-const bridge=spawn(process.execPath,[new URL('./server.mjs',import.meta.url).pathname],{env:{...process.env,MCP_HOST:'127.0.0.1',MCP_PORT:'18811',PATZER_URL:`http://127.0.0.1:${mockPort}`,PATZER_USERNAME:'test',PATZER_PASSWORD:'test',MCP_API_KEY:'x'.repeat(64)},stdio:['ignore','ignore','pipe']});
+const bridge=spawn(process.execPath,[fileURLToPath(new URL('./server.mjs',import.meta.url))],{env:{...process.env,MCP_HOST:'127.0.0.1',MCP_PORT:'18811',PATZER_URL:`http://127.0.0.1:${mockPort}`,PATZER_USERNAME:'test',PATZER_PASSWORD:'test',PATZER_PASSWORD_FILE:'',MCP_API_KEY:'x'.repeat(64)},stdio:['ignore','ignore','pipe']});
 const url='http://127.0.0.1:18811/mcp';
 async function rpc(method,params={},authorization=auth){return fetch(url,{method:'POST',headers:{authorization,'content-type':'application/json','accept':'application/json,text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});}
 try {

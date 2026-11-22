@@ -1,7 +1,9 @@
 import { lazy, useEffect, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './state/auth';
+import { setUnauthorizedHandler } from './api';
 import { useLobby } from './state/lobby';
 import { setMoveSoundSet, setSoundEnabled, setSoundSet, unlockAudio } from './lib/sounds';
 import Layout from './components/Layout';
@@ -40,12 +42,32 @@ const McpConnection = lazy(() => import('./pages/admin/McpConnection'));
 export default function App() {
   const { loading, setupRequired, user, refresh } = useAuth();
   const { i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const nav = useNavigate();
   const connectLobby = useLobby((s) => s.connect);
   const disconnectLobby = useLobby((s) => s.disconnect);
+  const prevUserIdRef = useRef<number | null | undefined>(undefined);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (useAuth.getState().user) useAuth.getState().setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  // Clear cached React Query data whenever the active account changes (logout
+  // or switching users on a shared family device) so User B never sees User A's
+  // cached openings, challenges, private games, or admin lists.
+  useEffect(() => {
+    const currentId = user?.id ?? null;
+    if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== currentId) {
+      queryClient.clear();
+    }
+    prevUserIdRef.current = currentId;
+  }, [user?.id, queryClient]);
 
   // A lobby WebSocket belongs to one authenticated account. Switching users
   // must replace the old socket and discard its queued invitations; this is

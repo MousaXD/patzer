@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import * as Icons from 'lucide-react';
 import {
   Swords, BookOpen, ChevronRight, Target, Sparkles,
   ListChecks, Award, ArrowRight, GraduationCap, Star, Flame,
 } from 'lucide-react';
+import { resolveDynamicIcon } from '../lib/iconMap';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../state/auth';
 import { api } from '../api';
@@ -774,6 +774,5 @@ function ResultGlyph({ r }: { r: string }) {
 }
 
 function resolveIcon(name: string): React.ComponentType<{ className?: string }> {
-  const lib = Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>;
-  return lib[name] ?? lib.Award ?? (() => null);
+  return resolveDynamicIcon(name, Award);
 }

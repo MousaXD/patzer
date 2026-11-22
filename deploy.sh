@@ -76,18 +76,19 @@ remote_sudo_script() {
   local script="$1"
   local local_script remote_script rc
   local_script="$(mktemp -t patzer-remote-XXXXXX.sh)"
-  remote_script="/tmp/patzer-remote-$RANDOM-$$.sh"
+  remote_script="$(ssh "$HOST_TARGET" 'mktemp /tmp/patzer-remote-XXXXXX.sh')"
   {
     printf '#!/usr/bin/env bash\nset -e\n'
     printf '%s\n' "$script"
   } > "$local_script"
   scp -q "$local_script" "${HOST_TARGET}:${remote_script}"
   if [[ -n "$SUDO_PASS" ]]; then
+    # Pipe password over SSH stdin instead of interpolating into remote command line.
     # shellcheck disable=SC2029
-    ssh "$HOST_TARGET" "chmod +x '$remote_script' && echo '$SUDO_PASS' | sudo -S -p '' bash '$remote_script'; rc=\$?; rm -f '$remote_script'; exit \$rc"
+    printf '%s\n' "$SUDO_PASS" | ssh "$HOST_TARGET" "chmod +x $(printf %q "$remote_script") && sudo -S -p '' bash $(printf %q "$remote_script"); rc=\$?; rm -f $(printf %q "$remote_script"); exit \$rc"
   else
     # shellcheck disable=SC2029
-    ssh "$HOST_TARGET" "chmod +x '$remote_script' && sudo bash '$remote_script'; rc=\$?; rm -f '$remote_script'; exit \$rc"
+    ssh "$HOST_TARGET" "chmod +x $(printf %q "$remote_script") && sudo bash $(printf %q "$remote_script"); rc=\$?; rm -f $(printf %q "$remote_script"); exit \$rc"
   fi
   rc=$?
   rm -f "$local_script"
@@ -95,37 +96,44 @@ remote_sudo_script() {
 }
 
 log "Ensuring remote dir $REMOTE_DIR exists"
-remote_exec "mkdir -p '$REMOTE_DIR'"
+remote_exec "mkdir -p $(printf %q "$REMOTE_DIR")"
 
 log "Syncing source to ${HOST_TARGET}:${REMOTE_DIR}"
 local_tar="$(mktemp -t patzer-deploy-XXXXXX.tar.gz)"
-remote_tar="/tmp/patzer-deploy-$RANDOM-$$.tar.gz"
+remote_tar="$(ssh "$HOST_TARGET" 'mktemp /tmp/patzer-deploy-XXXXXX.tar.gz')"
 trap 'rm -f "$local_tar"' EXIT
 
 tar \
   --exclude='node_modules' --exclude='.git' --exclude='dist' \
   --exclude='build'        --exclude='data' --exclude='bin' \
-  --exclude='.env'         --exclude='.env.deploy' \
+  --exclude='.env'         --exclude='.env.*' --exclude='integrations/mcp/.env' \
+  --exclude='integrations/mcp/.patzer-password' \
+  --exclude='qa'           --exclude='qa-artifacts' --exclude='docs' \
   -czf "$local_tar" -C "$script_dir" .
 
 scp -q "$local_tar" "${HOST_TARGET}:${remote_tar}"
-remote_exec "tar -xzf '$remote_tar' -C '$REMOTE_DIR' && rm -f '$remote_tar'"
+remote_exec "tar -xzf $(printf %q "$remote_tar") -C $(printf %q "$REMOTE_DIR") && rm -f $(printf %q "$remote_tar")"
+
+compose_args="-f docker-compose.yml"
+if [[ -f "$script_dir/docker-compose.fork.yml" ]]; then
+  compose_args="-f docker-compose.yml -f docker-compose.fork.yml"
+fi
 
 if [[ $no_build -eq 0 ]]; then
   log "Building image on remote (this can take a few minutes)"
-  remote_sudo_script "cd '$REMOTE_DIR'
-HOST_PORT=$HOST_PORT docker compose build"
+  remote_sudo_script "cd $(printf %q "$REMOTE_DIR")
+HOST_PORT=$(printf %q "$HOST_PORT") docker compose $compose_args build"
 fi
 
 log "Starting container"
-remote_sudo_script "cd '$REMOTE_DIR'
-HOST_PORT=$HOST_PORT docker compose up -d
+remote_sudo_script "cd $(printf %q "$REMOTE_DIR")
+HOST_PORT=$(printf %q "$HOST_PORT") docker compose $compose_args up -d
 sleep 2
-docker compose ps"
+docker compose $compose_args ps"
 
 if [[ $tail_logs -eq 1 ]]; then
-  remote_sudo_script "cd '$REMOTE_DIR'
-docker compose logs --tail=50"
+  remote_sudo_script "cd $(printf %q "$REMOTE_DIR")
+docker compose $compose_args logs --tail=50"
 fi
 
 server_ip="${HOST_TARGET##*@}"
