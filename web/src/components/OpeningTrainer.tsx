@@ -492,8 +492,8 @@ function Drill({ line, phase: startPhase, due, onRestart, onExit, onReview, onBr
   }
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row">
-      <div className={`mx-auto w-full lg:max-w-[600px] lg:flex-1 board-theme-${user?.profile.board_theme ?? 'green'}`}>
+    <div className="grid w-full min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+      <div className={`mx-auto w-full min-w-0 max-w-[720px] board-theme-${user?.profile.board_theme ?? 'green'}`}>
         <ChessBoard
           fen={fen}
           orientation={line.color}
@@ -506,7 +506,7 @@ function Drill({ line, phase: startPhase, due, onRestart, onExit, onReview, onBr
         />
       </div>
 
-      <aside className="space-y-3 lg:w-[340px]">
+      <aside className="min-w-0 space-y-3">
         <LineHeader name={name} eco={line.eco ?? null} color={line.color}>
           {branchPos && (
             <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-gold-500/15 px-2 py-0.5 text-[11px] font-medium text-gold-700 dark:text-gold-300">
@@ -706,8 +706,8 @@ function Review({ learnedAfter, onExit }: { learnedAfter: number; onExit: () => 
   }
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row">
-      <div className={`mx-auto w-full lg:max-w-[600px] lg:flex-1 board-theme-${user?.profile.board_theme ?? 'green'}`}>
+    <div className="grid w-full min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+      <div className={`mx-auto w-full min-w-0 max-w-[720px] board-theme-${user?.profile.board_theme ?? 'green'}`}>
         <ChessBoard
           fen={shown.fen}
           orientation={item.color}
@@ -720,7 +720,7 @@ function Review({ learnedAfter, onExit }: { learnedAfter: number; onExit: () => 
         />
       </div>
 
-      <aside className="space-y-3 lg:w-[340px]">
+      <aside className="min-w-0 space-y-3">
         <LineHeader name={item.line_name ? lineName(item.line_id, item.line_name) : t('openings.trainer.myLine')} eco={null} color={item.color}>
           <div className="mt-3 text-xs text-chesscom-500">
             {t('openings.trainer.reviewProgress', { i: index + 1, n: items.length })}
